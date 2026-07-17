@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>つくったもの</title>
+<meta name="description" content="ブラウザだけで動く自作の道具とゲームの一覧。">
+<meta property="og:title" content="つくったもの">
+<meta property="og:description" content="ブラウザだけで動く自作の道具とゲームの一覧。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://haristweet.github.io/">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>💾</text></svg>">
+<style>
+  /* ── VIC-II 由来のトークン。ダーク＝画面、ライト＝紙に刷った目録 ── */
+  :root {
+    --ground:   #EDEAF7;
+    --panel:    #F8F6FF;
+    --rule:     #C0B7E6;
+    --rule-soft:#DED8F2;
+    --ink:      #221C55;
+    --ink-dim:  #5C5397;
+    --accent:   #14697F;
+    --sel-bg:   #14697F;
+    --sel-ink:  #F8F6FF;
+    --live:     #1F7A3D;
+
+    /* 等幅スタックに和文グリフが無いので、代替先を任せず明示する
+       （ラテン・数字は等幅、和文はヒラギノ、という対比を意図して作る） */
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, "Cascadia Mono", "Roboto Mono",
+            "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic Medium", sans-serif;
+
+    --step--1: 0.75rem;
+    --step-0:  0.9375rem;
+    --step-1:  1.0625rem;
+    --step-2:  1.375rem;
+    --step-3:  clamp(1.75rem, 6vw, 2.5rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:   #262060;
+      --panel:    #302876;
+      --rule:     #6C5EB5;
+      --rule-soft:#3D3490;
+      --ink:      #DAD5FF;
+      --ink-dim:  #9C94DC;
+      --accent:   #9FF7E4;
+      --sel-bg:   #9FF7E4;
+      --sel-ink:  #262060;
+      --live:     #67E39A;
+    }
+  }
+  /* 閲覧側のトグルは media query より強く効かせる */
+  :root[data-theme="dark"] {
+    --ground:   #262060;
+    --panel:    #302876;
+    --rule:     #6C5EB5;
+    --rule-soft:#3D3490;
+    --ink:      #DAD5FF;
+    --ink-dim:  #9C94DC;
+    --accent:   #9FF7E4;
+    --sel-bg:   #9FF7E4;
+    --sel-ink:  #262060;
+    --live:     #67E39A;
+  }
+  :root[data-theme="light"] {
+    --ground:   #EDEAF7;
+    --panel:    #F8F6FF;
+    --rule:     #C0B7E6;
+    --rule-soft:#DED8F2;
+    --ink:      #221C55;
+    --ink-dim:  #5C5397;
+    --accent:   #14697F;
+    --sel-bg:   #14697F;
+    --sel-ink:  #F8F6FF;
+    --live:     #1F7A3D;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: var(--step-0);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 5vw, 3.5rem) clamp(1rem, 4vw, 2rem) 4rem;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(2rem, 5vw, 3rem);
+  }
+
+  /* ── 見出し ── */
+  .masthead { display: flex; flex-direction: column; gap: 0.75rem; }
+  .rule-top {
+    align-self: stretch;
+    height: 2px; background: var(--rule); border: 0;
+    box-shadow: 0 4px 0 0 var(--rule-soft);
+    margin: 0 0 0.5rem;
+  }
+  h1 {
+    font-family: var(--mono);
+    font-size: var(--step-3);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    margin: 0;
+  }
+  .lede {
+    max-width: 34em;
+    color: var(--ink-dim);
+    margin: 0;
+    /* 和文が語中で折れないように。auto-phrase 未対応の環境は pretty に落ちる */
+    word-break: auto-phrase;
+    text-wrap: pretty;
+  }
+  .tally {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    margin: 0;
+  }
+
+  /* ── 分類 ── */
+  .group { display: flex; flex-direction: column; gap: 0; }
+  .group-head {
+    display: flex; align-items: baseline; gap: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid var(--rule);
+  }
+  .group-head h2 {
+    font-family: var(--mono);
+    font-size: var(--step-2);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .group-head .count {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── 一覧の行。ディスクメニューの選択バー ── */
+  .entry {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.25rem 1.5rem;
+    align-items: baseline;
+    /* 左の余白は選択マーカーの溝。行の中身はここに食い込まない */
+    padding: 0.9rem 0.75rem 0.9rem 2rem;
+    border-bottom: 1px solid var(--rule-soft);
+    text-decoration: none;
+    color: inherit;
+    transition: background-color 90ms steps(2), color 90ms steps(2);
+  }
+  .entry:hover,
+  .entry:focus-visible {
+    background: var(--sel-bg);
+    color: var(--sel-ink);
+    outline: none;
+  }
+  .entry:hover .desc, .entry:focus-visible .desc,
+  .entry:hover .meta, .entry:focus-visible .meta,
+  .entry:hover .slug, .entry:focus-visible .slug { color: inherit; }
+
+  /* 選択中を示す ▶。溝に絶対配置して、本文の字送りを動かさない */
+  .entry::before {
+    content: "▶";
+    position: absolute;
+    left: 0.7rem;
+    top: 0.95rem;
+    font-family: var(--mono);
+    font-size: var(--step-0);
+    line-height: 1.4;
+    opacity: 0;
+    transition: opacity 90ms steps(2);
+  }
+  .entry:hover::before,
+  .entry:focus-visible::before { opacity: 1; }
+
+  .name {
+    font-family: var(--mono);
+    font-size: var(--step-1);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    grid-column: 1;
+  }
+  .desc {
+    grid-column: 1;
+    color: var(--ink-dim);
+    font-size: var(--step-0);
+    margin: 0;
+  }
+  .meta {
+    grid-column: 2; grid-row: 1;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-dim);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .slug {
+    grid-column: 2; grid-row: 2;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-dim);
+    text-align: right;
+    white-space: nowrap;
+  }
+  @media (max-width: 34rem) {
+    .entry { grid-template-columns: 1fr; }
+    .meta, .slug { grid-column: 1; grid-row: auto; text-align: left; }
+  }
+
+  /* ── 脚注 ── */
+  .colophon {
+    border-top: 2px solid var(--rule);
+    padding-top: 1rem;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--ink-dim);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+  }
+  .colophon .live { color: var(--live); }
+  .colophon .rev { color: var(--accent); font-weight: 700; }
+  .colophon a { color: inherit; }
+
+  /* ── 読み込み時に目録が埋まる ── */
+  @media (prefers-reduced-motion: no-preference) {
+    .entry { animation: fill 260ms ease-out backwards; }
+    @keyframes fill {
+      from { opacity: 0; transform: translateY(-3px); }
+      to   { opacity: 1; transform: none; }
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="sheet">
+
+  <header class="masthead">
+    <hr class="rule-top">
+    <h1>つくったもの</h1>
+    <p class="lede">ブラウザだけで動く自作の道具とゲーム。全部リンクを開けばそのまま遊べます。</p>
+    <p class="tally">14 titles · 2026.04 — 2026.07 · all live</p>
+  </header>
+
+  <section class="group">
+    <div class="group-head">
+      <h2>音と音楽</h2>
+      <span class="count">5</span>
+    </div>
+
+    <a class="entry" href="https://haristweet.github.io/album-track-quiz/" style="animation-delay:20ms">
+      <span class="name">ELECTRO ALBUM QUIZ</span>
+      <p class="desc">テクノ／電子音楽の収録曲当てクイズ。25組237アルバムから出題。</p>
+      <span class="meta">2026.07.16</span>
+      <span class="slug">album-track-quiz</span>
+    </a>
+
+    <a class="entry" href="https://haristweet.github.io/apple-music-artwork/" style="animation-delay:40ms">
+      <span class="name">Album Art Downloader</span>
+      <p class="desc">アルバム名で検索して高解像度のジャケット画像を取得する。</p>
+      <span class="meta">2026.06.25</span>
+      <span class="slug">apple-music-artwork</span>
+    </a>
+
+    <a class="entry" href="https://haristweet.github.io/techno_sequencer/" style="animation-delay:60ms">
+      <span class="name">テクノシーケンサー</span>
+      <p class="desc">16ステップで音を組むシーケンサー。</p>
+      <span class="meta">2026.06.11</span>
+      <span class="slug">techno_sequencer</span>
+    </a>
+
+    <a class="entry" href="https://haristweet.github.io/amen-suno/" style="animation-delay:80ms">
+      <span class="name">AMEN GEN</span>
+      <p class="desc">SUNO に読ませるアーメンブレイクのプロンプトを組み立てる。</p>
+      <span class="meta">2026.05.21</span>
+      <span class="slug">amen-suno</span>
+    </a>
+
+    <a class="entry" href="https://haristweet.github.io/talking-sam/" style="animation-delay:100ms">
+      <span class="name">SAM — Software Automatic Mouth</span>
+      <p class="desc">往年の音声合成 SAM をブラウザで喋らせる。</p>
+      <span class="meta">2026.04.14</span>
+      <span class="slug">talking-sam</span>
+    </a>
+  </section>
+
+  <section class="group">
+    <div class="group-head">
+      <h2>ゲーム</h2>
+      <span class="count">6</span>
+    </div>
+
+    <a class="entry" href="https://haristweet.github.io/bullet-dodge/" style="animation-delay:120ms">
+      <span class="name">弾避け練習</span>
+      <p class="desc">弾幕系の弾避けだけをひたすら練習する。</p>
+      <span class="meta">2026.06.04</span>
+      <span class="slug">bullet-dodge</span>
+    </a>
+
+    <a class="entry" href="https://haristweet.github.io/lores-hack/" style="animation-delay:140ms">
+      <span class="name">DEPTH 100</span>
+      <p class="desc">低解像度のローグライク。潜って戦って、深度100を目指す。</p>
+      <span class="meta">2026.05.28</span>
+      <span class="slug">lores-hack</span>
+    </a>
+
+    <a class="entry" href="https://haristweet.github.io/url-battler/" style="animation-delay:160ms">
+      <span class="name">URL BATTLER</span>
+      <p class="desc">URL を5つ入れてデッキを組み、その強さで殴り合う5本勝負。</p>
+      <span class="meta">2026.05.21</span>
+      <span class="slug">url-battler</span>
+    </a>
+
+    <a class="entry" href="https://haristweet.github.io/succulent/" style="animation-delay:180ms">
+      <span class="name">SUCCULENT</span>
+      <p class="desc">ドット絵の多肉植物を水やりで育てる放置ゲーム。</p>
+      <span class="meta">2026.04.30</span>
+      <span class="slug">succulent</span>
+    </a>
+
+    <a class="entry" href="https://haristweet.github.io/kings-knight/" style="animation-delay:200ms">
+      <span class="name">Kings Knight — Prototype</span>
+      <p class="desc">1986年のファミコン『キングスナイト』へのオマージュ。80×60ドット。</p>
+      <span class="meta">2026.04.16</span>
+      <span class="slug">kings-knight</span>
+    </a>
+
+    <a class="entry" href="https://haristweet.github.io/stamp-rally/" style="animation-delay:220ms">
+      <span class="name">勝手にスタンプラリー</span>
+      <p class="desc">自分で用意した店舗リストで遊ぶ GPS スタンプラリー。</p>
+      <span class="meta">2026.04.15</span>
+      <span class="slug">stamp-rally</span>
+    </a>
+  </section>
+
+  <section class="group">
+    <div class="group-head">
+      <h2>道具</h2>
+      <span class="count">3</span>
+    </div>
+
+    <a class="entry" href="https://haristweet.github.io/calendar-event-maker/" style="animation-delay:240ms">
+      <span class="name">予定作成ツール</span>
+      <p class="desc">予定を作って iCal / Google カレンダーに書き出す。</p>
+      <span class="meta">2026.07.16</span>
+      <span class="slug">calendar-event-maker</span>
+    </a>
+
+    <a class="entry" href="https://haristweet.github.io/startgg-stream-viewer/" style="animation-delay:260ms">
+      <span class="name">格ゲー大会ビューア</span>
+      <p class="desc">大会の配信とブラケットを並べて追いかける。</p>
+      <span class="meta">2026.06.17</span>
+      <span class="slug">startgg-stream-viewer</span>
+    </a>
+
+    <a class="entry" href="https://haristweet.github.io/cosplay/" style="animation-delay:280ms">
+      <span class="name">COSTUME FUSION</span>
+      <p class="desc">写真とイラストを掛け合わせ、AI に衣装を着せるための JSON を作る。</p>
+      <span class="meta">2026.05.08</span>
+      <span class="slug">cosplay</span>
+    </a>
+  </section>
+
+  <!-- バージョンはここ1か所。README の更新履歴と揃えること -->
+  <footer class="colophon">
+    <span class="rev">v1.0.0</span>
+    <span class="live">● 14件すべて公開中</span>
+    <span>更新 2026.07.17</span>
+    <span><a href="https://github.com/haristweet">github.com/haristweet</a></span>
+  </footer>
+
+</div>
+</body>
+</html>
