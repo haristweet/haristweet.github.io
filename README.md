@@ -15,7 +15,7 @@
 
 - **音と音楽** — ELECTRO ALBUM QUIZ／Album Art Downloader／テクノシーケンサー／AMEN GEN／SAM
 - **ゲーム** — STAR RAIDER／弾避け練習／DEPTH 100／URL BATTLER／SUCCULENT／Kings Knight／勝手にスタンプラリー
-- **道具** — 予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
+- **道具** — 単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
 
 ## 手入れするとき
 
@@ -26,6 +26,7 @@
 
 ## 更新履歴（Changelog）
 
+- **v1.3.0** (2026-08-06) — 🛒 「道具」に **単価くらべ**（容量ちがいの同じ商品の単価比較／`unit-price-compare`）を追加。全17本に。
 - **v1.2.0** (2026-08-04) — 🎰 「ゲーム」に **LUCKY SEVEN**（目押しパチスロ風スロット／`pc8001-slot`）を追加。全16本に。
 - **v1.1.0** (2026-08-03) — 🎮 「ゲーム」に **STAR RAIDER**（縦スクロールシューティング／`pc8001-shooter`）を追加。全15本に。
 - **v1.0.1** (2026-07-17) — 🔗 リンクを**別タブで開く**ようにした（`target="_blank"` ＋ `rel="noopener"`）。目録に戻ってこられるので、続けて別のものを開ける。
