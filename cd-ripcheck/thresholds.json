@@ -8,7 +8,9 @@
   "disc_merge_ms": 50.0,
 
   "drop_ratio": 0.03,
-  "drop_min_ms": 5.0,
+  "drop_hop_ms": 2.0,
+  "drop_min_ms": 2.0,
+  "drop_guard_sec": 0.25,
   "drop_context_level": 0.005,
 
   "lossy_cutoff_hz": 21000.0,

@@ -53,7 +53,15 @@ class Config:
     # -38.1dB の落ち込みだった。-40dB では取り逃す。-30dB で 8dB の余裕を取る。
     drop_ratio: float = 0.03          # 周囲の中央値に対してこの比率まで落ちたら（-30dB）
     drop_context_level: float = 0.005 # 周囲がこれ以上鳴っているときだけ見る
-    drop_min_ms: float = 5.0          # これ未満の落ち込みは無視
+    # 分解能。実測で決定的に効く。実ファイルの音飛びは 2〜6ms しかなく、
+    # 10ms 刻みで見ると平均に埋もれて 108 箇所中 1 箇所しか見つからなかった。
+    # 2ms にすると全部見つかり、正常音源・ロッシー音源での誤検出は 0 件のまま。
+    drop_hop_ms: float = 2.0
+    drop_min_ms: float = 2.0          # これ未満の落ち込みは無視
+    # energy_drop は曲頭のガードを短くする。周囲が鳴っていることを
+    # drop_context_level で既に確かめているので長いガードは要らず、
+    # guard_sec=2.0 のままだと曲の出だしの音飛びを隠してしまう。
+    drop_guard_sec: float = 0.25
 
     # --- lossy_suspect ---
     lossy_cutoff_hz: float = 21000.0  # これ未満で高域が切れていたら疑う
@@ -188,26 +196,34 @@ def find_energy_drops(x, sr, cfg):
 
     可逆圧縮なら欠落は完全な無音として残るが、AAC や mp3 を経由すると
     微小ノイズに化けるので「完全な0」では捕まらない。周囲との比で見る。
+
+    分解能が命。実ファイルの音飛びは 2〜6ms しかないので、10ms 刻みだと
+    平均に埋もれて見つからない。
     """
-    hop = max(1, int(sr * 0.01))          # 10ms
+    hop = max(1, int(sr * cfg.drop_hop_ms / 1000))
     rms = np.sqrt(moving_mean(x.astype(np.float64) ** 2, hop)[::hop] + 1e-12)
-    half = 20                             # ±200ms の中央値と比べる
-    if len(rms) < half * 2 + 2:
+
+    # 周囲 ±200ms の中央値を基準にする。全フレームで sliding window の中央値を
+    # 取るとメモリを食い過ぎるので、50ms ブロックごとの中央値から組み立てる。
+    per_block = max(1, int(50 / cfg.drop_hop_ms))
+    nb = len(rms) // per_block
+    if nb < 9:
         return []
-    med = np.median(np.lib.stride_tricks.sliding_window_view(rms, half * 2 + 1), axis=1)
-    center = rms[half:half + len(med)]
-    hit = (center < med * cfg.drop_ratio) & (med > cfg.drop_context_level)
-    guard_f = int(cfg.guard_sec * sr / hop)
-    min_f = max(1, int(cfg.drop_min_ms / 10))
+    bm = np.median(rms[:nb * per_block].reshape(nb, per_block), axis=1)
+    pad = np.pad(bm, 4, mode="edge")
+    base = np.median(np.lib.stride_tricks.sliding_window_view(pad, 9), axis=1)
+    med = np.repeat(base, per_block)
+    rms = rms[:len(med)]
+
+    hit = (rms < med * cfg.drop_ratio) & (med > cfg.drop_context_level)
+    guard_f = max(1, int(cfg.drop_guard_sec * sr / hop))
+    min_f = max(1, int(round(cfg.drop_min_ms / cfg.drop_hop_ms)))
     out = []
     for s0, e0 in runs_of(hit):
-        if e0 - s0 < min_f:
+        if e0 - s0 < min_f or s0 < guard_f or e0 > len(rms) - guard_f:
             continue
-        i = s0 + half
-        if i < guard_f or i > len(rms) - guard_f:
-            continue
-        depth = 20 * np.log10(center[s0:e0].min() / med[s0:e0].max())
-        out.append({"type": "energy_drop", "at": round(i * hop / sr, 3),
+        depth = 20 * np.log10(rms[s0:e0].min() / med[s0:e0].max())
+        out.append({"type": "energy_drop", "at": round(s0 * hop / sr, 3),
                     "ms": round((e0 - s0) * hop / sr * 1000, 1),
                     "depth_db": round(float(depth), 1)})
     return out

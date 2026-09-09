@@ -62,9 +62,15 @@ def album_of(file_path):
 
 
 def build(findings, xld):
-    albums = defaultdict(lambda: {"score": 0, "findings": [], "xld": [], "files": set()})
+    albums = defaultdict(lambda: {"score": 0, "findings": [], "xld": [],
+                                  "files": set(), "omitted": 0})
     for f in findings:
-        if not f.get("file") or f.get("type") == "truncated":
+        if f.get("type") == "truncated":
+            # 1ファイルあたりの上限で切り捨てた分。件数だけはアルバムに足しておく
+            if f.get("file"):
+                albums[album_of(f["file"])]["omitted"] += f.get("omitted", 0)
+            continue
+        if not f.get("file"):
             continue
         a = albums[album_of(f["file"])]
         a["score"] += WEIGHT.get(f["type"], 5)
@@ -136,6 +142,8 @@ def write_report(albums, findings, xld, out, top):
         kinds = counts(a["findings"], "type")
         kinds.update({f"XLD:{k}": v for k, v in counts(a["xld"], "verdict").items()})
         desc = " / ".join(f"{LABEL.get(k.replace('XLD:', ''), k)}×{v}" for k, v in kinds.items())
+        if a["omitted"]:
+            desc += f" **ほか {a['omitted']} 件（上限で省略）**"
         L.append(f"| {a['score']} | `{path}` | {desc} |")
     L.append("")
 
