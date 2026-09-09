@@ -15,9 +15,18 @@ Claude の担当はその周り：
 3. **傾向の発見** — 時期やドライブに偏りがないか（＝盤ではなく機材の問題か）
 4. **コードの改良** — 新しい検出の追加、既存ロジックの修正
 
+## 運用の形
+
+**本命は「リップする → チェックしてもらう → 次の盤へ」の繰り返し**（`checkdisc.py`）。
+既存ライブラリの一括走査（`scan.sh`）は補助。見つかっても盤を探し直す作業が
+残るので費用対効果が落ちる。ユーザーから相談されたら、まず1枚ずつの運用を勧める。
+
 ## よく使うコマンド
 
 ```bash
+./checkdisc.py                        # 最新のアルバム1枚を検査（終了コード 0/1/2）
+./checkdisc.py ~/Music/rips/Album     # フォルダを指定
+
 MUSIC_ROOT=~/Music ./scan.sh          # 一式。差分だけ走る
 MUSIC_ROOT=~/Music ./scan.sh --rescan # 閾値を変えた後は全部やり直す
 ./triage.py --report work/report.jsonl --xld work/xld.jsonl \
@@ -102,6 +111,9 @@ work/report.jsonl と work/xld.jsonl を読んで:
 - `scan_library.py` — 走査。キャッシュは `パス → "サイズ:mtime"`
 - `parse_xld_log.py` — XLD ログの緩いパーサ。書式は版によって揺れるので厳密にしない
 - `triage.py` — 重みづけと Markdown 化。`WEIGHT` / `XLD_WEIGHT` が優先度を決める
+- `checkdisc.py` — 1枚ぶんの合否判定。ライブラリ走査と違いキャッシュも優先順位づけも
+  しない。「次の盤へ進んでいいか」だけを答える。`max_findings_per_file` を上書きして
+  実数を出す。判定は FATAL 集合と `--max-drops`（既定 0）で決まる
 
 ## テストのしかた
 

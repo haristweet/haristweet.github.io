@@ -70,12 +70,75 @@ pip3 install -r requirements.txt      # numpy だけ
 
 ---
 
-## 使いかた
+## 使いかた — 1枚ずつ（推奨）
+
+**リップする → チェックしてもらう → 次の盤へ。** これを繰り返すのが本命の使いかた。
 
 ```bash
 git clone <このリポジトリ> ~/claude/cd-ripcheck
 cd ~/claude/cd-ripcheck
 
+# 1枚リップし終わったら
+MUSIC_ROOT=~/Music/rips ./checkdisc.py
+```
+
+```
+==============================================================
+  Some Artist - Album Title   （12 トラック）
+==============================================================
+AccurateRip : 12/12 一致
+波形検査    : 異常なし
+
+判定        : ✅ 合格 — 次の盤へ
+              （12 トラック / 8.3 秒）
+```
+
+落ちるとこうなる。
+
+```
+AccurateRip : 9/12 一致  ❌ 不一致・読み取りエラー 1  （DB未登録など 2）
+波形検査    : ❌ 異常 14 箇所
+  5                                  11 箇所   88.31s(-47.2dB), 91.02s(-38.4dB) ...
+  6                                   3 箇所   12.44s(-33.1dB) ...
+
+判定        : ❌ 要再リップ
+              盤を拭いて取り直す: 5, 6
+              3回やって同じ箇所で落ちるなら盤の傷。CTDB での修復か買い直し
+```
+
+**この形がいちばん効くのは、盤がまだドライブに入っているから。**
+既存ライブラリを走査しても「見つかるだけで直らない」——結局あとから盤を
+探してきて取り直すことになる。リップ直後なら、拭いてもう一度回すだけで済む。
+
+- フォルダを省略すると**最後に更新されたアルバム**を自動で選ぶ
+- 終了コードは 合格 `0` / 要再リップ `1` / 要確認 `2` なので、シェルから条件分岐できる
+- 検査は 1 枚 5〜10 秒。次の盤を入れる前に結果が出る
+- 履歴は `work/history.jsonl` に残る。同じ盤が何回落ちたかを後から数えられる
+
+### 全自動にする
+
+`launchd/com.ripcheck.disc.plist` を `~/Library/LaunchAgents/` に置いて、
+`/PATH/TO` と `/Users/YOU` を書き換えてから：
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.ripcheck.disc.plist
+```
+
+リップ先にフォルダが増えると発火し、`watch-rip.sh` が「音源が1分間更新されなく
+なる」まで待ってから検査して、**macOS の通知センターに結果を出す**
+（合格は Glass 音、要再リップは Basso 音）。席を外していても音で分かるので、
+盤を入れ替えながら他のことをしていられる。
+
+## 使いかた — ライブラリ一括（任意）
+
+既にリップ済みのぶんに対して。**ただし見つかっても盤を探し直す作業が残る**ので、
+費用対効果は1枚ずつの運用に劣る。それでも以下の2つは盤を出さずに判断できるので、
+一度は回す価値がある。
+
+- `flac_md5_mismatch` / `decode_error` — 壊れたファイル。取り直す以外にない
+- `lossy_suspect` — FLAC のふりをした mp3。買い直し候補
+
+```bash
 # まるごと検査（初回）
 MUSIC_ROOT=~/Music ./scan.sh
 
@@ -229,13 +292,15 @@ Mac では Parallels / CrossOver / Wine が要るのが難点。
 
 ```
 ripcheck.py        検出ロジック本体。閾値はすべて Config にある
+checkdisc.py       1枚ぶんの合否判定。リップ直後に走らせる（推奨の使いかた）
+watch-rip.sh       リップ完了を待って checkdisc.py を呼ぶ。launchd の入口
 scan_library.py    フォルダの一括走査。キャッシュ・並列・中断復帰
 parse_xld_log.py   XLD ログ → AccurateRip 判定の JSONL
 triage.py          集計してレポート化。疑わしい箇所を切り出す
-scan.sh            上を順に回す。launchd から叩かれるのもこれ
+scan.sh            一括走査を順に回す。launchd から叩かれるのもこれ
 thresholds.json    閾値
-exclude.txt        検査から外すパターン
-launchd/           自動実行の plist
+exclude.txt        検査から外すパターン（一括走査のみ）
+launchd/           自動実行の plist（1枚ずつ用と一括用の2つ）
 CLAUDE.md          Claude Code 向けの手引き
 ```
 
