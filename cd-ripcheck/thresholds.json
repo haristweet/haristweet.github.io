@@ -2,11 +2,13 @@
   "silence_min_ms": 10.0,
   "silence_context_level": 0.01,
 
+  "disc_enabled": false,
   "disc_ratio": 25.0,
   "disc_context_level": 0.003,
   "disc_merge_ms": 50.0,
 
-  "drop_ratio": 0.01,
+  "drop_ratio": 0.03,
+  "drop_min_ms": 5.0,
   "drop_context_level": 0.005,
 
   "lossy_cutoff_hz": 21000.0,

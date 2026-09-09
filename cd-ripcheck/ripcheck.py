@@ -35,17 +35,25 @@ class Config:
     silence_min_ms: float = 10.0      # これ未満の無音は無視（CD 1セクタ = 588サンプル = 13.3ms）
     silence_context_level: float = 0.01   # 直前1秒の平均振幅がこれ以上なら「鳴っていた」
 
-    # --- discontinuity ---
-    # 2階差分を「局所的なざらつき（同じ指標の50ms移動平均）」と比べる。
-    # 振幅と比べる方式より遥かに素直に効く。実測: 正常音源の最大 21 に対し、
-    # サンプル欠落 35 / ブロック重複 235 / セクタ欠落 39。
+    # --- discontinuity（既定で無効。下の注意を読むこと）---
+    # 合成音源では機能するが、実際の音楽では役に立たないことが実測で分かった。
+    # AAC の実ファイル1本（5分半）で誤検出 1184 件。しかも同じファイルに実在した
+    # 本物の音飛び（CD 2.0セクタ欠落）のスコアは 12 で、閾値 25 にすら届かない。
+    # 可逆圧縮でない音源では欠落の縁がコーデックに鈍らされるうえ、密度の高い
+    # 低音中心の曲では波形構造そのものが大きな2階差分を生む。
+    # 振幅比・局所中央値・立ち上がり比のどれを併用しても分離できなかった。
+    # 音の薄いアコースティック録音などでは効く可能性があるので残してある。
+    disc_enabled: bool = False        # True にすると有効になる
     disc_ratio: float = 25.0          # この倍率を超えたら候補
     disc_context_level: float = 0.003 # かつ、その付近が実際に鳴っていること
     disc_merge_ms: float = 50.0       # これ以内の連続ヒットは1件にまとめる
 
     # --- energy_drop ---
-    drop_ratio: float = 0.01          # 周囲の中央値に対してこの比率まで落ちたら（-40dB）
+    # 実測: AAC の実ファイルにあった本物の音飛び（CD 2.0セクタ = 27ms 欠落）は
+    # -38.1dB の落ち込みだった。-40dB では取り逃す。-30dB で 8dB の余裕を取る。
+    drop_ratio: float = 0.03          # 周囲の中央値に対してこの比率まで落ちたら（-30dB）
     drop_context_level: float = 0.005 # 周囲がこれ以上鳴っているときだけ見る
+    drop_min_ms: float = 5.0          # これ未満の落ち込みは無視
 
     # --- lossy_suspect ---
     lossy_cutoff_hz: float = 21000.0  # これ未満で高域が切れていたら疑う
@@ -176,6 +184,11 @@ def find_discontinuities(x, sr, env, cfg):
 
 
 def find_energy_drops(x, sr, cfg):
+    """一瞬だけ音量が落ちて戻る箇所。これが音飛びの主力の検出になる。
+
+    可逆圧縮なら欠落は完全な無音として残るが、AAC や mp3 を経由すると
+    微小ノイズに化けるので「完全な0」では捕まらない。周囲との比で見る。
+    """
     hop = max(1, int(sr * 0.01))          # 10ms
     rms = np.sqrt(moving_mean(x.astype(np.float64) ** 2, hop)[::hop] + 1e-12)
     half = 20                             # ±200ms の中央値と比べる
@@ -184,16 +197,19 @@ def find_energy_drops(x, sr, cfg):
     med = np.median(np.lib.stride_tricks.sliding_window_view(rms, half * 2 + 1), axis=1)
     center = rms[half:half + len(med)]
     hit = (center < med * cfg.drop_ratio) & (med > cfg.drop_context_level)
-    idx = np.flatnonzero(hit) + half
-    if idx.size == 0:
-        return []
-    keep = np.concatenate(([True], np.diff(idx) > 5))
     guard_f = int(cfg.guard_sec * sr / hop)
+    min_f = max(1, int(cfg.drop_min_ms / 10))
     out = []
-    for i in idx[keep]:
+    for s0, e0 in runs_of(hit):
+        if e0 - s0 < min_f:
+            continue
+        i = s0 + half
         if i < guard_f or i > len(rms) - guard_f:
             continue
-        out.append({"type": "energy_drop", "at": round(i * hop / sr, 3)})
+        depth = 20 * np.log10(center[s0:e0].min() / med[s0:e0].max())
+        out.append({"type": "energy_drop", "at": round(i * hop / sr, 3),
+                    "ms": round((e0 - s0) * hop / sr * 1000, 1),
+                    "depth_db": round(float(depth), 1)})
     return out
 
 
@@ -280,9 +296,9 @@ def analyze(path: str | Path, cfg: Config | None = None) -> list[dict]:
         return [{"type": "too_short", "sec": round(n / SR, 2)}]
 
     env = moving_mean(np.abs(x.astype(np.float64)), int(SR * 0.05)) + 1e-9
-    findings = (find_digital_silence(x, SR, cfg)
-                + find_discontinuities(x, SR, env, cfg)
-                + find_energy_drops(x, SR, cfg))
+    findings = find_digital_silence(x, SR, cfg) + find_energy_drops(x, SR, cfg)
+    if cfg.disc_enabled:
+        findings += find_discontinuities(x, SR, env, cfg)
     findings = _dedupe(findings, SR, cfg)
     findings.sort(key=lambda f: f.get("at", -1))
 

@@ -22,10 +22,10 @@ WEIGHT = {
     "decode_error": 100,   # ファイルが壊れている。最優先。
     "scan_error": 30,
     "too_short": 50,       # リップが途中で止まった残骸
-    "digital_silence": 20, # 読み取り失敗の最も分かりやすい痕跡
+    "digital_silence": 20, # 完全な0。可逆圧縮なら読み取り失敗の決定的な証拠
+    "energy_drop": 20,     # 主力。非可逆を経由した音源ではこれだけが頼りになる
     "lossy_suspect": 15,   # 音飛びではないが、そもそも音源が偽物
-    "energy_drop": 8,
-    "discontinuity": 5,
+    "discontinuity": 2,    # 既定で無効。実音楽では誤検出が多く当てにならない
     "truncated": 0,
 }
 XLD_WEIGHT = {
