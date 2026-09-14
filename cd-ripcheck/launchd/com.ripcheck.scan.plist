@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~/Library/LaunchAgents/com.ripcheck.scan.plist に置いて
+
+      launchctl load ~/Library/LaunchAgents/com.ripcheck.scan.plist
+
+  【 /PATH/TO と /Users/YOU は自分のものに書き換えること 】
+
+  WatchPaths はフォルダの直下の増減で発火する。XLD がアルバムのフォルダを
+  作った瞬間にも鳴ってしまうので、scan.sh 側で「直近5分に更新されたものは
+  見送り」にしてある。取りこぼしは深夜の定期実行が拾う。
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.ripcheck.scan</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/PATH/TO/cd-ripcheck/scan.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>MUSIC_ROOT</key>
+    <string>/Users/YOU/Music</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <!-- リップ先が増えたら走る -->
+  <key>WatchPaths</key>
+  <array>
+    <string>/Users/YOU/Music</string>
+  </array>
+
+  <!-- 毎晩3時にも走らせて、取りこぼしを回収する -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>3</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/PATH/TO/cd-ripcheck/work/scan.log</string>
+  <key>StandardErrorPath</key>
+  <string>/PATH/TO/cd-ripcheck/work/scan.err.log</string>
+
+  <!-- 検査で他の作業を邪魔しないよう、優先度を下げる -->
+  <key>Nice</key>
+  <integer>10</integer>
+  <key>LowPriorityIO</key>
+  <true/>
+</dict>
+</plist>

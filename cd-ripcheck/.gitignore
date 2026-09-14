@@ -1,0 +1,9 @@
+work/
+*.jsonl
+*.md.bak
+.ripcheck_cache.json
+suspect/
+config.sh
+__pycache__/
+*.pyc
+.venv/

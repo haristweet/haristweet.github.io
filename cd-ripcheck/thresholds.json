@@ -1,0 +1,22 @@
+{
+  "silence_min_ms": 10.0,
+  "silence_context_level": 0.01,
+
+  "disc_enabled": false,
+  "disc_ratio": 25.0,
+  "disc_context_level": 0.003,
+  "disc_merge_ms": 50.0,
+
+  "drop_ratio": 0.03,
+  "drop_hop_ms": 2.0,
+  "drop_min_ms": 2.0,
+  "drop_guard_sec": 0.25,
+  "drop_context_level": 0.005,
+
+  "lossy_cutoff_hz": 21000.0,
+  "lossy_sharpness_db": 25.0,
+
+  "guard_sec": 2.0,
+  "min_duration_sec": 3.0,
+  "max_findings_per_file": 50
+}
