@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.8.1 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.9.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1195,20 +1195,26 @@ function t1ObjectOffsets(d){
   if(tableAt>=16&&tableAt+56<=d.length) out.push(tableAt);
   return out;
 }
+// 頂点や法線の「数」はヘッダの決まった場所にあるとは限らない（実物で、頂点51/法線51 の
+// 部品と 頂点47/法線45 の部品が混ざっていた）。位置の差から割り出すほうが確実。
+// 面の数4種だけはヘッダから拾うが、これも場所を決め打ちせず
+// 「8バイト×2種 ＋ 12バイト×2種 が面の大きさに一致する並び」を探す。
 function readT1Object(d,base){
   if(base+56>d.length) return null;
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
-  const g=k=>dv.getUint32(base+k*4,true);
-  const o={base,facePtr:g(0),vertPtr:g(1),normPtr:g(2),colPtr:g(3),
-           nv:g(7),nn:g(8),counts:[g(9),g(10),g(11),g(12)]};
-  o.faceBytes=(o.counts[0]+o.counts[1])*8+(o.counts[2]+o.counts[3])*12;
-  // 大きさの筋が通るか。頂点→法線→面→色 が隙間なく並ぶことを確かめる
-  o.ok = o.nv>0 && o.nv<65536 && o.nn<65536 &&
-         o.counts.every(c=>c>=0&&c<65536) &&
-         o.vertPtr+o.nv*8===o.normPtr &&
-         o.normPtr+o.nn*8===o.facePtr &&
-         o.facePtr+o.faceBytes===o.colPtr &&
-         base+o.colPtr+o.nv*4<=d.length;
+  const g=k=>base+(k+1)*4<=d.length?dv.getUint32(base+k*4,true):0;
+  const o={base,facePtr:g(0),vertPtr:g(1),normPtr:g(2),colPtr:g(3),nv:0,nn:0,counts:null,countsAt:-1};
+  if(!(o.vertPtr>=16&&o.vertPtr<o.normPtr&&o.normPtr<o.facePtr&&o.facePtr<o.colPtr)) return o;
+  if((o.normPtr-o.vertPtr)%8||(o.facePtr-o.normPtr)%8) return o;
+  o.nv=(o.normPtr-o.vertPtr)/8;
+  o.nn=(o.facePtr-o.normPtr)/8;
+  o.faceBytes=o.colPtr-o.facePtr;
+  for(let k=4;k<24&&base+(k+4)*4<=d.length;k++){
+    const c=[g(k),g(k+1),g(k+2),g(k+3)];
+    if(c.some(v=>v>65535)) continue;
+    if((c[0]+c[1])*8+(c[2]+c[3])*12===o.faceBytes){ o.counts=c; o.countsAt=k; break }
+  }
+  o.ok = o.nv>0 && o.nv<65536 && !!o.counts && base+o.colPtr+o.nv*4<=d.length;
   return o;
 }
 // 面の1件の読み方は決め打ちできないので、頂点番号が範囲に収まる読み方を選ぶ
@@ -1440,7 +1446,7 @@ function buildModelInner(raw,info){
     const objs=t1ObjectOffsets(b.out).map(p=>readT1Object(b.out,p)).filter(Boolean);
     const okObjs=objs.filter(o=>o.ok);
     info.t1Parts=`${okObjs.length}/${objs.length} 部品`;
-    info.t1Detail=objs.slice(0,10).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}(頂${o.nv} 法${o.nn} 面${o.counts.join("/")})`).join(" ");
+    info.t1Detail=objs.slice(0,12).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}(頂${o.nv} 法${o.nn} 面${o.counts?o.counts.join("/")+"@"+o.countsAt:"?"} ${o.faceBytes||0}B)`).join(" ");
     if(!okObjs.length) continue;
     const r1=buildT1Mesh(b.out,okObjs);
     if(r1.tris>0) return finishT1(r1,info,parts,b);
@@ -1673,7 +1679,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.8.1 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.9.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
