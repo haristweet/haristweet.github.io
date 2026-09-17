@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.8.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.8.1 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1164,6 +1164,101 @@ function modelInfoT1(d){
           kind:(tableAt===0x14?"A（部分が多い・小さい）":"B（キャラクターのモデルらしい）")};
 }
 // ============================================================
+//  トバルNo.1 のモデル
+//  実物（sector 5927、展開後 42,744B）のダンプから、部品ひとつの形が分かった。
+//
+//    +0x00 u32 面の位置   +0x04 u32 頂点の位置
+//    +0x08 u32 法線の位置 +0x0C u32 色の位置      ← 位置は部品の先頭から
+//    +0x10 u32 ? (5)      +0x14 u32 ? (1か2)      +0x18 u32 0
+//    +0x1C u32 頂点の数   +0x20 u32 法線の数
+//    +0x24 u32 面の数×4種（先の2種が8バイト、後の2種が12バイト）
+//    +0x34 u32 0
+//    +0x38 頂点 int16 x,y,z,余り → 法線（同じ形）→ 面 → 色 u8 r,g,b,余り
+//
+//  0x6F10 の部品: 51頂点・51法線・面 10/20/11/33 →
+//    10×8 + 20×8 + 11×12 + 33×12 = 768 バイトで、色の位置とぴったり合う。
+//    0x7644 の部品（48頂点）でも一致したので、この形で間違いない。
+//  部品の位置はファイルの先頭に「個数 ＋ その数だけの位置」の組で並び、0 で終わる。
+// ============================================================
+function t1ObjectOffsets(d){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const out=[]; let o=8;
+  for(let guard=0;guard<16&&o+4<=d.length;guard++){
+    const n=dv.getUint32(o,true); o+=4;
+    if(n<1||n>64) break;
+    for(let k=0;k<n&&o+4<=d.length;k++,o+=4){
+      const p=dv.getUint32(o,true);
+      if(p>=16&&p+56<=d.length) out.push(p);
+    }
+  }
+  const tableAt=dv.getUint32(4,true);           // 本体そのものの部品
+  if(tableAt>=16&&tableAt+56<=d.length) out.push(tableAt);
+  return out;
+}
+function readT1Object(d,base){
+  if(base+56>d.length) return null;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const g=k=>dv.getUint32(base+k*4,true);
+  const o={base,facePtr:g(0),vertPtr:g(1),normPtr:g(2),colPtr:g(3),
+           nv:g(7),nn:g(8),counts:[g(9),g(10),g(11),g(12)]};
+  o.faceBytes=(o.counts[0]+o.counts[1])*8+(o.counts[2]+o.counts[3])*12;
+  // 大きさの筋が通るか。頂点→法線→面→色 が隙間なく並ぶことを確かめる
+  o.ok = o.nv>0 && o.nv<65536 && o.nn<65536 &&
+         o.counts.every(c=>c>=0&&c<65536) &&
+         o.vertPtr+o.nv*8===o.normPtr &&
+         o.normPtr+o.nn*8===o.facePtr &&
+         o.facePtr+o.faceBytes===o.colPtr &&
+         base+o.colPtr+o.nv*4<=d.length;
+  return o;
+}
+// 面の1件の読み方は決め打ちできないので、頂点番号が範囲に収まる読み方を選ぶ
+function t1FaceLayout(d,o){
+  const best={score:-1,u16:false};
+  for(const u16 of [false,true]){
+    let ok=0,n=0, fp=o.base+o.facePtr;
+    const groups=[[o.counts[0],8],[o.counts[1],8],[o.counts[2],12],[o.counts[3],12]];
+    for(const [cnt,sz] of groups) for(let k=0;k<cnt;k++,fp+=sz){
+      if(fp+sz>d.length) break;
+      const idx=u16?[d[fp]|(d[fp+1]<<8),d[fp+2]|(d[fp+3]<<8),d[fp+4]|(d[fp+5]<<8)]
+                   :[d[fp],d[fp+1],d[fp+2]];
+      n++; if(idx.every(v=>v<o.nv)) ok++;
+    }
+    const s=n?ok/n:0;
+    if(s>best.score){ best.score=s; best.u16=u16 }
+  }
+  return best;
+}
+function buildT1Mesh(d,objs){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const pos=[],col=[],t0=[],t1=[],sm=[];
+  let used=0, tris=0;
+  for(const o of objs){
+    if(!o.ok) continue;
+    used++;
+    const lay=t1FaceLayout(d,o), u16=lay.u16;
+    const V=i=>[dv.getInt16(o.base+o.vertPtr+i*8,true),
+                dv.getInt16(o.base+o.vertPtr+i*8+2,true),
+                dv.getInt16(o.base+o.vertPtr+i*8+4,true)];
+    const C=i=>{ const p=o.base+o.colPtr+i*4;
+                 return p+2<d.length?[d[p]/255,d[p+1]/255,d[p+2]/255]:[.5,.5,.5] };
+    let fp=o.base+o.facePtr;
+    const groups=[[o.counts[0],8],[o.counts[1],8],[o.counts[2],12],[o.counts[3],12]];
+    for(const [cnt,sz] of groups) for(let k=0;k<cnt;k++,fp+=sz){
+      if(fp+sz>d.length) break;
+      const idx=u16?[d[fp]|(d[fp+1]<<8),d[fp+2]|(d[fp+3]<<8),d[fp+4]|(d[fp+5]<<8),d[fp+6]|(d[fp+7]<<8)]
+                   :[d[fp],d[fp+1],d[fp+2],d[fp+3]];
+      if(!idx.slice(0,3).every(v=>v<o.nv)) continue;
+      const quad=idx[3]<o.nv&&sz>=8;
+      for(const t of (quad?[[0,1,3],[1,2,3]]:[[0,1,2]])){
+        for(const j of t){ const vi=idx[j]; pos.push(...V(vi)); col.push(...C(vi)); t0.push(0,0,0); t1.push(0,0,0,0) }
+        sm.push(1); tris++;
+      }
+    }
+  }
+  return {mesh:{pos:new Float32Array(pos),col:new Float32Array(col),t0:new Float32Array(t0),
+                t1:new Float32Array(t1),sm:new Uint8Array(sm)}, used, tris};
+}
+// ============================================================
 //  WebGL
 // ============================================================
 const canvas=document.getElementById("gl");
@@ -1578,7 +1673,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.8.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.8.1 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
