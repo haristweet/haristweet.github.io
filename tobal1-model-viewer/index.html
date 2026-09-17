@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.3.1 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.3.2 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -128,6 +128,7 @@ canvas:active{cursor:grabbing}
       <div class="files" id="files"></div>
       <p class="count" id="file-count"></p>
       <button class="btn wide" id="scan-all" style="margin-top:8px">全部のファイルを調べる</button>
+      <button class="btn wide" id="survey" style="margin-top:8px">モデル候補をまとめて調べる</button>
     </div>
     <div data-tab="file"><p class="label">骨格の組み方</p>
       <div class="seg" id="rig-seg"><button data-v="t2" aria-pressed="true">トバル2と同じ</button><button data-v="flat" aria-pressed="false">関節を使わない</button></div>
@@ -198,6 +199,7 @@ const state={
   tableIdx:0,
   entries:[],        // 表示中の一覧（アーカイブ or ディスクのファイル）
   scan:null,         // アーカイブを直接さらった結果
+  survey:null,       // モデル候補をまとめて調べた結果
   infer:null,        // さらった結果から逆算したファイル表
   source:"table",    // "table" = アーカイブのファイル表 / "iso" = ディスクのファイル
   sel:-1,
@@ -1235,6 +1237,9 @@ async function readFull(e){
 // 読み込んだファイルからモデルを組む。途中で分かったことは info に集める（解析の表示用）
 function buildModel(raw){
   const info={parts:0,partSizes:[],texIndex:-1,decLen:0,ops:0,tris:0,bones:0,rig:state.rig};
+  try{ return buildModelInner(raw,info) }catch(err){ err.info=info; throw err }
+}
+function buildModelInner(raw,info){
   let parts=unpack(raw), body=null;
   if(parts){ info.parts=parts.length; info.partSizes=parts.map(p=>p.length); body=parts[0] }
   else { parts=[raw]; info.parts=1; info.partSizes=[raw.length]; body=raw }
@@ -1243,8 +1248,10 @@ function buildModel(raw){
   info.decLen=out.length;
   info.compressed=body[0]===0x0b;
   const blk=new Uint8Array(out.length+8); blk.set(out,8); new DataView(blk.buffer).setUint32(0,out.length+8,true);
-  // 形が合わなかったときのために、ブロックの頭と描画命令の生の並びを控えておく
+  // 形が合わなかったときのために、ブロックの頭と描画命令の生の並びを控えておく。
+  // ここは解析の表示用なので、失敗しても組み立ては続ける
   const dvb=new DataView(blk.buffer,blk.byteOffset,blk.byteLength);
+  try{
   info.words=Array.from({length:Math.min(16,blk.length>>2)},(_,i)=>dvb.getInt32(i*4,true));
   info.dlRaw=[];
   for(let o=0x20,k=0;k<10&&o+8<=blk.length;k++,o+=8) info.dlRaw.push([dvb.getInt32(o,true),dvb.getInt32(o+4,true)]);
@@ -1260,7 +1267,8 @@ function buildModel(raw){
   info.sections=[];
   secs.forEach((st,i)=>{
     const en=i+1<secs.length?secs[i+1]:bodyLen, len=en-st;
-    info.sections.push(`  区画 ${hex(st)} … ${hex(en)}  ${len} バイト  (16bit: ${Array.from({length:8},(_,k)=>dvb.getInt16(8+st+k*2,true)).join(", ")})`);
+    const i16=[]; for(let k=0;k<8&&8+st+k*2+2<=blk.length;k++) i16.push(dvb.getInt16(8+st+k*2,true));
+    info.sections.push(`  区画 ${hex(st)} … ${hex(en)}  ${len} バイト  (16bit: ${i16.join(", ")})`);
     info.sections.push(...lines(8+st,96,8+st));
     if(len>96) info.sections.push(`    …末尾 32 バイト`,...lines(8+en-32,32,8+st));
   });
@@ -1268,6 +1276,7 @@ function buildModel(raw){
   info.recs=[];
   for(let k=0;k<10;k++){ const o=8+0x24+k*24; if(o+24>blk.length) break;
     info.recs.push("    "+Array.from({length:6},(_,i)=>dvb.getInt32(o+i*4,true)).join(", ")) }
+  }catch(err){ info.dumpError=err.message }
   const bones=bonesFromBlock(blk);
   info.bones=bones.filter(b=>b[0]!==0||b[1]!==0||b[2]!==0).length;
   const ops=walk(blk); info.ops=ops.length;
@@ -1366,7 +1375,7 @@ async function selectEntry(i){
     if(info.error){ state.selErr=info.error; clearMesh() } else upload(mesh);
     draw();
   }catch(err){
-    state.selErr=err.message; console.error(err);
+    state.selErr=err.message; state.selInfo=err.info||null; console.error(err);
     clearMesh(); draw();
   }
   busy(""); updateStatus(); updateReport();
@@ -1396,7 +1405,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.3.1 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.3.2 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1442,6 +1451,11 @@ function updateReport(){
     L.push("大きいファイル 5件（アーカイブの選び方の確認用）:");
     for(const f of [...s.iso].sort((x,y)=>y.size-x.size).slice(0,5)) L.push(`  ${f.path||f.name}  ${fmtSize(f.size)}`);
   }
+  if(state.survey&&state.survey.length){
+    L.push("");
+    L.push(`モデル候補をまとめて調べた結果 (${state.survey.length}件・大きい順):`);
+    L.push(...surveyLines(state.survey));
+  }
   const e=state.entries[state.sel], inf=state.selInfo;
   L.push("");
   L.push("選んでいるファイル: "+(e?`${entryLabel(e)}${e.label||e.src==="iso"?"":`  sector ${e.sector}`}  ${fmtSize(e.size)}`:"なし"));
@@ -1453,6 +1467,7 @@ function updateReport(){
     L.push(`  描画命令 ${inf.ops}  三角形 ${inf.tris}  骨 ${inf.bones}  骨格 ${inf.rig}`);
     if(inf.opcodes&&inf.opcodes.length) L.push("  命令の内訳: "+inf.opcodes.map(([c,n])=>`${c}×${n}`).join(" "));
     if(inf.layout) L.push(`  並び: ${inf.layout}　広がり ${inf.extent}`);
+    if(inf.dumpError) L.push("  ダンプ作りで失敗: "+inf.dumpError);
     if(inf.words) L.push("  ブロックの頭 (32bit×16): "+inf.words.map(v=>hex(v)).join(" "));
     if(inf.dlRaw) L.push("  0x20 からの生の並び: "+inf.dlRaw.map(([a,b])=>`(${a}, ${b})`).join(" "));
     if(inf.dump&&inf.dump.length){ L.push("  展開した中身の頭:"); L.push(...inf.dump) }
@@ -1616,6 +1631,15 @@ $("table-pick").onchange=async e=>{
 $("type-filter").onchange=renderFiles;
 $("model-only").onchange=renderFiles;
 $("scan-all").onclick=scanAll;
+$("survey").onclick=async()=>{
+  if(state.surveying) return;
+  state.surveying=true; $("survey").textContent="調べています…";
+  try{
+    state.survey=await surveyModels(40,p=>busy(`モデル候補をまとめて調べています… ${Math.round(p*100)}%`));
+  }catch(err){ console.error(err); $("status").textContent="調べられませんでした: "+err.message }
+  busy(""); state.surveying=false; $("survey").textContent="モデル候補をまとめて調べる";
+  updateReport(); openTab("info");
+};
 $("copy-report").onclick=async()=>{
   const t=$("report");
   try{ await navigator.clipboard.writeText(t.value) }catch(_){ t.select(); document.execCommand("copy") }
@@ -1669,6 +1693,48 @@ $("tabbar").onclick=e=>{ const b=e.target.closest("button"); if(b) openTab(b.dat
 canvas.addEventListener("pointerdown",()=>{ if(mobileMQ.matches) closeSheet() });
 mobileMQ.addEventListener("change",applyLayout);
 applyLayout();
+// ============================================================
+//  モデル候補をまとめて調べる
+//  1件ずつ見せてもらうと往復が増えるので、候補を順に開いて
+//  「大きさ・部分の数・展開後の大きさ・先頭の印・三角形が取れたか」を一覧にする。
+//  形が1種類なのか複数あるのか、どれがキャラ本体なのかを一度に見分けるため。
+// ============================================================
+async function surveyModels(limit,onProgress){
+  const list=state.entries.filter(entryIsModel).sort((a,b)=>b.size-a.size).slice(0,limit);
+  const rows=[];
+  for(let i=0;i<list.length;i++){
+    const e=list[i];
+    if(onProgress) onProgress(i/list.length);
+    await idle();
+    const r={no:e.no,sector:e.sector,size:e.size,parts:0,partSizes:"",dec:0,magic:"",w1:"",tris:0,how:"",err:""};
+    try{
+      const raw=await readFull(e);
+      const ps=unpack(raw);
+      if(ps){ r.parts=ps.length; r.partSizes=ps.map(p=>p.length).join("/") }
+      const info=buildModel(raw).info;
+      r.dec=info.decLen; r.tris=info.tris; r.how=info.layout||""; r.err=info.error||"";
+      if(info.words){ r.magic=hex(info.words[2]); r.w1=hex(info.words[3]) }
+    }catch(err){ r.err=err.message }
+    rows.push(r);
+  }
+  if(onProgress) onProgress(1);
+  return rows;
+}
+function surveyLines(rows){
+  const L=[];
+  L.push("  番号 / sector / ファイル / 部分 / 展開後 / 先頭の印 / 語1 / 三角形 / 備考");
+  for(const r of rows){
+    L.push(`  #${String(r.no).padStart(4)} ${String(r.sector).padStart(7)} ${String(r.size).padStart(9)} `
+      +`${String(r.parts).padStart(2)}[${r.partSizes}] ${String(r.dec).padStart(8)} ${r.magic} ${r.w1} `
+      +`${String(r.tris).padStart(6)} ${r.tris?r.how:r.err}`);
+  }
+  // 先頭の印ごとの件数（形が何種類あるか）
+  const by=rows.reduce((m,r)=>m.set(r.magic||"?",(m.get(r.magic||"?")||0)+1),new Map());
+  L.push("  先頭の印ごとの件数: "+[...by].map(([k,v])=>`${k}×${v}`).join("  "));
+  const got=rows.filter(r=>r.tris>0);
+  L.push(`  三角形が取れたもの: ${got.length}件`+(got.length?`（例: #${got[0].no} ${got[0].tris}枚 ${got[0].how}）`:""));
+  return L;
+}
 // ============================================================
 //  保存
 // ============================================================
