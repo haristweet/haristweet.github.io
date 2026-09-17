@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.7.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.7.1 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1308,8 +1308,10 @@ addEventListener("resize",draw);
 const FLAT_W=new Proxy({},{get:()=>({R:I3,T:[0,0,0]})});   // 「関節を使わない」= どの枠も向き・位置なし
 async function readHead(e,n){ return e.src==="iso"?await state.src.readIso(e.iso,n):await state.src.readArc(e.sector,n) }
 function clearMesh(){ layers[0].count=0; triCount=0 }
+const MAX_READ=16*1024*1024;   // 表が当てにならないとき、でたらめな大きさで確保に失敗しないように
 async function readFull(e){
   if(state.cache.has(e.key)) return state.cache.get(e.key);
+  if(e.size>MAX_READ) throw new Error(`大きすぎます（${fmtSize(e.size)}）`);
   const d=e.src==="iso"?await state.src.readIso(e.iso):await state.src.readArc(e.sector,e.size);
   if(state.cache.size>24) state.cache.delete(state.cache.keys().next().value);
   state.cache.set(e.key,d); return d;
@@ -1545,7 +1547,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.7.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.7.1 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1724,11 +1726,6 @@ async function start(files){
     try{ bgm.tracks=state.src.readRaw?await bgmScan(state.src):[] }catch(err){ bgm.tracks=[]; console.warn("BGM を探せませんでした",err) }
     $("bgm-box").hidden=!bgm.tracks.length;
     $("bgm").innerHTML='<option value="-1">なし</option>'+bgm.tracks.map((t,i)=>`<option value="${i}">${t.label}</option>`).join("");
-    // 先に全部ふるいにかけて、モデルの署名があるものを把握しておく
-    if(state.src.readArc){
-      try{ state.sieve=await sieveAll(p=>busy(`候補を全部ふるいにかけています… ${Math.round(p*100)}%`)) }
-      catch(err){ console.warn(err) }
-    }
     busy("");
     // 表の形が合わずモデルが出ないときは、アーカイブを直接さらう方に切り替える
     if(!state.entries.some(entryIsModel)&&state.src.readArc){
@@ -1739,10 +1736,14 @@ async function start(files){
       busy("調べています…"); await probeSamples(); busy("");
       fillTypeFilter(); renderFiles();
     }
-    if(!await selectFirstModel()){
-      // どれも組めなかった。手がかりを集めるため、候補をまとめて調べておく
-      busy(""); updateStatus(); updateReport();
+    // ふるいは「いま表示している一覧」にかける。表の当てにならない一覧にかけると
+    // でたらめな大きさで確保に失敗するので、さらった結果に切り替えたあとで行う
+    if(state.src.readArc){
+      try{ state.sieve=await sieveAll(p=>busy(`候補を全部ふるいにかけています… ${Math.round(p*100)}%`)) }
+      catch(err){ console.warn(err) }
+      busy("");
     }
+    if(!await selectFirstModel()){ busy(""); updateStatus(); updateReport() }
   }catch(err){ busy(""); $("err").textContent=err.message; console.error(err) }
 }
 // ---- 操作 ----
@@ -1906,7 +1907,7 @@ function surveyLines(rows){
 // ============================================================
 async function sieveAll(onProgress){
   const list=state.entries.filter(e=>!e.kind||e.kind!=="raw").sort((a,b)=>b.size-a.size);
-  const tex=[], other=[], broken=[];
+  const tex=[], vag=[], other=[], broken=[];
   for(let i=0;i<list.length;i++){
     const e=list[i];
     if(onProgress&&i%4===0) onProgress(i/list.length);
@@ -1924,6 +1925,8 @@ async function sieveAll(onProgress){
       if(!body){ broken.push({e,why:"展開できない"}); continue }
       const ti=textureInfoT1(body);
       if(ti){ tex.push({e,pairs:ti.pairs,colors:ti.colors,dec:body.length}); continue }
+      // VAGp = PS1 の音声。効果音やボイス
+      if(body[0]===0x56&&body[1]===0x41&&body[2]===0x47&&body[3]===0x70){ vag.push({e,dec:body.length}); continue }
       const dv=new DataView(body.buffer,body.byteOffset,body.byteLength);
       other.push({e,dec:body.length,parts:parts.map(p=>p.length).join("/"),
         words:Array.from({length:Math.min(8,body.length>>2)},(_,k)=>dv.getUint32(k*4,true)),
@@ -1931,11 +1934,11 @@ async function sieveAll(onProgress){
     }catch(err){ broken.push({e,why:err.message}) }
   }
   if(onProgress) onProgress(1);
-  return {tex,other,broken,total:list.length};
+  return {tex,vag,other,broken,total:list.length};
 }
 function sieveLines(s){
   const L=[];
-  L.push(`  全 ${s.total}件 → テクスチャ ${s.tex.length} / それ以外 ${s.other.length} / 読めない ${s.broken.length}`);
+  L.push(`  全 ${s.total}件 → テクスチャ ${s.tex.length} / 音声(VAGp) ${(s.vag||[]).length} / それ以外 ${s.other.length} / 読めない ${s.broken.length}`);
   if(s.tex.length){
     const by=s.tex.reduce((m,t)=>m.set(t.colors,(m.get(t.colors)||0)+1),new Map());
     L.push("  テクスチャの色数: "+[...by].map(([k,v])=>`${k}色×${v}`).join("  "));
