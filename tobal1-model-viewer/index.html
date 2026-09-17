@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.4.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.5.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1256,16 +1256,14 @@ function t1FaceMode(d,o){
 }
 // 面の並びがどれだけ素直に読めたか。途切れが多くても、ほとんどの場所が
 // 法線つきの面として読めるなら、その部品はキャラクターの見た目とみなす
-function t1WalkGood(W){
-  if(!W) return false;
-  return W.faces.length>=8 && (W.quads*24+W.tris*20+W.slack)/W.bytes>0.75;
-}
+function t1WalkGood(W){ return !!W&&W.faces.length>=8&&W.covered/W.bytes>0.9 }
 function t1WalkLine(W){
-  const eaten=W.quads*24+W.tris*20+W.slack;
-  return `頂点番号＋法線 / 四角${W.quads} 三角${W.tris} / `
-    +`読めた ${Math.round(eaten/W.bytes*100)}% / 途切れ${W.resync}か所 ${W.runs}かたまり / `
-    +`いちばん大きい頂点番号 ${W.maxIdx} / 余り${W.left}B / `
-    +`おまけの長さ ${W.extras.map(([k,n])=>`${k}B×${n}`).join(" ")}`;
+  if(W.uniform) return `面はぜんぶ ${W.uniform}B / 三角${W.tris} 四角${W.quads}`
+    +`${W.kinds[2]+W.kinds[3]?"（法線あり）":"（法線なし）"} / いちばん大きい頂点番号 ${W.maxIdx}`;
+  return `面は4種混在 / 三角${W.kinds[0]}+四角${W.kinds[1]}（法線なし） `
+    +`三角${W.kinds[2]}+四角${W.kinds[3]}（法線あり） / `
+    +`説明できた ${Math.round(W.covered/W.bytes*100)}% / 捨てた ${W.resync*4}B ${W.runs}かたまり / `
+    +`いちばん大きい頂点番号 ${W.maxIdx}`;
 }
 const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメラの合わせ枠が壊れるので落とす
 const t1Show={all:false};  // 法線を持たない部品（当たり判定らしきもの）も出すか
@@ -1302,7 +1300,11 @@ function buildT1Mesh(d,objs){
         const strip=a.length===4?[[0,1,2],[0,2,3]]:[[0,1,2]];
         for(const t of strip){
           for(const j of t){ pos.push(...V0(a[j])); col.push(...C0(a[j])); t0.push(0,0,0); t1.push(0,0,0,0) }
-          nrm.push(f.n[0],f.n[1],f.n[2]); sm.push(1); tris++;
+          if(f.n) nrm.push(f.n[0],f.n[1],f.n[2]);
+          else if(o.nv===o.nn){ const q=o.base+o.normPtr+a[t[0]]*8;
+            nrm.push(dv.getInt16(q,true),dv.getInt16(q+2,true),dv.getInt16(q+4,true)) }
+          else nrm.push(0,0,0);   // 形から計算させる
+          sm.push(1); tris++;
         }
       }
       o.tris=tris-before;
@@ -1393,46 +1395,101 @@ function t1GapDump(d,o,rows){
 //  ずらりと並ぶだけ。キャラクターの見た目ではなく、当たり判定か影のための形だと思う。
 // ============================================================
 const T1_NRM_LEN=4096;
+// 面は4通りある（PS1 のモデルでよくある、平らな面となめらかな面の組み合わせ）
+//   種A 三角・法線なし 12B   種B 四角・法線なし 16B
+//   種C 三角・法線あり 20B   種D 四角・法線あり 24B
+// 実物 sector 5927 の本体では、法線ありの並びが 70% 続いたあと
+//   … 53 01 10 f0 6e 00 00 00 ┃ 0c 00 00 00 08 00 00 00 04 00 00 00 00 00 00 00 …
+// と、法線（長さ4095.5）で終わった次から法線なしの四角（3,2,1,0）に切り替わっていた。
+// どこで切り替わるかはファイルに書かれていないので、
+// 「いちばん多くのバイトを説明できる並べ方」を後ろから決めていく。
+const T1_FACE_KINDS=[{n:3,size:12,nrm:false},{n:4,size:16,nrm:false},
+                     {n:3,size:20,nrm:true },{n:4,size:24,nrm:true }];
 function t1WalkFaces(d,o,limit){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const start=o.base+o.facePtr, end=Math.min(o.base+o.colPtr,d.length);
+  if(end-start<12) return null;
   const top=limit||o.nv;
-  const idxAt=p=>{ if(p+4>end) return -1; const v=dv.getUint32(p,true);
-                   return (v&3)||v/4>=top?-1:v/4 };
-  const nrmAt=p=>{ if(p+8>end) return null;
+  const idxAt=p=>{ const v=dv.getUint32(p,true); return (v&3)||v/4>=top?-1:v/4 };
+  const nrmAt=p=>{
     const x=dv.getInt16(p,true),y=dv.getInt16(p+2,true),z=dv.getInt16(p+4,true);
     if(dv.getInt16(p+6,true)!==0) return null;
     const m=Math.hypot(x,y,z);
     return m>T1_NRM_LEN*0.94&&m<T1_NRM_LEN*1.06?[x,y,z]:null };
-  const head=p=>idxAt(p)>=0&&idxAt(p+4)>=0&&idxAt(p+8)>=0;
-  const take=(p,n)=>{ const a=[]; for(let j=0;j<n;j++){ const v=idxAt(p+j*4); if(v<0) return null; a.push(v) }
-                      const nr=nrmAt(p+n*4); return nr?{idx:a,n:nr}:null };
-  // 面のうしろに何バイトか余分が付く形（テクスチャの貼り方など）があるかもしれないので、
-  // 次の1枚がちゃんと始まる位置まで、4バイト単位で少しだけ読み飛ばす
-  const EXTRA=[0,4,8,12,16,20,24];
-  const skipTo=p=>{ for(const e of EXTRA) if(p+e>=end||head(p+e)) return e; return -1 };
-  const faces=[], bad=[], extras=new Map(); let p=start, tris=0, quads=0, resync=0;
-  let maxIdx=-1, runs=0, inRun=false, slack=0;
-  while(p+20<=end){
-    const q=head(p)?take(p,4):null, t=head(p)?take(p,3):null;
-    const qOK=q&&(p+24>=end||skipTo(p+24)>=0), tOK=t&&(p+20>=end||skipTo(p+20)>=0);
-    let f=null, step=0;
-    if(qOK||(q&&!tOK)){ f=q; step=24; quads++ }
-    else if(tOK||t){ f=t; step=20; tris++ }
-    if(f){
-      faces.push(f); for(const v of f.idx) if(v>maxIdx) maxIdx=v;
-      if(!inRun){ runs++; inRun=true }
-      const e=Math.max(0,skipTo(p+step));
-      extras.set(e,(extras.get(e)||0)+1); slack+=e; p+=step+e; continue;
+  const take=(p,k)=>{
+    if(p+k.size>end) return null;
+    const a=[]; for(let j=0;j<k.n;j++){ const v=idxAt(p+j*4); if(v<0) return null; a.push(v) }
+    if(!k.nrm) return {idx:a,n:null};
+    const nr=nrmAt(p+k.n*4); return nr?{idx:a,n:nr}:null };
+  // 12バイトの三角2枚と16バイトの四角1枚は、どちらでもバイト数が埋まってしまう。
+  // そこで「形として筋が通っているか」で選ぶ。点が重なっていないか、四角なら平らか、
+  // 持っている法線が実際の面の向きと合っているか。
+  const V=i=>{ const q=o.base+o.vertPtr+i*8;
+    return q+6<=d.length?[dv.getInt16(q,true),dv.getInt16(q+2,true),dv.getInt16(q+4,true)]:null };
+  const quality=f=>{
+    const a=f.idx;
+    if(new Set(a).size<a.length) return 0;           // 同じ頂点が混ざる面は怪しい
+    const P=a.map(V); if(P.some(p=>!p)) return 0;
+    const u=[P[1][0]-P[0][0],P[1][1]-P[0][1],P[1][2]-P[0][2]];
+    const v=[P[2][0]-P[0][0],P[2][1]-P[0][1],P[2][2]-P[0][2]];
+    const n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+    const L=Math.hypot(...n); if(L<1) return 0;      // つぶれた面
+    let s=6;
+    if(a.length===4){                                 // 四角は平らなはず
+      const w=[P[3][0]-P[0][0],P[3][1]-P[0][1],P[3][2]-P[0][2]];
+      const gap=Math.abs(n[0]*w[0]+n[1]*w[1]+n[2]*w[2])/L;
+      if(gap<Math.max(Math.hypot(...u),Math.hypot(...v))*0.15) s+=8;
     }
-    if(bad.length<8) bad.push(p-start);
-    resync++; inRun=false; p+=4;
-    if(resync>4096) break;
+    if(f.n){                                          // 持っている法線と向きが合えば大加点
+      const m=Math.hypot(...f.n)||1;
+      const dot=(n[0]*f.n[0]+n[1]*f.n[1]+n[2]*f.n[2])/(L*m);
+      if(Math.abs(dot)>0.7) s+=16;
+    }
+    return s;
+  };
+
+  // まず「ぜんぶ同じ形」で隙間なく並ぶかを見る。腕や脚の部品は12バイトの三角だけで
+  // きっちり埋まる。この場合は下の詰め込みより確実なので、こちらを優先する
+  for(const kd of T1_FACE_KINDS){
+    if((end-start)%kd.size) continue;
+    const list=[]; let okAll=true;
+    for(let p=start;p<end;p+=kd.size){ const f=take(p,kd); if(!f){ okAll=false; break } list.push(f) }
+    if(!okAll||list.length<8) continue;
+    const kinds=[0,0,0,0]; kinds[T1_FACE_KINDS.indexOf(kd)]=list.length;
+    let maxIdx=-1; for(const f of list) for(const v of f.idx) if(v>maxIdx) maxIdx=v;
+    return {faces:list,kinds,bad:[],resync:0,runs:1,maxIdx,bytes:end-start,
+            covered:end-start,tris:kd.n===3?list.length:0,quads:kd.n===4?list.length:0,
+            left:0,uniform:kd.size};
+  }
+  // 後ろから「ここから先で説明できるバイト数」を決める。読み飛ばしは 0 点
+  const N=(end-start)>>2;
+  const best=new Int32Array(N+1), pick=new Int8Array(N+1).fill(-1);
+  for(let i=N-1;i>=0;i--){
+    let b=best[i+1], k=-1;                       // 何も当てはまらなければ4バイト捨てる
+    for(let t=0;t<4;t++){
+      const kd=T1_FACE_KINDS[t], step=kd.size>>2;
+      if(i+step>N) continue;
+      const f=take(start+i*4,kd); if(!f) continue;
+      const v=kd.size*64+quality(f)+best[i+step];
+      if(v>b){ b=v; k=t }
+    }
+    best[i]=b; pick[i]=k;
+  }
+  const faces=[], bad=[], kinds=[0,0,0,0];
+  let i=0, resync=0, maxIdx=-1, runs=0, inRun=false, covered=0;
+  while(i<N){
+    const t=pick[i];
+    if(t<0){ if(bad.length<8) bad.push(i*4); resync++; inRun=false; i++; continue }
+    const kd=T1_FACE_KINDS[t], f=take(start+i*4,kd);
+    faces.push(f); kinds[t]++; covered+=kd.size;
+    for(const v of f.idx) if(v>maxIdx) maxIdx=v;
+    if(!inRun){ runs++; inRun=true }
+    i+=kd.size>>2;
   }
   if(!faces.length) return null;
-  return {faces,tris,quads,resync,runs,maxIdx,bad,slack,
-          extras:[...extras.entries()].sort((a,b)=>b[1]-a[1]),
-          left:end-p,bytes:end-start};
+  const bytes=end-start;
+  return {faces,kinds,bad,resync,runs,maxIdx,bytes,covered,
+          tris:kinds[0]+kinds[2], quads:kinds[1]+kinds[3], left:bytes-covered-resync*4};
 }
 // 読み直しが起きた場所のまわりを生で見る。区切りに何が挟まっているか確かめるため
 function t1BadDump(d,o,W,n){
@@ -1902,7 +1959,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v1.4.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v1.5.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
