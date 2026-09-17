@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.1.2 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.1.3 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -441,7 +441,21 @@ async function listAll(disc){
   await walkDir(pv.getUint32(156+2,true),pv.getUint32(156+10,true),"",0);
   return files;
 }
-const isStream=n=>/\.(xa|str|vb|xs|iki|mov)$/i.test(n);
+// 音声・動画・ストリーム。トバルNo.1 の BGM は BGM/*.DA で、ALLBIN.BIN より大きいものが
+// 6本あるため、これを除かないとアーカイブの候補が全部 BGM で埋まってしまう
+// （しかも CHD では音楽トラックが FLAC 圧縮で、読もうとすると例外になる）
+const isStream=n=>/\.(xa|str|da|vag|adp|pcm|wav|int|bs|vb|xs|iki|mov|avi)$/i.test(n);
+// アーカイブらしさ。大きさだけで決めると音声に負けるので、名前も手がかりにする。
+// ALLBIN.BIN はトバル2 と同じ名前（No.1 のディスクにも入っている）。決め打ちではなく、
+// あくまで試す順番の手がかりで、実際に中身を読んで確かめた結果が優先される（scoreTables）
+const archiveRank=f=>{
+  const n=(f.path||f.name).toUpperCase();
+  let s=f.size;
+  if(/(^|\/)ALLBIN\.BIN$/.test(n)) s+=1e12;
+  else if(/\.(BIN|DAT|PAK|WAD|IMG|ARC|HED|PAC)$/.test(n)) s+=1e11;
+  if(/(^|\/)(BGM|SOUND|SE|VOICE|MUSIC|MOVIE|STR)\//.test(n)) s-=1e11;
+  return s;
+};
 // どのファイルがアーカイブかは当てずっぽうなので、候補を持っておいて後から切り替えられるようにする
 function withArcs(obj,arcs){
   obj.arcs=arcs; obj.arcIdx=0;
@@ -460,7 +474,7 @@ async function openSource(fileList){
     const ei=heads.findIndex(h=>String.fromCharCode(...new Uint8Array(h))==="PS-X EXE");
     if(ei>=0){
       const exeF=files[ei];
-      const arcs=files.filter((_,k)=>k!==ei).sort((a,b)=>b.size-a.size).map(f=>({
+      const arcs=files.filter((_,k)=>k!==ei).sort((a,b)=>archiveRank(b)-archiveRank(a)).map(f=>({
         name:f.name, size:f.size,
         read:async(sec,size)=>new Uint8Array(await f.slice(sec*2048,sec*2048+size).arrayBuffer()),
       }));
@@ -494,7 +508,7 @@ async function openSource(fileList){
   if(!exeE) throw new Error("PlayStation の実行ファイル（SLPS_… など）が見つかりませんでした");
   const exe=(await disc.read(exeE.lba,Math.ceil(exeE.size/2048))).subarray(0,exeE.size);
   // アーカイブの候補: 実行ファイルと音声・動画を除いて、大きい順に数件
-  const arcs=all.filter(f=>f!==exeE&&!isStream(f.name)&&f.size>=0x10000).sort((a,b)=>b.size-a.size).slice(0,6).map(f=>({
+  const arcs=all.filter(f=>f!==exeE&&!isStream(f.name)&&f.size>=0x10000).sort((a,b)=>archiveRank(b)-archiveRank(a)).slice(0,6).map(f=>({
     name:f.path, size:f.size,
     read:async(sec,size)=>(await disc.read(f.lba+sec,Math.max(1,Math.ceil(size/2048)))).subarray(0,size),
   }));
@@ -637,6 +651,7 @@ function decompress(data){
 //  1件が { 先頭セクタ, 大きさ<<8 | 種類 } だった。No.1 でも同じ形のはずなので、
 //  実行ファイル全体から「その形の並びが続くところ」を探す。
 // ============================================================
+const MIN_ENTRY=64;            // 大きさ数バイトの並びはファイル表ではない（誤検出が上位に来ていた）
 const MAX_ENTRY=0x2000000;     // 1ファイル 32MB を超える表は無いものとして弾く
 // 解析済みのディスク。No.1 用の探索が正しく動くかを、答えの分かっているトバル2 で確かめられる
 const KNOWN_DISCS={
@@ -664,7 +679,7 @@ function findFileTables(exe,arcSize){
       const a=dv.getUint32(o,true), b=dv.getUint32(o+4,true);
       if(a===0&&b===0) return "hole";                       // 空きスロット。並びは切らさない
       const e=sh.dec(a,b);
-      if(e.size<8||e.size>MAX_ENTRY||e.type>=MAX_TYPE) return null;
+      if(e.size<MIN_ENTRY||e.size>MAX_ENTRY||e.type>=MAX_TYPE) return null;
       if(e.sector>arcSectors||e.sector*2048+e.size>arcSize+2048) return null;
       return e;
     };
@@ -1140,7 +1155,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.1.2 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.1.3 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1209,14 +1224,19 @@ async function scoreOne(t){
   }
   return n?hit/n:0;
 }
-// どのファイルがアーカイブかも当てずっぽうなので、全部 0% ならアーカイブを変えて試す
+// どのファイルがアーカイブかも当てずっぽうなので、当たりが出るまで候補を順に試す。
+// 全部だめだった場合も、最後に試したものではなく、いちばんマシだったものを残す
 async function scoreTables(tables){
   const arcs=state.src.arcs||[];
+  let best=null;
   for(let a=0;a<Math.max(1,arcs.length);a++){
-    if(arcs.length) state.src.setArc(a);
-    for(const t of tables){ t.hits=await scoreOne(t); t.arc=a }
-    if(tables.some(t=>t.hits>0)) break;
+    if(arcs.length){ state.src.setArc(a); busy(`ファイル表の候補を確かめています… ${state.src.arcName}`) }
+    const hits=[]; let top=0;
+    for(const t of tables){ const h=await scoreOne(t); hits.push(h); top=Math.max(top,h*t.count) }
+    if(!best||top>best.top) best={arc:a,hits,top};
+    if(top>0) break;
   }
+  if(best){ tables.forEach((t,i)=>{ t.hits=best.hits[i]; t.arc=best.arc }); if(arcs.length) state.src.setArc(best.arc) }
   // 「中身の割合」だけで並べると、アーカイブに素のデータが混ざっているとき（割合が下がる）、
   // 短い誤検出に負ける。確かめられた実ファイルの「本数」＝ 割合×件数 で並べる
   const score=t=>(t.hits||0)*t.count;
@@ -1280,7 +1300,7 @@ async function start(files){
     await probeSamples();
     fillTypeFilter(); renderFiles();
     busy("BGM を探しています…");
-    bgm.tracks=state.src.readRaw?await bgmScan(state.src):[];
+    try{ bgm.tracks=state.src.readRaw?await bgmScan(state.src):[] }catch(err){ bgm.tracks=[]; console.warn("BGM を探せませんでした",err) }
     $("bgm-box").hidden=!bgm.tracks.length;
     $("bgm").innerHTML='<option value="-1">なし</option>'+bgm.tracks.map((t,i)=>`<option value="${i}">${t.label}</option>`).join("");
     busy("");
