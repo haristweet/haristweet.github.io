@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.2.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.3.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1254,16 +1254,27 @@ function t1FaceMode(d,o){
   }
   return best;
 }
+// 面の並びがどれだけ素直に読めたか。途切れが多くても、ほとんどの場所が
+// 法線つきの面として読めるなら、その部品はキャラクターの見た目とみなす
+function t1WalkGood(W){
+  if(!W) return false;
+  const eaten=W.quads*24+W.tris*20;
+  return W.faces.length>=8 && eaten/W.bytes>0.75;
+}
+function t1WalkLine(W){
+  const eaten=W.quads*24+W.tris*20;
+  return `頂点番号＋法線 / 四角${W.quads} 三角${W.tris} / `
+    +`読めた ${Math.round(eaten/W.bytes*100)}% / 途切れ${W.resync}か所 ${W.runs}かたまり / `
+    +`いちばん大きい頂点番号 ${W.maxIdx} / 余り${W.left}B`;
+}
 const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメラの合わせ枠が壊れるので落とす
 const t1Show={all:false};  // 法線を持たない部品（当たり判定らしきもの）も出すか
 try{ t1Show.all=localStorage.getItem("t1all")==="1" }catch(_){}
 function buildT1Mesh(d,objs){
   // 法線つきで読める部品が1つでもあれば、それがキャラクターの見た目。
   // 読めない部品は当たり判定か影なので、ふだんは出さない
-  if(!t1Show.all){
-    const real=objs.filter(o=>o.ok&&t1WalkFaces(d,o)&&(()=>{const w=t1WalkFaces(d,o);return w.resync<=4&&w.left<24})());
-    if(real.length) objs=real;
-  }
+  for(const o of objs){ if(o.ok){ o.walkTry=t1WalkFaces(d,o); o.walkOK=t1WalkGood(o.walkTry) } }
+  if(!t1Show.all){ const real=objs.filter(o=>o.walkOK); if(real.length) objs=real }
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const pos=[],col=[],t0=[],t1=[],sm=[],nrm=[];
   let used=0, tris=0, dropped=0;
@@ -1282,8 +1293,8 @@ function buildT1Mesh(d,objs){
                   return q+2<d.length?[d[q]/255,d[q+1]/255,d[q+2]/255]:[.5,.5,.5] };
     const far=i=>V0(i).some(v=>Math.abs(v)>T1_MAX_COORD);
     // まず「法線つき」の読み方を試す。これが通る部品がキャラクターの見た目
-    const W=t1WalkFaces(d,o);
-    if(W&&W.resync<=4&&W.left<24){
+    const W=o.walkTry;
+    if(o.walkOK){
       o.walk=W; const before=tris;
       for(const f of W.faces){
         const a=f.idx;
@@ -1295,7 +1306,7 @@ function buildT1Mesh(d,objs){
         }
       }
       o.tris=tris-before;
-      o.lays=`1枚 頂点番号${W.quads?"4":"3"}つ＋法線 / 四角${W.quads} 三角${W.tris} / 読み直し${W.resync} 余り${W.left}B`;
+      o.lays=t1WalkLine(W);
       continue;
     }
     const M=t1FaceMode(d,o);
@@ -1378,11 +1389,12 @@ function t1GapDump(d,o,rows){
 //  ずらりと並ぶだけ。キャラクターの見た目ではなく、当たり判定か影のための形だと思う。
 // ============================================================
 const T1_NRM_LEN=4096;
-function t1WalkFaces(d,o){
+function t1WalkFaces(d,o,limit){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const start=o.base+o.facePtr, end=Math.min(o.base+o.colPtr,d.length);
+  const top=limit||o.nv;
   const idxAt=p=>{ if(p+4>end) return -1; const v=dv.getUint32(p,true);
-                   return (v&3)||v/4>=o.nv?-1:v/4 };
+                   return (v&3)||v/4>=top?-1:v/4 };
   const nrmAt=p=>{ if(p+8>end) return null;
     const x=dv.getInt16(p,true),y=dv.getInt16(p+2,true),z=dv.getInt16(p+4,true);
     if(dv.getInt16(p+6,true)!==0) return null;
@@ -1391,18 +1403,33 @@ function t1WalkFaces(d,o){
   const head=p=>idxAt(p)>=0&&idxAt(p+4)>=0&&idxAt(p+8)>=0;
   const take=(p,n)=>{ const a=[]; for(let j=0;j<n;j++){ const v=idxAt(p+j*4); if(v<0) return null; a.push(v) }
                       const nr=nrmAt(p+n*4); return nr?{idx:a,n:nr}:null };
-  const faces=[]; let p=start, tris=0, quads=0, resync=0;
+  const faces=[], bad=[]; let p=start, tris=0, quads=0, resync=0, maxIdx=-1, runs=0, inRun=false;
   while(p+20<=end){
-    if(!head(p)){ resync++; p+=4; if(resync>256) return null; continue }
-    const q=take(p,4), t=take(p,3);
-    // 次の1枚もちゃんと始まるほうを選ぶ。どちらも駄目なら読めたほうを採る
+    const q=head(p)?take(p,4):null, t=head(p)?take(p,3):null;
     const qOK=q&&(p+24>=end||head(p+24)), tOK=t&&(p+20>=end||head(p+20));
-    if(qOK||(q&&!tOK)){ faces.push(q); quads++; p+=24 }
-    else if(tOK||t){ faces.push(t); tris++; p+=20 }
-    else { resync++; p+=4; if(resync>256) return null }
+    let f=null, step=0;
+    if(qOK||(q&&!tOK)){ f=q; step=24; quads++ }
+    else if(tOK||t){ f=t; step=20; tris++ }
+    if(f){ faces.push(f); for(const v of f.idx) if(v>maxIdx) maxIdx=v;
+           if(!inRun){ runs++; inRun=true } p+=step; continue }
+    if(bad.length<8) bad.push(p-start);
+    resync++; inRun=false; p+=4;
+    if(resync>4096) break;
   }
   if(!faces.length) return null;
-  return {faces,tris,quads,resync,left:end-p,bytes:end-start};
+  return {faces,tris,quads,resync,runs,maxIdx,bad,left:end-p,bytes:end-start};
+}
+// 読み直しが起きた場所のまわりを生で見る。区切りに何が挟まっているか確かめるため
+function t1BadDump(d,o,W,n){
+  if(!W||!W.bad.length) return null;
+  const L=[`  面の並びが途切れた場所（部品 +${o.base.toString(16)}、面の頭からの位置）:`];
+  for(const off of W.bad.slice(0,n||4)){
+    const p=o.base+o.facePtr+off;
+    const hx=(f,len)=>Array.from(d.subarray(Math.max(0,f),Math.max(0,f)+len),
+                                 v=>v.toString(16).padStart(2,"0")).join(" ");
+    L.push(`    +${off}  前 ${hx(p-16,16)} ┃ ${hx(p,32)}`);
+  }
+  return L;
 }
 // ============================================================
 //  WebGL
@@ -1618,7 +1645,9 @@ function buildModelInner(raw,info){
           `    尻 +${hex(odd.colPtr-48,4)}  ${hx(odd.base+odd.colPtr-48,48)}`,
           `    色 +${hex(odd.colPtr,4)}  ${hx(odd.base+odd.colPtr,32)}`,
         ];
-        info.t1Lays=okObjs.slice(0,6).map(o=>`+${hex(o.base,4)}: ${o.lays||"-"}`);
+        info.t1Lays=okObjs.slice(0,10).map(o=>`+${hex(o.base,4)}: ${o.lays||"-"}`
+          +(o.walkTry&&!o.walkOK?`\n      （法線つきで読むと: ${t1WalkLine(o.walkTry)}）`:""));
+        for(const o of okObjs){ const g=t1BadDump(b.out,o,o.walkTry,4); if(g&&o.walkTry.resync){ info.t1Bad=g; break } }
         info.t1Heads=objs.slice(0,10).map(o=>`+${hex(o.base,4)}  ${t1HeadDump(b.out,o,14)}`);
         for(const o of objs){ const g=t1GapDump(b.out,o,14); if(g){ info.t1Gap=g; break } }
       }
@@ -1858,7 +1887,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v1.2.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v1.3.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1931,6 +1960,7 @@ function updateReport(){
     if(inf.t1Lays){ L.push("  面の読み方（選ばれたもの）:"); inf.t1Lays.forEach(x=>L.push("    "+x)) }
     if(inf.t1Faces) L.push(...inf.t1Faces);
     if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
+    if(inf.t1Bad) L.push(...inf.t1Bad);
     if(inf.t1Gap) L.push(...inf.t1Gap);
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
     if(inf.modelOffs) L.push("  ヘッダにある位置: "+inf.modelOffs);
