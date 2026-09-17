@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.3.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.4.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1258,14 +1258,14 @@ function t1FaceMode(d,o){
 // 法線つきの面として読めるなら、その部品はキャラクターの見た目とみなす
 function t1WalkGood(W){
   if(!W) return false;
-  const eaten=W.quads*24+W.tris*20;
-  return W.faces.length>=8 && eaten/W.bytes>0.75;
+  return W.faces.length>=8 && (W.quads*24+W.tris*20+W.slack)/W.bytes>0.75;
 }
 function t1WalkLine(W){
-  const eaten=W.quads*24+W.tris*20;
+  const eaten=W.quads*24+W.tris*20+W.slack;
   return `頂点番号＋法線 / 四角${W.quads} 三角${W.tris} / `
     +`読めた ${Math.round(eaten/W.bytes*100)}% / 途切れ${W.resync}か所 ${W.runs}かたまり / `
-    +`いちばん大きい頂点番号 ${W.maxIdx} / 余り${W.left}B`;
+    +`いちばん大きい頂点番号 ${W.maxIdx} / 余り${W.left}B / `
+    +`おまけの長さ ${W.extras.map(([k,n])=>`${k}B×${n}`).join(" ")}`;
 }
 const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメラの合わせ枠が壊れるので落とす
 const t1Show={all:false};  // 法線を持たない部品（当たり判定らしきもの）も出すか
@@ -1335,7 +1335,11 @@ function buildT1Mesh(d,objs){
       const quad=M.nvtx===4&&Number.isInteger(idx[3])&&idx[3]<o.nv;
       for(const t of (quad?[[0,1,3],[1,2,3]]:[[0,1,2]])){
         for(const j of t){ const vi=idx[j]; pos.push(...V(vi)); col.push(...C(vi)); t0.push(0,0,0); t1.push(0,0,0,0) }
-        nrm.push(0,0,0); sm.push(1); tris++;
+        // 頂点と法線の数が同じ部品は、同じ番号で法線を引く（面ごとの法線は持っていない）
+        if(o.nv===o.nn){ const q=o.base+o.normPtr+idx[0]*8;
+          nrm.push(dv.getInt16(q,true),dv.getInt16(q+2,true),dv.getInt16(q+4,true)) }
+        else nrm.push(0,0,0);
+        sm.push(1); tris++;
       }
       }
       o.tris=tris-trisBefore;
@@ -1403,21 +1407,32 @@ function t1WalkFaces(d,o,limit){
   const head=p=>idxAt(p)>=0&&idxAt(p+4)>=0&&idxAt(p+8)>=0;
   const take=(p,n)=>{ const a=[]; for(let j=0;j<n;j++){ const v=idxAt(p+j*4); if(v<0) return null; a.push(v) }
                       const nr=nrmAt(p+n*4); return nr?{idx:a,n:nr}:null };
-  const faces=[], bad=[]; let p=start, tris=0, quads=0, resync=0, maxIdx=-1, runs=0, inRun=false;
+  // 面のうしろに何バイトか余分が付く形（テクスチャの貼り方など）があるかもしれないので、
+  // 次の1枚がちゃんと始まる位置まで、4バイト単位で少しだけ読み飛ばす
+  const EXTRA=[0,4,8,12,16,20,24];
+  const skipTo=p=>{ for(const e of EXTRA) if(p+e>=end||head(p+e)) return e; return -1 };
+  const faces=[], bad=[], extras=new Map(); let p=start, tris=0, quads=0, resync=0;
+  let maxIdx=-1, runs=0, inRun=false, slack=0;
   while(p+20<=end){
     const q=head(p)?take(p,4):null, t=head(p)?take(p,3):null;
-    const qOK=q&&(p+24>=end||head(p+24)), tOK=t&&(p+20>=end||head(p+20));
+    const qOK=q&&(p+24>=end||skipTo(p+24)>=0), tOK=t&&(p+20>=end||skipTo(p+20)>=0);
     let f=null, step=0;
     if(qOK||(q&&!tOK)){ f=q; step=24; quads++ }
     else if(tOK||t){ f=t; step=20; tris++ }
-    if(f){ faces.push(f); for(const v of f.idx) if(v>maxIdx) maxIdx=v;
-           if(!inRun){ runs++; inRun=true } p+=step; continue }
+    if(f){
+      faces.push(f); for(const v of f.idx) if(v>maxIdx) maxIdx=v;
+      if(!inRun){ runs++; inRun=true }
+      const e=Math.max(0,skipTo(p+step));
+      extras.set(e,(extras.get(e)||0)+1); slack+=e; p+=step+e; continue;
+    }
     if(bad.length<8) bad.push(p-start);
     resync++; inRun=false; p+=4;
     if(resync>4096) break;
   }
   if(!faces.length) return null;
-  return {faces,tris,quads,resync,runs,maxIdx,bad,left:end-p,bytes:end-start};
+  return {faces,tris,quads,resync,runs,maxIdx,bad,slack,
+          extras:[...extras.entries()].sort((a,b)=>b[1]-a[1]),
+          left:end-p,bytes:end-start};
 }
 // 読み直しが起きた場所のまわりを生で見る。区切りに何が挟まっているか確かめるため
 function t1BadDump(d,o,W,n){
@@ -1887,7 +1902,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v1.3.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v1.4.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
