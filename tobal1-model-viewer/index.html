@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.3.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.3.1 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1250,13 +1250,24 @@ function buildModel(raw){
   for(let o=0x20,k=0;k<10&&o+8<=blk.length;k++,o+=8) info.dlRaw.push([dvb.getInt32(o,true),dvb.getInt32(o+4,true)]);
   // 展開した中身の頭 128 バイトと、ヘッダの語が指す先の 32 バイト
   const hx=(from,len)=>Array.from(blk.subarray(from,from+len),v=>v.toString(16).padStart(2,"0")).join(" ");
-  info.dump=[]; for(let o=8;o<Math.min(8+128,blk.length);o+=16) info.dump.push(`  +${(o-8).toString(16).padStart(4,"0")}  ${hx(o,16)}`);
-  info.at=[];
-  for(let hi=0;hi<16&&hi*4+4<=blk.length;hi++){
-    const w=dvb.getUint32(hi*4,true);
-    if(w<8||w+16>blk.length) continue;
-    info.at.push(`  語${hi} = ${hex(w)} → 中身(+8) ${hx(w+8,24)}`);
-  }
+  const lines=(from,len,base)=>{ const r=[]; for(let o=from;o<Math.min(from+len,blk.length);o+=16) r.push(`    +${(o-base).toString(16).padStart(4,"0")}  ${hx(o,16)}`); return r };
+  info.dump=lines(8,160,8);
+  // ヘッダに書かれている「区画の先頭」を集めて、区画ごとに中身を見る
+  const bodyLen=blk.length-8;
+  const offs=new Set();
+  for(let hi=0;hi<24&&hi*4+4<=blk.length;hi++){ const w=dvb.getUint32(hi*4,true); if(w>=16&&w<bodyLen) offs.add(w) }
+  const secs=[...offs].sort((a,b)=>a-b);
+  info.sections=[];
+  secs.forEach((st,i)=>{
+    const en=i+1<secs.length?secs[i+1]:bodyLen, len=en-st;
+    info.sections.push(`  区画 ${hex(st)} … ${hex(en)}  ${len} バイト  (16bit: ${Array.from({length:8},(_,k)=>dvb.getInt16(8+st+k*2,true)).join(", ")})`);
+    info.sections.push(...lines(8+st,96,8+st));
+    if(len>96) info.sections.push(`    …末尾 32 バイト`,...lines(8+en-32,32,8+st));
+  });
+  // 0x24 からの 24バイトごとの並び（実物で繰り返しに見えた形）
+  info.recs=[];
+  for(let k=0;k<10;k++){ const o=8+0x24+k*24; if(o+24>blk.length) break;
+    info.recs.push("    "+Array.from({length:6},(_,i)=>dvb.getInt32(o+i*4,true)).join(", ")) }
   const bones=bonesFromBlock(blk);
   info.bones=bones.filter(b=>b[0]!==0||b[1]!==0||b[2]!==0).length;
   const ops=walk(blk); info.ops=ops.length;
@@ -1362,7 +1373,8 @@ async function selectEntry(i){
 }
 // モデル候補を順に開いて、最初に三角形が出たものを表示する
 async function selectFirstModel(limit=8){
-  const list=state.entries.filter(entryIsModel).slice(0,limit);
+  // 大きいものから試す。キャラクターのモデルは小物より大きいはず
+  const list=state.entries.filter(entryIsModel).sort((a,b)=>b.size-a.size).slice(0,limit);
   for(const e of list){
     await selectEntry(state.entries.indexOf(e));
     if(state.selInfo&&state.selInfo.tris>0) return true;
@@ -1384,7 +1396,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.3.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.3.1 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1444,7 +1456,8 @@ function updateReport(){
     if(inf.words) L.push("  ブロックの頭 (32bit×16): "+inf.words.map(v=>hex(v)).join(" "));
     if(inf.dlRaw) L.push("  0x20 からの生の並び: "+inf.dlRaw.map(([a,b])=>`(${a}, ${b})`).join(" "));
     if(inf.dump&&inf.dump.length){ L.push("  展開した中身の頭:"); L.push(...inf.dump) }
-    if(inf.at&&inf.at.length){ L.push("  ヘッダの語が指す先:"); L.push(...inf.at) }
+    if(inf.recs&&inf.recs.length){ L.push("  +0024 からの 24バイトごと:"); L.push(...inf.recs) }
+    if(inf.sections&&inf.sections.length){ L.push("  区画ごとの中身:"); L.push(...inf.sections) }
   }
   if(s.iso&&s.iso.length){
     L.push("");
