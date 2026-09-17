@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.7.1 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.8.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1339,6 +1339,18 @@ function buildModelInner(raw,info){
   if(!bodies.length) throw new Error("展開できる中身がありませんでした（部分の大きさ: "+info.partSizes.join(", ")+"）");
   bodies.sort((a,b)=>b.out.length-a.out.length);
 
+  // トバルNo.1 のモデル（0x90000000）なら、専用の読み方で組む
+  for(const b of bodies.slice(0,4)){
+    if(!modelInfoT1(b.out)) continue;
+    const objs=t1ObjectOffsets(b.out).map(p=>readT1Object(b.out,p)).filter(Boolean);
+    const okObjs=objs.filter(o=>o.ok);
+    info.t1Parts=`${okObjs.length}/${objs.length} 部品`;
+    info.t1Detail=objs.slice(0,10).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}(頂${o.nv} 法${o.nn} 面${o.counts.join("/")})`).join(" ");
+    if(!okObjs.length) continue;
+    const r1=buildT1Mesh(b.out,okObjs);
+    if(r1.tris>0) return finishT1(r1,info,parts,b);
+  }
+
   let best=null;
   for(const b of bodies.slice(0,4)){
     const r=tryBody(b.out);
@@ -1373,6 +1385,25 @@ function buildModelInner(raw,info){
     : "三角形が1つも取れませんでした（モデルのファイルではないかもしれません）";
   else if(info.extent<8) info.error="組めた形が1点に潰れています（頂点や面の置き場所が合っていません）";
   return {mesh:r.mesh,info};
+}
+// トバルNo.1 の読み方で組めたときの仕上げ
+function finishT1(r1,info,parts,b){
+  info.layout="トバルNo.1 の並び（部品ごとに 面/頂点/法線/色）";
+  info.tris=r1.tris; info.extent=Math.round(meshExtent(r1.mesh));
+  info.bodyPart=b.i; info.compressed=b.packed; info.decLen=b.out.length;
+  const mi=modelInfoT1(b.out);
+  if(mi){ info.modelSig=mi.kind; info.modelTableAt=mi.tableAt;
+          info.modelOffs=mi.offs.map(o=>`+${hex(o.at,4)}→${hex(o.v)}`).join(" ") }
+  const blk=new Uint8Array(b.out.length+8); blk.set(b.out,8);
+  new DataView(blk.buffer).setUint32(0,b.out.length+8,true);
+  collectDump(blk,info);
+  const tex=findVram(parts); info.texIndex=tex.index;
+  r1.mesh.vram=tex.index>=0?tex.vram:new Uint8Array(1024*512*4);
+  if(tex.index<0){
+    const ch=findVramChainT1(b.out);
+    if(ch&&ch.list.length){ info.texChain=ch.list.length; r1.mesh.vram=buildVramT1(b.out,ch.list) }
+  }
+  return {mesh:r1.mesh,info};
 }
 // 展開した中身1つをモデルとして組んでみる。まずトバル2 の並び、だめなら自分で合わせる
 function tryBody(out){
@@ -1547,7 +1578,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.7.1 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.8.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1614,6 +1645,8 @@ function updateReport(){
       +(inf.texChain?`　No.1 形式の転送の列: ${inf.texChain}枚 (+${hex(inf.texChainAt,4)})  ${inf.texSample}`:""));
     L.push(`  描画命令 ${inf.ops}  三角形 ${inf.tris}  骨 ${inf.bones}  骨格 ${inf.rig}`);
     if(inf.opcodes&&inf.opcodes.length) L.push("  命令の内訳: "+inf.opcodes.map(([c,n])=>`${c}×${n}`).join(" "));
+    if(inf.t1Parts) L.push(`  トバルNo.1 の部品: ${inf.t1Parts}`);
+    if(inf.t1Detail) L.push("  部品の内訳: "+inf.t1Detail);
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
     if(inf.modelOffs) L.push("  ヘッダにある位置: "+inf.modelOffs);
     if(inf.layout) L.push(`  並び: ${inf.layout}　広がり ${inf.extent}`);
