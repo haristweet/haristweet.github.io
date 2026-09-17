@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.9.3 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.0.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1214,40 +1214,43 @@ function readT1Object(d,base){
     if(c.some(v=>v>65535)) continue;
     if((c[0]+c[1])*8+(c[2]+c[3])*12===o.faceBytes){ o.counts=c; o.countsAt=k; break }
   }
-  o.ok = o.nv>0 && o.nv<65536 && !!o.counts && base+o.colPtr+o.nv*4<=d.length;
+  // 面の数（ヘッダの並び）は表示のために探すだけ。読み方は面の大きさから決まる
+  o.ok = o.nv>0 && o.nv<65536 && o.faceBytes>0 && o.faceBytes%4===0 &&
+         base+o.colPtr+o.nv*4<=d.length;
   return o;
 }
-// 面の1件のどこに頂点番号があるかは決め打ちできない。
-// 「頂点番号が範囲に収まる」だけだと、同じ頂点ばかり指す読み方でも通ってしまう
-// （実物で 370枚の三角形が 60点しか使っていなかった）。
-// 正しい読み方なら部品の頂点をひととおり使うはずなので、
-// 「使われた頂点の種類数」もあわせて点数にする。
-function t1GroupLayout(d,o,start,count,sz){
+// 面の1枚の形（実物 sector 5927 の面のバイト列から）:
+//   18 00 00 00 | 14 00 00 00 | 10 00 00 00   → 24, 20, 16 → ÷4 して 頂点 6, 5, 4
+// u32 ×3 で1枚の三角形。値は頂点番号の4倍（PS1 でよくある、掛け算を省くための持ち方）。
+// 面の領域 768 バイト ÷ 12 = 64枚ちょうどで、ヘッダの 20 + 11 + 33 = 64 と一致する。
+// 念のため、1枚の大きさ・倍率・頂点数は「使われる頂点の種類が多い読み方」で選ぶ。
+function t1FaceMode(d,o){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   let best=null;
-  for(const w of [1,2]) for(const off of [0,1,2,4]) for(const nvtx of [3,4]){
-    if(off+nvtx*w>sz) continue;
-    const used=new Set(); let ok=0,n=0;
-    for(let k=0;k<count;k++){
-      const p=start+k*sz;
+  for(const sz of [12,16,8]) for(const scale of [4,1]) for(const nvtx of [3,4]){
+    if(nvtx*4>sz) continue;
+    const n=Math.floor(o.faceBytes/sz); if(!n) continue;
+    const used=new Set(); let ok=0, seen=0;
+    for(let k=0;k<n;k++){
+      const p=o.base+o.facePtr+k*sz;
       if(p+sz>d.length) break;
-      const idx=[];
-      for(let j=0;j<nvtx;j++) idx.push(w===1?d[p+off+j]:(d[p+off+j*2]|(d[p+off+j*2+1]<<8)));
-      n++;
-      if(idx.every(v=>v<o.nv)){ ok++; for(const v of idx) used.add(v) }
+      seen++;
+      const idx=[]; let fine=true;
+      for(let j=0;j<nvtx;j++){
+        const v=dv.getUint32(p+j*4,true);
+        if(scale===4&&(v&3)) fine=false;
+        const i=v/scale;
+        if(!(i<o.nv)) fine=false;
+        idx.push(i);
+      }
+      if(fine){ ok++; for(const v of idx) used.add(v) }
     }
-    if(!n) continue;
-    const score=(ok/n)*(used.size/Math.max(1,o.nv));
-    if(!best||score>best.score) best={w,off,nvtx,score,used:used.size,n};
+    if(!seen) continue;
+    const score=(ok/seen)*(used.size/Math.max(1,o.nv));
+    if(!best||score>best.score) best={sz,scale,nvtx,score,n:seen,ok,used:used.size};
   }
-  return best||{w:1,off:0,nvtx:3,score:0,used:0,n:0};
+  return best;
 }
-function t1FaceLayouts(d,o){
-  const g=[[o.counts[0],8],[o.counts[1],8],[o.counts[2],12],[o.counts[3],12]];
-  const out=[]; let fp=o.base+o.facePtr;
-  for(const [cnt,sz] of g){ out.push({...t1GroupLayout(d,o,fp,cnt,sz),cnt,sz,start:fp}); fp+=cnt*sz }
-  return out;
-}
-const quadCheck=(idx,o)=>idx[3]<o.nv;
 const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメラの合わせ枠が壊れるので落とす
 function buildT1Mesh(d,objs){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
@@ -1261,27 +1264,28 @@ function buildT1Mesh(d,objs){
       for(let i=0;i<o.nv;i++){ const p=o.base+o.vertPtr+i*8;
         for(let a=0;a<3;a++){ const v=dv.getInt16(p+a*2,true); if(v<mn[a])mn[a]=v; if(v>mx[a])mx[a]=v } }
       o.box=mn.map((v,a)=>`${v}..${mx[a]}`).join(" "); o.span=Math.max(...mx.map((v,a)=>v-mn[a])); }
-    const lays=t1FaceLayouts(d,o);
-    o.lays=lays.map(l=>`${l.nvtx}頂点 ${l.w===1?"1":"2"}B +${l.off} 使用${l.used}/${o.nv}`).join(" | ");
+    const M=t1FaceMode(d,o);
+    if(!M) continue;
+    o.lays=`1枚 ${M.sz}B / 頂点番号は ${M.scale===4?"4倍":"そのまま"} / ${M.nvtx}頂点 / ${M.ok}枚中${M.n}枚が有効 / 使用${M.used}/${o.nv}`;
     const V=i=>[dv.getInt16(o.base+o.vertPtr+i*8,true),
                 dv.getInt16(o.base+o.vertPtr+i*8+2,true),
                 dv.getInt16(o.base+o.vertPtr+i*8+4,true)];
     const C=i=>{ const p=o.base+o.colPtr+i*4;
                  return p+2<d.length?[d[p]/255,d[p+1]/255,d[p+2]/255]:[.5,.5,.5] };
-    for(const L of lays){
-      let fp=L.start;
-      for(let k=0;k<L.cnt;k++,fp+=L.sz){
-      if(fp+L.sz>d.length) break;
+    {
+      const n=Math.floor(o.faceBytes/M.sz);
+      for(let k=0;k<n;k++){
+      const fp=o.base+o.facePtr+k*M.sz;
+      if(fp+M.sz>d.length) break;
       const idx=[];
-      for(let j=0;j<4;j++){ const q=fp+L.off+j*L.w;
-        idx.push(L.w===1?d[q]:(d[q]|(d[q+1]<<8))) }
-      if(!idx.slice(0,3).every(v=>v<o.nv)) continue;
+      for(let j=0;j<M.nvtx;j++) idx.push(dv.getUint32(fp+j*4,true)/M.scale);
+      if(!idx.slice(0,3).every(v=>Number.isInteger(v)&&v<o.nv)) continue;
       // 座標が人の大きさを外れている面は落とす（読み違いを画面に出さない）
-      if(idx.slice(0,(L.nvtx===4&&idx[3]<o.nv)?4:3).some(v=>{
+      if(idx.slice(0,(M.nvtx===4&&idx[3]<o.nv)?4:3).some(v=>{
         const p=o.base+o.vertPtr+v*8;
         return Math.abs(dv.getInt16(p,true))>T1_MAX_COORD||Math.abs(dv.getInt16(p+2,true))>T1_MAX_COORD||Math.abs(dv.getInt16(p+4,true))>T1_MAX_COORD;
       })){ dropped++; continue }
-      const quad=L.nvtx===4&&idx[3]<o.nv;
+      const quad=M.nvtx===4&&Number.isInteger(idx[3])&&idx[3]<o.nv;
       for(const t of (quad?[[0,1,3],[1,2,3]]:[[0,1,2]])){
         for(const j of t){ const vi=idx[j]; pos.push(...V(vi)); col.push(...C(vi)); t0.push(0,0,0); t1.push(0,0,0,0) }
         sm.push(1); tris++;
@@ -1741,7 +1745,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.9.3 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v1.0.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
