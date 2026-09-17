@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.5.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.6.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1294,8 +1294,16 @@ function buildT1Mesh(d,objs){
     const W=o.walkTry;
     if(o.walkOK){
       o.walk=W; const before=tris;
+      // 番号が区切りごとに振り直されているなら、区切りの頭の位置を足して本来の番号に戻す
+      const B=t1SpanBases(W,o.nv);
+      const shift=new Int32Array(W.faces.length);
+      if(B&&B.fits){ o.rebased=B.sum;
+        W.spans.forEach((sp,k)=>{ for(let i=sp.from;i<sp.from+sp.n;i++) shift[i]=B.bases[k] }) }
+      let fi=-1;
       for(const f of W.faces){
-        const a=f.idx;
+        fi++;
+        const a=shift[fi]?f.idx.map(v=>v+shift[fi]):f.idx;
+        if(a.some(v=>v>=o.nv)){ dropped++; continue }
         if(a.some(far)){ dropped++; continue }
         const strip=a.length===4?[[0,1,2],[0,2,3]]:[[0,1,2]];
         for(const t of strip){
@@ -1308,7 +1316,7 @@ function buildT1Mesh(d,objs){
         }
       }
       o.tris=tris-before;
-      o.lays=t1WalkLine(W);
+      o.lays=t1WalkLine(W)+(o.rebased?`　／ 区切りごとに番号を振り直し（合計${o.rebased}）`:"");
       continue;
     }
     const M=t1FaceMode(d,o);
@@ -1489,7 +1497,8 @@ function t1WalkFaces(d,o,limit){
   if(!faces.length) return null;
   const bytes=end-start;
   return {faces,kinds,bad,resync,runs,maxIdx,bytes,covered,
-          tris:kinds[0]+kinds[2], quads:kinds[1]+kinds[3], left:bytes-covered-resync*4};
+          tris:kinds[0]+kinds[2], quads:kinds[1]+kinds[3], left:bytes-covered-resync*4,
+          spans:t1FaceSpans(faces)};
 }
 // 読み直しが起きた場所のまわりを生で見る。区切りに何が挟まっているか確かめるため
 function t1BadDump(d,o,W,n){
@@ -1502,6 +1511,31 @@ function t1BadDump(d,o,W,n){
     L.push(`    +${off}  前 ${hx(p-16,16)} ┃ ${hx(p,32)}`);
   }
   return L;
+}
+
+// 頂点番号が途中で 0 に戻っていないかを見る。本体は小部品の入れ物らしく、
+// 番号が小部品ごとに振り直されている疑いがある（頂点854個なのに最大276だった）。
+// 面を並び順に区切って、区切りごとの番号の幅を出す。
+function t1FaceSpans(faces){
+  const out=[]; let cur=null, seen=-1;
+  for(let i=0;i<faces.length;i++){
+    const a=faces[i].idx, lo=Math.min(...a), hi=Math.max(...a);
+    // 大きい番号を使ったあとに急に小さい番号へ戻ったら、そこが区切り
+    if(cur&&hi<seen-8&&lo<=4){ out.push(cur); cur=null }
+    if(!cur){ cur={from:i,n:0,lo:65535,hi:-1}; seen=-1 }
+    cur.n++; if(lo<cur.lo)cur.lo=lo; if(hi>cur.hi)cur.hi=hi;
+    if(hi>seen) seen=hi;
+  }
+  if(cur) out.push(cur);
+  return out;
+}
+// 区切りごとに「その区切りの中だけの番号」だとしたら、頂点の位置はどこから始まるか。
+// 区切りの番号の幅を順に足していったものが頂点の数と合えば、その読み方で当たり。
+function t1SpanBases(W,nv){
+  if(!W||!W.spans) return null;
+  let sum=0; const bases=[];
+  for(const s of W.spans){ bases.push(sum); sum+=s.hi+1 }
+  return {bases,sum,nv,fits:Math.abs(sum-nv)<=Math.max(4,nv*0.02)};
 }
 // ============================================================
 //  WebGL
@@ -1720,6 +1754,23 @@ function buildModelInner(raw,info){
         info.t1Lays=okObjs.slice(0,10).map(o=>`+${hex(o.base,4)}: ${o.lays||"-"}`
           +(o.walkTry&&!o.walkOK?`\n      （法線つきで読むと: ${t1WalkLine(o.walkTry)}）`:""));
         for(const o of okObjs){ const g=t1BadDump(b.out,o,o.walkTry,4); if(g&&o.walkTry.resync){ info.t1Bad=g; break } }
+        // 頂点番号が途中で 0 に戻るか（本体が小部品の入れ物かどうかの決め手）
+        const big=okObjs.slice().sort((a,c)=>c.nv-a.nv)[0];
+        if(big&&big.walkTry&&big.walkTry.spans){
+          const W=big.walkTry, B=t1SpanBases(W,big.nv);
+          info.t1Spans=[`  頂点番号の区切り（部品 +${hex(big.base,4)}、頂点${big.nv}、面${W.faces.length}枚）:`,
+            `    区切り ${W.spans.length}個　幅を足すと ${B.sum}　頂点の数 ${big.nv}　${B.fits?"→ 一致（番号は区切りごとに振り直し）":"→ 合わない"}`];
+          W.spans.slice(0,20).forEach((sp,i)=>info.t1Spans.push(
+            `    [${i}] ${sp.n}枚　番号 ${sp.lo}..${sp.hi}　足し込む位置 ${B.bases[i]}`));
+        }
+        // 本体のヘッダと頂点のあいだ（小部品の目録らしき 1504 バイト）を全部出す
+        if(big&&big.vertPtr>0x100){
+          const dvv=new DataView(b.out.buffer,b.out.byteOffset,b.out.byteLength);
+          const vals=[]; for(let q=big.base+0x38;q+4<=big.base+big.vertPtr;q+=4) vals.push(dvv.getInt32(q,true));
+          info.t1Gap2=[`  ヘッダと頂点のあいだ（${vals.length}個の32bit）:`];
+          for(let i=0;i<vals.length;i+=16)
+            info.t1Gap2.push(`    +${hex(0x38+i*4,4)}  ${vals.slice(i,i+16).join(" ")}`);
+        }
         info.t1Heads=objs.slice(0,10).map(o=>`+${hex(o.base,4)}  ${t1HeadDump(b.out,o,14)}`);
         for(const o of objs){ const g=t1GapDump(b.out,o,14); if(g){ info.t1Gap=g; break } }
       }
@@ -1959,7 +2010,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v1.5.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v1.6.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2032,8 +2083,9 @@ function updateReport(){
     if(inf.t1Lays){ L.push("  面の読み方（選ばれたもの）:"); inf.t1Lays.forEach(x=>L.push("    "+x)) }
     if(inf.t1Faces) L.push(...inf.t1Faces);
     if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
+    if(inf.t1Spans) L.push(...inf.t1Spans);
     if(inf.t1Bad) L.push(...inf.t1Bad);
-    if(inf.t1Gap) L.push(...inf.t1Gap);
+    if(inf.t1Gap2) L.push(...inf.t1Gap2);
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
     if(inf.modelOffs) L.push("  ヘッダにある位置: "+inf.modelOffs);
     if(inf.layout) L.push(`  並び: ${inf.layout}　広がり ${inf.extent}`);
