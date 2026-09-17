@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.1.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.2.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -157,6 +157,7 @@ canvas:active{cursor:grabbing}
     <div class="bgs" id="bg-box" hidden aria-label="背景の色"></div>
     <div class="shot" id="shot-box" hidden>
       <label id="gouraud-opt"><input type="checkbox" id="gouraud"> なめらかな陰影</label>
+      <label id="showall-opt"><input type="checkbox" id="showall"> 当たり判定も出す</label>
       <label><input type="checkbox" id="shot-clear"> 背景なし</label>
       <label id="crop-opt"><input type="checkbox" id="shot-crop"> キャラだけ切り抜き</label>
       <button id="shot">スクショを保存</button>
@@ -1254,9 +1255,17 @@ function t1FaceMode(d,o){
   return best;
 }
 const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメラの合わせ枠が壊れるので落とす
+const t1Show={all:false};  // 法線を持たない部品（当たり判定らしきもの）も出すか
+try{ t1Show.all=localStorage.getItem("t1all")==="1" }catch(_){}
 function buildT1Mesh(d,objs){
+  // 法線つきで読める部品が1つでもあれば、それがキャラクターの見た目。
+  // 読めない部品は当たり判定か影なので、ふだんは出さない
+  if(!t1Show.all){
+    const real=objs.filter(o=>o.ok&&t1WalkFaces(d,o)&&(()=>{const w=t1WalkFaces(d,o);return w.resync<=4&&w.left<24})());
+    if(real.length) objs=real;
+  }
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
-  const pos=[],col=[],t0=[],t1=[],sm=[];
+  const pos=[],col=[],t0=[],t1=[],sm=[],nrm=[];
   let used=0, tris=0, dropped=0;
   for(const o of objs){
     if(!o.ok) continue;
@@ -1266,6 +1275,29 @@ function buildT1Mesh(d,objs){
       for(let i=0;i<o.nv;i++){ const p=o.base+o.vertPtr+i*8;
         for(let a=0;a<3;a++){ const v=dv.getInt16(p+a*2,true); if(v<mn[a])mn[a]=v; if(v>mx[a])mx[a]=v } }
       o.box=mn.map((v,a)=>`${v}..${mx[a]}`).join(" "); o.span=Math.max(...mx.map((v,a)=>v-mn[a])); }
+    const V0=i=>[dv.getInt16(o.base+o.vertPtr+i*8,true),
+                 dv.getInt16(o.base+o.vertPtr+i*8+2,true),
+                 dv.getInt16(o.base+o.vertPtr+i*8+4,true)];
+    const C0=i=>{ const q=o.base+o.colPtr+i*4;
+                  return q+2<d.length?[d[q]/255,d[q+1]/255,d[q+2]/255]:[.5,.5,.5] };
+    const far=i=>V0(i).some(v=>Math.abs(v)>T1_MAX_COORD);
+    // まず「法線つき」の読み方を試す。これが通る部品がキャラクターの見た目
+    const W=t1WalkFaces(d,o);
+    if(W&&W.resync<=4&&W.left<24){
+      o.walk=W; const before=tris;
+      for(const f of W.faces){
+        const a=f.idx;
+        if(a.some(far)){ dropped++; continue }
+        const strip=a.length===4?[[0,1,2],[0,2,3]]:[[0,1,2]];
+        for(const t of strip){
+          for(const j of t){ pos.push(...V0(a[j])); col.push(...C0(a[j])); t0.push(0,0,0); t1.push(0,0,0,0) }
+          nrm.push(f.n[0],f.n[1],f.n[2]); sm.push(1); tris++;
+        }
+      }
+      o.tris=tris-before;
+      o.lays=`1枚 頂点番号${W.quads?"4":"3"}つ＋法線 / 四角${W.quads} 三角${W.tris} / 読み直し${W.resync} 余り${W.left}B`;
+      continue;
+    }
     const M=t1FaceMode(d,o);
     if(!M) continue;
     o.lays=`1枚 ${M.sz}B / 頂点番号は ${M.scale===4?"4倍":"そのまま"} / ${M.nvtx}頂点 / ${M.ok}枚中${M.n}枚が有効 / 使用${M.used}/${o.nv}`
@@ -1292,14 +1324,15 @@ function buildT1Mesh(d,objs){
       const quad=M.nvtx===4&&Number.isInteger(idx[3])&&idx[3]<o.nv;
       for(const t of (quad?[[0,1,3],[1,2,3]]:[[0,1,2]])){
         for(const j of t){ const vi=idx[j]; pos.push(...V(vi)); col.push(...C(vi)); t0.push(0,0,0); t1.push(0,0,0,0) }
-        sm.push(1); tris++;
+        nrm.push(0,0,0); sm.push(1); tris++;
       }
       }
       o.tris=tris-trisBefore;
     }
   }
   return {mesh:{pos:new Float32Array(pos),col:new Float32Array(col),t0:new Float32Array(t0),
-                t1:new Float32Array(t1),sm:new Uint8Array(sm)}, used, tris, dropped};
+                t1:new Float32Array(t1),sm:new Uint8Array(sm),
+                nrm:nrm.some(v=>v)?new Float32Array(nrm):null}, used, tris, dropped};
 }
 
 // 部品のヘッダを生のまま出す。+0x10〜+0x18 が何なのか（置き場所かもしれない）を
@@ -1328,6 +1361,48 @@ function t1GapDump(d,o,rows){
     L.push(`    +${(p-o.base).toString(16).padStart(4,"0")}  ${w.join(" ")}   ${b}`);
   }
   return L;
+}
+
+// ============================================================
+//  面の本当の形（実物 sector 5927 の +0x0034 の部品から）
+//
+//    0c 00 00 00  08 00 00 00  04 00 00 00  00 00 00 00   頂点番号 u32 ×4（どれも4倍）
+//    25 02 63 f8  e8 0d 00 00                             法線 int16 x,y,z,0
+//
+//  法線の長さは 549,-1949,3560 で 4095.6 ＝ 4096。1.12 の固定小数で長さ 1 ということ。
+//  4枚とも 4096 ちょうどだったので、これで間違いない。
+//  三角形なら頂点番号が3つで 20 バイト、四角形なら4つで 24 バイト。混ざって並ぶので、
+//  法線が来る位置がどちらかで1枚ずつ見分ける。
+//
+//  なお「腕脚らしい8部品」はこの形では読めない。法線を持たず、頂点番号3つ12バイトが
+//  ずらりと並ぶだけ。キャラクターの見た目ではなく、当たり判定か影のための形だと思う。
+// ============================================================
+const T1_NRM_LEN=4096;
+function t1WalkFaces(d,o){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const start=o.base+o.facePtr, end=Math.min(o.base+o.colPtr,d.length);
+  const idxAt=p=>{ if(p+4>end) return -1; const v=dv.getUint32(p,true);
+                   return (v&3)||v/4>=o.nv?-1:v/4 };
+  const nrmAt=p=>{ if(p+8>end) return null;
+    const x=dv.getInt16(p,true),y=dv.getInt16(p+2,true),z=dv.getInt16(p+4,true);
+    if(dv.getInt16(p+6,true)!==0) return null;
+    const m=Math.hypot(x,y,z);
+    return m>T1_NRM_LEN*0.94&&m<T1_NRM_LEN*1.06?[x,y,z]:null };
+  const head=p=>idxAt(p)>=0&&idxAt(p+4)>=0&&idxAt(p+8)>=0;
+  const take=(p,n)=>{ const a=[]; for(let j=0;j<n;j++){ const v=idxAt(p+j*4); if(v<0) return null; a.push(v) }
+                      const nr=nrmAt(p+n*4); return nr?{idx:a,n:nr}:null };
+  const faces=[]; let p=start, tris=0, quads=0, resync=0;
+  while(p+20<=end){
+    if(!head(p)){ resync++; p+=4; if(resync>256) return null; continue }
+    const q=take(p,4), t=take(p,3);
+    // 次の1枚もちゃんと始まるほうを選ぶ。どちらも駄目なら読めたほうを採る
+    const qOK=q&&(p+24>=end||head(p+24)), tOK=t&&(p+20>=end||head(p+20));
+    if(qOK||(q&&!tOK)){ faces.push(q); quads++; p+=24 }
+    else if(tOK||t){ faces.push(t); tris++; p+=20 }
+    else { resync++; p+=4; if(resync>256) return null }
+  }
+  if(!faces.length) return null;
+  return {faces,tris,quads,resync,left:end-p,bytes:end-start};
 }
 // ============================================================
 //  WebGL
@@ -1378,6 +1453,9 @@ function upload(mesh,fit=true,li=0){
     const ax=P[i+3]-P[i],ay=P[i+4]-P[i+1],az=P[i+5]-P[i+2],bx=P[i+6]-P[i],by=P[i+7]-P[i+1],bz=P[i+8]-P[i+2];
     let nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx; const l=Math.hypot(nx,ny,nz);
     if(l<1e-6){ nx=0;ny=1;nz=0 } else { nx/=l;ny/=l;nz/=l }   // つぶれた面は法線が出ないので上向きに
+    // ファイルに法線が入っているならそちらを使う（向きの取り違えがなくなる）
+    if(mesh.nrm){ const t=i/9*3, ml=Math.hypot(mesh.nrm[t],mesh.nrm[t+1],mesh.nrm[t+2]);
+                  if(ml>1e-6){ nx=mesh.nrm[t]/ml; ny=mesh.nrm[t+1]/ml; nz=mesh.nrm[t+2]/ml } }
     for(let k=0;k<3;k++){N[i+k*3]=nx;N[i+k*3+1]=ny;N[i+k*3+2]=nz; for(let a=0;a<3;a++){mn[a]=Math.min(mn[a],P[i+k*3+a]);mx[a]=Math.max(mx[a],P[i+k*3+a])}}
   }
   if(shading.gouraud&&mesh.sm){
@@ -1525,7 +1603,7 @@ function buildModelInner(raw,info){
     info.t1Parts=`${okObjs.length}/${objs.length} 部品`;
     if(!okObjs.length) continue;
     const r1=buildT1Mesh(b.out,okObjs);
-    info.t1Detail=objs.slice(0,12).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}(頂${o.nv} 法${o.nn} 面${o.faceBytes||0}B${o.tris?" 三角"+o.tris:""}${o.box?" 範囲 "+o.box:""})`).join("\n    ");
+    info.t1Detail=objs.slice(0,12).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}${o.walk?"法線あり":"法線なし"}(頂${o.nv} 法${o.nn} 面${o.faceBytes||0}B${o.tris?" 三角"+o.tris:""}${o.box?" 範囲 "+o.box:""})`).join("\n    ");
     if(r1.tris>0){
       info.t1Dropped=r1.dropped;
       // 面のバイト列。区画のダンプは先頭と末尾しか出しておらず、面は真ん中にあって見えなかった
@@ -1533,14 +1611,14 @@ function buildModelInner(raw,info){
       if(f){
         const hx=(from,len)=>Array.from(b.out.subarray(from,from+len),v=>v.toString(16).padStart(2,"0")).join(" ");
         // 割り切れない部品（本体）の面の頭と尻。ずれの正体を見るため
-        const odd=okObjs.find(o=>o.faceBytes%12)||f;
+        const odd=okObjs.find(o=>o.walk)||f;
         info.t1Faces=[
-          `  面の中身（部品 +${hex(odd.base,4)}、頂点${odd.nv}、面 ${odd.faceBytes}B = 12×${Math.floor(odd.faceBytes/12)}+${odd.faceBytes%12}）:`,
+          `  面の中身（部品 +${hex(odd.base,4)}、頂点${odd.nv}、面 ${odd.faceBytes}B${odd.walk?`　四角${odd.walk.quads} 三角${odd.walk.tris} 余り${odd.walk.left}B`:""}）:`,
           `    頭 +${hex(odd.facePtr,4)}  ${hx(odd.base+odd.facePtr,48)}`,
           `    尻 +${hex(odd.colPtr-48,4)}  ${hx(odd.base+odd.colPtr-48,48)}`,
           `    色 +${hex(odd.colPtr,4)}  ${hx(odd.base+odd.colPtr,32)}`,
         ];
-        info.t1Lays=okObjs.slice(0,4).map(o=>`+${hex(o.base,4)}: ${o.lays||"-"}`);
+        info.t1Lays=okObjs.slice(0,6).map(o=>`+${hex(o.base,4)}: ${o.lays||"-"}`);
         info.t1Heads=objs.slice(0,10).map(o=>`+${hex(o.base,4)}  ${t1HeadDump(b.out,o,14)}`);
         for(const o of objs){ const g=t1GapDump(b.out,o,14); if(g){ info.t1Gap=g; break } }
       }
@@ -1780,7 +1858,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v1.1.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v1.2.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2045,6 +2123,11 @@ $("copy-report").onclick=async()=>{
 };
 $("bgm").onchange=e=>bgmPlay(+e.target.value);
 $("bgm-vol").oninput=e=>{ bgm.volume=+e.target.value; if(bgm.gain) bgm.gain.gain.value=bgm.volume };
+$("showall").checked=t1Show.all;
+$("showall").onchange=e=>{
+  t1Show.all=e.target.checked; try{ localStorage.setItem("t1all",t1Show.all?"1":"0") }catch(_){}
+  if(state.sel!=null&&state.sel>=0) selectEntry(state.sel);
+};
 $("gouraud").checked=shading.gouraud;
 $("gouraud").onchange=e=>{
   shading.gouraud=e.target.checked; try{ localStorage.setItem("t1gouraud",shading.gouraud?"1":"0") }catch(_){}
@@ -2073,11 +2156,11 @@ BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.
 (()=>{ let i=0; try{ i=+localStorage.getItem("t1bg")||0 }catch(_){} setBackground(i) })();
 // ---- スマホの配置 ----
 const mobileMQ=matchMedia("(max-width:720px)");
-const shotOpt=$("shot-clear").closest("label"), gouraudOpt=$("gouraud-opt"), cropOpt=$("crop-opt");
+const shotOpt=$("shot-clear").closest("label"), gouraudOpt=$("gouraud-opt"), cropOpt=$("crop-opt"), allOpt=$("showall-opt");
 function applyLayout(){
   const m=mobileMQ.matches, stage=document.querySelector(".stage");
-  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,shotOpt,cropOpt); shotOpt.className=gouraudOpt.className=cropOpt.className="shot-opt"; $("bg-box").hidden=false }
-  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(gouraudOpt); shotOpt.className=gouraudOpt.className=cropOpt.className=""; closeSheet() }
+  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,shotOpt,cropOpt); shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className="shot-opt"; $("bg-box").hidden=false }
+  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt); shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=""; closeSheet() }
   requestAnimationFrame(draw);
 }
 function openTab(t){
