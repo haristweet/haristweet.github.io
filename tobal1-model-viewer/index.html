@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.9.1 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.9.2 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1323,7 +1323,8 @@ function upload(mesh,fit=true,li=0){
   let mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
   for(let i=0;i<P.length;i+=9){
     const ax=P[i+3]-P[i],ay=P[i+4]-P[i+1],az=P[i+5]-P[i+2],bx=P[i+6]-P[i],by=P[i+7]-P[i+1],bz=P[i+8]-P[i+2];
-    let nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx; const l=Math.hypot(nx,ny,nz)||1; nx/=l;ny/=l;nz/=l;
+    let nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx; const l=Math.hypot(nx,ny,nz);
+    if(l<1e-6){ nx=0;ny=1;nz=0 } else { nx/=l;ny/=l;nz/=l }   // つぶれた面は法線が出ないので上向きに
     for(let k=0;k<3;k++){N[i+k*3]=nx;N[i+k*3+1]=ny;N[i+k*3+2]=nz; for(let a=0;a<3;a++){mn[a]=Math.min(mn[a],P[i+k*3+a]);mx[a]=Math.max(mx[a],P[i+k*3+a])}}
   }
   if(shading.gouraud&&mesh.sm){
@@ -1334,20 +1335,18 @@ function upload(mesh,fit=true,li=0){
     for(let t=0,i=0;i<P.length;t++,i+=9){ if(!mesh.sm[t]) continue;
       for(let k=0;k<3;k++){ const a=acc.get(key(i+k*3)), l=Math.hypot(a[0],a[1],a[2])||1; N[i+k*3]=a[0]/l; N[i+k*3+1]=a[1]/l; N[i+k*3+2]=a[2]/l } }
   }
-  if(fit){
-    // 枠を最小・最大で決めると、1点でも飛んだ頂点があるとモデルが点になってしまう。
-    // 各軸の 2%〜98% で決めて、外れ値に引っ張られないようにする
-    const band=a=>{
-      const xs=[]; for(let i=a;i<P.length;i+=3) xs.push(P[i]);
-      if(!xs.length) return [0,0];
-      xs.sort((x,y)=>x-y);
-      return [xs[Math.floor(xs.length*0.02)], xs[Math.min(xs.length-1,Math.floor(xs.length*0.98))]];
-    };
-    const r=[band(0),band(1),band(2)];
-    center=r.map(([lo,hi])=>(lo+hi)/2);
-    radius=Math.hypot(r[0][1]-r[0][0],r[1][1]-r[1][0],r[2][1]-r[2][0])/2||1;
+  if(fit&&P.length){
+    // 最小・最大で決めると1点の外れ値でモデルが点になり、軸ごとの 2〜98% で決めると
+    // 頂点が1か所に固まっているとき帯がゼロ幅になって半径が 1 になり、遠くが切れて消える。
+    // 中心は各軸の中央値、半径は「中心からの距離の 98% 点」で決める
+    const mid=a=>{ const xs=[]; for(let i=a;i<P.length;i+=3) xs.push(P[i]); xs.sort((x,y)=>x-y); return xs[xs.length>>1] };
+    center=[mid(0),mid(1),mid(2)];
+    const ds=[];
+    for(let i=0;i<P.length;i+=3) ds.push(Math.hypot(P[i]-center[0],P[i+1]-center[1],P[i+2]-center[2]));
+    ds.sort((a,b)=>a-b);
+    radius=ds[Math.min(ds.length-1,Math.floor(ds.length*0.98))]||1;
     view.pan=[0,0,0];
-  }
+  } else if(fit){ center=[0,0,0]; radius=1; view.pan=[0,0,0] }
   if(mesh.vram&&L.vram!==mesh.vram){ gl.bindTexture(gl.TEXTURE_2D,L.tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1024,512,0,gl.RGBA,gl.UNSIGNED_BYTE,mesh.vram); L.vram=mesh.vram }
   for(const [k,data] of [["p",P],["n",N],["c",mesh.col],["t0",mesh.t0],["t1",mesh.t1]]){gl.bindBuffer(gl.ARRAY_BUFFER,L.bufs[k]);gl.bufferData(gl.ARRAY_BUFFER,data,gl.DYNAMIC_DRAW)}
   L.count=P.length/3; if(li===0) triCount=L.count;
@@ -1474,7 +1473,13 @@ function buildModelInner(raw,info){
     info.t1Detail=objs.slice(0,12).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}(頂${o.nv} 法${o.nn} 面${o.counts?o.counts.join("/")+"@"+o.countsAt:"?"}${o.box?" 範囲 "+o.box:""})`).join("\n    ");
     if(!okObjs.length) continue;
     const r1=buildT1Mesh(b.out,okObjs);
-    if(r1.tris>0){ info.t1Dropped=r1.dropped; return finishT1(r1,info,parts,b) }
+    if(r1.tris>0){
+      info.t1Dropped=r1.dropped;
+      const P=r1.mesh.pos, seen=new Set();
+      for(let i=0;i<P.length&&seen.size<4096;i+=3) seen.add(P[i]+","+P[i+1]+","+P[i+2]);
+      info.t1Distinct=seen.size;
+      return finishT1(r1,info,parts,b);
+    }
   }
 
   let best=null;
@@ -1706,7 +1711,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.9.1 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.9.2 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1773,7 +1778,8 @@ function updateReport(){
       +(inf.texChain?`　No.1 形式の転送の列: ${inf.texChain}枚 (+${hex(inf.texChainAt,4)})  ${inf.texSample}`:""));
     L.push(`  描画命令 ${inf.ops}  三角形 ${inf.tris}  骨 ${inf.bones}  骨格 ${inf.rig}`);
     if(inf.opcodes&&inf.opcodes.length) L.push("  命令の内訳: "+inf.opcodes.map(([c,n])=>`${c}×${n}`).join(" "));
-    if(inf.t1Parts) L.push(`  トバルNo.1 の部品: ${inf.t1Parts}`+(inf.t1Dropped?`　範囲外で落とした面 ${inf.t1Dropped}`:""));
+    if(inf.t1Parts) L.push(`  トバルNo.1 の部品: ${inf.t1Parts}`+(inf.t1Dropped?`　範囲外で落とした面 ${inf.t1Dropped}`:"")
+      +(inf.t1Distinct?`　別々の位置 ${inf.t1Distinct}点`:""));
     if(inf.t1Detail) L.push("  部品の内訳: "+inf.t1Detail);
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
     if(inf.modelOffs) L.push("  ヘッダにある位置: "+inf.modelOffs);
