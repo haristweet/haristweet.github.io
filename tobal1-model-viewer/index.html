@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.6.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.7.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1140,6 +1140,29 @@ function buildVramT1(d,list){
   }
   return vram;
 }
+
+// ============================================================
+//  トバルNo.1 のモデルの署名
+//  実物のふるい分けで、0x90000000 で始まるファイル群が見つかった。
+//    種類A: 90000000 | 14 | 0 0 0 | 位置4つ …      109部分・展開後 4KB 前後
+//           （sector 6016〜6312。モーションかクエストのデータらしい）
+//    種類B: 90000000 | 3C か 34 | 04 | 位置4つ | 04  4部分・展開後 30〜43KB
+//           （sector 5529, 5544, 5737, 5927, 5943, 8755, 9289。キャラクターのモデル）
+//  語1 が「位置の表」までの距離。
+// ============================================================
+function modelInfoT1(d){
+  if(d.length<16) return null;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  if(dv.getUint32(0,true)!==0x90000000) return null;
+  const tableAt=dv.getUint32(4,true);
+  const offs=[];
+  for(let o=8;o+4<=Math.min(d.length,8+128);o+=4){
+    const v=dv.getUint32(o,true);
+    if(v>=16&&v<d.length) offs.push({at:o,v});
+  }
+  return {tableAt, offs:offs.slice(0,16), size:d.length,
+          kind:(tableAt===0x14?"A（部分が多い・小さい）":"B（キャラクターのモデルらしい）")};
+}
 // ============================================================
 //  WebGL
 // ============================================================
@@ -1326,6 +1349,12 @@ function buildModelInner(raw,info){
   info.layout=r.layout; info.extent=Math.round(r.extent); info.tris=r.tris;
   info.ops=r.ops; info.opcodes=r.opcodes; info.bones=r.bones; if(r.fit) info.fit=r.fit;
   collectDump(r.blk,info);
+  const mi=modelInfoT1(b.out);
+  if(mi){
+    info.modelSig=mi.kind;
+    info.modelTableAt=mi.tableAt;
+    info.modelOffs=mi.offs.map(o=>`+${hex(o.at,4)}→${hex(o.v)}`).join(" ");
+  }
   const tex=findVram(parts); info.texIndex=tex.index; r.mesh.vram=tex.vram;
   // トバル2 の形でテクスチャが見つからないとき、No.1 の形（長さ付きの転送の列）を探す
   if(tex.index<0){
@@ -1479,9 +1508,17 @@ async function selectEntry(i){
 }
 // モデル候補を順に開いて、最初に三角形が出たものを表示する
 async function selectFirstModel(limit=16){
-  // 大きいものから試す。キャラクターのモデルは小物より大きいはず。
-  // テクスチャの集まりだと分かったものは飛ばして、次を探す
-  const list=state.entries.filter(entryIsModel).sort((a,b)=>b.size-a.size).slice(0,limit);
+  // モデルの署名（0x90000000）が分かっているものを先に、次に大きいものを試す。
+  // テクスチャの集まりだと分かったものは飛ばす
+  let list=state.entries.filter(entryIsModel).sort((a,b)=>b.size-a.size);
+  if(state.sieve&&state.sieve.other.length){
+    const sig=state.sieve.other.filter(o=>o.words&&o.words[0]===0x90000000)
+      .sort((a,b)=>(a.words[1]===0x14?1:0)-(b.words[1]===0x14?1:0)||b.dec-a.dec)
+      .map(o=>o.e);
+    const rest=list.filter(e=>!sig.includes(e));
+    list=sig.concat(rest);
+  }
+  list=list.slice(0,limit);
   let firstShown=-1;
   for(const [k,e] of list.entries()){
     busy(`モデルを探しています… ${k+1}/${list.length}`);
@@ -1508,7 +1545,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.6.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.7.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1575,6 +1612,8 @@ function updateReport(){
       +(inf.texChain?`　No.1 形式の転送の列: ${inf.texChain}枚 (+${hex(inf.texChainAt,4)})  ${inf.texSample}`:""));
     L.push(`  描画命令 ${inf.ops}  三角形 ${inf.tris}  骨 ${inf.bones}  骨格 ${inf.rig}`);
     if(inf.opcodes&&inf.opcodes.length) L.push("  命令の内訳: "+inf.opcodes.map(([c,n])=>`${c}×${n}`).join(" "));
+    if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
+    if(inf.modelOffs) L.push("  ヘッダにある位置: "+inf.modelOffs);
     if(inf.layout) L.push(`  並び: ${inf.layout}　広がり ${inf.extent}`);
     if(inf.dumpError) L.push("  ダンプ作りで失敗: "+inf.dumpError);
     if(inf.words) L.push("  ブロックの頭 (32bit×16): "+inf.words.map(v=>hex(v)).join(" "));
@@ -1685,6 +1724,11 @@ async function start(files){
     try{ bgm.tracks=state.src.readRaw?await bgmScan(state.src):[] }catch(err){ bgm.tracks=[]; console.warn("BGM を探せませんでした",err) }
     $("bgm-box").hidden=!bgm.tracks.length;
     $("bgm").innerHTML='<option value="-1">なし</option>'+bgm.tracks.map((t,i)=>`<option value="${i}">${t.label}</option>`).join("");
+    // 先に全部ふるいにかけて、モデルの署名があるものを把握しておく
+    if(state.src.readArc){
+      try{ state.sieve=await sieveAll(p=>busy(`候補を全部ふるいにかけています… ${Math.round(p*100)}%`)) }
+      catch(err){ console.warn(err) }
+    }
     busy("");
     // 表の形が合わずモデルが出ないときは、アーカイブを直接さらう方に切り替える
     if(!state.entries.some(entryIsModel)&&state.src.readArc){
@@ -1697,8 +1741,6 @@ async function start(files){
     }
     if(!await selectFirstModel()){
       // どれも組めなかった。手がかりを集めるため、候補をまとめて調べておく
-      try{ state.sieve=await sieveAll(p=>busy(`候補を全部ふるいにかけています… ${Math.round(p*100)}%`)) }
-      catch(err){ console.warn(err) }
       busy(""); updateStatus(); updateReport();
     }
   }catch(err){ busy(""); $("err").textContent=err.message; console.error(err) }
@@ -1897,6 +1939,13 @@ function sieveLines(s){
   if(s.tex.length){
     const by=s.tex.reduce((m,t)=>m.set(t.colors,(m.get(t.colors)||0)+1),new Map());
     L.push("  テクスチャの色数: "+[...by].map(([k,v])=>`${k}色×${v}`).join("  "));
+  }
+  const sig=s.other.filter(o=>o.words&&o.words[0]===0x90000000);
+  if(sig.length){
+    L.push(`  ── モデルの署名 0x90000000 があるもの: ${sig.length}件 ──`);
+    for(const o of sig.slice(0,24))
+      L.push(`  #${String(o.e.no).padStart(4)} sector ${String(o.e.sector).padStart(6)} 展開後 ${String(o.dec).padStart(7)} 語1=${hex(o.words[1],4)} [${o.parts.length>60?o.parts.slice(0,60)+"…":o.parts}]`);
+    if(sig.length>24) L.push(`    …ほか ${sig.length-24} 件`);
   }
   L.push("  ── テクスチャ以外（モデルの候補） ──");
   L.push("  番号 / sector / ファイル / 展開後 / 部分 / 先頭24バイト / 語0..7");
