@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.4.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.5.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1084,6 +1084,45 @@ function fitLayout(blk){
           nv:d.nv, nprim:d.nprim};
 }
 // ============================================================
+//  トバルNo.1 のテクスチャ（VRAM への転送の列）
+//  実物の 84KB のファイル（sector 6408、展開後 189,680B）で確認した形:
+//    u32 長さ ; u16 x ; u16 y ; u16 幅 ; u16 高さ ; データ[幅×高さ×2]
+//    長さ = 4 + 8 + 幅×高さ×2
+//  +0x0C に 16色パレット（x=416, y=486, 16×1, BGR555 に最上位ビット）、
+//  0x10AC にも同じ形（x=288, y=504）。2箇所で一致したので、これで読む。
+//  トバル2 は「u32 件数 ＋ 12バイトの見出し」で、長さを持っていなかった。
+// ============================================================
+// 列の途中に 8 バイトの目印（0x10, 0x08）が挟まるので、合わない語は 4 バイトずつ読み飛ばす。
+// 「長さ = 12 + 幅×高さ×2」が3つの値の一致を要求するので、当てずっぽうでは通らない
+function vramChainT1(d,start,maxMiss){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const out=[]; let o=start===undefined?0:start, miss=0;
+  const MISS=maxMiss===undefined?16:maxMiss;
+  while(o+12<=d.length&&out.length<8192){
+    const len=dv.getUint32(o,true);
+    const x=dv.getUint16(o+4,true), y=dv.getUint16(o+6,true), w=dv.getUint16(o+8,true), h=dv.getUint16(o+10,true);
+    const ok=w>=1&&h>=1&&x<=1023&&y<=511&&x+w<=1024&&y+h<=512&&len===12+w*h*2&&o+len<=d.length;
+    if(ok){ out.push({x,y,w,h,off:o+12}); o+=len; miss=0; continue }
+    if(++miss>MISS) break;
+    o+=4;
+  }
+  return out;
+}
+function findVramChainT1(d){
+  const list=vramChainT1(d,0);
+  return list.length>=2?{start:0,list}:null;   // 2枚以上そろって初めて「転送の列」とみなす
+}
+function buildVramT1(d,list){
+  const vram=new Uint8Array(1024*512*4);
+  for(const t of list){
+    for(let j=0;j<t.h;j++) for(let i=0;i<t.w;i++){
+      const q=((t.y+j)*1024+t.x+i)*4, s=t.off+(j*t.w+i)*2;
+      if(s+1<d.length){ vram[q]=d[s]; vram[q+1]=d[s+1] }
+    }
+  }
+  return vram;
+}
+// ============================================================
 //  WebGL
 // ============================================================
 const canvas=document.getElementById("gl");
@@ -1270,7 +1309,18 @@ function buildModelInner(raw,info){
   info.ops=r.ops; info.opcodes=r.opcodes; info.bones=r.bones; if(r.fit) info.fit=r.fit;
   collectDump(r.blk,info);
   const tex=findVram(parts); info.texIndex=tex.index; r.mesh.vram=tex.vram;
-  if(!info.tris) info.error="三角形が1つも取れませんでした（モデルのファイルではないかもしれません）";
+  // トバル2 の形でテクスチャが見つからないとき、No.1 の形（長さ付きの転送の列）を探す
+  if(tex.index<0){
+    const ch=findVramChainT1(b.out);
+    if(ch&&ch.list.length){
+      info.texChain=ch.list.length; info.texChainAt=ch.start;
+      info.texSample=ch.list.slice(0,6).map(t=>`(${t.x},${t.y}) ${t.w}x${t.h}`).join(" ");
+      r.mesh.vram=buildVramT1(b.out,ch.list);
+    }
+  }
+  if(!info.tris) info.error=info.texChain>=2
+    ? `テクスチャの集まりのようです（転送 ${info.texChain}枚）。モデルではありません`
+    : "三角形が1つも取れませんでした（モデルのファイルではないかもしれません）";
   else if(info.extent<8) info.error="組めた形が1点に潰れています（頂点や面の置き場所が合っていません）";
   return {mesh:r.mesh,info};
 }
@@ -1433,7 +1483,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.4.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.5.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1491,7 +1541,8 @@ function updateReport(){
   if(inf){
     L.push(`  部分 ${inf.parts}  [${inf.partSizes.join(", ")}]`);
     L.push(`  モデル本体: 部分${inf.bodyPart===undefined?"?":inf.bodyPart}  ${inf.compressed?"圧縮あり":"圧縮なし"}  展開後 ${inf.decLen} B　（試した: ${inf.tried||"-"}）`);
-    L.push(`  テクスチャの部分: ${inf.texIndex<0?"見つからず":inf.texIndex}`);
+    L.push(`  テクスチャの部分: ${inf.texIndex<0?"見つからず":inf.texIndex}`
+      +(inf.texChain?`　No.1 形式の転送の列: ${inf.texChain}枚 (+${hex(inf.texChainAt,4)})  ${inf.texSample}`:""));
     L.push(`  描画命令 ${inf.ops}  三角形 ${inf.tris}  骨 ${inf.bones}  骨格 ${inf.rig}`);
     if(inf.opcodes&&inf.opcodes.length) L.push("  命令の内訳: "+inf.opcodes.map(([c,n])=>`${c}×${n}`).join(" "));
     if(inf.layout) L.push(`  並び: ${inf.layout}　広がり ${inf.extent}`);
@@ -1734,7 +1785,7 @@ async function surveyModels(limit,onProgress){
     const e=list[i];
     if(onProgress) onProgress(i/list.length);
     await idle();
-    const r={no:e.no,sector:e.sector,size:e.size,parts:0,partSizes:"",body:"?",dec:0,magic:"",w1:"",tris:0,how:"",err:""};
+    const r={no:e.no,sector:e.sector,size:e.size,parts:0,partSizes:"",body:"?",dec:0,magic:"",w1:"",tris:0,tex:0,how:"",err:""};
     try{
       const raw=await readFull(e);
       const ps=unpack(raw);
@@ -1742,6 +1793,7 @@ async function surveyModels(limit,onProgress){
       const info=buildModel(raw).info;
       r.dec=info.decLen; r.tris=info.tris; r.how=info.layout||""; r.err=info.error||"";
       if(info.bodyPart!==undefined) r.body=String(info.bodyPart);
+      r.tex=info.texChain||0;
       if(info.words){ r.magic=hex(info.words[2]); r.w1=hex(info.words[3]) }
     }catch(err){ r.err=err.message }
     rows.push(r);
@@ -1751,17 +1803,18 @@ async function surveyModels(limit,onProgress){
 }
 function surveyLines(rows){
   const L=[];
-  L.push("  番号 / sector / ファイル / 部分 / 本体 / 展開後 / 先頭の印 / 語1 / 三角形 / 備考");
+  L.push("  番号 / sector / ファイル / 部分 / 本体 / 展開後 / 先頭の印 / 語1 / 三角形 / テクスチャ / 備考");
   for(const r of rows){
     L.push(`  #${String(r.no).padStart(4)} ${String(r.sector).padStart(7)} ${String(r.size).padStart(9)} `
       +`${String(r.parts).padStart(2)}[${r.partSizes}] p${r.body} ${String(r.dec).padStart(8)} ${r.magic} ${r.w1} `
-      +`${String(r.tris).padStart(6)} ${r.tris?r.how:r.err}`);
+      +`${String(r.tris).padStart(6)} ${String(r.tex).padStart(5)}枚 ${r.tris?r.how:r.err}`);
   }
   // 先頭の印ごとの件数（形が何種類あるか）
   const by=rows.reduce((m,r)=>m.set(r.magic||"?",(m.get(r.magic||"?")||0)+1),new Map());
   L.push("  先頭の印ごとの件数: "+[...by].map(([k,v])=>`${k}×${v}`).join("  "));
-  const got=rows.filter(r=>r.tris>0);
+  const got=rows.filter(r=>r.tris>0), tx=rows.filter(r=>r.tex>=2);
   L.push(`  三角形が取れたもの: ${got.length}件`+(got.length?`（例: #${got[0].no} ${got[0].tris}枚 ${got[0].how}）`:""));
+  L.push(`  テクスチャの集まり: ${tx.length}件`);
   return L;
 }
 // ============================================================
