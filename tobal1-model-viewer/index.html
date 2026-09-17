@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.9.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.9.1 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1234,13 +1234,20 @@ function t1FaceLayout(d,o){
   }
   return best;
 }
+const quadCheck=(idx,o)=>idx[3]<o.nv;
+const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメラの合わせ枠が壊れるので落とす
 function buildT1Mesh(d,objs){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const pos=[],col=[],t0=[],t1=[],sm=[];
-  let used=0, tris=0;
+  let used=0, tris=0, dropped=0;
   for(const o of objs){
     if(!o.ok) continue;
     used++;
+    // 部品ごとの範囲を控えておく（どの部品が変なのか分かるように）
+    { const mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+      for(let i=0;i<o.nv;i++){ const p=o.base+o.vertPtr+i*8;
+        for(let a=0;a<3;a++){ const v=dv.getInt16(p+a*2,true); if(v<mn[a])mn[a]=v; if(v>mx[a])mx[a]=v } }
+      o.box=mn.map((v,a)=>`${v}..${mx[a]}`).join(" "); o.span=Math.max(...mx.map((v,a)=>v-mn[a])); }
     const lay=t1FaceLayout(d,o), u16=lay.u16;
     const V=i=>[dv.getInt16(o.base+o.vertPtr+i*8,true),
                 dv.getInt16(o.base+o.vertPtr+i*8+2,true),
@@ -1254,6 +1261,11 @@ function buildT1Mesh(d,objs){
       const idx=u16?[d[fp]|(d[fp+1]<<8),d[fp+2]|(d[fp+3]<<8),d[fp+4]|(d[fp+5]<<8),d[fp+6]|(d[fp+7]<<8)]
                    :[d[fp],d[fp+1],d[fp+2],d[fp+3]];
       if(!idx.slice(0,3).every(v=>v<o.nv)) continue;
+      // 座標が人の大きさを外れている面は落とす（読み違いを画面に出さない）
+      if(idx.slice(0,quadCheck(idx,o)?4:3).some(v=>{
+        const p=o.base+o.vertPtr+v*8;
+        return Math.abs(dv.getInt16(p,true))>T1_MAX_COORD||Math.abs(dv.getInt16(p+2,true))>T1_MAX_COORD||Math.abs(dv.getInt16(p+4,true))>T1_MAX_COORD;
+      })){ dropped++; continue }
       const quad=idx[3]<o.nv&&sz>=8;
       for(const t of (quad?[[0,1,3],[1,2,3]]:[[0,1,2]])){
         for(const j of t){ const vi=idx[j]; pos.push(...V(vi)); col.push(...C(vi)); t0.push(0,0,0); t1.push(0,0,0,0) }
@@ -1262,7 +1274,7 @@ function buildT1Mesh(d,objs){
     }
   }
   return {mesh:{pos:new Float32Array(pos),col:new Float32Array(col),t0:new Float32Array(t0),
-                t1:new Float32Array(t1),sm:new Uint8Array(sm)}, used, tris};
+                t1:new Float32Array(t1),sm:new Uint8Array(sm)}, used, tris, dropped};
 }
 // ============================================================
 //  WebGL
@@ -1322,7 +1334,20 @@ function upload(mesh,fit=true,li=0){
     for(let t=0,i=0;i<P.length;t++,i+=9){ if(!mesh.sm[t]) continue;
       for(let k=0;k<3;k++){ const a=acc.get(key(i+k*3)), l=Math.hypot(a[0],a[1],a[2])||1; N[i+k*3]=a[0]/l; N[i+k*3+1]=a[1]/l; N[i+k*3+2]=a[2]/l } }
   }
-  if(fit){ center=mn.map((v,a)=>(v+mx[a])/2); radius=Math.hypot(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2])/2; view.pan=[0,0,0] }
+  if(fit){
+    // 枠を最小・最大で決めると、1点でも飛んだ頂点があるとモデルが点になってしまう。
+    // 各軸の 2%〜98% で決めて、外れ値に引っ張られないようにする
+    const band=a=>{
+      const xs=[]; for(let i=a;i<P.length;i+=3) xs.push(P[i]);
+      if(!xs.length) return [0,0];
+      xs.sort((x,y)=>x-y);
+      return [xs[Math.floor(xs.length*0.02)], xs[Math.min(xs.length-1,Math.floor(xs.length*0.98))]];
+    };
+    const r=[band(0),band(1),band(2)];
+    center=r.map(([lo,hi])=>(lo+hi)/2);
+    radius=Math.hypot(r[0][1]-r[0][0],r[1][1]-r[1][0],r[2][1]-r[2][0])/2||1;
+    view.pan=[0,0,0];
+  }
   if(mesh.vram&&L.vram!==mesh.vram){ gl.bindTexture(gl.TEXTURE_2D,L.tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1024,512,0,gl.RGBA,gl.UNSIGNED_BYTE,mesh.vram); L.vram=mesh.vram }
   for(const [k,data] of [["p",P],["n",N],["c",mesh.col],["t0",mesh.t0],["t1",mesh.t1]]){gl.bindBuffer(gl.ARRAY_BUFFER,L.bufs[k]);gl.bufferData(gl.ARRAY_BUFFER,data,gl.DYNAMIC_DRAW)}
   L.count=P.length/3; if(li===0) triCount=L.count;
@@ -1446,10 +1471,10 @@ function buildModelInner(raw,info){
     const objs=t1ObjectOffsets(b.out).map(p=>readT1Object(b.out,p)).filter(Boolean);
     const okObjs=objs.filter(o=>o.ok);
     info.t1Parts=`${okObjs.length}/${objs.length} 部品`;
-    info.t1Detail=objs.slice(0,12).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}(頂${o.nv} 法${o.nn} 面${o.counts?o.counts.join("/")+"@"+o.countsAt:"?"} ${o.faceBytes||0}B)`).join(" ");
+    info.t1Detail=objs.slice(0,12).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}(頂${o.nv} 法${o.nn} 面${o.counts?o.counts.join("/")+"@"+o.countsAt:"?"}${o.box?" 範囲 "+o.box:""})`).join("\n    ");
     if(!okObjs.length) continue;
     const r1=buildT1Mesh(b.out,okObjs);
-    if(r1.tris>0) return finishT1(r1,info,parts,b);
+    if(r1.tris>0){ info.t1Dropped=r1.dropped; return finishT1(r1,info,parts,b) }
   }
 
   let best=null;
@@ -1668,8 +1693,10 @@ function entryLabel(e){ return e?(e.src==="iso"?e.name:(e.label?`#${e.no}　sect
 function updateStatus(){
   const e=state.entries[state.sel];
   if(!e){ $("status").textContent="左の一覧からファイルを選んでください"; return }
+  const inf=state.selInfo;
   $("status").textContent=state.selErr?`${entryLabel(e)}　— ${state.selErr}`
-    :`${entryLabel(e)}　${fmtSize(e.size)}　三角形 ${state.selInfo?state.selInfo.tris.toLocaleString():0}`;
+    :`${entryLabel(e)}　${fmtSize(e.size)}　三角形 ${inf?inf.tris.toLocaleString():0}`
+     +(inf&&inf.extent?`　広がり ${inf.extent}`:"")+(inf&&inf.t1Parts?`　${inf.t1Parts}`:"");
 }
 function fileBase(){
   const e=state.entries[state.sel];
@@ -1679,7 +1706,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.9.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.9.1 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1746,7 +1773,7 @@ function updateReport(){
       +(inf.texChain?`　No.1 形式の転送の列: ${inf.texChain}枚 (+${hex(inf.texChainAt,4)})  ${inf.texSample}`:""));
     L.push(`  描画命令 ${inf.ops}  三角形 ${inf.tris}  骨 ${inf.bones}  骨格 ${inf.rig}`);
     if(inf.opcodes&&inf.opcodes.length) L.push("  命令の内訳: "+inf.opcodes.map(([c,n])=>`${c}×${n}`).join(" "));
-    if(inf.t1Parts) L.push(`  トバルNo.1 の部品: ${inf.t1Parts}`);
+    if(inf.t1Parts) L.push(`  トバルNo.1 の部品: ${inf.t1Parts}`+(inf.t1Dropped?`　範囲外で落とした面 ${inf.t1Dropped}`:""));
     if(inf.t1Detail) L.push("  部品の内訳: "+inf.t1Detail);
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
     if(inf.modelOffs) L.push("  ヘッダにある位置: "+inf.modelOffs);
