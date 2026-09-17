@@ -1,0 +1,1338 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>トバルNo.1 モデルビューア</title>
+<meta name="description" content="手元の『トバルNo.1』のディスクイメージから、キャラクターの3Dモデルを取り出して回して見る（非公式）。">
+<style>
+:root{
+  --ground:#e9e6e0; --panel:#f7f5f1; --ink:#1d1c1a; --ink2:#6b675f; --line:#d4cfc6;
+  --accent:#0f766e; --accent-soft:rgba(15,118,110,.12); --stage:#2a2926; --stage2:#3a3834;
+  --sans:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,"Roboto Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{height:100dvh;overflow:hidden;overscroll-behavior:none}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:14px;display:flex;flex-direction:column}
+header{display:flex;align-items:baseline;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line)}
+header h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.02em}
+header .sub{color:var(--ink2);font-size:12px}
+header .rev{margin-left:auto;color:var(--ink2);font-size:11px;white-space:nowrap}
+main{flex:1;display:grid;grid-template-columns:260px 1fr;min-height:0}
+aside{background:var(--panel);border-right:1px solid var(--line);padding:14px 12px;overflow:auto;display:flex;flex-direction:column;gap:16px}
+.label{font-size:11px;letter-spacing:.1em;color:var(--ink2);font-weight:600;margin:0 0 6px 4px}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{all:unset;cursor:pointer;text-align:center;padding:7px 4px;font-size:13px;white-space:nowrap;border-left:1px solid var(--line)}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+select,.pick-motion{width:100%;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink)}
+/* ファイルの一覧 */
+.files{display:flex;flex-direction:column;border-top:1px solid var(--line);max-height:min(52vh,520px);overflow:auto;overscroll-behavior:contain}
+.files .grp{font-size:11px;color:var(--ink2);letter-spacing:.08em;padding:12px 4px 4px;position:sticky;top:0;background:var(--panel)}
+.files button{all:unset;cursor:pointer;display:flex;gap:8px;align-items:baseline;width:100%;box-sizing:border-box;padding:7px 6px;border-bottom:1px solid var(--line);font-size:13px;-webkit-tap-highlight-color:transparent}
+.files button:hover{background:var(--accent-soft)}
+.files button[aria-pressed=true]{background:var(--accent);color:#fff;font-weight:600}
+.files button .no{font-family:var(--mono);font-size:12px;min-width:3.6em;opacity:.75;font-variant-numeric:tabular-nums}
+.files button .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.files button .sz{font-family:var(--mono);font-size:11px;opacity:.7;white-space:nowrap}
+.filter{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--ink2);margin:6px 0 0}
+.note{font-size:11px;color:var(--ink2);margin:4px 0 0;line-height:1.6}
+.count{font-size:11px;color:var(--ink2);margin:6px 0 0 4px}
+.wide{width:100%}
+.btn{all:unset;cursor:pointer;display:block;text-align:center;border:1px solid var(--line);background:#fff;border-radius:7px;padding:8px;font-size:13px}
+.btn:hover{background:var(--accent-soft)}
+.report{width:100%;height:280px;font-family:var(--mono);font-size:11px;line-height:1.5;border:1px solid var(--line);border-radius:7px;padding:8px;background:#fff;color:var(--ink);white-space:pre;overflow:auto;resize:vertical}
+.bgm-row{display:flex;gap:8px;align-items:center}
+.bgm-row select{flex:1;min-width:0}
+.bgm-row input{width:80px;accent-color:var(--accent)}
+/* 表示 */
+.stage{position:relative;background:radial-gradient(ellipse at 50% 35%,var(--stage2),var(--stage));min-height:0}
+canvas{width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+html,body,button,input,select,label,.tabbar,aside{touch-action:manipulation}
+canvas:active{cursor:grabbing}
+.bgs{position:absolute;left:12px;top:12px;display:flex;gap:6px;align-items:center}
+.bgs button{all:unset;cursor:pointer;width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.55);box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.bgs button[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.stage.light .status,.stage.light .hint,.stage.light .shot{color:rgba(0,0,0,.7)}
+.stage.light .shot button{background:rgba(0,0,0,.08);border-color:rgba(0,0,0,.2);color:#1d1c1a}
+.shot{position:absolute;right:12px;top:12px;display:flex;gap:10px;align-items:center;color:rgba(255,255,255,.75);font-size:12px}
+.shot label{display:flex;gap:4px;align-items:center;cursor:pointer}
+.shot button{all:unset;cursor:pointer;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:6px 10px;font-size:12px}
+.shot button:hover{background:rgba(255,255,255,.24)}
+.hint{position:absolute;right:14px;bottom:12px;color:rgba(255,255,255,.55);font-size:12px;pointer-events:none}
+.status{position:absolute;left:14px;bottom:12px;right:14px;color:rgba(255,255,255,.75);font-size:12px}
+.busy{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:rgba(255,255,255,.8);font-size:13px;background:rgba(0,0,0,.45);padding:10px 16px;border-radius:10px}
+.drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px}
+.drop .card{background:var(--panel);border-radius:12px;padding:26px 28px;max-width:500px;line-height:1.75;box-shadow:0 10px 40px rgba(0,0,0,.35);max-height:100%;overflow:auto}
+.drop h2{margin:0 0 8px;font-size:16px}
+.drop p{margin:0 0 10px;color:var(--ink2);font-size:13px}
+.drop code{background:#ebe7df;padding:1px 5px;border-radius:4px;font-size:12px}
+.drop .pick{display:inline-block;margin-top:6px;background:var(--accent);color:#fff;border-radius:7px;padding:8px 16px;cursor:pointer;font-weight:600}
+.drop.over .card{outline:3px dashed var(--accent);outline-offset:6px}
+.err{color:#b91c1c;font-size:13px;margin-top:8px;white-space:pre-wrap}
+[hidden]{display:none!important}
+.tabbar,.sheet-close{display:none}
+@media(max-width:720px){
+  header{padding:10px 14px} header h1{font-size:16px} header .sub{display:none}
+  body.loaded header{display:none}
+  main{display:block;position:relative;flex:1}
+  .stage{position:absolute;left:0;right:0;top:0;bottom:calc(60px + env(safe-area-inset-bottom))}
+  body:not(.loaded) .stage{bottom:0}
+  body.loaded .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;height:calc(60px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:var(--panel);border-top:1px solid var(--line);z-index:30}
+  .tabbar button{all:unset;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--ink2);-webkit-tap-highlight-color:transparent}
+  .tabbar button .ic{font-size:20px;line-height:1}
+  .tabbar button[aria-pressed=true]{color:var(--accent);font-weight:600}
+  aside{position:fixed;left:0;right:0;bottom:calc(60px + env(safe-area-inset-bottom));max-height:56dvh;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+        background:var(--panel);border:0;border-radius:18px 18px 0 0;box-shadow:0 -10px 30px rgba(0,0,0,.35);padding:6px 16px 16px;z-index:25;display:block}
+  aside:not(.open){display:none!important}
+  aside>div{display:none;margin-top:12px}
+  aside[data-tab=file]>[data-tab=file],aside[data-tab=look]>[data-tab=look],aside[data-tab=info]>[data-tab=info]{display:block}
+  .sheet-close{display:block;position:sticky;top:0;margin:0 auto;width:40px;height:5px;border-radius:3px;background:var(--line);z-index:2}
+  .label{margin:0 0 6px 2px;font-size:12px}
+  .seg button{padding:11px 8px;font-size:15px}
+  .files{max-height:38dvh}
+  .files button{padding:11px 6px;font-size:15px}
+  .bgs{position:static;flex-wrap:wrap;gap:10px}
+  .bgs button{width:38px;height:38px}
+  .shot-opt{display:flex;gap:8px;align-items:center;font-size:14px;margin-top:12px}
+  .bgm-row input{width:110px}
+  .status{top:calc(10px + env(safe-area-inset-top));bottom:auto;left:12px;right:90px;font-size:13px;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+  .stage.light .status{text-shadow:none}
+  .shot{top:calc(8px + env(safe-area-inset-top));right:10px}
+  .shot button{padding:9px 12px;font-size:13px;border-radius:10px}
+  .hint{display:none}
+  .drop{padding:14px} .drop .card{padding:20px}
+}
+</style>
+</head>
+<body>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.1.0 ・ 非公式</span></header>
+<main>
+  <aside id="side" hidden>
+    <div class="sheet-close" aria-hidden="true"></div>
+    <div data-tab="file"><p class="label">読み込み元</p>
+      <div class="seg" id="src-seg"><button data-v="table" aria-pressed="true">アーカイブ</button><button data-v="iso" aria-pressed="false" title="ディスクの中のファイルをそのまま並べる">ディスク直読み</button></div>
+      <p class="note" id="src-note"></p>
+    </div>
+    <div data-tab="file"><p class="label">ファイル</p>
+      <select id="type-filter" aria-label="種類でしぼる"></select>
+      <label class="filter"><input type="checkbox" id="model-only" checked> モデルらしいものだけ</label>
+      <div class="files" id="files"></div>
+      <p class="count" id="file-count"></p>
+      <button class="btn wide" id="scan-all" style="margin-top:8px">全部のファイルを調べる</button>
+    </div>
+    <div data-tab="file"><p class="label">骨格の組み方</p>
+      <div class="seg" id="rig-seg"><button data-v="t2" aria-pressed="true">トバル2と同じ</button><button data-v="flat" aria-pressed="false">関節を使わない</button></div>
+      <p class="note">トバル2から持ってきた骨のつなぎ方で組みます。部品がばらける・重なるときは「関節を使わない」にすると、モデルの中の座標をそのまま出します。</p>
+    </div>
+    <div data-tab="look" id="look-bg"><p class="label">背景</p></div>
+    <div id="bgm-box" data-tab="look" hidden><p class="label">BGM</p>
+      <div class="bgm-row"><select id="bgm"><option value="-1">なし</option></select>
+      <input id="bgm-vol" type="range" min="0" max="1" step="0.05" value="0.6" aria-label="音量"></div>
+      <p class="note">ディスクの XA から見つけたチャンネルをそのまま鳴らします。曲になっていないものも混じります。</p>
+    </div>
+    <div data-tab="info"><p class="label">解析結果</p>
+      <textarea class="report" id="report" readonly spellcheck="false"></textarea>
+      <button class="btn wide" id="copy-report" style="margin-top:8px">この内容をコピー</button>
+      <p class="label" style="margin-top:16px">ファイル表の候補</p>
+      <select id="table-pick" aria-label="ファイル表の候補"></select>
+      <p class="note">実行ファイルの中から「位置と大きさの並び」らしいところを探しています。モデルが出てこないときは別の候補に切り替えてみてください。</p>
+    </div>
+  </aside>
+  <section class="stage">
+    <canvas id="gl"></canvas>
+    <div class="bgs" id="bg-box" hidden aria-label="背景の色"></div>
+    <div class="shot" id="shot-box" hidden>
+      <label id="gouraud-opt"><input type="checkbox" id="gouraud"> なめらかな陰影</label>
+      <label><input type="checkbox" id="shot-clear"> 背景なし</label>
+      <label id="crop-opt"><input type="checkbox" id="shot-crop"> キャラだけ切り抜き</label>
+      <button id="shot">スクショを保存</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="busy" id="busy" hidden></div>
+    <div class="hint" id="hint" hidden>ドラッグで回転 ・ 右ドラッグ／Shift＋ドラッグで移動 ・ ホイールで拡大 ・ ダブルクリックで元に戻す</div>
+    <div class="drop" id="drop">
+      <div class="card">
+        <h2>ディスクイメージを読み込んでください</h2>
+        <p>手元の『トバルNo.1』の <code>.chd</code> か <code>.bin</code> をここにドロップするか、下のボタンから選んでください（iPhone は「ファイル」アプリから選べます）。ディスクから取り出した実行ファイル（<code>SLPS_004.00</code> など）とデータのまとまったファイルを2つ選んでも読めます。</p>
+        <p>ゲームのデータはこのページに一切含まれていません。読み込んだファイルはブラウザの中だけで読み取り、どこにも送信しません。</p>
+        <p>このビューアはトバルNo.1の中身を実行時に探しにいきます。うまく出てこないときは「解析」の内容をそのまま作者に送ってください。</p>
+        <label class="pick">ファイルを選ぶ<input id="file" type="file" multiple hidden></label>
+        <div class="err" id="err"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<nav class="tabbar" id="tabbar" aria-label="操作">
+  <button data-tab="file" aria-pressed="false"><span class="ic">📦</span>ファイル</button>
+  <button data-tab="look" aria-pressed="false"><span class="ic">🎨</span>背景・BGM</button>
+  <button data-tab="info" aria-pressed="false"><span class="ic">🔍</span>解析</button>
+</nav>
+<script>
+"use strict";
+
+// ============================================================
+//  トバルNo.1 モデルビューア
+//  ディスクの読み取り・ゲーム独自の圧縮・モデルの組み立て・描画は
+//  「トバル2 モデルビューア」で作ったものをそのまま使っている。
+//  違うのは、トバル2では解析で分かった固定の値（ファイル表の位置・
+//  キャラごとのモデル番号）を直接書いていたところを、No.1 では
+//  読み込んだディスクから実行時に探しにいくところ。
+// ============================================================
+const $=id=>document.getElementById(id);
+const state={
+  src:null,          // 読み込み元（ディスク or 取り出し済みファイル）
+  tables:[],         // 実行ファイルから見つけたファイル表の候補
+  tableIdx:0,
+  entries:[],        // 表示中の一覧（アーカイブ or ディスクのファイル）
+  source:"table",    // "table" = アーカイブのファイル表 / "iso" = ディスクのファイル
+  sel:-1,
+  rig:"t2",
+  cache:new Map(),
+  probe:new Map(),   // ファイル番号 → 見分けた結果
+  log:[],
+};
+const fmtSize=n=>n>=1048576?(n/1048576).toFixed(2)+" MB":n>=1024?(n/1024).toFixed(1)+" KB":n+" B";
+const hex=(n,w=8)=>"0x"+(n>>>0).toString(16).toUpperCase().padStart(w,"0");
+function busy(t){ const b=$("busy"); if(!t){b.hidden=true;return} b.textContent=t; b.hidden=false }
+const idle=()=>new Promise(r=>setTimeout(r,0));
+// ============================================================
+//  骨格（トバル2から。No.1 で違っていたらここを直す）
+// ============================================================
+// 描画命令の関節番号 → 骨格の枠
+const DLMAP={"1":1,"2":1,"3":62,"4":41,"5":47,"6":2,"7":52,"8":3,"9":54,"10":4,"11":56,"12":5,"13":48,"14":6,"15":53,"16":7,"17":55,"18":8,"19":57,"20":9,"21":20,"22":21,"23":22,"24":23,"25":24,"26":25,"27":20,"28":21,"29":22,"30":23,"31":24,"32":24,"33":49,"34":12,"35":58,"36":13,"37":60,"38":14,"39":50,"40":15,"41":59,"42":16,"43":61,"44":17,"45":63,"46":42,"47":42,"48":26,"49":27,"50":71,"51":44,"52":64,"53":45,"54":65,"55":46,"56":66,"57":66,"58":68,"59":69,"60":70,"61":35,"62":51,"63":80,"64":81};
+// 枠: [親, 骨の表の番号]
+const SLOTS={0:[null,0],1:[0,1],2:[1,2],3:[2,3],4:[3,4],5:[4,5],6:[1,6],7:[6,7],8:[7,8],9:[8,9],
+  10:[1,10],11:[10,11],30:[10,30],31:[10,31],12:[30,13],13:[12,14],14:[13,15],15:[31,17],16:[15,18],17:[16,19],41:[10,null],42:[11,null]};
+const SLOT_ORDER=[0,1,2,3,4,5,6,7,8,9,10,11,30,31,41,42,12,13,14,15,16,17];
+const MID={47:[1,2],48:[1,6],49:[41,12],50:[41,15],52:[2,3],53:[6,7],54:[3,4],55:[7,8],56:[4,5],57:[8,9],58:[12,13],59:[15,16],60:[13,14],61:[16,17],62:[1,41],63:[41,42]};
+const I3=[1,0,0,0,1,0,0,0,1], RZ180=[-1,0,0,0,-1,0,0,0,1];
+const FIXED={10:RZ180,41:RZ180,42:[0,1,0,0,0,-1,-1,0,0],30:[0,-1,0,0,0,1,-1,0,0],31:[0,1,0,0,0,1,1,0,0]};
+const ROOT=[0,1,0,-1,0,0,0,0,1];
+const REST_LOCAL={11:[0,0,1,-1,0,0,0,-1,0]};
+// ============================================================
+//  ディスクの読み取り（.bin / .iso / .chd）
+// ============================================================
+class BinDisc{
+  constructor(file){this.file=file}
+  async init(){
+    const head=new Uint8Array(await this.file.slice(0,16).arrayBuffer());
+    const sync=head[0]===0&&head.slice(1,11).every(b=>b===0xff)&&head[11]===0;
+    this.secSize=sync?2352:2048;
+    this.dataOff=sync?(head[15]===2?24:16):0;
+  }
+  // 1セクタ 2352B そのまま（XA 音声用）。2048B の ISO では読めない
+  async readRaw(lba){ return this.secSize===2352?new Uint8Array(await this.file.slice(lba*2352,(lba+1)*2352).arrayBuffer()):null }
+  async read(lba,count){
+    const raw=new Uint8Array(await this.file.slice(lba*this.secSize,(lba+count)*this.secSize).arrayBuffer());
+    if(this.secSize===2048) return raw;
+    const out=new Uint8Array(count*2048);
+    for(let i=0;i<count;i++) out.set(raw.subarray(i*2352+this.dataOff,i*2352+this.dataOff+2048),i*2048);
+    return out;
+  }
+  async rootFiles(){
+    const pvd=await this.read(16,1);
+    if(String.fromCharCode(...pvd.subarray(1,6))!=="CD001") throw new Error("ISO9660 のディスクイメージとして読めませんでした");
+    const dv=new DataView(pvd.buffer);
+    const lba=dv.getUint32(156+2,true), size=dv.getUint32(156+10,true);
+    const buf=await this.read(lba,Math.ceil(size/2048)); const d=new DataView(buf.buffer);
+    const files={}; let i=0;
+    while(i<size){
+      const len=buf[i]; if(len===0){i=(Math.floor(i/2048)+1)*2048; continue}
+      const nl=buf[i+32]; const name=String.fromCharCode(...buf.subarray(i+33,i+33+nl)).split(";")[0];
+      files[name]={lba:d.getUint32(i+2,true),size:d.getUint32(i+10,true)};
+      i+=len;
+    }
+    return files;
+  }
+}
+// ============================================================
+//  CHD（MAME の圧縮ディスクイメージ、v5・CD）
+// ============================================================
+class MsbBits{
+  constructor(d){this.d=d;this.pos=0}
+  peek(n){let v=0;for(let i=0;i<n;i++){const p=this.pos+i;v=v*2+(((this.d[p>>3]||0)>>(7-(p&7)))&1)}return v}
+  read(n){const v=this.peek(n);this.pos+=n;return v}
+}
+function huffmanFromRle(br,numcodes,maxbits){
+  const nb=maxbits>=16?5:maxbits>=8?4:3, len=new Array(numcodes).fill(0);
+  for(let cur=0;cur<numcodes;){
+    let b=br.read(nb);
+    if(b!==1){len[cur++]=b;continue}
+    b=br.read(nb);
+    if(b===1){len[cur++]=1;continue}
+    for(let r=br.read(nb)+3;r>0&&cur<numcodes;r--) len[cur++]=b;
+  }
+  const hist=new Array(33).fill(0); for(const l of len) if(l) hist[l]++;
+  let start=0; for(let l=32;l>0;l--){const next=(start+hist[l])>>1; hist[l]=start; start=next}
+  const table=new Array(1<<maxbits).fill(0);
+  len.forEach((l,sym)=>{ if(!l) return; const code=hist[l]++, sh=maxbits-l; for(let k=code<<sh;k<((code+1)<<sh);k++) table[k]=[sym,l] });
+  return ()=>{const e=table[br.peek(maxbits)]; if(!e) throw new Error("CHD の目次が壊れています"); br.pos+=e[1]; return e[0]};
+}
+function lzmaDecode(src,outLen,lc=3,lp=0,pb=2){
+  const out=new Uint8Array(outLen);
+  let ip=5, range=0xFFFFFFFF, code=((src[1]<<24)>>>0)+(src[2]<<16)+(src[3]<<8)+src[4];
+  const P=n=>new Uint16Array(n).fill(1024);
+  const bit=(p,i)=>{
+    const b=(range>>>11)*p[i]; let r;
+    if(code<b){range=b; p[i]+=(2048-p[i])>>5; r=0} else {range-=b; code-=b; p[i]-=p[i]>>5; r=1}
+    if(range<16777216){range*=256; code=code*256+(src[ip++]||0)}
+    return r;
+  };
+  const tree=(p,base,n)=>{let m=1;for(let i=0;i<n;i++)m=(m<<1)+bit(p,base+m);return m-(1<<n)};
+  const rtree=(p,base,n)=>{let m=1,s=0;for(let i=0;i<n;i++){const b=bit(p,base+m);m=(m<<1)+b;s|=b<<i}return s};
+  const isMatch=P(192),isRep=P(12),isRepG0=P(12),isRepG1=P(12),isRepG2=P(12),isRep0Long=P(192);
+  const posSlot=P(256),specPos=P(114),align=P(16),lenC=P(514),repLenC=P(514),lit=P(0x300<<(lc+lp));
+  const len=(p,ps)=>!bit(p,0)?tree(p,2+(ps<<3),3):!bit(p,1)?8+tree(p,130+(ps<<3),3):16+tree(p,258,8);
+  let state=0,r0=0,r1=0,r2=0,r3=0,op=0;
+  const pbMask=(1<<pb)-1, lpMask=(1<<lp)-1;
+  while(op<outLen){
+    const ps=op&pbMask;
+    if(!bit(isMatch,(state<<4)+ps)){
+      const base=0x300*(((op&lpMask)<<lc)+((op?out[op-1]:0)>>(8-lc)));
+      let s=1;
+      if(state<7){ while(s<0x100) s=(s<<1)|bit(lit,base+s) }
+      else{
+        let mb=out[op-r0-1];
+        while(s<0x100){ const m=(mb>>7)&1; mb<<=1; const b=bit(lit,base+0x100+(m<<8)+s); s=(s<<1)|b; if(m!==b){ while(s<0x100) s=(s<<1)|bit(lit,base+s); break } }
+      }
+      out[op++]=s&255; state=state<4?0:state<10?state-3:state-6; continue;
+    }
+    let n;
+    if(bit(isRep,state)){
+      if(!bit(isRepG0,state)){
+        if(!bit(isRep0Long,(state<<4)+ps)){ state=state<7?9:11; out[op]=out[op-r0-1]; op++; continue }
+      }else{
+        let d;
+        if(!bit(isRepG1,state)) d=r1; else { if(!bit(isRepG2,state)) d=r2; else {d=r3; r3=r2} r2=r1 }
+        r1=r0; r0=d;
+      }
+      n=len(repLenC,ps); state=state<7?8:11;
+    }else{
+      r3=r2; r2=r1; r1=r0;
+      n=len(lenC,ps); state=state<7?7:10;
+      const slot=tree(posSlot,Math.min(n,3)<<6,6);
+      if(slot<4) r0=slot;
+      else{
+        const nd=(slot>>1)-1; let d=(2|(slot&1))*2**nd;
+        if(slot<14) d+=rtree(specPos,d-slot-1,nd);
+        else{
+          let direct=0;
+          for(let i=0;i<nd-4;i++){ range=range>>>1; let b=0; if(code>=range){code-=range;b=1} direct=direct*2+b; if(range<16777216){range*=256; code=code*256+(src[ip++]||0)} }
+          d+=direct*16+rtree(align,0,4);
+        }
+        if(d>=0xFFFFFFFF) break;
+        r0=d;
+      }
+    }
+    for(n+=2;n>0&&op<outLen;n--,op++) out[op]=out[op-r0-1];
+  }
+  return out;
+}
+async function inflateRaw(data){
+  if(typeof DecompressionStream==="undefined") throw new Error("このブラウザは CHD の展開に必要な機能に対応していません。iPhone は iOS 16.4 以降にしてください（.bin なら読めます）");
+  const s=new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+class ChdDisc{
+  constructor(file){this.file=file;this.cache=new Map()}
+  async bytes(off,n){return new Uint8Array(await this.file.slice(off,off+n).arrayBuffer())}
+  async init(){
+    const h=await this.bytes(0,124), dv=new DataView(h.buffer);
+    if(String.fromCharCode(...h.subarray(0,8))!=="MComprHD") throw new Error("CHD ファイルとして読めませんでした");
+    if(dv.getUint32(12)!==5) throw new Error("この版の CHD にはまだ対応していません（v5 のみ）");
+    this.codecs=[0,1,2,3].map(i=>String.fromCharCode(...h.subarray(16+i*4,20+i*4)).replace(/\0/g,""));
+    const logical=Number(dv.getBigUint64(32)), mapoff=Number(dv.getBigUint64(40));
+    this.hunkBytes=dv.getUint32(56); this.unitBytes=dv.getUint32(60);
+    if(dv.getBigUint64(104)|dv.getBigUint64(112)) throw new Error("差分形式（親ファイルが必要）の CHD には対応していません");
+    if(!this.codecs[0]) throw new Error("非圧縮の CHD にはまだ対応していません");
+    const count=Math.ceil(logical/this.hunkBytes);
+    const mh=await this.bytes(mapoff,16), mdv=new DataView(mh.buffer);
+    const mapLen=mdv.getUint32(0), lengthBits=mh[12], selfBits=mh[13], parentBits=mh[14];
+    let cur=mdv.getUint32(4)*65536+mdv.getUint16(8);
+    const br=new MsbBits(await this.bytes(mapoff+16,mapLen)), dec=huffmanFromRle(br,16,8);
+    const types=new Uint8Array(count);
+    for(let i=0,last=0,rep=0;i<count;i++){
+      if(rep>0){types[i]=last;rep--;continue}
+      const v=dec();
+      if(v===7){types[i]=last;rep=2+dec()}
+      else if(v===8){types[i]=last;rep=2+16+(dec()<<4);rep+=dec()}
+      else types[i]=last=v;
+    }
+    this.map=[];
+    for(let i=0,lastSelf=0;i<count;i++){
+      let t=types[i], off=0, len=0;
+      if(t<=3){len=br.read(lengthBits);off=cur;cur+=len;br.read(16)}
+      else if(t===4){len=this.hunkBytes;off=cur;cur+=len;br.read(16)}
+      else if(t===5){off=lastSelf=br.read(selfBits)}
+      else if(t===9||t===10){if(t===10)lastSelf++;t=5;off=lastSelf}
+      else throw new Error("親ファイルを参照する CHD には対応していません");
+      this.map.push([t,off,len]);
+    }
+    const f0=await this.hunk(0);
+    this.dataOff=f0[15]===1?16:24;
+  }
+  async hunk(i){
+    if(this.cache.has(i)) return this.cache.get(i);
+    const [t,off,len]=this.map[i]; let out;
+    if(t===5) out=await this.hunk(off);
+    else if(t===4) out=await this.bytes(off,len);
+    else{
+      const src=await this.bytes(off,len), codec=this.codecs[t], hb=this.hunkBytes;
+      if(!/^cd(lz|zl)$/.test(codec)) throw new Error(`この圧縮形式（${codec}）の部分はまだ読めません`);
+      const frames=hb/2448, eccBytes=(frames+7)>>3, clBytes=hb<65536?2:3;
+      let cl=0; for(let k=0;k<clBytes;k++) cl=cl*256+src[eccBytes+k];
+      const body=src.subarray(eccBytes+clBytes,eccBytes+clBytes+cl);
+      const sect=codec==="cdlz"?lzmaDecode(body,frames*2352):await inflateRaw(body);
+      out=new Uint8Array(hb);
+      for(let f=0;f<frames;f++) out.set(sect.subarray(f*2352,(f+1)*2352),f*2448);
+    }
+    if(this.cache.size>64) this.cache.delete(this.cache.keys().next().value);
+    this.cache.set(i,out); return out;
+  }
+  async read(lba,count){
+    const out=new Uint8Array(count*2048);
+    for(let k=0;k<count;k++){
+      const pos=(lba+k)*this.unitBytes, h=await this.hunk(Math.floor(pos/this.hunkBytes)), o=pos%this.hunkBytes;
+      out.set(h.subarray(o+this.dataOff,o+this.dataOff+2048),k*2048);
+    }
+    return out;
+  }
+  async readRaw(lba){ const pos=lba*this.unitBytes, h=await this.hunk(Math.floor(pos/this.hunkBytes)), o=pos%this.hunkBytes; return h.subarray(o,o+2352) }
+  async rootFiles(){return BinDisc.prototype.rootFiles.call(this)}
+}
+// ============================================================
+//  ディスクを開く（トバルNo.1 用に、中身の名前を決め打ちしない）
+// ============================================================
+// ISO9660 のディレクトリをたどって、ディスクの中の全ファイルを並べる
+async function listAll(disc){
+  const pvd=await disc.read(16,1);
+  if(String.fromCharCode(...pvd.subarray(1,6))!=="CD001") throw new Error("ISO9660 のディスクイメージとして読めませんでした");
+  const pv=new DataView(pvd.buffer,pvd.byteOffset,pvd.byteLength);
+  const files=[];
+  const walkDir=async(lba,size,prefix,depth)=>{
+    const buf=await disc.read(lba,Math.max(1,Math.ceil(size/2048))), d=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+    const dirs=[]; let i=0;
+    while(i+33<=Math.min(size,buf.length)){
+      const len=buf[i];
+      if(len===0){ const nx=(Math.floor(i/2048)+1)*2048; if(nx<=i) break; i=nx; continue }
+      const flags=buf[i+25], nl=buf[i+32];
+      const name=String.fromCharCode(...buf.subarray(i+33,i+33+nl)).split(";")[0];
+      const ent={name,path:prefix+name,lba:d.getUint32(i+2,true),size:d.getUint32(i+10,true)};
+      if(flags&2){ if(!(nl===1&&(buf[i+33]===0||buf[i+33]===1))) dirs.push(ent) }   // 「.」「..」は飛ばす
+      else files.push(ent);
+      i+=len;
+    }
+    if(depth<6) for(const dd of dirs) await walkDir(dd.lba,dd.size,dd.path+"/",depth+1);
+  };
+  await walkDir(pv.getUint32(156+2,true),pv.getUint32(156+10,true),"",0);
+  return files;
+}
+const isStream=n=>/\.(xa|str|vb|xs|iki|mov)$/i.test(n);
+async function openSource(fileList){
+  const files=[...fileList].filter(f=>f.size>0);
+  if(!files.length) throw new Error("ファイルが選ばれていません");
+  // (1) ディスクから取り出したファイルを直接渡された場合: PS-X EXE と、いちばん大きい別のファイル
+  if(files.length>=2&&!files.some(f=>/\.(chd|cue)$/i.test(f.name))){
+    const heads=await Promise.all(files.map(f=>f.slice(0,8).arrayBuffer()));
+    const ei=heads.findIndex(h=>String.fromCharCode(...new Uint8Array(h))==="PS-X EXE");
+    if(ei>=0){
+      const exeF=files[ei], arc=files.filter((_,k)=>k!==ei).sort((a,b)=>b.size-a.size)[0];
+      if(arc) return {
+        kind:"取り出し済みファイル", discName:"—", exeName:exeF.name, arcName:arc.name, arcSize:arc.size,
+        exe:new Uint8Array(await exeF.arrayBuffer()),
+        readArc:async(sec,size)=>new Uint8Array(await arc.slice(sec*2048,sec*2048+size).arrayBuffer()),
+        iso:files.map(f=>({name:f.name,path:f.name,size:f.size,file:f})),
+        readIso:async(e,limit)=>new Uint8Array(await (limit?e.file.slice(0,Math.min(limit,e.size)):e.file).arrayBuffer()),
+        xa:[], readRaw:null,
+      };
+    }
+  }
+  // (2) ディスクイメージ
+  const bin=files.find(f=>/\.(chd|bin|iso|img)$/i.test(f.name))||files[0];
+  if(/\.cue$/i.test(bin.name)) throw new Error(".cue ではなく、同じ名前の .bin を選んでください");
+  const magic=String.fromCharCode(...new Uint8Array(await bin.slice(0,8).arrayBuffer()));
+  const disc=magic==="MComprHD"?new ChdDisc(bin):new BinDisc(bin); await disc.init();
+  const all=await listAll(disc);
+  if(!all.length) throw new Error("ディスクの中にファイルが見つかりませんでした");
+  const byName=n=>all.find(f=>f.name.toUpperCase()===n.toUpperCase());
+  // SYSTEM.CNF の BOOT= から実行ファイルの名前を取る
+  let boot=null;
+  const cnf=byName("SYSTEM.CNF");
+  if(cnf){
+    const txt=new TextDecoder().decode(await disc.read(cnf.lba,Math.max(1,Math.ceil(cnf.size/2048))));
+    const m=txt.match(/BOOT\s*=\s*cdrom:?\\?([^\s;]+)/i);
+    if(m) boot=m[1].split("\\").pop().split("/").pop();
+  }
+  let exeE=boot&&byName(boot);
+  if(!exeE) exeE=all.find(f=>/^S[LC][PEU][SM][_.]\d/i.test(f.name));
+  if(!exeE) throw new Error("PlayStation の実行ファイル（SLPS_… など）が見つかりませんでした");
+  const exe=(await disc.read(exeE.lba,Math.ceil(exeE.size/2048))).subarray(0,exeE.size);
+  // アーカイブ: 実行ファイルと音声・動画を除いて、いちばん大きいファイル
+  const arc=all.filter(f=>f!==exeE&&!isStream(f.name)).sort((a,b)=>b.size-a.size)[0];
+  const canRaw=!!(await disc.readRaw(16));
+  return {
+    kind:magic==="MComprHD"?"CHD":"BIN/ISO", discName:bin.name,
+    exeName:exeE.name, arcName:arc?arc.path:"—", arcSize:arc?arc.size:0, exe,
+    readArc:arc?async(sec,size)=>(await disc.read(arc.lba+sec,Math.max(1,Math.ceil(size/2048)))).subarray(0,size):null,
+    iso:all,
+    readIso:async(e,limit)=>{ const bytes=limit?Math.min(limit,e.size):e.size;
+      return (await disc.read(e.lba,Math.max(1,Math.ceil(bytes/2048)))).subarray(0,bytes) },
+    xa:canRaw?all.filter(f=>/\.xa$/i.test(f.name)):[],
+    readRaw:canRaw?lba=>disc.readRaw(lba):null,
+  };
+}
+// ============================================================
+//  XA-ADPCM の展開
+// ============================================================
+const XA_K0=[0,60,115,98,122], XA_K1=[0,0,-52,-55,-60];
+function xaDecodeSector(b,hist,L,R,off){   // 4bit・ステレオ・37800Hz。1セクタ = 18グループ × 4組 × 28サンプル = 2016 フレーム
+  for(let g=0;g<18;g++){
+    const o=24+g*128;
+    for(let u=0;u<8;u++){
+      const p=b[o+4+u], rng=p&15, flt=(p>>4)&7, ch=u&1, dst=ch?R:L, hh=hist[ch];
+      let h1=hh[0], h2=hh[1]; const k0=XA_K0[flt]||0, k1=XA_K1[flt]||0, base=off+(g*4+(u>>1))*28;
+      for(let i=0;i<28;i++){
+        let n=(b[o+16+i*4+(u>>1)]>>((u&1)*4))&15; if(n&8) n-=16;
+        let v=((n<<12)>>rng)+((h1*k0+h2*k1+32)>>6);
+        v=v<-32768?-32768:v>32767?32767:v; h2=h1; h1=v; dst[base+i]=v/32768;
+      }
+      hh[0]=h1; hh[1]=h2;
+    }
+  }
+}
+// ============================================================
+//  BGM: ディスクの XA を鳴らす
+//  トバル2 では「8チャンネルを1セクタずつ交互に」と分かっていたが、
+//  No.1 では何本入っているか分からないので、先頭を少し読んで
+//  セクタのサブヘッダ（17バイト目＝チャンネル、18バイト目＝種類）から数える。
+// ============================================================
+const bgm={ctx:null,gain:null,track:-1,timer:null,next:0,pos:0,hist:null,nodes:[],gen:0,volume:0.6,tracks:[]};
+async function bgmScan(src){
+  const out=[];
+  for(const f of (src.xa||[])){
+    const total=Math.max(1,Math.ceil(f.size/2048));
+    const seen=new Map();                      // チャンネル → 最初に見つけたセクタ位置
+    const look=Math.min(total,64);             // 交互の周期が分かれば十分なので少しだけ読む
+    for(let k=0;k<look;k++){
+      const b=await src.readRaw(f.lba+k); if(!b) break;
+      if(!(b[18]&4)) continue;                 // 音声のセクタだけ（サブモードの bit2）
+      const ch=b[17]; if(!seen.has(ch)) seen.set(ch,k);
+    }
+    const chans=[...seen.entries()].sort((a,b)=>a[1]-b[1]);
+    const stride=chans.length||1;
+    chans.sort((a,b)=>a[0]-b[0]).forEach(([ch,first])=>{
+      out.push({file:{lba:f.lba,sectors:total},ch,first,stride,label:`${f.name} ch${ch}`});
+    });
+  }
+  return out;
+}
+function bgmStop(){
+  bgm.gen++; clearInterval(bgm.timer); bgm.timer=null;
+  for(const n of bgm.nodes){ try{ n.stop() }catch(_){} } bgm.nodes=[]; bgm.track=-1;
+}
+async function bgmPlay(idx){
+  bgmStop(); if(idx<0) return;
+  const t=bgm.tracks[idx]; if(!t) return;
+  if(!bgm.ctx){ bgm.ctx=new (window.AudioContext||window.webkitAudioContext)(); bgm.gain=bgm.ctx.createGain(); bgm.gain.connect(bgm.ctx.destination) }
+  await bgm.ctx.resume();
+  bgm.gain.gain.value=bgm.volume;
+  const gen=++bgm.gen; bgm.track=idx; bgm.pos=0; bgm.hist=[[0,0],[0,0]]; bgm.next=bgm.ctx.currentTime+0.15;
+  let busyNow=false;
+  const pump=async()=>{
+    if(busyNow||gen!==bgm.gen) return; busyNow=true;
+    try{
+      while(gen===bgm.gen&&bgm.next-bgm.ctx.currentTime<3){
+        const N=19, buf=bgm.ctx.createBuffer(2,N*2016,37800), L=buf.getChannelData(0), R=buf.getChannelData(1);
+        let n=0, rewinds=0;
+        while(n<N){
+          const k=t.first+bgm.pos*t.stride;
+          const b=k<t.file.sectors?await state.src.readRaw(t.file.lba+k):null;
+          if(gen!==bgm.gen) return;
+          // 音声でない・別のチャンネルになった＝曲の終わり。頭から繰り返す
+          if(!b||!(b[18]&4)||b[17]!==t.ch){ bgm.pos=0; bgm.hist=[[0,0],[0,0]]; if(n===0&&++rewinds<2) continue; break }
+          xaDecodeSector(b,bgm.hist,L,R,n*2016); n++; bgm.pos++;
+        }
+        if(n===0){ bgmStop(); return }   // 音声のセクタが1つも取れない＝この見分けは外れ
+        const srcNode=bgm.ctx.createBufferSource(); srcNode.buffer=buf; srcNode.connect(bgm.gain);
+        const when=Math.max(bgm.next,bgm.ctx.currentTime+0.02); srcNode.start(when,0,n*2016/37800); bgm.next=when+n*2016/37800;
+        bgm.nodes.push(srcNode); srcNode.onended=()=>{ bgm.nodes=bgm.nodes.filter(x=>x!==srcNode) };
+      }
+    }catch(err){ console.error(err); $("status").textContent="BGM を再生できませんでした: "+err.message; bgmStop() }
+    finally{ busyNow=false }
+  };
+  bgm.timer=setInterval(pump,250); pump();
+}
+// ============================================================
+//  入れ子とゲーム独自の圧縮
+// ============================================================
+function unpack(b){
+  const dv=new DataView(b.buffer,b.byteOffset,b.byteLength);
+  const n=dv.getUint32(0,true); if(n<1||n>4096) return null;
+  const offs=[]; for(let i=0;i<=n;i++) offs.push(dv.getUint32(4+i*4,true));
+  if(offs[0]!==4+4*(n+1)) return null;
+  const parts=[]; for(let i=0;i<n;i++) parts.push(b.subarray(offs[i],offs[i+1]));
+  return parts;
+}
+function decompress(data){
+  let pos=0;
+  const peek=n=>{const i=pos>>>3; let v=0,m=1; for(let k=0;k<6;k++){v+=(data[i+k]||0)*m; m*=256} v=Math.floor(v/(1<<(pos&7))); return v%2**n};
+  const get=n=>{const v=peek(n); pos+=n; return v};
+  if(get(8)!==0x0b) throw new Error("圧縮データの形式が違います");
+  const lo=get(16), hi=get(8), total=hi*65536+lo;
+  const out=new Uint8Array(total+512); let op=0, remaining=total;
+  const hist=new Array(16).fill(0), UNIT={1:2,2:2,3:3,4:3,5:4,6:4};
+  while(remaining>0){
+    const chunk=Math.min(remaining,256); remaining-=chunk;
+    const mode=get(4);
+    if(mode===0){ for(let i=0;i<(chunk+3>>2);i++){const w=get(32); out[op++]=w&255; out[op++]=(w>>>8)&255; out[op++]=(w>>>16)&255; out[op++]=(w>>>24)&255} continue }
+    let units=(chunk*8)>>UNIT[mode], s4=0, pend=-1;
+    while(units>0){
+      let w=peek(32)>>>0, used, cnt, val;
+      if((w&1)===0){cnt=1;used=1;w>>>=1}
+      else{ w>>>=1; if((w&1)===0){cnt=2;used=2;w>>>=1} else { w>>>=1; cnt=w&15; w>>>=4; if(cnt){used=6} else {cnt=w&255; w>>>=8; used=14} } }
+      if(mode===1){val=w&15; used+=4}
+      else if(mode===2){ const f=w&1; used+=1; if(!f){val=(w>>>1)&15; used+=4; s4^=1; hist[s4]=val} else {s4^=1; val=hist[s4]} }
+      else if(mode===3){val=w&255; used+=8}
+      else if(mode===4){ const f=w&1; used+=1; w>>>=1; if(!f){val=w&255; used+=8} else {val=hist[w&3]; used+=2} s4=(s4+1)&3; hist[s4]=val }
+      else if(mode===5){val=w&0xffff; used+=16}
+      else { const f=w&1; used+=1; w>>>=1; if(!f){val=w&0xffff; used+=16} else {val=hist[w&15]; used+=4} s4=(s4+1)&15; hist[s4]=val }
+      pos+=used; units-=cnt;
+      if(mode<=2){ for(let k=0;k<cnt;k++){ if(pend<0) pend=val; else {out[op++]=pend|(val<<4); pend=-1} } }
+      else if(mode<=4){ for(let k=0;k<cnt;k++) out[op++]=val }
+      else { for(let k=0;k<cnt;k++){out[op++]=val&255; out[op++]=val>>>8} }
+    }
+  }
+  return out.subarray(0,total);
+}
+// ============================================================
+//  ファイル表さがし
+//  トバル2 では実行ファイルの 0x800CD660 に「8バイト × 0x552 個」の表があり、
+//  1件が { 先頭セクタ, 大きさ<<8 | 種類 } だった。No.1 でも同じ形のはずなので、
+//  実行ファイル全体から「その形の並びが続くところ」を探す。
+// ============================================================
+const MAX_ENTRY=0x800000;      // 1ファイル 8MB を超える表は無いものとして弾く
+const MAX_TYPE=64;
+function exeInfo(exe){
+  const dv=new DataView(exe.buffer,exe.byteOffset,exe.byteLength);
+  const ok=String.fromCharCode(...exe.subarray(0,8))==="PS-X EXE";
+  return {ok, text:ok?dv.getUint32(0x18,true):0, size:ok?dv.getUint32(0x1c,true):0, pc:ok?dv.getUint32(0x10,true):0};
+}
+// 表の1件がどう並んでいるか。トバル2 は前者だったが、No.1 で違っていても拾えるように両方試す
+const TABLE_SHAPES=[
+  {name:"位置 / 大きさ<<8|種類", dec:(a,b)=>({sector:a,size:b>>>8,type:b&0xff})},
+  {name:"位置 / 大きさ",         dec:(a,b)=>({sector:a,size:b,type:0})},
+];
+function findFileTables(exe,arcSize){
+  const dv=new DataView(exe.buffer,exe.byteOffset,exe.byteLength), body=exe.byteLength;
+  const arcSectors=Math.ceil(arcSize/2048), found=[];
+  TABLE_SHAPES.forEach((sh,si)=>{
+    const at=o=>{
+      if(o+8>body) return null;
+      const a=dv.getUint32(o,true), b=dv.getUint32(o+4,true);
+      if(a===0&&b===0) return "hole";                       // 空きスロット。並びは切らさない
+      const e=sh.dec(a,b);
+      if(e.size<8||e.size>MAX_ENTRY||e.type>=MAX_TYPE) return null;
+      if(e.sector>arcSectors||e.sector*2048+e.size>arcSize+2048) return null;
+      return e;
+    };
+    for(const phase of [0,4]){
+      let start=-1, prev=null, count=0, strict=0, holes=0;
+      // 末尾に続く空きスロットは表に含めない（実行ファイルの後ろの 0 埋めを飲み込まないように）
+      const flush=()=>{ const n=count-holes; if(start>=0&&n>=32) found.push({off:start,count:n,strict,shape:si,name:sh.name}); start=-1; count=0; strict=0; holes=0; prev=null };
+      for(let o=phase;o+8<=body;o+=8){
+        const e=at(o);
+        if(e==="hole"){ if(start>=0&&holes<8){ holes++; count++; continue } flush(); continue }
+        if(!e){ flush(); continue }
+        holes=0;
+        if(prev){
+          const nx=prev.sector+Math.ceil(prev.size/2048);
+          if(e.sector>=prev.sector&&e.sector<=nx+4){ if(e.sector===nx) strict++; count++; prev=e; continue }
+        }
+        flush(); start=o; count=1; prev=e;
+      }
+      flush();
+    }
+  });
+  // 「隙間なく詰まっている」割合が高いものほど本物らしい
+  found.sort((a,b)=>(b.strict/b.count-a.strict/a.count)||(b.count-a.count));
+  return found.slice(0,8);
+}
+function readTable(exe,t){
+  const dv=new DataView(exe.buffer,exe.byteOffset,exe.byteLength), dec=TABLE_SHAPES[t.shape||0].dec, out=[];
+  for(let i=0;i<t.count;i++){
+    const a=dv.getUint32(t.off+i*8,true), b=dv.getUint32(t.off+i*8+4,true);
+    out.push({no:i,...dec(a,b)});
+  }
+  return out;
+}
+// ============================================================
+//  ファイルの見分け（先頭だけ読んで種類をあてる）
+// ============================================================
+// トバルの入れ子: 先頭に「部分の数」と「各部分の位置」が並ぶ。
+// モデルのファイルは、その部分0がゲーム独自の圧縮（先頭 0x0b）になっている。
+function classify(head,size){
+  if(head.length>=12){
+    const dv=new DataView(head.buffer,head.byteOffset,head.byteLength), n=dv.getUint32(0,true);
+    if(n>=1&&n<=4096&&4+4*(n+1)<=head.length){
+      const offs=[]; for(let i=0;i<=n;i++) offs.push(dv.getUint32(4+i*4,true));
+      let ok=offs[0]===4+4*(n+1)&&offs[n]===size;
+      for(let i=0;i<n&&ok;i++) if(offs[i+1]<offs[i]||offs[i+1]>size) ok=false;
+      if(ok){
+        const p0=offs[0]<head.length?head[offs[0]]:-1;
+        return {kind:p0===0x0b?"model":"pack", parts:n, packed:p0===0x0b, offs};
+      }
+    }
+  }
+  if(head[0]===0x0b) return {kind:"lz", parts:0};
+  if(head.length>=4&&head[0]===0x10&&head[1]===0&&head[2]===0&&head[3]===0) return {kind:"tim", parts:0};
+  return {kind:"raw", parts:0};
+}
+const KIND_LABEL={model:"モデルらしい",pack:"入れ子",lz:"圧縮",tim:"TIM 画像",raw:"そのまま",err:"読めない"};
+async function probeEntry(e){
+  if(state.probe.has(e.key)) return state.probe.get(e.key);
+  let r;
+  try{ r=classify(await readHead(e,Math.min(e.size,2048)),e.size) }
+  catch(err){ r={kind:"err",parts:0,err:err.message} }
+  state.probe.set(e.key,r); return r;
+}
+// 部分の中から、テクスチャ（VRAM への転送の列）らしいものを探す
+function looksVram(d){
+  if(d.length<16) return false;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength), n=dv.getUint32(0,true);
+  if(n<1||n>512) return false;
+  let o=4;
+  for(let k=0;k<n;k++){
+    if(o+12>d.length) return false;
+    const x=dv.getUint16(o,true), y=dv.getUint16(o+2,true), w=dv.getUint16(o+8,true), h=dv.getUint16(o+10,true);
+    if(x>1023||y>511||w<1||h<1||w>1024||h>512||x+w>1024||y+h>512) return false;
+    o+=12+w*h*2;
+  }
+  return o<=d.length&&o>=d.length-16;
+}
+function findVram(parts){
+  for(let i=1;i<parts.length;i++){
+    let d=parts[i]; if(!d||!d.length) continue;
+    try{ if(d[0]===0x0b) d=decompress(d) }catch(_){ continue }
+    if(looksVram(d)) return {index:i,vram:buildVram(parts[i])};
+  }
+  return {index:-1,vram:new Uint8Array(1024*512*4)};
+}
+// テクスチャ: VRAM への転送の列（x, y, 種類, 0, 幅, 高さ ＋ 16bit×幅×高さ）
+function buildVram(part){
+  const vram=new Uint8Array(1024*512*4);
+  if(!part||!part.length) return vram;
+  let d=part; try{ if(part[0]===0x0b) d=decompress(part) }catch(_){ return vram }
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  let o=4;
+  for(let k=dv.getUint32(0,true);k>0&&o+12<=d.length;k--){
+    const x=dv.getUint16(o,true), y=dv.getUint16(o+2,true), w=dv.getUint16(o+8,true), h=dv.getUint16(o+10,true); o+=12;
+    for(let j=0;j<h;j++) for(let i=0;i<w;i++){ const q=((y+j)*1024+x+i)*4, s=o+(j*w+i)*2; if(x+i<1024&&y+j<512&&s+1<d.length){vram[q]=d[s];vram[q+1]=d[s+1]} }
+    o+=w*h*2;
+  }
+  return vram;
+}
+// ============================================================
+//  モデル（描画命令の列）
+// ============================================================
+function walk(blk){
+  const dv=new DataView(blk.buffer,blk.byteOffset,blk.byteLength);
+  const L={"-3":8,"-7":8,"3":8,"6":8,"1":12,"2":16,"-10":36,"-8":8,"-9":16,"-11":24,"-12":8};
+  const ops=[]; let o=0x20;
+  for(let n=0;n<100000&&o+8<=blk.length;n++){
+    const u=dv.getUint32(o,true), c=dv.getInt32(o,true), a=dv.getInt32(o+4,true);
+    if(((u&0xff000000)>>>0)===0x80000000||c===0) break;
+    if(c===-4){o+=a; continue}
+    if(L[c]){const args=[]; for(let k=4;k<L[c];k+=4) args.push(dv.getInt32(o+k,true)); ops.push([c,args]); o+=L[c]; continue}
+    if(c>=7&&c<=70){ops.push([c,[a]]); o+=8; continue}
+    break;
+  }
+  return ops;
+}
+const mat=(A,B)=>{const r=new Array(9); for(let i=0;i<3;i++)for(let j=0;j<3;j++)r[i*3+j]=A[i*3]*B[j]+A[i*3+1]*B[3+j]+A[i*3+2]*B[6+j]; return r};
+const apply=(R,v)=>[R[0]*v[0]+R[1]*v[1]+R[2]*v[2],R[3]*v[0]+R[4]*v[1]+R[5]*v[2],R[6]*v[0]+R[7]*v[1]+R[8]*v[2]];
+function ortho(R){
+  const n=v=>{const l=Math.hypot(...v)||1; return v.map(x=>x/l)};
+  const x=n([R[0],R[3],R[6]]), b=[R[1],R[4],R[7]], d=x[0]*b[0]+x[1]*b[1]+x[2]*b[2];
+  const y=n([b[0]-d*x[0],b[1]-d*x[1],b[2]-d*x[2]]), z=[x[1]*y[2]-x[2]*y[1],x[2]*y[0]-x[0]*y[2],x[0]*y[1]-x[1]*y[0]];
+  return [x[0],y[0],z[0],x[1],y[1],z[1],x[2],y[2],z[2]];
+}
+function bonesFromBlock(blk){
+  const dv=new DataView(blk.buffer,blk.byteOffset,blk.byteLength);
+  const h11=dv.getUint32(0x2c,true);
+  if(h11<8||h11+0x30>blk.length) return Array.from({length:41},()=>[0,0,0]);   // 骨の表が無い／壊れているとき
+  const size=Math.max(0,Math.min(dv.getUint32(h11+0x2c,true),blk.length-h11-0x30)), base=h11+0x30, bones=[];
+  for(let k=0;k<Math.max(41,size/8);k++) bones.push(k<size/8?[dv.getInt16(base+k*8,true),dv.getInt16(base+k*8+2,true),dv.getInt16(base+k*8+4,true)]:[0,0,0]);
+  return bones;
+}
+function pose(bones,local=REST_LOCAL){
+  const W={};
+  for(const s of SLOT_ORDER){
+    const [p,bi]=SLOTS[s];
+    let L=local[s]||I3; if(FIXED[s]) L=mat(FIXED[s],L);
+    if(p===null){W[s]={R:mat(ROOT,L),T:[0,0,0]}; continue}
+    const P=W[p], off=apply(P.R,bi===null?[0,0,0]:bones[bi]);
+    W[s]={R:mat(P.R,L),T:[P.T[0]+off[0],P.T[1]+off[1],P.T[2]+off[2]]};
+  }
+  return finishSlots(W,bones);
+}
+// 主要な枠（0〜17, 30, 31）から、胸・頭・中間の枠や付属部品の枠を足す
+function finishSlots(W,bones){
+  if(!W[41]) W[41]={R:mat(W[10].R,RZ180),T:W[10].T};
+  if(!W[42]) W[42]={R:mat(W[11].R,FIXED[42]),T:W[11].T};
+  for(const [m,[a,b]] of Object.entries(MID)) if(!W[m]) W[m]={R:ortho(W[a].R.map((v,i)=>(v+W[b].R[i])/2)),T:W[b].T};
+  // 眼球（勝利モデルだけ骨の表の 36・37 に位置が入る）。首の枠からの位置で、向きは首と同じ
+  for(const [s,bi] of [[80,36],[81,37]]){
+    const b=bones[bi]; if(!b||b[0]===-25600) continue;
+    const off=apply(W[11].R,b); W[s]={R:W[11].R,T:[W[11].T[0]+off[0],W[11].T[1]+off[1],W[11].T[2]+off[2]]};
+  }
+  // 腰から垂れる部品（58・59番。試合中はゆれるが、基本は胴の枠を Z 軸で半回転した向き。メモリの行列から求めた）
+  W[68]=W[69]={R:mat(W[10].R,RZ180),T:W[10].T};
+  // しっぽ（イール）: 骨の表 20 が腰からの付け根、21〜24 が各節の長さ。基本はまっすぐ後ろ向き
+  if(bones[20]&&bones[20][0]!==-25600){
+    const off=apply(W[1].R,bones[20]); let prev={R:mat(W[1].R,[0,1,0,-1,0,0,0,0,1]),T:[W[1].T[0]+off[0],W[1].T[1]+off[1],W[1].T[2]+off[2]]};
+    W[20]=prev;
+    for(let k=21;k<=24;k++){ const o=apply(prev.R,bones[k]); prev={R:prev.R,T:[prev.T[0]+o[0],prev.T[1]+o[1],prev.T[2]+o[2]]}; W[k]=prev }
+  }
+  // 2P モデルの中心線の頂点（62番）: 左右の太ももの中間
+  W[51]={R:ortho(W[2].R.map((v,i)=>(v+W[6].R[i])/2)),T:W[2].T.map((v,i)=>(v+W[6].T[i])/2)};
+  return W;
+}
+function buildMesh(blk,W){
+  const dv=new DataView(blk.buffer,blk.byteOffset,blk.byteLength);
+  const h=k=>dv.getUint32(k*4,true);
+  W=W||pose(bonesFromBlock(blk));
+  const jointMat=j=>{const s=DLMAP[j]; return (s!==undefined&&W[s])||W[42]};
+  const PRIM={24:[3,8,1],25:[4,8,1],28:[3,20,1],29:[4,20,1],32:[3,4,0],33:[4,4,0],34:[3,16,0],35:[4,16,0]};
+  let vp=h(5)+16, fp=h(4)+16, cp=h(7)+16, cur=W[42];
+  const verts=[], vcol=[], slot={}, slotcol={}, pos=[], col=[], t0=[], t1=[], sm=[];
+  const TEXTURED={28:1,29:1,34:1,35:1};
+  for(const [c,a] of walk(blk)){
+   try{
+    if(c===-3) cur=jointMat(a[0]);
+    else if(c===-7) cp+=a[0];
+    else if(c===1||c===2){
+      const [s0,n]=a;
+      for(let k=0;k<n;k++){
+        const v=[dv.getInt16(vp+k*8,true),dv.getInt16(vp+k*8+2,true),dv.getInt16(vp+k*8+4,true)];
+        const r=apply(cur.R,v);
+        if(c===2){slotcol[s0+k]=[blk[cp],blk[cp+1],blk[cp+2]]; cp+=4}
+        slot[s0+k]=verts.length; verts.push([r[0]+cur.T[0],r[1]+cur.T[1],r[2]+cur.T[2]]); vcol.push(slotcol[s0+k]||null);  // 座標はそのまま使う（ベルトの文字が正しく読める向き）
+      }
+      vp+=n*8;
+    } else if(PRIM[c]){
+      const [nv,sz,flat]=PRIM[c];
+      for(let p=0;p<a[0];p++){
+        const w=dv.getUint32(fp,true), idx=[w&255,(w>>>8)&255,(w>>>16)&255,(w>>>24)&255].slice(0,nv);
+        let fc=null, uvs=null, tp=[0,0,0,0,0];
+        if(TEXTURED[c]){
+          // UV0, パレット位置, UV1, テクスチャページ, UV2, UV3（単色テクスチャ面は語1が色ではないので無視）
+          const q=fp+(flat?8:4), clut=dv.getUint16(q+2,true), page=dv.getUint16(q+6,true);
+          uvs=[[blk[q],blk[q+1]],[blk[q+4],blk[q+5]],[blk[q+8],blk[q+9]],[blk[q+10],blk[q+11]]];
+          tp=[[4,8,16,16][(page>>7)&3],(page&15)*64,((page>>4)&1)*256,(clut&63)*16,clut>>6];
+        }
+        if(flat){ // 語1 = 法線の番号(下位8bit) と 色の番号(次の8bit)。色は現在の色の列から ×4 バイト目（ゲームの描画処理 0x800248a0 と同じ）
+          const ci=cp+((dv.getUint32(fp+4,true)>>>8)&255)*4; fc=[blk[ci],blk[ci+1],blk[ci+2]] }
+        fp+=sz;
+        if(!idx.every(i=>slot[i]!==undefined)) continue;
+        const vi=idx.map(i=>slot[i]);
+        const tris=nv===3?[[0,1,2]]:[[0,1,3],[1,2,3]];   // 四角形はデータの輪の順。GPU へは 0,1,3,2 で送られる
+        if(!fc){ const cs=vi.map(v=>vcol[v]).filter(Boolean); if(cs.length) fc=[0,1,2].map(ch=>cs.reduce((t,x)=>t+x[ch],0)/cs.length) }
+        for(let q=0;q<tris.length;q++) sm.push(flat?0:1);
+        for(const t of tris) for(const k of t){ pos.push(...verts[vi[k]]); col.push(...(flat?fc:vcol[vi[k]]||fc||[128,128,128]));
+          if(uvs){ t0.push(uvs[k][0],uvs[k][1],tp[0]); t1.push(tp[1],tp[2],tp[3],tp[4]) } else { t0.push(0,0,0); t1.push(0,0,0,0) } }
+      }
+    }
+   }catch(_e){ break }   // 想定と違う並びのファイルでも、読めたところまでは見せる
+  }
+  return {pos:new Float32Array(pos), col:new Float32Array(col.map(x=>x/255)), t0:new Float32Array(t0), t1:new Float32Array(t1), sm:new Uint8Array(sm)};
+}
+// ============================================================
+//  WebGL
+// ============================================================
+const canvas=document.getElementById("gl");
+const gl=canvas.getContext("webgl",{antialias:true,preserveDrawingBuffer:true});
+const VS=`attribute vec3 p;attribute vec3 n;attribute vec3 c;attribute vec3 t0;attribute vec4 t1;uniform mat4 mvp;uniform mat4 model;
+varying vec3 vc;varying vec3 vn;varying vec3 vt0;varying vec4 vt1;
+void main(){gl_Position=mvp*vec4(p,1.);vc=c;vn=mat3(model)*n;vt0=t0;vt1=t1;}`;
+// VRAM は 16bit の語を R=下位 G=上位 に入れてあり、パレット引きもシェーダで行う
+const FS=`precision highp float;varying vec3 vc;varying vec3 vn;varying vec3 vt0;varying vec4 vt1;uniform sampler2D vram;
+float word(vec2 q){vec4 t=texture2D(vram,(q+.5)/vec2(1024.,512.));return floor(t.r*255.+.5)+floor(t.g*255.+.5)*256.;}
+void main(){
+  vec3 N=normalize(vn);vec3 L1=normalize(vec3(.4,.8,.6));vec3 L2=normalize(vec3(-.6,.2,-.5));
+  float d=abs(dot(N,L1))*.75+abs(dot(N,L2))*.25;
+  float mode=floor(vt0.z+.5);vec3 base;
+  if(mode<1.){base=vc;}
+  else{
+    float u=floor(vt0.x),v=floor(vt0.y);vec4 t=floor(vt1+.5);float w;
+    if(mode<5.){float m=mod(u,4.);w=word(vec2(t.x+floor(u/4.),t.y+v));w=mod(floor(w/(m<.5?1.:m<1.5?16.:m<2.5?256.:4096.)),16.);w=word(vec2(t.z+w,t.w));}
+    else if(mode<9.){float m=mod(u,2.);w=word(vec2(t.x+floor(u/2.),t.y+v));w=mod(floor(w/(m<.5?1.:256.)),256.);w=word(vec2(t.z+w,t.w));}
+    else{w=word(vec2(t.x+u,t.y+v));}
+    if(w<.5)discard;
+    vec3 tex=vec3(mod(w,32.),mod(floor(w/32.),32.),mod(floor(w/1024.),32.))/31.;
+    base=tex*vc*(255./128.);   // テクスチャ × 頂点色/128（PS1 と同じ）。頂点色だけの面と明るさの基準を揃える
+  }
+  gl_FragColor=vec4(min(base*(.55+.6*d),vec3(1.)),1.);
+}`;
+function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))throw gl.getShaderInfoLog(o);return o}
+const prog=gl.createProgram(); gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS)); gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS)); gl.linkProgram(prog); gl.useProgram(prog);
+// 描く物の層: 0 = 選んだキャラ、1 = 投げの相手。テクスチャ（VRAM）は層ごとに持つ
+function makeLayer(){
+  const tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex);
+  for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.NEAREST],[gl.TEXTURE_MAG_FILTER,gl.NEAREST],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
+  return {bufs:{p:gl.createBuffer(),n:gl.createBuffer(),c:gl.createBuffer(),t0:gl.createBuffer(),t1:gl.createBuffer()},tex,count:0,vram:null};
+}
+const layers=[makeLayer()];
+let triCount=0, center=[0,0,0], radius=1000;
+const view={yaw:0,pitch:0.08,dist:1,pan:[0,0,0]};
+const cam={s:[1,0,0],u:[0,1,0],half:1};   // 描画時のカメラの右・上方向と、注視点の面での画面の半分の高さ
+const shading={gouraud:false};
+try{ shading.gouraud=localStorage.getItem("t1gouraud")==="1" }catch(_){}
+function upload(mesh,fit=true,li=0){
+  const L=layers[li];
+  const P=mesh.pos, N=new Float32Array(P.length);
+  let mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+  for(let i=0;i<P.length;i+=9){
+    const ax=P[i+3]-P[i],ay=P[i+4]-P[i+1],az=P[i+5]-P[i+2],bx=P[i+6]-P[i],by=P[i+7]-P[i+1],bz=P[i+8]-P[i+2];
+    let nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx; const l=Math.hypot(nx,ny,nz)||1; nx/=l;ny/=l;nz/=l;
+    for(let k=0;k<3;k++){N[i+k*3]=nx;N[i+k*3+1]=ny;N[i+k*3+2]=nz; for(let a=0;a<3;a++){mn[a]=Math.min(mn[a],P[i+k*3+a]);mx[a]=Math.max(mx[a],P[i+k*3+a])}}
+  }
+  if(shading.gouraud&&mesh.sm){
+    const acc=new Map(), key=i=>Math.round(P[i])+","+Math.round(P[i+1])+","+Math.round(P[i+2]);
+    for(let t=0,i=0;i<P.length;t++,i+=9){ if(!mesh.sm[t]) continue;
+      for(let k=0;k<3;k++){ const kk=key(i+k*3); let a=acc.get(kk); if(!a){a=[0,0,0];acc.set(kk,a)}
+        const s=(a[0]*N[i]+a[1]*N[i+1]+a[2]*N[i+2])<0?-1:1; a[0]+=s*N[i]; a[1]+=s*N[i+1]; a[2]+=s*N[i+2] } }
+    for(let t=0,i=0;i<P.length;t++,i+=9){ if(!mesh.sm[t]) continue;
+      for(let k=0;k<3;k++){ const a=acc.get(key(i+k*3)), l=Math.hypot(a[0],a[1],a[2])||1; N[i+k*3]=a[0]/l; N[i+k*3+1]=a[1]/l; N[i+k*3+2]=a[2]/l } }
+  }
+  if(fit){ center=mn.map((v,a)=>(v+mx[a])/2); radius=Math.hypot(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2])/2; view.pan=[0,0,0] }
+  if(mesh.vram&&L.vram!==mesh.vram){ gl.bindTexture(gl.TEXTURE_2D,L.tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1024,512,0,gl.RGBA,gl.UNSIGNED_BYTE,mesh.vram); L.vram=mesh.vram }
+  for(const [k,data] of [["p",P],["n",N],["c",mesh.col],["t0",mesh.t0],["t1",mesh.t1]]){gl.bindBuffer(gl.ARRAY_BUFFER,L.bufs[k]);gl.bufferData(gl.ARRAY_BUFFER,data,gl.DYNAMIC_DRAW)}
+  L.count=P.length/3; if(li===0) triCount=L.count;
+}
+function persp(f,a,n,fa){const t=1/Math.tan(f/2);return[t/a,0,0,0, 0,t,0,0, 0,0,(fa+n)/(n-fa),-1, 0,0,2*fa*n/(n-fa),0]}
+function mul4(a,b){const r=new Array(16).fill(0);for(let i=0;i<4;i++)for(let j=0;j<4;j++)for(let k=0;k<4;k++)r[j*4+i]+=a[k*4+i]*b[j*4+k];return r}
+function draw(){
+  const dpr=Math.min(devicePixelRatio,2), w=canvas.clientWidth*dpr|0, h=canvas.clientHeight*dpr|0;
+  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h}
+  gl.viewport(0,0,w,h); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+  if(!triCount) return;
+  const d=radius*2.9*view.dist*Math.max(1,0.8*h/w), cy=Math.cos(view.pitch), tg=center.map((v,i)=>v+view.pan[i]);   // 縦長の画面では引いて横幅も収める
+  const eye=[tg[0]+d*cy*Math.cos(view.yaw),tg[1]+d*Math.sin(view.pitch),tg[2]+d*cy*Math.sin(view.yaw)];
+  const f=tg.map((v,i)=>v-eye[i]); const fl=Math.hypot(...f); f.forEach((v,i)=>f[i]=v/fl);
+  let s=[f[1]*0-f[2]*1,f[2]*0-f[0]*0,f[0]*1-f[1]*0]; const sl=Math.hypot(...s); s=s.map(v=>v/sl);
+  const u=[s[1]*f[2]-s[2]*f[1],s[2]*f[0]-s[0]*f[2],s[0]*f[1]-s[1]*f[0]];
+  const V=[s[0],u[0],-f[0],0, s[1],u[1],-f[1],0, s[2],u[2],-f[2],0, -(s[0]*eye[0]+s[1]*eye[1]+s[2]*eye[2]),-(u[0]*eye[0]+u[1]*eye[1]+u[2]*eye[2]),(f[0]*eye[0]+f[1]*eye[1]+f[2]*eye[2]),1];
+  cam.s=s; cam.u=u; cam.half=d*Math.tan(0.31); cam.aspect=w/h;
+  const P=persp(0.62,w/h,radius*0.02,radius*20);
+  gl.uniformMatrix4fv(gl.getUniformLocation(prog,"mvp"),false,mul4(P,V));
+  gl.uniformMatrix4fv(gl.getUniformLocation(prog,"model"),false,[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
+  for(const L of layers){
+    if(!L.count) continue;
+    gl.bindTexture(gl.TEXTURE_2D,L.tex);
+    for(const [k,size] of [["p",3],["n",3],["c",3],["t0",3],["t1",4]]){const loc=gl.getAttribLocation(prog,k); gl.bindBuffer(gl.ARRAY_BUFFER,L.bufs[k]); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,size,gl.FLOAT,false,0,0)}
+    gl.drawArrays(gl.TRIANGLES,0,L.count);
+  }
+}
+// 操作: 左ドラッグ=回転、右ドラッグ／Shift＋ドラッグ／中ボタン=移動、ホイール=カーソル位置へ拡大、2本指=移動と拡大
+const pointers=new Map(); let dragMode=null;
+function panBy(dx,dy){   // 画面上の移動量(CSS px)だけ注視点をずらす
+  const k=2*cam.half/canvas.clientHeight;
+  for(let i=0;i<3;i++) view.pan[i]-=(cam.s[i]*dx-cam.u[i]*dy)*k;
+}
+function zoomAt(factor,cx,cy){   // cx, cy = キャンバス内の位置(CSS px)。その点が画面上で動かないように拡大する
+  const nd=Math.max(0.06,Math.min(3,view.dist*factor)), real=nd/view.dist;
+  const ox=(cx-canvas.clientWidth/2), oy=(cy-canvas.clientHeight/2);
+  panBy(-ox*(1-real),-oy*(1-real));
+  view.dist=nd;
+}
+canvas.addEventListener("contextmenu",e=>e.preventDefault());
+canvas.addEventListener("pointerdown",e=>{
+  try{ canvas.setPointerCapture(e.pointerId) }catch(_){}
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  dragMode=pointers.size>=2?"pinch":(e.button===2||e.button===1||e.shiftKey)?"pan":"rotate";
+});
+canvas.addEventListener("pointermove",e=>{
+  const p=pointers.get(e.pointerId); if(!p) return;
+  if(dragMode==="pinch"&&pointers.size>=2){
+    const [a,b]=[...pointers.values()], before=Math.hypot(a.x-b.x,a.y-b.y), mx0=(a.x+b.x)/2, my0=(a.y+b.y)/2;
+    p.x=e.clientX; p.y=e.clientY;
+    const [c,d]=[...pointers.values()], after=Math.hypot(c.x-d.x,c.y-d.y), mx1=(c.x+d.x)/2, my1=(c.y+d.y)/2;
+    panBy(mx1-mx0,my1-my0);
+    const r=canvas.getBoundingClientRect();
+    if(before>0&&after>0) zoomAt(before/after,mx1-r.left,my1-r.top);
+  } else {
+    const dx=e.clientX-p.x, dy=e.clientY-p.y; p.x=e.clientX; p.y=e.clientY;
+    if(dragMode==="pan") panBy(dx,dy);
+    else if(dragMode==="rotate"){ view.yaw+=dx*0.01; view.pitch=Math.max(-1.3,Math.min(1.3,view.pitch+dy*0.01)) }
+  }
+  draw();
+});
+for(const t of ["pointerup","pointercancel"]) canvas.addEventListener(t,e=>{ pointers.delete(e.pointerId); if(pointers.size===0) dragMode=null; else if(dragMode==="pinch") dragMode="pan" });
+canvas.addEventListener("wheel",e=>{ e.preventDefault(); const r=canvas.getBoundingClientRect(); zoomAt(Math.exp(e.deltaY*(e.ctrlKey?0.01:0.001)),e.clientX-r.left,e.clientY-r.top); draw() },{passive:false});
+function resetView(){view.yaw=0;view.pitch=0.08;view.dist=1;view.pan=[0,0,0];draw()}
+canvas.addEventListener("dblclick",resetView);
+// ダブルタップで戻す（iPhone では dblclick が来ないため）
+let lastTap={t:0,x:0,y:0}, tapStart=null;
+canvas.addEventListener("pointerdown",e=>{ if(e.pointerType==="touch") tapStart={t:performance.now(),x:e.clientX,y:e.clientY,multi:pointers.size>1} },true);
+canvas.addEventListener("pointerup",e=>{
+  if(e.pointerType!=="touch"||!tapStart) return;
+  const now=performance.now(), moved=Math.hypot(e.clientX-tapStart.x,e.clientY-tapStart.y);
+  if(!tapStart.multi&&moved<10&&now-tapStart.t<250){
+    if(now-lastTap.t<350&&Math.hypot(e.clientX-lastTap.x,e.clientY-lastTap.y)<40){ resetView(); lastTap.t=0; }
+    else lastTap={t:now,x:e.clientX,y:e.clientY};
+  }
+  tapStart=null;
+});
+if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
+addEventListener("resize",draw);
+// ============================================================
+//  一覧と表示
+// ============================================================
+const FLAT_W=new Proxy({},{get:()=>({R:I3,T:[0,0,0]})});   // 「関節を使わない」= どの枠も向き・位置なし
+async function readHead(e,n){ return e.src==="iso"?await state.src.readIso(e.iso,n):await state.src.readArc(e.sector,n) }
+function clearMesh(){ layers[0].count=0; triCount=0 }
+async function readFull(e){
+  if(state.cache.has(e.key)) return state.cache.get(e.key);
+  const d=e.src==="iso"?await state.src.readIso(e.iso):await state.src.readArc(e.sector,e.size);
+  if(state.cache.size>24) state.cache.delete(state.cache.keys().next().value);
+  state.cache.set(e.key,d); return d;
+}
+// 読み込んだファイルからモデルを組む。途中で分かったことは info に集める（解析の表示用）
+function buildModel(raw){
+  const info={parts:0,partSizes:[],texIndex:-1,decLen:0,ops:0,tris:0,bones:0,rig:state.rig};
+  let parts=unpack(raw), body=null;
+  if(parts){ info.parts=parts.length; info.partSizes=parts.map(p=>p.length); body=parts[0] }
+  else { parts=[raw]; info.parts=1; info.partSizes=[raw.length]; body=raw }
+  if(!body||!body.length) throw new Error("中身が空でした");
+  const out=body[0]===0x0b?decompress(body):body;
+  info.decLen=out.length;
+  info.compressed=body[0]===0x0b;
+  const blk=new Uint8Array(out.length+8); blk.set(out,8); new DataView(blk.buffer).setUint32(0,out.length+8,true);
+  const bones=bonesFromBlock(blk);
+  info.bones=bones.filter(b=>b[0]!==0||b[1]!==0||b[2]!==0).length;
+  const ops=walk(blk); info.ops=ops.length;
+  info.opcodes=[...ops.reduce((m,[c])=>m.set(c,(m.get(c)||0)+1),new Map()).entries()].sort((a,b)=>a[0]-b[0]);
+  let W=FLAT_W;
+  if(state.rig!=="flat"){ try{ W=pose(bones) }catch(_){ W=FLAT_W; info.rig="flat（骨格を組めなかった）" } }
+  const mesh=buildMesh(blk,W);
+  info.tris=mesh.pos.length/9;
+  if(!info.tris) throw new Error("三角形が1つも取れませんでした（モデルのファイルではないかもしれません）");
+  const tex=findVram(parts); info.texIndex=tex.index; mesh.vram=tex.vram;
+  return {mesh,info};
+}
+// ---- 一覧を組み直す ----
+function typeStats(list){
+  const m=new Map();
+  for(const e of list){ const t=m.get(e.type)||{type:e.type,count:0,model:0,probed:0}; t.count++; m.set(e.type,t) }
+  for(const e of list){ const p=state.probe.get(e.key); if(!p) continue; const t=m.get(e.type); t.probed++; if(p.kind==="model") t.model++ }
+  return [...m.values()].sort((a,b)=>a.type-b.type);
+}
+const typeIsModel=t=>{ const s=state.stats&&state.stats.find(x=>x.type===t); return !!(s&&s.probed&&s.model/s.probed>=0.5) };
+const entryIsModel=e=>{ const p=state.probe.get(e.key); return p?p.kind==="model":typeIsModel(e.type) };
+function rebuildEntries(){
+  if(state.source==="iso"){
+    state.entries=(state.src.iso||[]).map((f,i)=>({key:"iso"+i,src:"iso",iso:f,no:i,name:f.path,size:f.size,type:0}));
+  } else {
+    const t=state.tables[state.tableIdx];
+    state.entries=t?readTable(state.src.exe,t).filter(e=>e.size>0).map(e=>({...e,key:"arc"+e.no,src:"arc",name:"#"+e.no})):[];
+  }
+  state.stats=typeStats(state.entries);
+}
+function fillTypeFilter(){
+  const sel=$("type-filter"), keep=sel.value;
+  const opts=['<option value="">すべての種類</option>'];
+  for(const s of state.stats) opts.push(`<option value="${s.type}">種類 ${s.type}　${s.count}件${s.probed?"　"+(s.model/s.probed>=0.5?"モデルらしい":"モデルではなさそう"):""}</option>`);
+  sel.innerHTML=opts.join("");
+  sel.value=[...sel.options].some(o=>o.value===keep)?keep:"";
+  sel.parentElement.hidden=state.stats.length<2;
+}
+function visibleEntries(){
+  const ft=$("type-filter").value, only=$("model-only").checked;
+  return state.entries.filter(e=>(ft===""||String(e.type)===ft)&&(!only||entryIsModel(e)));
+}
+function renderFiles(){
+  const box=$("files"); box.textContent="";
+  const list=visibleEntries(), shown=list.slice(0,600);
+  for(const e of shown){
+    const b=document.createElement("button");
+    b.dataset.key=e.key; b.setAttribute("aria-pressed",String(e.key===(state.entries[state.sel]||{}).key));
+    const p=state.probe.get(e.key);
+    const no=document.createElement("span"); no.className="no"; no.textContent=e.src==="iso"?"":"#"+e.no;
+    const nm=document.createElement("span"); nm.className="nm";
+    nm.textContent=e.src==="iso"?e.name:`種類 ${e.type}${p?"　"+KIND_LABEL[p.kind]:""}`;
+    const sz=document.createElement("span"); sz.className="sz"; sz.textContent=fmtSize(e.size);
+    b.append(no,nm,sz);
+    b.onclick=()=>{ selectEntry(state.entries.indexOf(e)); if(mobileMQ.matches) closeSheet() };
+    box.append(b);
+  }
+  $("file-count").textContent=`${list.length} 件${list.length>shown.length?`（先頭 ${shown.length} 件を表示）`:""}`;
+}
+// ---- 表示 ----
+async function selectEntry(i){
+  const e=state.entries[i]; if(!e) return;
+  state.sel=i; state.selInfo=null; state.selErr="";
+  for(const b of $("files").children) if(b.dataset) b.setAttribute("aria-pressed",String(b.dataset.key===e.key));
+  busy("読み込み中…");
+  try{
+    const raw=await readFull(e);
+    const {mesh,info}=buildModel(raw);
+    state.selInfo=info;
+    upload(mesh); draw();
+  }catch(err){
+    state.selErr=err.message; console.error(err);
+    clearMesh(); draw();
+  }
+  busy(""); updateStatus(); updateReport();
+}
+function entryLabel(e){ return e?(e.src==="iso"?e.name:`#${e.no}　種類 ${e.type}`):"" }
+function updateStatus(){
+  const e=state.entries[state.sel];
+  if(!e){ $("status").textContent="左の一覧からファイルを選んでください"; return }
+  $("status").textContent=state.selErr?`${entryLabel(e)}　— ${state.selErr}`
+    :`${entryLabel(e)}　${fmtSize(e.size)}　三角形 ${state.selInfo?state.selInfo.tris.toLocaleString():0}`;
+}
+function fileBase(){
+  const e=state.entries[state.sel];
+  return ("tobal1_"+(e?(e.src==="iso"?e.name.replace(/\W+/g,"_"):`f${e.no}_t${e.type}`):"model")).replace(/[\\/:*?"<>|\s]/g,"_");
+}
+// ---- 解析の表示 ----
+function updateReport(){
+  const s=state.src; if(!s) return;
+  const L=[], ex=exeInfo(s.exe);
+  L.push("トバルNo.1 モデルビューア v0.1.0 ・ 解析結果");
+  L.push("");
+  L.push(`読み込み元: ${s.kind} / ${s.discName}`);
+  L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
+  L.push(`アーカイブ: ${s.arcName}  ${fmtSize(s.arcSize)}`);
+  L.push("");
+  L.push(`ファイル表の候補 (${state.tables.length}件):`);
+  if(!state.tables.length) L.push("  見つかりませんでした");
+  state.tables.forEach((t,i)=>{
+    const addr=ex.ok?hex(ex.text+(t.off-0x800)):`file+${hex(t.off)}`;
+    L.push(`  ${i===state.tableIdx?"→":" "} [${i+1}] ${addr}  ${t.count}件  詰まり ${(100*t.strict/Math.max(1,t.count-1)).toFixed(0)}%  ${t.name}`);
+  });
+  L.push("");
+  L.push(`一覧: ${state.source==="iso"?"ディスクのファイル":"アーカイブのファイル表"}  ${state.entries.length}件`);
+  const st=state.stats||[];
+  if(state.source!=="iso"&&st.length){
+    L.push("種類ごと（件数 / 調べた数 / モデルらしい数）:");
+    for(const t of st) L.push(`  種類 ${String(t.type).padStart(3)} : ${String(t.count).padStart(5)} / ${String(t.probed).padStart(4)} / ${String(t.model).padStart(4)}`);
+  }
+  const e=state.entries[state.sel], inf=state.selInfo;
+  L.push("");
+  L.push("選んでいるファイル: "+(e?`${entryLabel(e)}  sector ${e.sector!==undefined?e.sector:"-"}  ${fmtSize(e.size)}`:"なし"));
+  if(state.selErr) L.push("  → 表示できず: "+state.selErr);
+  if(inf){
+    L.push(`  部分 ${inf.parts}  [${inf.partSizes.join(", ")}]`);
+    L.push(`  部分0: ${inf.compressed?"圧縮あり":"圧縮なし"}  展開後 ${inf.decLen} B`);
+    L.push(`  テクスチャの部分: ${inf.texIndex<0?"見つからず":inf.texIndex}`);
+    L.push(`  描画命令 ${inf.ops}  三角形 ${inf.tris}  骨 ${inf.bones}  骨格 ${inf.rig}`);
+    if(inf.opcodes) L.push("  命令の内訳: "+inf.opcodes.map(([c,n])=>`${c}×${n}`).join(" "));
+  }
+  if(s.iso&&s.iso.length){
+    L.push("");
+    L.push(`ディスクのファイル (${s.iso.length}件):`);
+    for(const f of s.iso.slice(0,80)) L.push(`  ${f.path||f.name}  ${fmtSize(f.size)}`);
+    if(s.iso.length>80) L.push(`  …ほか ${s.iso.length-80} 件`);
+  }
+  if(bgm.tracks.length) L.push("", `XA: ${bgm.tracks.length} チャンネル`);
+  $("report").value=L.join("\n");
+}
+// ---- 調べる ----
+async function probeSamples(){
+  const byType=new Map();
+  for(const e of state.entries){ const a=byType.get(e.type)||[]; if(a.length<6) a.push(e); byType.set(e.type,a) }
+  let n=0, total=[...byType.values()].reduce((t,a)=>t+a.length,0);
+  for(const arr of byType.values()) for(const e of arr){ await probeEntry(e); if(++n%8===0){ busy(`ファイルの種類を調べています… ${n}/${total}`); await idle() } }
+  state.stats=typeStats(state.entries);
+}
+let scanning=false;
+async function scanAll(){
+  if(scanning){ scanning=false; return }
+  scanning=true; $("scan-all").textContent="やめる";
+  const list=state.entries;
+  for(let i=0;i<list.length&&scanning;i++){
+    await probeEntry(list[i]);
+    if(i%16===0){ busy(`調べています… ${i}/${list.length}`); await idle() }
+  }
+  scanning=false; $("scan-all").textContent="全部のファイルを調べる";
+  busy(""); state.stats=typeStats(state.entries); fillTypeFilter(); renderFiles(); updateReport();
+}
+// ---- 読み込み ----
+async function start(files){
+  $("err").textContent="";
+  try{
+    busy("ディスクを読んでいます…");
+    state.src=await openSource(files);
+    state.cache.clear(); state.probe.clear();
+    const ex=exeInfo(state.src.exe);
+    state.tables=state.src.readArc&&ex.ok?findFileTables(state.src.exe,state.src.arcSize):[];
+    state.tableIdx=0;
+    state.source=state.tables.length?"table":"iso";
+    $("drop").hidden=true; $("side").hidden=false; $("hint").hidden=false; $("shot-box").hidden=false; $("bg-box").hidden=false;
+    document.body.classList.add("loaded"); applyLayout();
+    $("src-note").textContent=state.tables.length
+      ? `実行ファイルの中にファイル表らしい並びが ${state.tables.length} 個ありました。いちばんそれらしいものを選んでいます。`
+      : "ファイル表が見つからなかったので、ディスクのファイルをそのまま並べています。";
+    for(const b of $("src-seg").children) b.setAttribute("aria-pressed",String(b.dataset.v===state.source));
+    $("table-pick").innerHTML=state.tables.map((t,i)=>{
+      const addr=ex.ok?hex(ex.text+(t.off-0x800)):hex(t.off);
+      return `<option value="${i}">[${i+1}] ${addr}　${t.count}件　詰まり ${(100*t.strict/Math.max(1,t.count-1)).toFixed(0)}%　${t.name}</option>`;
+    }).join("")||'<option value="-1">候補なし</option>';
+    rebuildEntries();
+    busy("ファイルの種類を調べています…");
+    await probeSamples();
+    fillTypeFilter(); renderFiles();
+    busy("BGM を探しています…");
+    bgm.tracks=state.src.readRaw?await bgmScan(state.src):[];
+    $("bgm-box").hidden=!bgm.tracks.length;
+    $("bgm").innerHTML='<option value="-1">なし</option>'+bgm.tracks.map((t,i)=>`<option value="${i}">${t.label}</option>`).join("");
+    busy("");
+    const first=state.entries.findIndex(entryIsModel);
+    if(first>=0) await selectEntry(first); else { updateStatus(); updateReport() }
+  }catch(err){ busy(""); $("err").textContent=err.message; console.error(err) }
+}
+// ---- 操作 ----
+$("src-seg").onclick=async e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  state.source=b.dataset.v; state.sel=-1;
+  for(const x of $("src-seg").children) x.setAttribute("aria-pressed",String(x===b));
+  rebuildEntries(); busy("調べています…"); await probeSamples(); busy("");
+  fillTypeFilter(); renderFiles(); updateReport();
+};
+$("rig-seg").onclick=e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  state.rig=b.dataset.v;
+  for(const x of $("rig-seg").children) x.setAttribute("aria-pressed",String(x===b));
+  if(state.sel>=0) selectEntry(state.sel);
+};
+$("table-pick").onchange=async e=>{
+  const i=+e.target.value; if(i<0) return;
+  state.tableIdx=i; state.source="table"; state.sel=-1; state.probe.clear();
+  for(const x of $("src-seg").children) x.setAttribute("aria-pressed",String(x.dataset.v==="table"));
+  rebuildEntries(); busy("調べています…"); await probeSamples(); busy("");
+  fillTypeFilter(); renderFiles(); updateReport();
+  const first=state.entries.findIndex(entryIsModel); if(first>=0) selectEntry(first);
+};
+$("type-filter").onchange=renderFiles;
+$("model-only").onchange=renderFiles;
+$("scan-all").onclick=scanAll;
+$("copy-report").onclick=async()=>{
+  const t=$("report");
+  try{ await navigator.clipboard.writeText(t.value) }catch(_){ t.select(); document.execCommand("copy") }
+  $("copy-report").textContent="コピーしました"; setTimeout(()=>{$("copy-report").textContent="この内容をコピー"},1400);
+};
+$("bgm").onchange=e=>bgmPlay(+e.target.value);
+$("bgm-vol").oninput=e=>{ bgm.volume=+e.target.value; if(bgm.gain) bgm.gain.gain.value=bgm.volume };
+$("gouraud").checked=shading.gouraud;
+$("gouraud").onchange=e=>{
+  shading.gouraud=e.target.checked; try{ localStorage.setItem("t1gouraud",shading.gouraud?"1":"0") }catch(_){}
+  if(state.sel>=0) selectEntry(state.sel);
+};
+// ---- 背景 ----
+const BG_PRESETS=[
+  {name:"ダーク",c:"#3a3834",e:"#2a2926",light:false},
+  {name:"黒",c:"#111111",e:"#000000",light:false},
+  {name:"グレー",c:"#8a8a8a",e:"#6a6a6a",light:false},
+  {name:"白",c:"#ffffff",e:"#e6e4df",light:true},
+  {name:"空",c:"#bfe3ff",e:"#5a9fd6",light:true},
+  {name:"夕焼け",c:"#ffcf8a",e:"#c4533a",light:true},
+  {name:"夜",c:"#35407a",e:"#0d1030",light:false},
+  {name:"グリーンバック",c:"#00b140",e:"#00b140",light:false},
+];
+function setBackground(i){
+  const p=BG_PRESETS[i]||BG_PRESETS[0], root=document.documentElement.style;
+  root.setProperty("--stage2",p.c); root.setProperty("--stage",p.e);
+  document.querySelector(".stage").classList.toggle("light",p.light);
+  for(const [k,b] of [...$("bg-box").children].entries()) b.setAttribute("aria-pressed",String(k===i));
+  try{ localStorage.setItem("t1bg",String(i)) }catch(_){}
+}
+BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.name; b.setAttribute("aria-label","背景: "+p.name);
+  b.style.background=`radial-gradient(circle at 40% 35%,${p.c},${p.e})`; b.onclick=()=>setBackground(i); $("bg-box").append(b) });
+(()=>{ let i=0; try{ i=+localStorage.getItem("t1bg")||0 }catch(_){} setBackground(i) })();
+// ---- スマホの配置 ----
+const mobileMQ=matchMedia("(max-width:720px)");
+const shotOpt=$("shot-clear").closest("label"), gouraudOpt=$("gouraud-opt"), cropOpt=$("crop-opt");
+function applyLayout(){
+  const m=mobileMQ.matches, stage=document.querySelector(".stage");
+  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,shotOpt,cropOpt); shotOpt.className=gouraudOpt.className=cropOpt.className="shot-opt"; $("bg-box").hidden=false }
+  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(gouraudOpt); shotOpt.className=gouraudOpt.className=cropOpt.className=""; closeSheet() }
+  requestAnimationFrame(draw);
+}
+function openTab(t){
+  const side=$("side"), same=side.classList.contains("open")&&side.dataset.tab===t;
+  if(same){ closeSheet(); return }
+  side.dataset.tab=t; side.classList.add("open"); side.scrollTop=0;
+  for(const b of $("tabbar").children) b.setAttribute("aria-pressed",String(b.dataset.tab===t));
+}
+function closeSheet(){ $("side").classList.remove("open"); for(const b of $("tabbar").children) b.setAttribute("aria-pressed","false") }
+$("tabbar").onclick=e=>{ const b=e.target.closest("button"); if(b) openTab(b.dataset.tab) };
+canvas.addEventListener("pointerdown",()=>{ if(mobileMQ.matches) closeSheet() });
+mobileMQ.addEventListener("change",applyLayout);
+applyLayout();
+// ============================================================
+//  保存
+// ============================================================
+// 保存: スマホは共有シート（写真に保存できる）、それ以外はダウンロード
+async function saveBlob(blob,name){
+  const file=new File([blob],name,{type:blob.type});
+  if(matchMedia("(pointer:coarse)").matches&&navigator.canShare&&navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file]}); return }catch(err){ if(err.name==="AbortError") return }
+  }
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; document.body.append(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+// 画面と同じ背景（中心が明るい円形のグラデーション）を、キャンバス全体の中の (ox,oy) から切り出す位置で塗る
+function paintBackground(g,W,H,ox,oy,w,h){
+  const st=getComputedStyle(document.documentElement), cx=W/2-ox, cy=H*.35-oy, grd=g.createRadialGradient(cx,cy,0,cx,cy,Math.max(W,H)*.7);
+  grd.addColorStop(0,st.getPropertyValue("--stage2").trim()||"#3a3834"); grd.addColorStop(1,st.getPropertyValue("--stage").trim()||"#2a2926");
+  g.fillStyle=grd; g.fillRect(0,0,w,h);
+}
+// 描いたキャンバスで不透明な画素の範囲（キャラのいる所）。box があれば広げる
+const probe=document.createElement("canvas"), probeG=probe.getContext("2d",{willReadFrequently:true});
+function opaqueBox(box){
+  const W=canvas.width, H=canvas.height; probe.width=W; probe.height=H; probeG.clearRect(0,0,W,H); probeG.drawImage(canvas,0,0);
+  const d=probeG.getImageData(0,0,W,H).data;
+  let x0=W,y0=H,x1=-1,y1=-1;
+  for(let y=0;y<H;y+=2){ const row=y*W; for(let x=0;x<W;x+=2) if(d[(row+x)*4+3]>8){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y } }
+  if(x1<0) return box;
+  x1=Math.min(W,x1+2); y1=Math.min(H,y1+2);
+  return box?{x0:Math.min(box.x0,x0),y0:Math.min(box.y0,y0),x1:Math.max(box.x1,x1),y1:Math.max(box.y1,y1)}:{x0,y0,x1,y1};
+}
+// 範囲に余白を足し、偶数の大きさにそろえる（動画の符号化で奇数が嫌われるため）
+function padBox(b){
+  const W=canvas.width, H=canvas.height, m=Math.round(Math.max(b.x1-b.x0,b.y1-b.y0)*.04)+4;
+  let x0=Math.max(0,b.x0-m), y0=Math.max(0,b.y0-m), x1=Math.min(W,b.x1+m), y1=Math.min(H,b.y1+m);
+  if((x1-x0)%2) x1<W?x1++:x0--; if((y1-y0)%2) y1<H?y1++:y0--;
+  return {x:x0,y:y0,w:x1-x0,h:y1-y0};
+}
+$("shot").onclick=()=>{
+  draw();
+  const W=canvas.width, H=canvas.height, r=$("shot-crop").checked?padBox(opaqueBox(null)||{x0:0,y0:0,x1:W,y1:H}):{x:0,y:0,w:W,h:H};
+  const out=document.createElement("canvas"); out.width=r.w; out.height=r.h;
+  const g=out.getContext("2d");
+  if(!$("shot-clear").checked) paintBackground(g,W,H,r.x,r.y,r.w,r.h);
+  g.drawImage(canvas,r.x,r.y,r.w,r.h,0,0,r.w,r.h);
+  out.toBlob(b=>saveBlob(b,fileBase(true)+".png"),"image/png");
+};
+// ============================================================
+//  読み込みの入口
+// ============================================================
+$("file").onchange=e=>start(e.target.files);
+const drop=$("drop");
+for(const t of ["dragenter","dragover"]) document.addEventListener(t,e=>{e.preventDefault();drop.classList.add("over")});
+document.addEventListener("dragleave",()=>drop.classList.remove("over"));
+document.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("over");start(e.dataTransfer.files)});
+// 開発用: ?arc=URL&exe=URL で取り出し済みファイルを読み込む
+(async()=>{const q=new URLSearchParams(location.search); if(q.get("arc")&&q.get("exe")){
+  const get=async u=>new File([await (await fetch(u)).blob()],u.split("/").pop());
+  start([await get(q.get("arc")),await get(q.get("exe"))]);
+}})();
+updateStatus();
+draw();
+</script>
+</body>
+</html>
