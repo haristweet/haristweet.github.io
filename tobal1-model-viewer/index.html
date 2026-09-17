@@ -40,6 +40,7 @@ select,.pick-motion{width:100%;font:inherit;padding:6px 8px;border:1px solid var
 .files button .sz{font-family:var(--mono);font-size:11px;opacity:.7;white-space:nowrap}
 .filter{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--ink2);margin:6px 0 0}
 .note{font-size:11px;color:var(--ink2);margin:4px 0 0;line-height:1.6}
+.note.known{color:#9a3412;background:#fff4ed;border:1px solid #fbcfb5;border-radius:7px;padding:8px;margin-bottom:8px}
 .count{font-size:11px;color:var(--ink2);margin:6px 0 0 4px}
 .wide{width:100%}
 .btn{all:unset;cursor:pointer;display:block;text-align:center;border:1px solid var(--line);background:#fff;border-radius:7px;padding:8px;font-size:13px}
@@ -112,11 +113,12 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.1.1 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.1.2 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
     <div data-tab="file"><p class="label">読み込み元</p>
+      <p class="note known" id="known-note" hidden></p>
       <div class="seg" id="src-seg"><button data-v="table" aria-pressed="true">アーカイブ</button><button data-v="iso" aria-pressed="false" title="ディスクの中のファイルをそのまま並べる">ディスク直読み</button></div>
       <p class="note" id="src-note"></p>
     </div>
@@ -136,6 +138,10 @@ canvas:active{cursor:grabbing}
       <div class="bgm-row"><select id="bgm"><option value="-1">なし</option></select>
       <input id="bgm-vol" type="range" min="0" max="1" step="0.05" value="0.6" aria-label="音量"></div>
       <p class="note">ディスクの XA から見つけたチャンネルをそのまま鳴らします。曲になっていないものも混じります。</p>
+    </div>
+    <div data-tab="info"><p class="label">アーカイブ</p>
+      <select id="arc-pick" aria-label="アーカイブ"></select>
+      <p class="note">どのファイルがデータのまとまりかも自動で当てています。中身が 0% ばかりのときは変えてみてください。</p>
     </div>
     <div data-tab="info"><p class="label">解析結果</p>
       <textarea class="report" id="report" readonly spellcheck="false"></textarea>
@@ -436,6 +442,15 @@ async function listAll(disc){
   return files;
 }
 const isStream=n=>/\.(xa|str|vb|xs|iki|mov)$/i.test(n);
+// どのファイルがアーカイブかは当てずっぽうなので、候補を持っておいて後から切り替えられるようにする
+function withArcs(obj,arcs){
+  obj.arcs=arcs; obj.arcIdx=0;
+  obj.maxArcSize=arcs.reduce((m,a)=>Math.max(m,a.size),0);
+  obj.setArc=i=>{ obj.arcIdx=Math.max(0,Math.min(arcs.length-1,i|0)); obj.arcName=arcs[obj.arcIdx].name; obj.arcSize=arcs[obj.arcIdx].size };
+  obj.readArc=arcs.length?((sec,size)=>arcs[obj.arcIdx].read(sec,size)):null;
+  if(arcs.length) obj.setArc(0); else { obj.arcName="—"; obj.arcSize=0 }
+  return obj;
+}
 async function openSource(fileList){
   const files=[...fileList].filter(f=>f.size>0);
   if(!files.length) throw new Error("ファイルが選ばれていません");
@@ -444,15 +459,18 @@ async function openSource(fileList){
     const heads=await Promise.all(files.map(f=>f.slice(0,8).arrayBuffer()));
     const ei=heads.findIndex(h=>String.fromCharCode(...new Uint8Array(h))==="PS-X EXE");
     if(ei>=0){
-      const exeF=files[ei], arc=files.filter((_,k)=>k!==ei).sort((a,b)=>b.size-a.size)[0];
-      if(arc) return {
-        kind:"取り出し済みファイル", discName:"—", exeName:exeF.name, arcName:arc.name, arcSize:arc.size,
+      const exeF=files[ei];
+      const arcs=files.filter((_,k)=>k!==ei).sort((a,b)=>b.size-a.size).map(f=>({
+        name:f.name, size:f.size,
+        read:async(sec,size)=>new Uint8Array(await f.slice(sec*2048,sec*2048+size).arrayBuffer()),
+      }));
+      if(arcs.length) return withArcs({
+        kind:"取り出し済みファイル", discName:"—", exeName:exeF.name,
         exe:new Uint8Array(await exeF.arrayBuffer()),
-        readArc:async(sec,size)=>new Uint8Array(await arc.slice(sec*2048,sec*2048+size).arrayBuffer()),
         iso:files.map(f=>({name:f.name,path:f.name,size:f.size,file:f})),
         readIso:async(e,limit)=>new Uint8Array(await (limit?e.file.slice(0,Math.min(limit,e.size)):e.file).arrayBuffer()),
         xa:[], readRaw:null,
-      };
+      },arcs);
     }
   }
   // (2) ディスクイメージ
@@ -475,19 +493,20 @@ async function openSource(fileList){
   if(!exeE) exeE=all.find(f=>/^S[LC][PEU][SM][_.]\d/i.test(f.name));
   if(!exeE) throw new Error("PlayStation の実行ファイル（SLPS_… など）が見つかりませんでした");
   const exe=(await disc.read(exeE.lba,Math.ceil(exeE.size/2048))).subarray(0,exeE.size);
-  // アーカイブ: 実行ファイルと音声・動画を除いて、いちばん大きいファイル
-  const arc=all.filter(f=>f!==exeE&&!isStream(f.name)).sort((a,b)=>b.size-a.size)[0];
+  // アーカイブの候補: 実行ファイルと音声・動画を除いて、大きい順に数件
+  const arcs=all.filter(f=>f!==exeE&&!isStream(f.name)&&f.size>=0x10000).sort((a,b)=>b.size-a.size).slice(0,6).map(f=>({
+    name:f.path, size:f.size,
+    read:async(sec,size)=>(await disc.read(f.lba+sec,Math.max(1,Math.ceil(size/2048)))).subarray(0,size),
+  }));
   const canRaw=!!(await disc.readRaw(16));
-  return {
-    kind:magic==="MComprHD"?"CHD":"BIN/ISO", discName:bin.name,
-    exeName:exeE.name, arcName:arc?arc.path:"—", arcSize:arc?arc.size:0, exe,
-    readArc:arc?async(sec,size)=>(await disc.read(arc.lba+sec,Math.max(1,Math.ceil(size/2048)))).subarray(0,size):null,
+  return withArcs({
+    kind:magic==="MComprHD"?"CHD":"BIN/ISO", discName:bin.name, exeName:exeE.name, exe,
     iso:all,
     readIso:async(e,limit)=>{ const bytes=limit?Math.min(limit,e.size):e.size;
       return (await disc.read(e.lba,Math.max(1,Math.ceil(bytes/2048)))).subarray(0,bytes) },
     xa:canRaw?all.filter(f=>/\.xa$/i.test(f.name)):[],
     readRaw:canRaw?lba=>disc.readRaw(lba):null,
-  };
+  },arcs);
 }
 // ============================================================
 //  XA-ADPCM の展開
@@ -618,7 +637,13 @@ function decompress(data){
 //  1件が { 先頭セクタ, 大きさ<<8 | 種類 } だった。No.1 でも同じ形のはずなので、
 //  実行ファイル全体から「その形の並びが続くところ」を探す。
 // ============================================================
-const MAX_ENTRY=0x800000;      // 1ファイル 8MB を超える表は無いものとして弾く
+const MAX_ENTRY=0x2000000;     // 1ファイル 32MB を超える表は無いものとして弾く
+// 解析済みのディスク。No.1 用の探索が正しく動くかを、答えの分かっているトバル2 で確かめられる
+const KNOWN_DISCS={
+  "SLPM_860.33":{title:"トバル2 (SLPM-86033)",addr:0x800CD660,count:0x552,
+                 note:"トバルNo.1 ではありません。専用のビューアがあります: https://haristweet.github.io/tobal2-model-viewer/"},
+};
+const knownDisc=name=>KNOWN_DISCS[(name||"").toUpperCase()]||KNOWN_DISCS[name]||null;
 const MAX_TYPE=64;
 function exeInfo(exe){
   const dv=new DataView(exe.buffer,exe.byteOffset,exe.byteLength);
@@ -644,19 +669,19 @@ function findFileTables(exe,arcSize){
       return e;
     };
     for(const phase of [0,4]){
-      let start=-1, prev=null, count=0, strict=0, holes=0;
-      // 末尾に続く空きスロットは表に含めない（実行ファイルの後ろの 0 埋めを飲み込まないように）
-      const flush=()=>{ const n=count-holes; if(start>=0&&n>=32) found.push({off:start,count:n,strict,shape:si,name:sh.name}); start=-1; count=0; strict=0; holes=0; prev=null };
+      // 表の中はセクタ順に並んでいるとは限らない（トバル2の表で、順番が飛ぶたびに
+      // 並びが切れて 1362件が6つ以上に割れてしまった）。連続は「質」として数えるだけにして、
+      // 並び自体は「1件として筋が通る」ことだけで続ける。空きスロットや変な1件は
+      // 8件までなら飛ばす。
+      let start=-1, prev=null, count=0, strict=0, noise=0;
+      const flush=()=>{ const n=count-noise; if(start>=0&&n>=32) found.push({off:start,count:n,strict,shape:si,name:sh.name}); start=-1; count=0; strict=0; noise=0; prev=null };
       for(let o=phase;o+8<=body;o+=8){
         const e=at(o);
-        if(e==="hole"){ if(start>=0&&holes<8){ holes++; count++; continue } flush(); continue }
-        if(!e){ flush(); continue }
-        holes=0;
-        if(prev){
-          const nx=prev.sector+Math.ceil(prev.size/2048);
-          if(e.sector>=prev.sector&&e.sector<=nx+4){ if(e.sector===nx) strict++; count++; prev=e; continue }
-        }
-        flush(); start=o; count=1; prev=e;
+        if(e==="hole"||!e){ if(start>=0&&noise<8){ noise++; count++; continue } flush(); continue }
+        noise=0;
+        if(start<0){ start=o; count=1; prev=e; continue }
+        if(prev&&e.sector===prev.sector+Math.ceil(prev.size/2048)) strict++;
+        count++; prev=e;
       }
       flush();
     }
@@ -684,7 +709,8 @@ function classify(head,size){
     const dv=new DataView(head.buffer,head.byteOffset,head.byteLength), n=dv.getUint32(0,true);
     if(n>=1&&n<=4096&&4+4*(n+1)<=head.length){
       const offs=[]; for(let i=0;i<=n;i++) offs.push(dv.getUint32(4+i*4,true));
-      let ok=offs[0]===4+4*(n+1)&&offs[n]===size;
+      // 末尾はぴったり size とは限らない（セクタの切りで余りが付く）。<= で見る
+      let ok=offs[0]===4+4*(n+1)&&offs[n]<=size&&offs[n]>=offs[0];
       for(let i=0;i<n&&ok;i++) if(offs[i+1]<offs[i]||offs[i+1]>size) ok=false;
       if(ok){
         const p0=offs[0]<head.length?head[offs[0]]:-1;
@@ -1114,12 +1140,20 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.1.1 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.1.2 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
   L.push(`アーカイブ: ${s.arcName}  ${fmtSize(s.arcSize)}`);
   L.push("");
+  const kn=knownDisc(s.exeName);
+  if(kn){
+    L.push("");
+    L.push(`【解析済みのディスク】${kn.title}`);
+    L.push(`  ${kn.note}`);
+    L.push(`  正解のファイル表: ${hex(kn.addr)}  ${kn.count}件  ← 探索がこれを当てられれば、探し方は正しい`);
+    L.push("");
+  }
   L.push(`ファイル表の候補 (${state.tables.length}件):`);
   if(!state.tables.length) L.push("  見つかりませんでした");
   state.tables.forEach((t,i)=>L.push(`  ${i===state.tableIdx?"→":" "} [${i+1}] ${tableLabel(t,ex).replace(/　/g,"  ")}`));
@@ -1163,22 +1197,38 @@ function updateReport(){
 }
 // 候補の裏取り: その表が指す先を実際に何件か読んで、トバルのファイルらしいかを見る。
 // 本物の表なら中身が入れ子か圧縮になっているはずで、まぐれで並んだだけの表はここで落ちる。
-async function scoreTables(tables){
-  const GOOD={model:1,pack:1,lz:1,tim:1};
-  for(const t of tables){
-    const rows=readTable(state.src.exe,t).filter(e=>e.size>0);
-    const step=Math.max(1,Math.floor(rows.length/8));
-    let hit=0, n=0;
-    for(let i=0;i<rows.length&&n<8;i+=step){
-      const e=rows[i];
-      try{ if(GOOD[classify(await state.src.readArc(e.sector,Math.min(e.size,2048)),e.size).kind]) hit++ }catch(_){}
-      n++;
-    }
-    t.sampled=n; t.hits=n?hit/n:0;
+const GOOD_KIND={model:1,pack:1,lz:1,tim:1};
+async function scoreOne(t){
+  const rows=readTable(state.src.exe,t).filter(e=>e.size>0);
+  const step=Math.max(1,Math.floor(rows.length/8));
+  let hit=0, n=0;
+  for(let i=0;i<rows.length&&n<8;i+=step){
+    const e=rows[i];
+    try{ if(GOOD_KIND[classify(await state.src.readArc(e.sector,Math.min(e.size,2048)),e.size).kind]) hit++ }catch(_){}
+    n++;
   }
-  tables.sort((a,b)=>(b.hits-a.hits)||(b.strict-a.strict)||(b.count-a.count));
+  return n?hit/n:0;
 }
-const tableLabel=(t,ex)=>`${ex.ok?hex(ex.text+(t.off-0x800)):"file+"+hex(t.off)}　${t.count}件　中身 ${Math.round(100*(t.hits||0))}%　詰まり ${(100*t.strict/Math.max(1,t.count-1)).toFixed(0)}%　${t.name}`;
+// どのファイルがアーカイブかも当てずっぽうなので、全部 0% ならアーカイブを変えて試す
+async function scoreTables(tables){
+  const arcs=state.src.arcs||[];
+  for(let a=0;a<Math.max(1,arcs.length);a++){
+    if(arcs.length) state.src.setArc(a);
+    for(const t of tables){ t.hits=await scoreOne(t); t.arc=a }
+    if(tables.some(t=>t.hits>0)) break;
+  }
+  // 「中身の割合」だけで並べると、アーカイブに素のデータが混ざっているとき（割合が下がる）、
+  // 短い誤検出に負ける。確かめられた実ファイルの「本数」＝ 割合×件数 で並べる
+  const score=t=>(t.hits||0)*t.count;
+  tables.sort((a,b)=>(score(b)-score(a))||(b.hits-a.hits)||(b.strict-a.strict)||(b.count-a.count));
+  if(arcs.length&&tables.length) state.src.setArc(tables[0].arc||0);
+}
+function tableAddr(t,ex){ return ex.ok?ex.text+(t.off-0x800):t.off }
+function tableLabel(t,ex){
+  const kn=state.src&&knownDisc(state.src.exeName);
+  const mark=kn&&tableAddr(t,ex)===kn.addr?(t.count===kn.count?" ✓正解":" ✓位置は正解"):"";
+  return `${ex.ok?hex(tableAddr(t,ex)):"file+"+hex(t.off)}　${t.count}件　中身 ${Math.round(100*(t.hits||0))}%　詰まり ${(100*t.strict/Math.max(1,t.count-1)).toFixed(0)}%　${t.name}${mark}`;
+}
 // ---- 調べる ----
 async function probeSamples(){
   for(const en of state.entries.slice(0,8)) await rememberHead(en);   // 解析に出す先頭8件
@@ -1208,16 +1258,22 @@ async function start(files){
     state.src=await openSource(files);
     state.cache.clear(); state.probe.clear(); state.head.clear();
     const ex=exeInfo(state.src.exe);
-    state.tables=state.src.readArc&&ex.ok?findFileTables(state.src.exe,state.src.arcSize):[];
+    state.tables=state.src.readArc&&ex.ok?findFileTables(state.src.exe,state.src.maxArcSize||state.src.arcSize):[];
     if(state.tables.length){ busy("ファイル表の候補を確かめています…"); await scoreTables(state.tables) }
     state.tableIdx=0;
     state.source=state.tables.length?"table":"iso";
     $("drop").hidden=true; $("side").hidden=false; $("hint").hidden=false; $("shot-box").hidden=false; $("bg-box").hidden=false;
     document.body.classList.add("loaded"); applyLayout();
+    const known=knownDisc(state.src.exeName);
+    $("known-note").textContent=known?`${known.title} のディスクです。${known.note}`:"";
+    $("known-note").hidden=!known;
     $("src-note").textContent=state.tables.length
       ? `実行ファイルの中にファイル表らしい並びが ${state.tables.length} 個ありました。いちばんそれらしいものを選んでいます。`
       : "ファイル表が見つからなかったので、ディスクのファイルをそのまま並べています。";
     for(const b of $("src-seg").children) b.setAttribute("aria-pressed",String(b.dataset.v===state.source));
+    $("arc-pick").innerHTML=(state.src.arcs||[]).map((a,i)=>`<option value="${i}">${a.name}　${fmtSize(a.size)}</option>`).join("");
+    $("arc-pick").value=String(state.src.arcIdx||0);
+    $("arc-pick").parentElement.hidden=(state.src.arcs||[]).length<2;
     $("table-pick").innerHTML=state.tables.map((t,i)=>`<option value="${i}">[${i+1}] ${tableLabel(t,ex)}</option>`).join("")||'<option value="-1">候補なし</option>';
     rebuildEntries();
     busy("ファイルの種類を調べています…");
@@ -1245,6 +1301,17 @@ $("rig-seg").onclick=e=>{
   state.rig=b.dataset.v;
   for(const x of $("rig-seg").children) x.setAttribute("aria-pressed",String(x===b));
   if(state.sel>=0) selectEntry(state.sel);
+};
+$("arc-pick").onchange=async e=>{
+  state.src.setArc(+e.target.value);
+  state.cache.clear(); state.probe.clear(); state.head.clear(); state.sel=-1;
+  busy("確かめています…"); await scoreTables(state.tables); busy("");
+  const ex=exeInfo(state.src.exe);
+  $("table-pick").innerHTML=state.tables.map((t,i)=>`<option value="${i}">[${i+1}] ${tableLabel(t,ex)}</option>`).join("");
+  state.tableIdx=0; rebuildEntries();
+  busy("調べています…"); await probeSamples(); busy("");
+  fillTypeFilter(); renderFiles(); updateReport();
+  const first=state.entries.findIndex(entryIsModel); if(first>=0) selectEntry(first); else updateStatus();
 };
 $("table-pick").onchange=async e=>{
   const i=+e.target.value; if(i<0) return;
