@@ -113,13 +113,13 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.1.3 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.2.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
     <div data-tab="file"><p class="label">読み込み元</p>
       <p class="note known" id="known-note" hidden></p>
-      <div class="seg" id="src-seg"><button data-v="table" aria-pressed="true">アーカイブ</button><button data-v="iso" aria-pressed="false" title="ディスクの中のファイルをそのまま並べる">ディスク直読み</button></div>
+      <div class="seg" id="src-seg"><button data-v="table" aria-pressed="true">アーカイブ</button><button data-v="scan" aria-pressed="false" title="アーカイブの中を直接さらってファイルの先頭を探す">直接さらう</button><button data-v="iso" aria-pressed="false" title="ディスクの中のファイルをそのまま並べる">ディスク</button></div>
       <p class="note" id="src-note"></p>
     </div>
     <div data-tab="file"><p class="label">ファイル</p>
@@ -197,6 +197,8 @@ const state={
   tables:[],         // 実行ファイルから見つけたファイル表の候補
   tableIdx:0,
   entries:[],        // 表示中の一覧（アーカイブ or ディスクのファイル）
+  scan:null,         // アーカイブを直接さらった結果
+  infer:null,        // さらった結果から逆算したファイル表
   source:"table",    // "table" = アーカイブのファイル表 / "iso" = ディスクのファイル
   sel:-1,
   rig:"t2",
@@ -782,6 +784,88 @@ function buildVram(part){
   return vram;
 }
 // ============================================================
+//  アーカイブを直接さらう
+//  表の形が分からなくても、アーカイブの中を 2048 バイトごとに見て
+//  「ファイルの先頭らしいところ」を拾えば、モデルは取り出せる。
+//  拾えるのは2種類:
+//    - ゲーム独自の圧縮（先頭 0x0b ＋ 展開後の大きさ）
+//    - 入れ子（部分の数と位置の表）
+// ============================================================
+// 0x0b で始まるだけなら偶然も多いので、続く「展開後の大きさ」と
+// 最初のブロックのモード（0〜6）まで見て確からしさを上げる
+function looksPacked(b){
+  if(b[0]!==0x0b) return 0;
+  const total=b[1]|(b[2]<<8)|(b[3]<<16);
+  if(total<64||total>0x1000000) return 0;
+  return (b[4]&15)<=6?total:0;
+}
+async function scanArchive(onProgress){
+  const size=state.src.arcSize, total=Math.ceil(size/2048), CH=512;
+  const hits=[];
+  for(let s=0;s<total;s+=CH){
+    const n=Math.min(CH,total-s);
+    if(onProgress) onProgress(s/total);
+    await idle();
+    let buf=null;
+    try{ buf=await state.src.readArc(s,n*2048) }catch(_){ continue }
+    for(let k=0;k<n&&(k+1)*2048<=buf.length;k++){
+      const head=buf.subarray(k*2048,(k+1)*2048), sec=s+k, rest=size-sec*2048;
+      const c=classify(head,rest);
+      if(c.kind==="model"||c.kind==="pack"){ hits.push({sector:sec,kind:c.kind,parts:c.parts}); continue }
+      const t=looksPacked(head);
+      if(t) hits.push({sector:sec,kind:"lz",parts:0,unpacked:t});
+    }
+  }
+  if(onProgress) onProgress(1);
+  // 大きさは「次のファイルの先頭まで」。展開も入れ子も必要な分しか読まないので、これで足りる
+  hits.forEach((h,i)=>{ h.size=Math.min(((i+1<hits.length?hits[i+1].sector:total)-h.sector)*2048, size-h.sector*2048) });
+  return hits;
+}
+// さらった結果から、実行ファイルの中のファイル表を逆算する。
+// 見つけたセクタ番号が実行ファイルの中で一定の間隔で並んでいれば、それが表。
+function inferTable(exe,hits){
+  if(hits.length<4) return null;
+  const dv=new DataView(exe.buffer,exe.byteOffset,exe.byteLength);
+  const seq=hits.slice(0,48).map(h=>h.sector);
+  const where=new Map();          // セクタ番号 → 実行ファイル内でその値が置かれている位置
+  const want=new Set(seq);
+  for(let o=0;o+4<=exe.byteLength;o+=4){
+    const v=dv.getUint32(o,true);
+    if(want.has(v)){ const a=where.get(v)||[]; if(a.length<64){ a.push(o); where.set(v,a) } }
+  }
+  // 隣り合うセクタが同じ間隔で出てくる回数を数える（＝1件の長さ）。
+  // セクタ 0 などの小さい値は実行ファイル中にいくらでもあるので、票に入れない
+  const votes=new Map();
+  for(let i=0;i+1<seq.length;i++){
+    if(seq[i]<16||seq[i+1]<16) continue;
+    for(const a of (where.get(seq[i])||[])) for(const b of (where.get(seq[i+1])||[])){
+      const d=b-a;
+      if(d>0&&d<=64&&d%4===0){ const m=votes.get(d)||new Map(); m.set(a,i); votes.set(d,m) }
+    }
+  }
+  let stride=0, best=0;
+  for(const [d,m] of votes) if(m.size>best){ best=m.size; stride=d }
+  if(!stride||best<3) return null;
+  // 票が入った位置と、それが何件目かから、表の先頭を逆算する
+  let base=Infinity;
+  for(const [a,i] of votes.get(stride)){ const b0=a-i*stride; if(b0>=0&&b0<base) base=b0 }
+  if(!isFinite(base)) return null;
+  // 大きさがどこに入っているかを当てる: 件の中で「次のセクタまでに収まる値」が続く位置
+  let sizeAt=-1;
+  for(let off=4;off<stride;off+=4){
+    let ok=0, n=0;
+    for(let i=0;i+1<seq.length&&i<24;i++){
+      const a=base+i*stride;
+      if(a+off+4>exe.byteLength) break;
+      const sec=dv.getUint32(a,true), sz=dv.getUint32(a+off,true), room=(seq[i+1]-sec)*2048;
+      if(sec!==seq[i]) continue;
+      n++; if(sz>=64&&sz<=room+2048) ok++;
+    }
+    if(n>=3&&ok===n){ sizeAt=off; break }
+  }
+  return {base,stride,sizeAt,votes:best};
+}
+// ============================================================
 //  モデル（描画命令の列）
 // ============================================================
 function walk(blk){
@@ -1084,8 +1168,14 @@ function typeStats(list){
   return [...m.values()].sort((a,b)=>a.type-b.type);
 }
 const typeIsModel=t=>{ const s=state.stats&&state.stats.find(x=>x.type===t); return !!(s&&s.probed&&s.model/s.probed>=0.5) };
-const entryIsModel=e=>{ const p=state.probe.get(e.key); return p?p.kind==="model":typeIsModel(e.type) };
+const entryIsModel=e=>{ if(e.kind) return e.kind==="model"||e.kind==="lz"; const p=state.probe.get(e.key); return p?p.kind==="model":typeIsModel(e.type) };
 function rebuildEntries(){
+  if(state.source==="scan"){
+    state.entries=(state.scan||[]).map((h,i)=>({...h,key:"scan"+i,src:"arc",no:i,type:0,
+      label:{model:"モデルらしい",pack:"入れ子",lz:"圧縮"}[h.kind]+(h.parts?`（${h.parts}部分）`:h.unpacked?`（展開後 ${fmtSize(h.unpacked)}）`:"")}));
+    state.stats=typeStats(state.entries);
+    return;
+  }
   if(state.source==="iso"){
     state.entries=(state.src.iso||[]).map((f,i)=>({key:"iso"+i,src:"iso",iso:f,no:i,name:f.path,size:f.size,type:0}));
   } else {
@@ -1115,7 +1205,7 @@ function renderFiles(){
     const p=state.probe.get(e.key);
     const no=document.createElement("span"); no.className="no"; no.textContent=e.src==="iso"?"":"#"+e.no;
     const nm=document.createElement("span"); nm.className="nm";
-    nm.textContent=e.src==="iso"?e.name:`種類 ${e.type}${p?"　"+KIND_LABEL[p.kind]:""}`;
+    nm.textContent=e.src==="iso"?e.name:(e.label||`種類 ${e.type}${p?"　"+KIND_LABEL[p.kind]:""}`);
     const sz=document.createElement("span"); sz.className="sz"; sz.textContent=fmtSize(e.size);
     b.append(no,nm,sz);
     b.onclick=()=>{ selectEntry(state.entries.indexOf(e)); if(mobileMQ.matches) closeSheet() };
@@ -1140,7 +1230,7 @@ async function selectEntry(i){
   }
   busy(""); updateStatus(); updateReport();
 }
-function entryLabel(e){ return e?(e.src==="iso"?e.name:`#${e.no}　種類 ${e.type}`):"" }
+function entryLabel(e){ return e?(e.src==="iso"?e.name:(e.label?`#${e.no}　sector ${e.sector}　${e.label}`:`#${e.no}　種類 ${e.type}`)):"" }
 function updateStatus(){
   const e=state.entries[state.sel];
   if(!e){ $("status").textContent="左の一覧からファイルを選んでください"; return }
@@ -1155,7 +1245,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.1.3 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.2.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1179,7 +1269,18 @@ function updateReport(){
     L.push("種類ごと（件数 / 調べた数 / モデルらしい数）:");
     for(const t of st) L.push(`  種類 ${String(t.type).padStart(3)} : ${String(t.count).padStart(5)} / ${String(t.probed).padStart(4)} / ${String(t.model).padStart(4)}`);
   }
-  if(state.source!=="iso"&&state.entries.length){
+  if(state.scan){
+    L.push("");
+    const by=state.scan.reduce((m,h)=>m.set(h.kind,(m.get(h.kind)||0)+1),new Map());
+    L.push(`アーカイブを直接さらった結果: ${state.scan.length}件  (${[...by].map(([k,v])=>KIND_LABEL[k]+" "+v).join(" / ")})`);
+    L.push("  先頭10件の sector: "+state.scan.slice(0,10).map(h=>h.sector).join(", "));
+    if(state.infer){
+      L.push(`  逆算したファイル表: ${hex((exeInfo(s.exe).text||0)+(state.infer.base-0x800))}  1件 ${state.infer.stride} バイト  大きさの位置 +${state.infer.sizeAt<0?"?":state.infer.sizeAt}  (一致 ${state.infer.votes})`);
+      L.push("  ※ 1件の長さは「さらって見つかったファイルどうしの間隔」。拾えないファイルが間に挟まると、その倍数になる");
+    }
+    else L.push("  実行ファイルの中に、さらったセクタ番号の並びは見つからなかった");
+  }
+  if(state.source==="table"&&state.entries.length){
     L.push("");
     L.push("表の先頭 8件 (番号 : sector / 大きさ / 種類 / 先頭4バイト):");
     for(const en of state.entries.slice(0,8))
@@ -1276,7 +1377,7 @@ async function start(files){
   try{
     busy("ディスクを読んでいます…");
     state.src=await openSource(files);
-    state.cache.clear(); state.probe.clear(); state.head.clear();
+    state.cache.clear(); state.probe.clear(); state.head.clear(); state.scan=null; state.infer=null;
     const ex=exeInfo(state.src.exe);
     state.tables=state.src.readArc&&ex.ok?findFileTables(state.src.exe,state.src.maxArcSize||state.src.arcSize):[];
     if(state.tables.length){ busy("ファイル表の候補を確かめています…"); await scoreTables(state.tables) }
@@ -1304,14 +1405,30 @@ async function start(files){
     $("bgm-box").hidden=!bgm.tracks.length;
     $("bgm").innerHTML='<option value="-1">なし</option>'+bgm.tracks.map((t,i)=>`<option value="${i}">${t.label}</option>`).join("");
     busy("");
-    const first=state.entries.findIndex(entryIsModel);
+    let first=state.entries.findIndex(entryIsModel);
+    // 表の形が合わずモデルが出ないときは、アーカイブを直接さらう方に切り替える
+    if(first<0&&state.src.readArc){
+      state.source="scan";
+      for(const b of $("src-seg").children) b.setAttribute("aria-pressed",String(b.dataset.v==="scan"));
+      await runScan();
+      rebuildEntries();
+      busy("調べています…"); await probeSamples(); busy("");
+      fillTypeFilter(); renderFiles();
+      first=state.entries.findIndex(entryIsModel);
+    }
     if(first>=0) await selectEntry(first); else { updateStatus(); updateReport() }
   }catch(err){ busy(""); $("err").textContent=err.message; console.error(err) }
 }
 // ---- 操作 ----
+async function runScan(){
+  if(state.scan) return;
+  state.scan=await scanArchive(p=>busy(`アーカイブをさらっています… ${Math.round(p*100)}%`));
+  state.infer=inferTable(state.src.exe,state.scan);
+}
 $("src-seg").onclick=async e=>{
   const b=e.target.closest("button"); if(!b) return;
   state.source=b.dataset.v; state.sel=-1;
+  if(state.source==="scan"){ busy("アーカイブをさらっています…"); await runScan() }
   for(const x of $("src-seg").children) x.setAttribute("aria-pressed",String(x===b));
   rebuildEntries(); busy("調べています…"); await probeSamples(); busy("");
   fillTypeFilter(); renderFiles(); updateReport();
