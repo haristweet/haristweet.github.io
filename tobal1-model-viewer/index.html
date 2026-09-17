@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.2.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.2.1 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1142,6 +1142,11 @@ function buildModel(raw){
   info.decLen=out.length;
   info.compressed=body[0]===0x0b;
   const blk=new Uint8Array(out.length+8); blk.set(out,8); new DataView(blk.buffer).setUint32(0,out.length+8,true);
+  // 形が合わなかったときのために、ブロックの頭と描画命令の生の並びを控えておく
+  const dvb=new DataView(blk.buffer,blk.byteOffset,blk.byteLength);
+  info.words=Array.from({length:Math.min(16,blk.length>>2)},(_,i)=>dvb.getInt32(i*4,true));
+  info.dlRaw=[];
+  for(let o=0x20,k=0;k<10&&o+8<=blk.length;k++,o+=8) info.dlRaw.push([dvb.getInt32(o,true),dvb.getInt32(o+4,true)]);
   const bones=bonesFromBlock(blk);
   info.bones=bones.filter(b=>b[0]!==0||b[1]!==0||b[2]!==0).length;
   const ops=walk(blk); info.ops=ops.length;
@@ -1150,8 +1155,8 @@ function buildModel(raw){
   if(state.rig!=="flat"){ try{ W=pose(bones) }catch(_){ W=FLAT_W; info.rig="flat（骨格を組めなかった）" } }
   const mesh=buildMesh(blk,W);
   info.tris=mesh.pos.length/9;
-  if(!info.tris) throw new Error("三角形が1つも取れませんでした（モデルのファイルではないかもしれません）");
   const tex=findVram(parts); info.texIndex=tex.index; mesh.vram=tex.vram;
+  if(!info.tris) info.error="三角形が1つも取れませんでした（モデルのファイルではないかもしれません）";
   return {mesh,info};
 }
 // ---- 一覧を組み直す ----
@@ -1168,7 +1173,10 @@ function typeStats(list){
   return [...m.values()].sort((a,b)=>a.type-b.type);
 }
 const typeIsModel=t=>{ const s=state.stats&&state.stats.find(x=>x.type===t); return !!(s&&s.probed&&s.model/s.probed>=0.5) };
-const entryIsModel=e=>{ if(e.kind) return e.kind==="model"||e.kind==="lz"; const p=state.probe.get(e.key); return p?p.kind==="model":typeIsModel(e.type) };
+const entryIsModel=e=>{
+  if(e.kind) return e.kind==="model";   // さらった結果: 入れ子で部分0が圧縮のものだけ
+  const p=state.probe.get(e.key); return p?p.kind==="model":typeIsModel(e.type);
+};
 function rebuildEntries(){
   if(state.source==="scan"){
     state.entries=(state.scan||[]).map((h,i)=>({...h,key:"scan"+i,src:"arc",no:i,type:0,
@@ -1223,12 +1231,22 @@ async function selectEntry(i){
     const raw=await readFull(e);
     const {mesh,info}=buildModel(raw);
     state.selInfo=info;
-    upload(mesh); draw();
+    if(info.error){ state.selErr=info.error; clearMesh() } else upload(mesh);
+    draw();
   }catch(err){
     state.selErr=err.message; console.error(err);
     clearMesh(); draw();
   }
   busy(""); updateStatus(); updateReport();
+}
+// モデル候補を順に開いて、最初に三角形が出たものを表示する
+async function selectFirstModel(limit=8){
+  const list=state.entries.filter(entryIsModel).slice(0,limit);
+  for(const e of list){
+    await selectEntry(state.entries.indexOf(e));
+    if(state.selInfo&&state.selInfo.tris>0) return true;
+  }
+  return list.length>0;
 }
 function entryLabel(e){ return e?(e.src==="iso"?e.name:(e.label?`#${e.no}　sector ${e.sector}　${e.label}`:`#${e.no}　種類 ${e.type}`)):"" }
 function updateStatus(){
@@ -1245,7 +1263,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.2.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.2.1 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1293,14 +1311,16 @@ function updateReport(){
   }
   const e=state.entries[state.sel], inf=state.selInfo;
   L.push("");
-  L.push("選んでいるファイル: "+(e?`${entryLabel(e)}  sector ${e.sector!==undefined?e.sector:"-"}  ${fmtSize(e.size)}`:"なし"));
+  L.push("選んでいるファイル: "+(e?`${entryLabel(e)}${e.label||e.src==="iso"?"":`  sector ${e.sector}`}  ${fmtSize(e.size)}`:"なし"));
   if(state.selErr) L.push("  → 表示できず: "+state.selErr);
   if(inf){
     L.push(`  部分 ${inf.parts}  [${inf.partSizes.join(", ")}]`);
     L.push(`  部分0: ${inf.compressed?"圧縮あり":"圧縮なし"}  展開後 ${inf.decLen} B`);
     L.push(`  テクスチャの部分: ${inf.texIndex<0?"見つからず":inf.texIndex}`);
     L.push(`  描画命令 ${inf.ops}  三角形 ${inf.tris}  骨 ${inf.bones}  骨格 ${inf.rig}`);
-    if(inf.opcodes) L.push("  命令の内訳: "+inf.opcodes.map(([c,n])=>`${c}×${n}`).join(" "));
+    if(inf.opcodes&&inf.opcodes.length) L.push("  命令の内訳: "+inf.opcodes.map(([c,n])=>`${c}×${n}`).join(" "));
+    if(inf.words) L.push("  ブロックの頭 (32bit×16): "+inf.words.map(v=>hex(v)).join(" "));
+    if(inf.dlRaw) L.push("  0x20 からの生の並び: "+inf.dlRaw.map(([a,b])=>`(${a}, ${b})`).join(" "));
   }
   if(s.iso&&s.iso.length){
     L.push("");
@@ -1405,18 +1425,16 @@ async function start(files){
     $("bgm-box").hidden=!bgm.tracks.length;
     $("bgm").innerHTML='<option value="-1">なし</option>'+bgm.tracks.map((t,i)=>`<option value="${i}">${t.label}</option>`).join("");
     busy("");
-    let first=state.entries.findIndex(entryIsModel);
     // 表の形が合わずモデルが出ないときは、アーカイブを直接さらう方に切り替える
-    if(first<0&&state.src.readArc){
+    if(!state.entries.some(entryIsModel)&&state.src.readArc){
       state.source="scan";
       for(const b of $("src-seg").children) b.setAttribute("aria-pressed",String(b.dataset.v==="scan"));
       await runScan();
       rebuildEntries();
       busy("調べています…"); await probeSamples(); busy("");
       fillTypeFilter(); renderFiles();
-      first=state.entries.findIndex(entryIsModel);
     }
-    if(first>=0) await selectEntry(first); else { updateStatus(); updateReport() }
+    if(!await selectFirstModel()){ updateStatus(); updateReport() }
   }catch(err){ busy(""); $("err").textContent=err.message; console.error(err) }
 }
 // ---- 操作 ----
@@ -1448,7 +1466,7 @@ $("arc-pick").onchange=async e=>{
   state.tableIdx=0; rebuildEntries();
   busy("調べています…"); await probeSamples(); busy("");
   fillTypeFilter(); renderFiles(); updateReport();
-  const first=state.entries.findIndex(entryIsModel); if(first>=0) selectEntry(first); else updateStatus();
+  if(!await selectFirstModel()) updateStatus();
 };
 $("table-pick").onchange=async e=>{
   const i=+e.target.value; if(i<0) return;
@@ -1456,7 +1474,7 @@ $("table-pick").onchange=async e=>{
   for(const x of $("src-seg").children) x.setAttribute("aria-pressed",String(x.dataset.v==="table"));
   rebuildEntries(); busy("調べています…"); await probeSamples(); busy("");
   fillTypeFilter(); renderFiles(); updateReport();
-  const first=state.entries.findIndex(entryIsModel); if(first>=0) selectEntry(first);
+  await selectFirstModel();
 };
 $("type-filter").onchange=renderFiles;
 $("model-only").onchange=renderFiles;
