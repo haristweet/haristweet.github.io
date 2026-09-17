@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.5.1 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.6.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -200,6 +200,7 @@ const state={
   entries:[],        // 表示中の一覧（アーカイブ or ディスクのファイル）
   scan:null,         // アーカイブを直接さらった結果
   survey:null,       // モデル候補をまとめて調べた結果
+  sieve:null,        // 候補を全部ふるいにかけた結果
   infer:null,        // さらった結果から逆算したファイル表
   source:"table",    // "table" = アーカイブのファイル表 / "iso" = ディスクのファイル
   sel:-1,
@@ -1094,6 +1095,19 @@ function fitLayout(blk){
 // ============================================================
 // 列の途中に 8 バイトの目印（0x10, 0x08）が挟まるので、合わない語は 4 バイトずつ読み飛ばす。
 // 「長さ = 12 + 幅×高さ×2」が3つの値の一致を要求するので、当てずっぽうでは通らない
+// テクスチャファイルの署名。実物 24 件で一致した:
+//   語0 = テクスチャの組数（パレット＋画像。転送はこの2倍）
+//   語1 = 0x10
+//   語2 = 8 か 9（色数の区別）
+//   語3 = 最初のパレットの長さ。0x2C = 12+16×2（16色） / 0x20C = 12+256×2（256色）
+function textureInfoT1(d){
+  if(d.length<16) return null;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const n=dv.getUint32(0,true), a=dv.getUint32(4,true), b=dv.getUint32(8,true), c=dv.getUint32(12,true);
+  if(a!==0x10||(b!==8&&b!==9)||(c!==0x2C&&c!==0x20C)) return null;
+  if(n<1||n>4096) return null;
+  return {pairs:n, colors:c===0x2C?16:256, depth:b};
+}
 function vramChainT1(d,start,maxMiss){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const out=[]; let o=start===undefined?0:start, miss=0;
@@ -1109,8 +1123,12 @@ function vramChainT1(d,start,maxMiss){
   return out;
 }
 function findVramChainT1(d){
-  const list=vramChainT1(d,0);
-  return list.length>=2?{start:0,list}:null;   // 2枚以上そろって初めて「転送の列」とみなす
+  const info=textureInfoT1(d);
+  // 署名があるなら、語0 から求まる枚数（組数×2）がそろうまで、多少の目印は読み飛ばして拾い続ける
+  const list=vramChainT1(d,0,info?Math.max(64,info.pairs*4):16);
+  if(!list.length) return null;
+  if(info) return {start:0,list,info};
+  return list.length>=2?{start:0,list,info:null}:null;
 }
 function buildVramT1(d,list){
   const vram=new Uint8Array(1024*512*4);
@@ -1314,12 +1332,13 @@ function buildModelInner(raw,info){
     const ch=findVramChainT1(b.out);
     if(ch&&ch.list.length){
       info.texChain=ch.list.length; info.texChainAt=ch.start;
+      if(ch.info){ info.texPairs=ch.info.pairs; info.texColors=ch.info.colors }
       info.texSample=ch.list.slice(0,6).map(t=>`(${t.x},${t.y}) ${t.w}x${t.h}`).join(" ");
       r.mesh.vram=buildVramT1(b.out,ch.list);
     }
   }
   if(!info.tris) info.error=info.texChain>=2
-    ? `テクスチャの集まりのようです（転送 ${info.texChain}枚）。モデルではありません`
+    ? `テクスチャの集まりのようです（${info.texPairs?info.texPairs+"組 / ":""}転送 ${info.texChain}枚${info.texColors?" / "+info.texColors+"色":""}）。モデルではありません`
     : "三角形が1つも取れませんでした（モデルのファイルではないかもしれません）";
   else if(info.extent<8) info.error="組めた形が1点に潰れています（頂点や面の置き場所が合っていません）";
   return {mesh:r.mesh,info};
@@ -1489,7 +1508,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.5.1 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.6.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1534,6 +1553,11 @@ function updateReport(){
     L.push("");
     L.push("大きいファイル 5件（アーカイブの選び方の確認用）:");
     for(const f of [...s.iso].sort((x,y)=>y.size-x.size).slice(0,5)) L.push(`  ${f.path||f.name}  ${fmtSize(f.size)}`);
+  }
+  if(state.sieve){
+    L.push("");
+    L.push("候補を全部ふるいにかけた結果:");
+    L.push(...sieveLines(state.sieve));
   }
   if(state.survey&&state.survey.length){
     L.push("");
@@ -1673,7 +1697,7 @@ async function start(files){
     }
     if(!await selectFirstModel()){
       // どれも組めなかった。手がかりを集めるため、候補をまとめて調べておく
-      try{ state.survey=await surveyModels(24,p=>busy(`モデル候補をまとめて調べています… ${Math.round(p*100)}%`)) }
+      try{ state.sieve=await sieveAll(p=>busy(`候補を全部ふるいにかけています… ${Math.round(p*100)}%`)) }
       catch(err){ console.warn(err) }
       busy(""); updateStatus(); updateReport();
     }
@@ -1722,6 +1746,7 @@ $("type-filter").onchange=renderFiles;
 $("model-only").onchange=renderFiles;
 $("scan-all").onclick=scanAll;
 $("survey").onclick=async()=>{
+  if(!state.surveying){ try{ state.sieve=await sieveAll(p=>busy(`候補を全部ふるいにかけています… ${Math.round(p*100)}%`)) }catch(err){ console.warn(err) } }
   if(state.surveying) return;
   state.surveying=true; $("survey").textContent="調べています…";
   try{
@@ -1829,6 +1854,59 @@ function surveyLines(rows){
   L.push(`  テクスチャの集まり: ${tx.length}件`);
   const un=rows.filter(r=>!r.tris&&r.tex<2);
   L.push(`  まだ分からないもの: ${un.length}件`+(un.length?`（${un.slice(0,8).map(r=>"#"+r.no).join(" ")}）`:""));
+  return L;
+}
+// ============================================================
+//  候補を全部ふるいにかける
+//  大きい24件が全部テクスチャだったので、114件すべてを見る。
+//  テクスチャは署名（語0=組数, 語1=0x10, 語2=8|9, 語3=0x2C|0x20C）で
+//  すぐ判るので、組み立てずに弾く。残ったものがモデルの候補。
+// ============================================================
+async function sieveAll(onProgress){
+  const list=state.entries.filter(e=>!e.kind||e.kind!=="raw").sort((a,b)=>b.size-a.size);
+  const tex=[], other=[], broken=[];
+  for(let i=0;i<list.length;i++){
+    const e=list[i];
+    if(onProgress&&i%4===0) onProgress(i/list.length);
+    await idle();
+    try{
+      const raw=await readFull(e);
+      let parts=unpack(raw); if(!parts) parts=[raw];
+      // いちばん大きい部分を展開してみる
+      let body=null;
+      for(const p of parts){
+        if(!p||p.length<8) continue;
+        let out=null; try{ out=p[0]===0x0b?decompress(p):p }catch(_){ continue }
+        if(out&&out.length>=64&&(!body||out.length>body.length)) body=out;
+      }
+      if(!body){ broken.push({e,why:"展開できない"}); continue }
+      const ti=textureInfoT1(body);
+      if(ti){ tex.push({e,pairs:ti.pairs,colors:ti.colors,dec:body.length}); continue }
+      const dv=new DataView(body.buffer,body.byteOffset,body.byteLength);
+      other.push({e,dec:body.length,parts:parts.map(p=>p.length).join("/"),
+        words:Array.from({length:Math.min(8,body.length>>2)},(_,k)=>dv.getUint32(k*4,true)),
+        head:Array.from(body.subarray(0,24),v=>v.toString(16).padStart(2,"0")).join(" ")});
+    }catch(err){ broken.push({e,why:err.message}) }
+  }
+  if(onProgress) onProgress(1);
+  return {tex,other,broken,total:list.length};
+}
+function sieveLines(s){
+  const L=[];
+  L.push(`  全 ${s.total}件 → テクスチャ ${s.tex.length} / それ以外 ${s.other.length} / 読めない ${s.broken.length}`);
+  if(s.tex.length){
+    const by=s.tex.reduce((m,t)=>m.set(t.colors,(m.get(t.colors)||0)+1),new Map());
+    L.push("  テクスチャの色数: "+[...by].map(([k,v])=>`${k}色×${v}`).join("  "));
+  }
+  L.push("  ── テクスチャ以外（モデルの候補） ──");
+  L.push("  番号 / sector / ファイル / 展開後 / 部分 / 先頭24バイト / 語0..7");
+  for(const o of s.other.slice(0,40)){
+    L.push(`  #${String(o.e.no).padStart(4)} ${String(o.e.sector).padStart(7)} ${String(o.e.size).padStart(8)} ${String(o.dec).padStart(8)} [${o.parts}]`);
+    L.push(`        ${o.head}`);
+    L.push(`        ${o.words.map(w=>hex(w)).join(" ")}`);
+  }
+  if(s.other.length>40) L.push(`  …ほか ${s.other.length-40} 件`);
+  if(s.broken.length) L.push("  読めなかったもの: "+s.broken.slice(0,10).map(b=>`#${b.e.no}(${b.why})`).join(" "));
   return L;
 }
 // ============================================================
