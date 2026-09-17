@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.5.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.5.1 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1459,14 +1459,20 @@ async function selectEntry(i){
   busy(""); updateStatus(); updateReport();
 }
 // モデル候補を順に開いて、最初に三角形が出たものを表示する
-async function selectFirstModel(limit=8){
-  // 大きいものから試す。キャラクターのモデルは小物より大きいはず
+async function selectFirstModel(limit=16){
+  // 大きいものから試す。キャラクターのモデルは小物より大きいはず。
+  // テクスチャの集まりだと分かったものは飛ばして、次を探す
   const list=state.entries.filter(entryIsModel).sort((a,b)=>b.size-a.size).slice(0,limit);
-  for(const e of list){
+  let firstShown=-1;
+  for(const [k,e] of list.entries()){
+    busy(`モデルを探しています… ${k+1}/${list.length}`);
     await selectEntry(state.entries.indexOf(e));
-    if(state.selInfo&&state.selInfo.tris>0) return true;
+    if(firstShown<0) firstShown=state.sel;
+    if(state.selInfo&&state.selInfo.tris>0){ busy(""); return true }
   }
-  return list.length>0;
+  busy("");
+  if(firstShown>=0) await selectEntry(firstShown);   // 見つからなければ 1件目を見せる
+  return false;
 }
 function entryLabel(e){ return e?(e.src==="iso"?e.name:(e.label?`#${e.no}　sector ${e.sector}　${e.label}`:`#${e.no}　種類 ${e.type}`)):"" }
 function updateStatus(){
@@ -1483,7 +1489,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.5.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.5.1 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1665,7 +1671,12 @@ async function start(files){
       busy("調べています…"); await probeSamples(); busy("");
       fillTypeFilter(); renderFiles();
     }
-    if(!await selectFirstModel()){ updateStatus(); updateReport() }
+    if(!await selectFirstModel()){
+      // どれも組めなかった。手がかりを集めるため、候補をまとめて調べておく
+      try{ state.survey=await surveyModels(24,p=>busy(`モデル候補をまとめて調べています… ${Math.round(p*100)}%`)) }
+      catch(err){ console.warn(err) }
+      busy(""); updateStatus(); updateReport();
+    }
   }catch(err){ busy(""); $("err").textContent=err.message; console.error(err) }
 }
 // ---- 操作 ----
@@ -1785,7 +1796,7 @@ async function surveyModels(limit,onProgress){
     const e=list[i];
     if(onProgress) onProgress(i/list.length);
     await idle();
-    const r={no:e.no,sector:e.sector,size:e.size,parts:0,partSizes:"",body:"?",dec:0,magic:"",w1:"",tris:0,tex:0,how:"",err:""};
+    const r={no:e.no,sector:e.sector,size:e.size,parts:0,partSizes:"",body:"?",dec:0,magic:"",w1:"",tris:0,tex:0,head:"",how:"",err:""};
     try{
       const raw=await readFull(e);
       const ps=unpack(raw);
@@ -1794,6 +1805,7 @@ async function surveyModels(limit,onProgress){
       r.dec=info.decLen; r.tris=info.tris; r.how=info.layout||""; r.err=info.error||"";
       if(info.bodyPart!==undefined) r.body=String(info.bodyPart);
       r.tex=info.texChain||0;
+      if(info.dump&&info.dump[0]) r.head=info.dump[0].slice(-47);   // 先頭16バイトの16進
       if(info.words){ r.magic=hex(info.words[2]); r.w1=hex(info.words[3]) }
     }catch(err){ r.err=err.message }
     rows.push(r);
@@ -1803,11 +1815,11 @@ async function surveyModels(limit,onProgress){
 }
 function surveyLines(rows){
   const L=[];
-  L.push("  番号 / sector / ファイル / 部分 / 本体 / 展開後 / 先頭の印 / 語1 / 三角形 / テクスチャ / 備考");
+  L.push("  番号 / sector / ファイル / 部分 / 本体 / 展開後 / 先頭の印 / 語1 / 三角形 / テクスチャ / 先頭16バイト / 備考");
   for(const r of rows){
     L.push(`  #${String(r.no).padStart(4)} ${String(r.sector).padStart(7)} ${String(r.size).padStart(9)} `
       +`${String(r.parts).padStart(2)}[${r.partSizes}] p${r.body} ${String(r.dec).padStart(8)} ${r.magic} ${r.w1} `
-      +`${String(r.tris).padStart(6)} ${String(r.tex).padStart(5)}枚 ${r.tris?r.how:r.err}`);
+      +`${String(r.tris).padStart(6)} ${String(r.tex).padStart(5)}枚 ${r.head||""} ${r.tris?r.how:r.err}`);
   }
   // 先頭の印ごとの件数（形が何種類あるか）
   const by=rows.reduce((m,r)=>m.set(r.magic||"?",(m.get(r.magic||"?")||0)+1),new Map());
@@ -1815,6 +1827,8 @@ function surveyLines(rows){
   const got=rows.filter(r=>r.tris>0), tx=rows.filter(r=>r.tex>=2);
   L.push(`  三角形が取れたもの: ${got.length}件`+(got.length?`（例: #${got[0].no} ${got[0].tris}枚 ${got[0].how}）`:""));
   L.push(`  テクスチャの集まり: ${tx.length}件`);
+  const un=rows.filter(r=>!r.tris&&r.tex<2);
+  L.push(`  まだ分からないもの: ${un.length}件`+(un.length?`（${un.slice(0,8).map(r=>"#"+r.no).join(" ")}）`:""));
   return L;
 }
 // ============================================================
