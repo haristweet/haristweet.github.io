@@ -53,17 +53,18 @@ select,.pick-motion{width:100%;font:inherit;padding:6px 8px;border:1px solid var
 canvas{width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 html,body,button,input,select,label,.tabbar,aside{touch-action:manipulation}
 canvas:active{cursor:grabbing}
-.bgs{position:absolute;left:12px;top:12px;display:flex;gap:6px;align-items:center}
+.bgs{position:absolute;left:12px;top:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:250px}
 .bgs button{all:unset;cursor:pointer;width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.55);box-shadow:0 0 0 1px rgba(0,0,0,.25)}
 .bgs button[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
 .stage.light .status,.stage.light .hint,.stage.light .shot{color:rgba(0,0,0,.7)}
 .stage.light .shot button{background:rgba(0,0,0,.08);border-color:rgba(0,0,0,.2);color:#1d1c1a}
-.shot{position:absolute;right:12px;top:12px;display:flex;gap:10px;align-items:center;color:rgba(255,255,255,.75);font-size:12px}
+/* 窓が狭いと背景の丸とぶつかるので、折り返して逃がす */
+.shot{position:absolute;right:12px;top:12px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;align-items:center;color:rgba(255,255,255,.75);font-size:12px;max-width:calc(100% - 280px)}
 .shot label{display:flex;gap:4px;align-items:center;cursor:pointer}
 .shot button{all:unset;cursor:pointer;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:6px 10px;font-size:12px}
 .shot button:hover{background:rgba(255,255,255,.24)}
 .hint{position:absolute;right:14px;bottom:12px;color:rgba(255,255,255,.55);font-size:12px;pointer-events:none}
-.status{position:absolute;left:14px;bottom:12px;right:14px;color:rgba(255,255,255,.75);font-size:12px}
+.status{position:absolute;left:14px;bottom:12px;right:auto;max-width:calc(100% - 28px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,.75);font-size:12px}
 .busy{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:rgba(255,255,255,.8);font-size:13px;background:rgba(0,0,0,.45);padding:10px 16px;border-radius:10px}
 .drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px}
 .drop .card{background:var(--panel);border-radius:12px;padding:26px 28px;max-width:500px;line-height:1.75;box-shadow:0 10px 40px rgba(0,0,0,.35);max-height:100%;overflow:auto}
@@ -75,6 +76,8 @@ canvas:active{cursor:grabbing}
 .err{color:#b91c1c;font-size:13px;margin-top:8px;white-space:pre-wrap}
 [hidden]{display:none!important}
 .tabbar,.sheet-close{display:none}
+/* 表示が狭いと下でぶつかるので、操作のヒントは引っ込める */
+@media(max-width:1100px){ .hint{display:none} }
 @media(max-width:720px){
   header{padding:10px 14px} header h1{font-size:16px} header .sub{display:none}
   body.loaded header{display:none}
@@ -109,7 +112,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.1.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v0.1.1 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -193,6 +196,7 @@ const state={
   rig:"t2",
   cache:new Map(),
   probe:new Map(),   // ファイル番号 → 見分けた結果
+  head:new Map(),    // ファイル番号 → 先頭4バイト（解析の表示用）
   log:[],
 };
 const fmtSize=n=>n>=1048576?(n/1048576).toFixed(2)+" MB":n>=1024?(n/1024).toFixed(1)+" KB":n+" B";
@@ -657,9 +661,10 @@ function findFileTables(exe,arcSize){
       flush();
     }
   });
-  // 「隙間なく詰まっている」割合が高いものほど本物らしい
-  found.sort((a,b)=>(b.strict/b.count-a.strict/a.count)||(b.count-a.count));
-  return found.slice(0,8);
+  // 詰まり「率」で並べると、たまたま数件そろっただけの短い並びが勝ってしまう。
+  // 隙間なくつながっている「本数」で並べ、あとでアーカイブを実際に読んで確かめる（scoreTables）
+  found.sort((a,b)=>(b.strict-a.strict)||(b.count-a.count));
+  return found.slice(0,12);
 }
 function readTable(exe,t){
   const dv=new DataView(exe.buffer,exe.byteOffset,exe.byteLength), dec=TABLE_SHAPES[t.shape||0].dec, out=[];
@@ -1025,6 +1030,12 @@ function buildModel(raw){
   return {mesh,info};
 }
 // ---- 一覧を組み直す ----
+// 見分けたついでに先頭4バイトも覚えておく（解析の表示用）
+async function rememberHead(e){
+  if(state.head.has(e.key)) return;
+  try{ const h=await readHead(e,4); state.head.set(e.key,[...h].map(v=>v.toString(16).padStart(2,"0")).join(" ")) }
+  catch(_){ state.head.set(e.key,"読めず") }
+}
 function typeStats(list){
   const m=new Map();
   for(const e of list){ const t=m.get(e.type)||{type:e.type,count:0,model:0,probed:0}; t.count++; m.set(e.type,t) }
@@ -1103,7 +1114,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v0.1.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v0.1.1 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1111,16 +1122,24 @@ function updateReport(){
   L.push("");
   L.push(`ファイル表の候補 (${state.tables.length}件):`);
   if(!state.tables.length) L.push("  見つかりませんでした");
-  state.tables.forEach((t,i)=>{
-    const addr=ex.ok?hex(ex.text+(t.off-0x800)):`file+${hex(t.off)}`;
-    L.push(`  ${i===state.tableIdx?"→":" "} [${i+1}] ${addr}  ${t.count}件  詰まり ${(100*t.strict/Math.max(1,t.count-1)).toFixed(0)}%  ${t.name}`);
-  });
+  state.tables.forEach((t,i)=>L.push(`  ${i===state.tableIdx?"→":" "} [${i+1}] ${tableLabel(t,ex).replace(/　/g,"  ")}`));
   L.push("");
   L.push(`一覧: ${state.source==="iso"?"ディスクのファイル":"アーカイブのファイル表"}  ${state.entries.length}件`);
   const st=state.stats||[];
   if(state.source!=="iso"&&st.length){
     L.push("種類ごと（件数 / 調べた数 / モデルらしい数）:");
     for(const t of st) L.push(`  種類 ${String(t.type).padStart(3)} : ${String(t.count).padStart(5)} / ${String(t.probed).padStart(4)} / ${String(t.model).padStart(4)}`);
+  }
+  if(state.source!=="iso"&&state.entries.length){
+    L.push("");
+    L.push("表の先頭 8件 (番号 : sector / 大きさ / 種類 / 先頭4バイト):");
+    for(const en of state.entries.slice(0,8))
+      L.push(`  #${String(en.no).padStart(4)} : ${String(en.sector).padStart(7)} / ${String(en.size).padStart(8)} / ${String(en.type).padStart(3)} / ${state.head.get(en.key)||"?"}`);
+  }
+  if(s.iso&&s.iso.length){
+    L.push("");
+    L.push("大きいファイル 5件（アーカイブの選び方の確認用）:");
+    for(const f of [...s.iso].sort((x,y)=>y.size-x.size).slice(0,5)) L.push(`  ${f.path||f.name}  ${fmtSize(f.size)}`);
   }
   const e=state.entries[state.sel], inf=state.selInfo;
   L.push("");
@@ -1142,8 +1161,27 @@ function updateReport(){
   if(bgm.tracks.length) L.push("", `XA: ${bgm.tracks.length} チャンネル`);
   $("report").value=L.join("\n");
 }
+// 候補の裏取り: その表が指す先を実際に何件か読んで、トバルのファイルらしいかを見る。
+// 本物の表なら中身が入れ子か圧縮になっているはずで、まぐれで並んだだけの表はここで落ちる。
+async function scoreTables(tables){
+  const GOOD={model:1,pack:1,lz:1,tim:1};
+  for(const t of tables){
+    const rows=readTable(state.src.exe,t).filter(e=>e.size>0);
+    const step=Math.max(1,Math.floor(rows.length/8));
+    let hit=0, n=0;
+    for(let i=0;i<rows.length&&n<8;i+=step){
+      const e=rows[i];
+      try{ if(GOOD[classify(await state.src.readArc(e.sector,Math.min(e.size,2048)),e.size).kind]) hit++ }catch(_){}
+      n++;
+    }
+    t.sampled=n; t.hits=n?hit/n:0;
+  }
+  tables.sort((a,b)=>(b.hits-a.hits)||(b.strict-a.strict)||(b.count-a.count));
+}
+const tableLabel=(t,ex)=>`${ex.ok?hex(ex.text+(t.off-0x800)):"file+"+hex(t.off)}　${t.count}件　中身 ${Math.round(100*(t.hits||0))}%　詰まり ${(100*t.strict/Math.max(1,t.count-1)).toFixed(0)}%　${t.name}`;
 // ---- 調べる ----
 async function probeSamples(){
+  for(const en of state.entries.slice(0,8)) await rememberHead(en);   // 解析に出す先頭8件
   const byType=new Map();
   for(const e of state.entries){ const a=byType.get(e.type)||[]; if(a.length<6) a.push(e); byType.set(e.type,a) }
   let n=0, total=[...byType.values()].reduce((t,a)=>t+a.length,0);
@@ -1168,9 +1206,10 @@ async function start(files){
   try{
     busy("ディスクを読んでいます…");
     state.src=await openSource(files);
-    state.cache.clear(); state.probe.clear();
+    state.cache.clear(); state.probe.clear(); state.head.clear();
     const ex=exeInfo(state.src.exe);
     state.tables=state.src.readArc&&ex.ok?findFileTables(state.src.exe,state.src.arcSize):[];
+    if(state.tables.length){ busy("ファイル表の候補を確かめています…"); await scoreTables(state.tables) }
     state.tableIdx=0;
     state.source=state.tables.length?"table":"iso";
     $("drop").hidden=true; $("side").hidden=false; $("hint").hidden=false; $("shot-box").hidden=false; $("bg-box").hidden=false;
@@ -1179,10 +1218,7 @@ async function start(files){
       ? `実行ファイルの中にファイル表らしい並びが ${state.tables.length} 個ありました。いちばんそれらしいものを選んでいます。`
       : "ファイル表が見つからなかったので、ディスクのファイルをそのまま並べています。";
     for(const b of $("src-seg").children) b.setAttribute("aria-pressed",String(b.dataset.v===state.source));
-    $("table-pick").innerHTML=state.tables.map((t,i)=>{
-      const addr=ex.ok?hex(ex.text+(t.off-0x800)):hex(t.off);
-      return `<option value="${i}">[${i+1}] ${addr}　${t.count}件　詰まり ${(100*t.strict/Math.max(1,t.count-1)).toFixed(0)}%　${t.name}</option>`;
-    }).join("")||'<option value="-1">候補なし</option>';
+    $("table-pick").innerHTML=state.tables.map((t,i)=>`<option value="${i}">[${i+1}] ${tableLabel(t,ex)}</option>`).join("")||'<option value="-1">候補なし</option>';
     rebuildEntries();
     busy("ファイルの種類を調べています…");
     await probeSamples();
