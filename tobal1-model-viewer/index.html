@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.0.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.1.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1227,12 +1227,14 @@ function readT1Object(d,base){
 function t1FaceMode(d,o){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   let best=null;
-  for(const sz of [12,16,8]) for(const scale of [4,1]) for(const nvtx of [3,4]){
+  // 面の領域がきっちり割り切れない部品があるので、頭を少しずらす読み方も試す
+  const skips=[0]; for(const sz of [12,16,8]){ const r=o.faceBytes%sz; if(r&&skips.indexOf(r)<0) skips.push(r) }
+  for(const skip of skips) for(const sz of [12,16,8]) for(const scale of [4,1]) for(const nvtx of [3,4]){
     if(nvtx*4>sz) continue;
-    const n=Math.floor(o.faceBytes/sz); if(!n) continue;
+    const n=Math.floor((o.faceBytes-skip)/sz); if(n<1) continue;
     const used=new Set(); let ok=0, seen=0;
     for(let k=0;k<n;k++){
-      const p=o.base+o.facePtr+k*sz;
+      const p=o.base+o.facePtr+skip+k*sz;
       if(p+sz>d.length) break;
       seen++;
       const idx=[]; let fine=true;
@@ -1247,7 +1249,7 @@ function t1FaceMode(d,o){
     }
     if(!seen) continue;
     const score=(ok/seen)*(used.size/Math.max(1,o.nv));
-    if(!best||score>best.score) best={sz,scale,nvtx,score,n:seen,ok,used:used.size};
+    if(!best||score>best.score) best={sz,scale,nvtx,skip,score,n:seen,ok,used:used.size};
   }
   return best;
 }
@@ -1266,16 +1268,18 @@ function buildT1Mesh(d,objs){
       o.box=mn.map((v,a)=>`${v}..${mx[a]}`).join(" "); o.span=Math.max(...mx.map((v,a)=>v-mn[a])); }
     const M=t1FaceMode(d,o);
     if(!M) continue;
-    o.lays=`1枚 ${M.sz}B / 頂点番号は ${M.scale===4?"4倍":"そのまま"} / ${M.nvtx}頂点 / ${M.ok}枚中${M.n}枚が有効 / 使用${M.used}/${o.nv}`;
+    o.lays=`1枚 ${M.sz}B / 頂点番号は ${M.scale===4?"4倍":"そのまま"} / ${M.nvtx}頂点 / ${M.ok}枚中${M.n}枚が有効 / 使用${M.used}/${o.nv}`
+      +(M.skip?` / 頭を ${M.skip}B 飛ばす`:"");
     const V=i=>[dv.getInt16(o.base+o.vertPtr+i*8,true),
                 dv.getInt16(o.base+o.vertPtr+i*8+2,true),
                 dv.getInt16(o.base+o.vertPtr+i*8+4,true)];
     const C=i=>{ const p=o.base+o.colPtr+i*4;
                  return p+2<d.length?[d[p]/255,d[p+1]/255,d[p+2]/255]:[.5,.5,.5] };
     {
-      const n=Math.floor(o.faceBytes/M.sz);
+      const n=Math.floor((o.faceBytes-M.skip)/M.sz);
+      const trisBefore=tris;
       for(let k=0;k<n;k++){
-      const fp=o.base+o.facePtr+k*M.sz;
+      const fp=o.base+o.facePtr+M.skip+k*M.sz;
       if(fp+M.sz>d.length) break;
       const idx=[];
       for(let j=0;j<M.nvtx;j++) idx.push(dv.getUint32(fp+j*4,true)/M.scale);
@@ -1291,10 +1295,39 @@ function buildT1Mesh(d,objs){
         sm.push(1); tris++;
       }
       }
+      o.tris=tris-trisBefore;
     }
   }
   return {mesh:{pos:new Float32Array(pos),col:new Float32Array(col),t0:new Float32Array(t0),
                 t1:new Float32Array(t1),sm:new Uint8Array(sm)}, used, tris, dropped};
+}
+
+// 部品のヘッダを生のまま出す。+0x10〜+0x18 が何なのか（置き場所かもしれない）を
+// 実物の数字で確かめるため。まだ意味は決めつけない。
+function t1HeadDump(d,o,words){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const out=[];
+  for(let k=0;k<(words||16)&&o.base+(k+1)*4<=d.length;k++){
+    const v=dv.getUint32(o.base+k*4,true);
+    out.push(`+${(k*4).toString(16).padStart(2,"0")}:${v>0x7fffffff?(v|0):v}`);
+  }
+  return out.join(" ");
+}
+// 先頭の部品だけ、ヘッダと頂点のあいだにやけに広い空きがある（実物で 1,504 バイト）。
+// 骨の並びか、部品の入れ子の目録だと思うので、そのまま並べて出す。
+function t1GapDump(d,o,rows){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const from=o.base+0x38, to=o.base+o.vertPtr;
+  if(to-from<64) return null;
+  const L=[`  ヘッダと頂点のあいだ（+${(0x38).toString(16)}〜+${o.vertPtr.toString(16)}、${to-from}バイト）:`];
+  const n=Math.min(rows||12,Math.ceil((to-from)/16));
+  for(let r=0;r<n;r++){
+    const p=from+r*16; if(p+16>to||p+16>d.length) break;
+    const w=[0,4,8,12].map(j=>{ const v=dv.getUint32(p+j,true); return String(v>0x7fffffff?(v|0):v).padStart(11) });
+    const b=Array.from(d.subarray(p,p+16),v=>v.toString(16).padStart(2,"0")).join("");
+    L.push(`    +${(p-o.base).toString(16).padStart(4,"0")}  ${w.join(" ")}   ${b}`);
+  }
+  return L;
 }
 // ============================================================
 //  WebGL
@@ -1490,24 +1523,26 @@ function buildModelInner(raw,info){
     const objs=t1ObjectOffsets(b.out).map(p=>readT1Object(b.out,p)).filter(Boolean);
     const okObjs=objs.filter(o=>o.ok);
     info.t1Parts=`${okObjs.length}/${objs.length} 部品`;
-    info.t1Detail=objs.slice(0,12).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}(頂${o.nv} 法${o.nn} 面${o.counts?o.counts.join("/")+"@"+o.countsAt:"?"}${o.box?" 範囲 "+o.box:""})`).join("\n    ");
     if(!okObjs.length) continue;
     const r1=buildT1Mesh(b.out,okObjs);
+    info.t1Detail=objs.slice(0,12).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}(頂${o.nv} 法${o.nn} 面${o.faceBytes||0}B${o.tris?" 三角"+o.tris:""}${o.box?" 範囲 "+o.box:""})`).join("\n    ");
     if(r1.tris>0){
       info.t1Dropped=r1.dropped;
       // 面のバイト列。区画のダンプは先頭と末尾しか出しておらず、面は真ん中にあって見えなかった
       const f=okObjs[0];
       if(f){
         const hx=(from,len)=>Array.from(b.out.subarray(from,from+len),v=>v.toString(16).padStart(2,"0")).join(" ");
-        const g1=f.base+f.facePtr, g2=g1+f.counts[0]*8, g3=g2+f.counts[1]*8, g4=g3+f.counts[2]*12;
+        // 割り切れない部品（本体）の面の頭と尻。ずれの正体を見るため
+        const odd=okObjs.find(o=>o.faceBytes%12)||f;
         info.t1Faces=[
-          `  面の中身（部品 +${hex(f.base,4)}、頂点${f.nv}、面 ${f.counts.join("/")}）:`,
-          `    1種 8B ×${f.counts[0]} +${hex(g1-f.base,4)}  ${hx(g1,48)}`,
-          `    2種 8B ×${f.counts[1]} +${hex(g2-f.base,4)}  ${hx(g2,48)}`,
-          `    3種 12B×${f.counts[2]} +${hex(g3-f.base,4)}  ${hx(g3,48)}`,
-          `    4種 12B×${f.counts[3]} +${hex(g4-f.base,4)}  ${hx(g4,48)}`,
+          `  面の中身（部品 +${hex(odd.base,4)}、頂点${odd.nv}、面 ${odd.faceBytes}B = 12×${Math.floor(odd.faceBytes/12)}+${odd.faceBytes%12}）:`,
+          `    頭 +${hex(odd.facePtr,4)}  ${hx(odd.base+odd.facePtr,48)}`,
+          `    尻 +${hex(odd.colPtr-48,4)}  ${hx(odd.base+odd.colPtr-48,48)}`,
+          `    色 +${hex(odd.colPtr,4)}  ${hx(odd.base+odd.colPtr,32)}`,
         ];
-        info.t1Lays=okObjs.slice(0,3).map(o=>`+${hex(o.base,4)}: ${o.lays||"-"}`);
+        info.t1Lays=okObjs.slice(0,4).map(o=>`+${hex(o.base,4)}: ${o.lays||"-"}`);
+        info.t1Heads=objs.slice(0,10).map(o=>`+${hex(o.base,4)}  ${t1HeadDump(b.out,o,14)}`);
+        for(const o of objs){ const g=t1GapDump(b.out,o,14); if(g){ info.t1Gap=g; break } }
       }
       const P=r1.mesh.pos, seen=new Set();
       for(let i=0;i<P.length&&seen.size<4096;i+=3) seen.add(P[i]+","+P[i+1]+","+P[i+2]);
@@ -1745,7 +1780,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v1.0.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v1.1.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -1817,6 +1852,8 @@ function updateReport(){
     if(inf.t1Detail) L.push("  部品の内訳: "+inf.t1Detail);
     if(inf.t1Lays){ L.push("  面の読み方（選ばれたもの）:"); inf.t1Lays.forEach(x=>L.push("    "+x)) }
     if(inf.t1Faces) L.push(...inf.t1Faces);
+    if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
+    if(inf.t1Gap) L.push(...inf.t1Gap);
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
     if(inf.modelOffs) L.push("  ヘッダにある位置: "+inf.modelOffs);
     if(inf.layout) L.push(`  並び: ${inf.layout}　広がり ${inf.extent}`);
