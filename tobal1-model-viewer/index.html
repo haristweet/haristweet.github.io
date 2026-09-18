@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.12.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.13.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1078,6 +1078,37 @@ function mipsFuncAt(exe,addr,cap){
   const off=addr-t.base; if(off<0||off>=t.body.length) return [];
   const fn=mipsFunc(t.body,off,4,cap||200);
   return mipsLines(exe,fn,fn.from);
+}
+
+// 「その番地を register に作っている場所」を探す。lui＋addiu で番地を組み立てて
+// 関数に渡す形は、読み書きの命令として現れないので、これを見ないと取りこぼす
+function mipsAddrOf(exe,from,to,limit){
+  const t=exeText(exe); if(!t) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const hi=new Array(32).fill(-1), out=[];
+  for(let p=0;p+4<=t.body.length;p+=4){
+    const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31;
+    const im=w&0xffff, se=im>0x7fff?im-0x10000:im;
+    if(op===0x0f){ hi[rt]=(im<<16)>>>0; continue }
+    if((op===0x09||op===0x0d)&&hi[rs]>=0){
+      const a=op===0x09?((hi[rs]+se)>>>0):((hi[rs]|im)>>>0);
+      hi[rt]=a;
+      if(a>=(from>>>0)&&a<=(to>>>0)){ out.push({at:t.base+p,addr:a,reg:rt});
+        if(out.length>=(limit||16)) break }
+      continue;
+    }
+    if(op===0) hi[rd]=-1; else if(op!==0x02&&op!==0x03&&op>=0x08) hi[rt]=-1;
+  }
+  return out;
+}
+// ジャンプ表を番地から直に読む（命令ごとの処理の飛び先）
+function mipsTableAt(exe,addr,n){
+  const t=exeText(exe); if(!t) return [];
+  const off=addr-t.base; if(off<0||off+n*4>t.body.length) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const out=[];
+  for(let k=0;k<n;k++) out.push(dv.getUint32(off+k*4,true));
+  return out;
 }
 // ============================================================
 //  アーカイブを直接さらう
@@ -2610,7 +2641,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.12.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.13.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2700,6 +2731,27 @@ function updateReport(){
           for(const r of rr.filter(x=>x.store).slice(0,3))
             L.push(...mipsBlock(s.exe,r.at-0x18,10,"  そこの前後 "));
         } else L.push("  骨の表のあたりを使っている場所は見つかりませんでした"); }
+      // 読み書きの命令として現れない「番地を作っているだけ」の場所も探す。
+      // 表を用意する側は、番地を register に作って関数に渡しているはず
+      { const ao=mipsAddrOf(s.exe,0x800CBE80,0x800CBE9F,16);
+        L.push(ao.length
+          ? `  骨の表の番地を作っている場所（${ao.length}件）: `+ao.map(r=>`${hex(r.addr)}@${hex(r.at)}`).join(" ")
+          : "  骨の表の番地を作っているだけの場所は見つかりませんでした");
+        for(const r of ao.slice(0,3)) L.push(...mipsBlock(s.exe,r.at-0x10,10,"  そこの前後 ")); }
+      // 0x8001BBE0 の中にもう1つ命令の表がある（0x80010308、15件）。
+      // 0x8001EEE4 のものとは別なので、こちらも読む
+      { const tb=mipsTableAt(s.exe,0x80010308,15);
+        if(tb.length){
+          L.push("  もう1つの命令の表 0x80010308（15件）:");
+          tb.forEach((v,i)=>{
+            const inf=(v>=0x80010000&&v<0x800d0000)?mipsCmdInfo(s.exe,v,0x8001bdfc,200):null;
+            L.push(`    命令 ${String(i+1).padStart(2)} → ${hex(v)}`
+              +(inf?`　長さ ${inf.lens.length?inf.lens.join("/")+"B":"?"}　読む語 ${inf.reads.map(x=>"+"+x).join(",")||"-"}`:""));
+          });
+        } }
+      // 旗が立っていないときに呼ばれる関数。下ごしらえならここ
+      L.push("  旗が立っていないときに呼ぶ関数 0x80019C78:");
+      L.push(...mipsFuncAt(s.exe,0x80019C78,60));
       // 本当に部品を読み進める関数。0x8001BE24 がここを呼んでいる
       L.push("  部品を読み進める関数 0x8001BBE0:");
       L.push(...mipsFuncAt(s.exe,0x8001BBE0,90));
