@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.15.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.16.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -137,7 +137,7 @@ canvas:active{cursor:grabbing}
     </div>
     <div data-tab="file"><p class="label">メモリの写し（骨さがし）</p>
       <label class="pick" style="display:inline-block">セーブステートを選ぶ<input id="memfile" type="file" hidden></label>
-      <p class="note">DuckStation でゲームを動かし、キャラクターが立っている場面でセーブステートを作ってください。そのファイルをここで選ぶと、<b>メモリの中身はこのページが読みます</b>。骨の表は実行中にしか存在しないので、これが一番の近道です。圧縮されていてもほどけるものはほどきます。zstd で圧縮されている場合だけはブラウザがほどけないので、そのときは解析結果に出る手順に従ってください。</p>
+      <p class="note">DuckStation でゲームを動かし、キャラクターが立っている場面でセーブステートを作ってください。そのファイルをここで選ぶと、<b>メモリの中身はこのページが読みます</b>。骨の表は実行中にしか存在しないので、これが一番の近道です。DuckStation の設定 →詳細 の「セーブステートの圧縮」を <b>Deflate</b> か <b>なし</b> にしてから作ってください。既定の zstd はブラウザがほどけません。</p>
       <div class="note" id="mem-status"></div>
     </div>
     <div data-tab="file" id="t1part-box" hidden><p class="label">ファイルの中のモデル</p>
@@ -2647,7 +2647,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.15.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.16.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -3419,12 +3419,22 @@ async function memInflate(buf,start,fmt){
     return out;
   }catch(_){ return null }
 }
+// DuckStation のセーブステートかどうかを見る。先頭が "DUCC"
+function memDuckHeader(buf){
+  if(buf.length<8||buf[0]!==0x44||buf[1]!==0x55||buf[2]!==0x43||buf[3]!==0x43) return null;
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+  let title="";
+  try{ const t=buf.subarray(8,8+128), z=t.indexOf(0);
+       title=new TextDecoder("utf-8").decode(z>=0?t.subarray(0,z):t) }catch(_){}
+  return {version:dv.getUint32(4,true),title};
+}
 // 写しをそのまま読めなければ、ほどいてから読む
 async function memPrepare(buf,exe){
   if(findPsxRam(buf,exe)>=0) return {buf,note:""};
-  const mags=memFindMagic(buf);
+  const mags=memFindMagic(buf,0x200000);
+  const starts=[0,...mags.filter(m=>m.name==="zlib"||m.name==="gzip").map(m=>m.at)];
   for(const fmt of ["deflate","gzip","deflate-raw"])
-    for(const st of [0,...mags.filter(m=>m.name==="zlib"||m.name==="gzip").map(m=>m.at)].slice(0,6)){
+    for(const st of starts.slice(0,16)){
       const out=await memInflate(buf,st,fmt);
       if(out&&findPsxRam(out,exe)>=0) return {buf:out,note:`（+0x${st.toString(16)} から ${fmt} でほどきました）`};
     }
@@ -3453,14 +3463,21 @@ function memBoneLines(buf,exe){
     L.push(`  ファイルの大きさ: ${buf.length} B（プレステの RAM は 2,097,152 B）`);
     L.push("  先頭64バイト: "+Array.from(buf.subarray(0,64),v=>v.toString(16).padStart(2,"0")).join(" "));
     L.push("  読める字: "+Array.from(buf.subarray(0,64),v=>(v>=32&&v<127)?String.fromCharCode(v):".").join(""));
-    const mags=memFindMagic(buf);
-    if(mags.length){
-      L.push("  見つかった圧縮の印: "+mags.map(m=>`${m.name}@+0x${m.at.toString(16)}`).join(" "));
-      if(mags.some(m=>m.name==="zstd"))
-        L.push("  → zstd で圧縮されています。ブラウザはこれをほどけません。下の手をとってください。");
-    } else L.push("  圧縮の印は見つかりませんでした");
-    L.push("  【確実な手】DuckStation でデバッグ表示を有効にして、メモリをそのまま");
-    L.push("    書き出したファイル（2MB ちょうど）を作り、それをここで選んでください。");
+    const dk=memDuckHeader(buf);
+    if(dk){
+      L.push(`  DuckStation のセーブステートです（版 ${dk.version}、題名「${dk.title}」）`);
+      if(buf.length<PSX_RAM)
+        L.push(`  ファイルが RAM より小さい（${buf.length} < ${PSX_RAM}）ので、中身は確実に圧縮されています`);
+    }
+    const mags=memFindMagic(buf,0x200000);
+    if(mags.length) L.push("  見つかった圧縮の印: "+mags.slice(0,8).map(m=>`${m.name}@+0x${m.at.toString(16)}`).join(" "));
+    L.push("");
+    L.push("  【直し方】DuckStation の設定 → 詳細（Advanced）に「セーブステートの圧縮」");
+    L.push("    （Save State Compression）があります。ここを次のどちらかにして、");
+    L.push("    セーブステートを作り直してください:");
+    L.push("      ・Deflate / zlib  … このページがほどけます（おすすめ）");
+    L.push("      ・なし / Uncompressed … ファイルが 2MB を超えればそのまま読めます");
+    L.push("    ※ zstd（既定）はブラウザがほどけないので、これだけは読めません。");
     return L;
   }
   L.push(`メモリの写しを読みました（RAM の先頭は ファイルの +0x${base.toString(16)}）`);
