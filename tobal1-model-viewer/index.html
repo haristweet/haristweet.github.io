@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.4.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.5.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -131,8 +131,8 @@ canvas:active{cursor:grabbing}
       <button class="btn wide" id="survey" style="margin-top:8px">モデル候補をまとめて調べる</button>
     </div>
     <div data-tab="file"><p class="label">向き</p>
-      <div class="seg" id="up-seg"><button data-up="0" aria-pressed="false">そのまま</button><button data-up="1" aria-pressed="true">X を上に</button><button data-up="2" aria-pressed="false">X を上（逆）</button><button data-up="3" aria-pressed="false">Z を上に</button></div>
-      <p class="note">モデルの「背の高さ」がどの軸かはファイルに書かれていません。実物は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）でした。人の形にならないときはここを変えてみてください。</p>
+      <div class="seg" id="up-seg"><button data-up="0" aria-pressed="false">そのまま</button><button data-up="1" aria-pressed="false">X を上に</button><button data-up="2" aria-pressed="true">X を上（逆）</button><button data-up="3" aria-pressed="false">Z を上に</button></div>
+      <p class="note">モデルの「背の高さ」がどの軸かはファイルに書かれていません。実物は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）でした。そのうえで上下をひっくり返した「X を上（逆）」が既定です。人の形にならないときはここを変えてみてください。</p>
     </div>
     <div data-tab="file"><p class="label">骨格の組み方</p>
       <div class="seg" id="rig-seg"><button data-v="t2" aria-pressed="true">トバル2と同じ</button><button data-v="flat" aria-pressed="false">関節を使わない</button></div>
@@ -1492,14 +1492,16 @@ function t1WalkLine(W){
 }
 const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメラの合わせ枠が壊れるので落とす
 // 見せ方の切り替え。どこがおかしいのかを切り分けるための道具
-const t1Show={all:false,only:false,segColor:false,up:1};
+const t1Show={all:false,only:false,segColor:false,up:2};
 try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.only=localStorage.getItem("t1only")==="1";
      t1Show.segColor=localStorage.getItem("t1segcol")==="1";
-     const u=localStorage.getItem("t1up"); if(u!=null) t1Show.up=+u }catch(_){}
+     // 向きの記憶は v3.5.0 で作り直した（前の既定値が上下逆だったので、古い記憶は捨てる）
+     const u=localStorage.getItem("t1up2"); if(u!=null) t1Show.up=+u }catch(_){}
 // モデルの「背の高さ」がどの軸かは決め打ちできないので、向きを選べるようにする。
 // 実物 #68 は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）。
-// ビューアは Y を上に描くので、そのままだとキャラクターが寝てしまう
+// ビューアは Y を上に描くので、そのままだとキャラクターが寝てしまう。
+// さらに X は足のほうが大きい（プレステの座標は下が＋）ので、上下をひっくり返す
 const T1_UP=[
   {name:"そのまま",      f:(x,y,z)=>[x,y,z]},
   {name:"X を上に",      f:(x,y,z)=>[-y,x,z]},
@@ -2191,7 +2193,14 @@ function buildModelInner(raw,info){
     { const P=r1.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
       for(let i=0;i<P.length;i+=3) for(let a=0;a<3;a++){ if(P[i+a]<mn[a])mn[a]=P[i+a]; if(P[i+a]>mx[a])mx[a]=P[i+a] }
       info.t1Size=`  モデル全体の縦横: X ${Math.round(mx[0]-mn[0])}　Y ${Math.round(mx[1]-mn[1])}　Z ${Math.round(mx[2]-mn[2])}`
-        +`（いちばん長い軸が背の高さのはず）`; }
+        +`（いちばん長い軸が背の高さのはず）`;
+      // 上から下へ10段に切って、それぞれの横幅を測る。上下が合っているかを目でなく数で見るため
+      const h=mx[1]-mn[1]||1, seg=Array.from({length:10},()=>[1e9,-1e9,1e9,-1e9]);
+      for(let i=0;i<P.length;i+=3){ let k=Math.floor((mx[1]-P[i+1])/h*10); if(k<0)k=0; if(k>9)k=9;
+        const g=seg[k]; if(P[i]<g[0])g[0]=P[i]; if(P[i]>g[1])g[1]=P[i];
+        if(P[i+2]<g[2])g[2]=P[i+2]; if(P[i+2]>g[3])g[3]=P[i+2] }
+      info.t1Prof="  上から下への横幅: "+seg.map(g=>g[1]<g[0]?"-":Math.round(Math.max(g[1]-g[0],g[3]-g[2]))).join(" ")
+        +"（頭→肩→腰→足の順。肩のあたりがいちばん広ければ上下は合っている）"; }
     info.t1Detail=objs.slice(0,12).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}${o.run?"命令で実行":(o.walk?"法線あり":"見た目から推測")}(頂${o.nv} 法${o.nn} 面${o.faceBytes||0}B${o.tris?" 三角"+o.tris:""}${o.box?" 範囲 "+o.box:""})`).join("\n    ");
     if(r1.tris>0){
       info.t1Dropped=r1.dropped;
@@ -2484,7 +2493,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.4.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.5.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2607,6 +2616,7 @@ function updateReport(){
     if(inf.t1Detail) L.push("  部品の内訳: "+inf.t1Detail);
     if(inf.t1Lays){ L.push("  面の読み方（選ばれたもの）:"); inf.t1Lays.forEach(x=>L.push("    "+x)) }
     if(inf.t1Size) L.push(inf.t1Size);
+    if(inf.t1Prof) L.push(inf.t1Prof);
     if(inf.t1Seg) L.push(...inf.t1Seg);
     if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
@@ -2812,7 +2822,7 @@ $("up-seg").onclick=e=>{
   const b=e.target.closest("button"); if(!b) return;
   for(const x of $("up-seg").children) x.setAttribute("aria-pressed",String(x===b));
   t1Show.up=+b.dataset.up;
-  try{ localStorage.setItem("t1up",String(t1Show.up)) }catch(_){}
+  try{ localStorage.setItem("t1up2",String(t1Show.up)) }catch(_){}
   redraw();
 };
 for(const x of $("up-seg").children) x.setAttribute("aria-pressed",String(+x.dataset.up===t1Show.up));
