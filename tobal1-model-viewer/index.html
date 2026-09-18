@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v2.0.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v2.1.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -960,6 +960,48 @@ function mipsTables(exe,fn){
       // 実行ファイルの中の番地が並んでいれば、それは飛び先の表
       const looksTable=vals.slice(0,6).filter(v=>v>=t.base&&v<t.base+t.body.length).length>=4;
       out.push({addr:a,vals,looksTable});
+    }
+  }
+  return out;
+}
+
+// 命令ごとの「1つの長さ」を、コードから自動で割り出す。
+// どの処理も最後は `j ループの先頭` に戻り、その次の命令（遅延スロット）で
+// `addiu $fp, $fp, N` と進めている。この N が命令の長さ。
+// あわせて、頂点ポインタ（スクラッチパッド 1016）を動かすか、3つ目の語を読むかも見る。
+function mipsCmdInfo(exe,handler,loopAddr,limit){
+  const t=exeText(exe); if(!t) return null;
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  let off=handler-t.base;
+  if(off<0||off+4>t.body.length) return null;
+  const lens=new Set(); let vertMove=false, reads=new Set(), gte=false;
+  for(let k=0;k<(limit||300);k++){
+    const p=off+k*4; if(p+8>t.body.length) break;
+    const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, im=w&0xffff;
+    if(op===0x2b&&im===1016) vertMove=true;              // sw ?, 1016($s0)
+    if(op===0x23&&rs===30) reads.add(im);                // lw ?, N($fp)
+    if(op===0x12&&(w&0x3f)===0x30) gte=true;             // RTPT
+    if(op===2&&((((handler+k*4)&0xf0000000)|((w&0x3ffffff)<<2))>>>0)===loopAddr){
+      const d=dv.getUint32(p+4,true);                    // 遅延スロット
+      if((d>>>26)===0x09&&((d>>>21)&31)===30&&((d>>>16)&31)===30)
+        lens.add(d&0x8000?(d&0xffff)-0x10000:(d&0xffff));
+      break;                                             // ここで処理は終わり。次の命令の処理に食い込まない
+    }
+    if(w===0x03e00008) break;                            // jr $ra
+  }
+  return {lens:[...lens].sort((a,b)=>a-b),vertMove,reads:[...reads].sort((a,b)=>a-b),gte};
+}
+// 命令の振り分け（beq の連鎖と飛び先の表）を読み取って、番号→処理 の対応を作る
+function mipsDispatch(exe,fn){
+  const t=exeText(exe); if(!t) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const out=[]; let pend=-1;
+  for(let p=fn.from;p<fn.to&&p+4<=t.body.length;p+=4){
+    const w=dv.getUint32(p,true), op=w>>>26, pc=t.base+p;
+    if(op===0x0d&&((w>>>21)&31)===0){ pend=w&0xffff; continue }        // ori $v0, $zero, K
+    if(op===4&&pend>=0){                                               // beq $v1, $v0, target
+      out.push({code:pend,addr:(pc+4+((w&0x8000?(w&0xffff)-0x10000:(w&0xffff))*4))>>>0});
+      pend=-1;
     }
   }
   return out;
@@ -2280,7 +2322,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v2.0.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v2.1.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2314,8 +2356,33 @@ function updateReport(){
           L.push(`  飛び先の表 ${hex(tb.addr)}（命令8番から順に）:`);
           tb.vals.forEach((v,i)=>{ if(v) L.push(`      [${i+8}] ${hex(v)}`) });
         }
+        // 命令ごとの「1つの長さ」をコードから割り出して一覧にする
+        const disp=mipsDispatch(s.exe,c);
+        if(disp.length){
+          const loop=c.addr+((()=>{ // ループの先頭＝命令コードを読む場所
+            return 0xc4 })());
+          const rows=[];
+          for(const d of disp){
+            const inf=mipsCmdInfo(s.exe,d.addr,0x8001efa8,300);
+            if(!inf) continue;
+            rows.push(`    命令 ${String(d.code).padStart(2)} → ${hex(d.addr)}　`
+              +`長さ ${inf.lens.length?inf.lens.join("/")+"B":"?"}　`
+              +`読む語 ${inf.reads.map(x=>"+"+x).join(",")||"-"}　`
+              +(inf.vertMove?"頂点を進める　":"")+(inf.gte?"座標変換":""));
+          }
+          const tabs2=mipsTables(s.exe,c).filter(x=>x.looksTable);
+          for(const tb of tabs2.slice(0,1)) tb.vals.forEach((v,i)=>{
+            if(!v||v<0x80010000||v>0x800d0000) return;
+            const inf=mipsCmdInfo(s.exe,v,0x8001efa8,300); if(!inf) return;
+            rows.push(`    命令 ${String(i+8).padStart(2)} → ${hex(v)}　`
+              +`長さ ${inf.lens.length?inf.lens.join("/")+"B":"?"}　`
+              +`読む語 ${inf.reads.map(x=>"+"+x).join(",")||"-"}　`
+              +(inf.vertMove?"頂点を進める　":"")+(inf.gte?"座標変換":""));
+          });
+          if(rows.length){ L.push("  命令の一覧（コードから割り出したもの）:"); L.push(...rows) }
+        }
         const br=mipsBranches(s.exe,c);
-        br.slice(0,8).forEach((a,i)=>L.push(...mipsBlock(s.exe,a,28,`命令の処理 [${i}] `)));
+        br.slice(0,2).forEach((a,i)=>L.push(...mipsBlock(s.exe,a,32,`命令の処理 [${i}] `)));
       }
       L.push("");
     } else L.push("モデルを読んでいるコードは見つかりませんでした\n");
