@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.1.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.2.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1896,7 +1896,7 @@ function t1Run(d,base,limit){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const g=p=>p+4<=d.length?dv.getUint32(p,true):0;
   const facePtr=base+g(base), colPtr=base+g(base+12);
-  let fp=base+0x10, xp=facePtr, vi=0, steps=0;
+  let fp=base+0x10, xp=facePtr, vi=0, steps=0, seg=0;
   const slot=new Int32Array(T1_SLOTS).fill(-1);
   const faces=[], used=new Map();
   while(fp+8<=d.length&&steps<(limit||4096)){
@@ -1904,6 +1904,7 @@ function t1Run(d,base,limit){
     if(op===0) break;
     if(op in T1_CMD_LEN){
       const arg=dv.getUint32(fp+4,true);
+      if(op===5) seg++;                                   // 命令5 = 次の骨の行列を取り出す
       if(op===1||op===2){
         const n=dv.getUint32(fp+8,true);
         if(arg<0||arg+n>T1_SLOTS||n>4096) return null;
@@ -1925,7 +1926,7 @@ function t1Run(d,base,limit){
         }
         let nr=null;
         if(k.nrm) nr=[dv.getInt16(xp+k.n*4,true),dv.getInt16(xp+k.n*4+2,true),dv.getInt16(xp+k.n*4+4,true)];
-        faces.push({idx,n:nr}); used.set(op,(used.get(op)||0)+1);
+        faces.push({idx,n:nr,seg}); used.set(op,(used.get(op)||0)+1);
         xp+=k.size;
       }
       fp+=8;
@@ -1933,8 +1934,30 @@ function t1Run(d,base,limit){
     steps++;
   }
   if(!faces.length) return null;
-  return {faces,verts:vi,steps,used:[...used.entries()].sort((a,b)=>a[0]-b[0]),
+  return {faces,verts:vi,steps,segs:seg,used:[...used.entries()].sort((a,b)=>a[0]-b[0]),
           faceBytes:xp-facePtr, cmdBytes:fp+4-(base+0x10)};
+}
+
+// 骨（命令5）ごとに、面が使う頂点がどのあたりに置かれているかを見る。
+// 区切りごとにこぢんまり固まっていれば、部品は別々の座標系にあって
+// 行列で運ばないといけない、ということ
+function t1SegBoxes(d,o){
+  if(!o.run) return null;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const V=i=>{ const q=o.base+o.vertPtr+i*8;
+    return [dv.getInt16(q,true),dv.getInt16(q+2,true),dv.getInt16(q+4,true)] };
+  const box=new Map();
+  for(const f of o.run.faces){
+    let b=box.get(f.seg);
+    if(!b){ b={n:0,mn:[1e9,1e9,1e9],mx:[-1e9,-1e9,-1e9]}; box.set(f.seg,b) }
+    b.n++;
+    for(const i of f.idx){ const p=V(i);
+      for(let a=0;a<3;a++){ if(p[a]<b.mn[a])b.mn[a]=p[a]; if(p[a]>b.mx[a])b.mx[a]=p[a] } }
+  }
+  return [...box.entries()].sort((a,b)=>a[0]-b[0]).map(([k,b])=>({
+    seg:k, n:b.n, box:b.mn.map((v,a)=>`${v}..${b.mx[a]}`).join(" "),
+    span:Math.max(...b.mx.map((v,a)=>v-b.mn[a])),
+    mid:b.mn.map((v,a)=>Math.round((v+b.mx[a])/2)).join(",")}));
 }
 // ============================================================
 //  WebGL
@@ -2151,6 +2174,17 @@ function buildModelInner(raw,info){
           `    尻 +${hex(odd.colPtr-48,4)}  ${hx(odd.base+odd.colPtr-48,48)}`,
           `    色 +${hex(odd.colPtr,4)}  ${hx(odd.base+odd.colPtr,32)}`,
         ];
+        // 骨（命令5）ごとの置き場所。棘の原因が「部品が原点に重なっている」かを確かめる
+        const bigO=okObjs.slice().sort((a,c)=>c.nv-a.nv)[0];
+        if(bigO&&bigO.run){
+          const S=t1SegBoxes(b.out,bigO);
+          if(S){
+            info.t1Seg=[`  骨ごとの置き場所（部品 +${hex(bigO.base,4)}、命令5で区切る、${S.length}区切り）:`,
+              `    区切りが小さくまとまっていれば、部品は別々の座標系にあり行列で運ぶ必要がある`];
+            S.slice(0,24).forEach(x=>info.t1Seg.push(
+              `    [${String(x.seg).padStart(2)}] ${String(x.n).padStart(3)}枚　中心 ${x.mid}　広がり ${x.span}　範囲 ${x.box}`));
+          }
+        }
         info.t1Lays=okObjs.slice(0,10).map(o=>`+${hex(o.base,4)}: ${o.lays||"-"}`
           +(o.walkTry&&!o.walkOK?`\n      （法線つきで読むと: ${t1WalkLine(o.walkTry)}）`:""));
         for(const o of okObjs){ const g=t1BadDump(b.out,o,o.walkTry,4); if(g&&o.walkTry.resync){ info.t1Bad=g; break } }
@@ -2417,7 +2451,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.1.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.2.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2539,6 +2573,7 @@ function updateReport(){
       +(inf.t1Distinct?`　別々の位置 ${inf.t1Distinct}点`:""));
     if(inf.t1Detail) L.push("  部品の内訳: "+inf.t1Detail);
     if(inf.t1Lays){ L.push("  面の読み方（選ばれたもの）:"); inf.t1Lays.forEach(x=>L.push("    "+x)) }
+    if(inf.t1Seg) L.push(...inf.t1Seg);
     if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
     if(inf.modelOffs) L.push("  ヘッダにある位置: "+inf.modelOffs);
