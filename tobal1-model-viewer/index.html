@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.9.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v2.0.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -905,6 +905,62 @@ function mipsCalls(exe,fn){
     if(off<0||off+4>t.body.length||seen.has(off)) continue;
     seen.add(off);
     out.push({at:off,addr,from:off,to:mipsFunc(t.body,off,0,400).to});
+  }
+  return out;
+}
+
+// 番地を指定して n 命令ぶん読む（関数の切れ目に関係なく見たいとき）
+function mipsBlock(exe,addr,n,label){
+  const t=exeText(exe); if(!t) return [];
+  const off=addr-t.base;
+  if(off<0||off+4>t.body.length) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const L=[`  ${label||""}${hexAddr(addr)}:`];
+  for(let k=0;k<n&&off+k*4+4<=t.body.length;k++){
+    const w=dv.getUint32(off+k*4,true);
+    L.push(`      ${hexAddr(addr+k*4)}  ${w.toString(16).padStart(8,"0")}  ${mipsDis(w,addr+k*4)}`);
+  }
+  return L;
+}
+const hexAddr=a=>"0x"+(a>>>0).toString(16);
+// 関数の中の分岐の飛び先を集める（命令ごとの処理はこの先にある）
+function mipsBranches(exe,fn){
+  const t=exeText(exe); if(!t) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const out=[], seen=new Set();
+  for(let p=fn.from;p<fn.to&&p+4<=t.body.length;p+=4){
+    const w=dv.getUint32(p,true), op=w>>>26, pc=t.base+p;
+    let a=-1;
+    if(op===4||op===5||op===6||op===7||op===1) a=(pc+4+((w&0x8000?(w&0xffff)-0x10000:(w&0xffff))*4))>>>0;
+    else if(op===2) a=(((pc&0xf0000000)|((w&0x3ffffff)<<2))>>>0);
+    if(a<0) continue;
+    const off=a-t.base;
+    if(off<0||off+4>t.body.length) continue;
+    if(off>=fn.from&&off<fn.to) continue;      // 関数の中なら出さない
+    if(seen.has(off)) continue;
+    seen.add(off); out.push(a);
+  }
+  return out;
+}
+// lui + addiu の組から番地を割り出し、そこを表として読む（飛び先の表を見つけるため）
+function mipsTables(exe,fn){
+  const t=exeText(exe); if(!t) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const hi=new Map(), out=[], seen=new Set();
+  for(let p=fn.from;p<fn.to&&p+4<=t.body.length;p+=4){
+    const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, im=w&0xffff;
+    if(op===0x0f){ hi.set(rt,im); continue }
+    if(op===0x09&&hi.has(rs)&&rs===rt){
+      const a=((hi.get(rs)<<16)+(im&0x8000?im-0x10000:im))>>>0;
+      const off=a-t.base;
+      if(off<0||off+4>t.body.length||seen.has(off)) continue;
+      seen.add(off);
+      const vals=[];
+      for(let k=0;k<20&&off+k*4+4<=t.body.length;k++) vals.push(dv.getUint32(off+k*4,true));
+      // 実行ファイルの中の番地が並んでいれば、それは飛び先の表
+      const looksTable=vals.slice(0,6).filter(v=>v>=t.base&&v<t.base+t.body.length).length>=4;
+      out.push({addr:a,vals,looksTable});
+    }
   }
   return out;
 }
@@ -2224,7 +2280,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v1.9.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v2.0.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2243,13 +2299,23 @@ function updateReport(){
         for(const c of mipsCalls(s.exe,h)) if(!seen.has(c.from)&&!callees.has(c.from)) callees.set(c.from,c);
       });
       // 呼び出し先も追う。部品を読む本体はこの先にある
-      let k=0;
+      let k=0; const deep=[];
       for(const c of callees.values()){
         if(k>=3) break;
         const n=(c.to-c.from)/4; if(n<4||n>400) continue;
         L.push(`  呼び出し先 ${hex(c.addr)}（${n}命令）:`);
         L.push(...mipsLines(s.exe,c,-1));
-        k++;
+        deep.push(c); k++;
+      }
+      // 命令ごとの処理は分岐の先にある。飛び先と、飛び先の表を読む
+      for(const c of deep){
+        const tabs=mipsTables(s.exe,c).filter(x=>x.looksTable);
+        for(const tb of tabs.slice(0,2)){
+          L.push(`  飛び先の表 ${hex(tb.addr)}（命令8番から順に）:`);
+          tb.vals.forEach((v,i)=>{ if(v) L.push(`      [${i+8}] ${hex(v)}`) });
+        }
+        const br=mipsBranches(s.exe,c);
+        br.slice(0,8).forEach((a,i)=>L.push(...mipsBlock(s.exe,a,28,`命令の処理 [${i}] `)));
       }
       L.push("");
     } else L.push("モデルを読んでいるコードは見つかりませんでした\n");
