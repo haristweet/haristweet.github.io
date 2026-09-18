@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.3.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.4.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -129,6 +129,10 @@ canvas:active{cursor:grabbing}
       <p class="count" id="file-count"></p>
       <button class="btn wide" id="scan-all" style="margin-top:8px">全部のファイルを調べる</button>
       <button class="btn wide" id="survey" style="margin-top:8px">モデル候補をまとめて調べる</button>
+    </div>
+    <div data-tab="file"><p class="label">向き</p>
+      <div class="seg" id="up-seg"><button data-up="0" aria-pressed="false">そのまま</button><button data-up="1" aria-pressed="true">X を上に</button><button data-up="2" aria-pressed="false">X を上（逆）</button><button data-up="3" aria-pressed="false">Z を上に</button></div>
+      <p class="note">モデルの「背の高さ」がどの軸かはファイルに書かれていません。実物は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）でした。人の形にならないときはここを変えてみてください。</p>
     </div>
     <div data-tab="file"><p class="label">骨格の組み方</p>
       <div class="seg" id="rig-seg"><button data-v="t2" aria-pressed="true">トバル2と同じ</button><button data-v="flat" aria-pressed="false">関節を使わない</button></div>
@@ -1488,10 +1492,20 @@ function t1WalkLine(W){
 }
 const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメラの合わせ枠が壊れるので落とす
 // 見せ方の切り替え。どこがおかしいのかを切り分けるための道具
-const t1Show={all:false,only:false,segColor:false};
+const t1Show={all:false,only:false,segColor:false,up:1};
 try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.only=localStorage.getItem("t1only")==="1";
-     t1Show.segColor=localStorage.getItem("t1segcol")==="1" }catch(_){}
+     t1Show.segColor=localStorage.getItem("t1segcol")==="1";
+     const u=localStorage.getItem("t1up"); if(u!=null) t1Show.up=+u }catch(_){}
+// モデルの「背の高さ」がどの軸かは決め打ちできないので、向きを選べるようにする。
+// 実物 #68 は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）。
+// ビューアは Y を上に描くので、そのままだとキャラクターが寝てしまう
+const T1_UP=[
+  {name:"そのまま",      f:(x,y,z)=>[x,y,z]},
+  {name:"X を上に",      f:(x,y,z)=>[-y,x,z]},
+  {name:"X を上に（逆）", f:(x,y,z)=>[y,-x,z]},
+  {name:"Z を上に",      f:(x,y,z)=>[x,z,-y]},
+];
 // 骨ごとに色を変えるときの色。棘がどの骨から出ているかを目で追うため
 const T1_SEG_COL=[[.95,.35,.35],[.35,.85,.45],[.40,.55,.95],[.95,.80,.30],
                   [.85,.45,.90],[.30,.85,.85],[.95,.60,.35],[.60,.60,.95],
@@ -1518,12 +1532,14 @@ function buildT1Mesh(d,objs){
       for(let i=0;i<o.nv;i++){ const p=o.base+o.vertPtr+i*8;
         for(let a=0;a<3;a++){ const v=dv.getInt16(p+a*2,true); if(v<mn[a])mn[a]=v; if(v>mx[a])mx[a]=v } }
       o.box=mn.map((v,a)=>`${v}..${mx[a]}`).join(" "); o.span=Math.max(...mx.map((v,a)=>v-mn[a])); }
-    const V0=i=>[dv.getInt16(o.base+o.vertPtr+i*8,true),
-                 dv.getInt16(o.base+o.vertPtr+i*8+2,true),
-                 dv.getInt16(o.base+o.vertPtr+i*8+4,true)];
+    const up=(T1_UP[t1Show.up]||T1_UP[0]).f;
+    const V0=i=>up(dv.getInt16(o.base+o.vertPtr+i*8,true),
+                   dv.getInt16(o.base+o.vertPtr+i*8+2,true),
+                   dv.getInt16(o.base+o.vertPtr+i*8+4,true));
     const C0=i=>{ const q=o.base+o.colPtr+i*4;
                   return q+2<d.length?[d[q]/255,d[q+1]/255,d[q+2]/255]:[.5,.5,.5] };
     const far=i=>V0(i).some(v=>Math.abs(v)>T1_MAX_COORD);
+    void far;
     // まず部品を「命令の列」として実行する（実行ファイルのコードから読み取った本物の手順）
     const R=o.run;
     if(R){
@@ -1535,7 +1551,7 @@ function buildT1Mesh(d,objs){
         for(const t of strip){
           const sc=t1Show.segColor?T1_SEG_COL[(f.seg||0)%T1_SEG_COL.length]:null;
           for(const j of t){ pos.push(...V0(a[j])); col.push(...(sc||C0(a[j]))); t0.push(0,0,0); t1.push(0,0,0,0) }
-          if(f.n) nrm.push(f.n[0],f.n[1],f.n[2]); else nrm.push(0,0,0);
+          if(f.n) nrm.push(...up(f.n[0],f.n[1],f.n[2])); else nrm.push(0,0,0);
           sm.push(1); tris++;
         }
       }
@@ -2468,7 +2484,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.3.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.4.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2791,6 +2807,15 @@ const showToggle=(id,key,store)=>{
     try{ localStorage.setItem(store,t1Show[key]?"1":"0") }catch(_){}
     redraw() };
 };
+// 向き（背の高さの軸を上に持ってくる）
+$("up-seg").onclick=e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  for(const x of $("up-seg").children) x.setAttribute("aria-pressed",String(x===b));
+  t1Show.up=+b.dataset.up;
+  try{ localStorage.setItem("t1up",String(t1Show.up)) }catch(_){}
+  redraw();
+};
+for(const x of $("up-seg").children) x.setAttribute("aria-pressed",String(+x.dataset.up===t1Show.up));
 showToggle("showall","all","t1all");
 showToggle("showonly","only","t1only");
 showToggle("segcol","segColor","t1segcol");
