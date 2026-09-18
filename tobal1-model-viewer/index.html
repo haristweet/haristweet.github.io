@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.13.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.14.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -134,6 +134,11 @@ canvas:active{cursor:grabbing}
     <div data-tab="file"><p class="label">向き</p>
       <div class="seg" id="up-seg"><button data-up="0" aria-pressed="false">そのまま</button><button data-up="1" aria-pressed="false">X を上に</button><button data-up="2" aria-pressed="true">X を上（逆）</button><button data-up="3" aria-pressed="false">Z を上に</button></div>
       <p class="note">モデルの「背の高さ」がどの軸かはファイルに書かれていません。実物は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）でした。そのうえで上下をひっくり返した「X を上（逆）」が既定です。人の形にならないときはここを変えてみてください。</p>
+    </div>
+    <div data-tab="file"><p class="label">メモリの写し（骨さがし）</p>
+      <label class="pick" style="display:inline-block">セーブステートを選ぶ<input id="memfile" type="file" hidden></label>
+      <p class="note">DuckStation でゲームを動かし、キャラクターが立っている場面でセーブステートを作ってください。そのファイルをここで選ぶと、<b>メモリの中身はこのページが読みます</b>。骨の表は実行中にしか存在しないので、これが一番の近道です。圧縮されたセーブステートだと読めないので、その場合は設定で圧縮を切ってください。</p>
+      <div class="note" id="mem-status"></div>
     </div>
     <div data-tab="file" id="t1part-box" hidden><p class="label">ファイルの中のモデル</p>
       <select id="t1part"></select>
@@ -210,6 +215,7 @@ const state={
   src:null,          // 読み込み元（ディスク or 取り出し済みファイル）
   tables:[],         // 実行ファイルから見つけたファイル表の候補
   tableIdx:0,
+  mem:null,          // メモリの写しから読んだ骨の表
   bones:null,        // 骨さがしの結果
   boning:false,
   t1Part:-1,          // ファイルの中のどのモデルを出すか（-1＝いちばん大きいもの）
@@ -2641,7 +2647,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.13.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.14.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2801,6 +2807,7 @@ function updateReport(){
     L.push("大きいファイル 5件（アーカイブの選び方の確認用）:");
     for(const f of [...s.iso].sort((x,y)=>y.size-x.size).slice(0,5)) L.push(`  ${f.path||f.name}  ${fmtSize(f.size)}`);
   }
+  if(state.mem) L.push("", ...state.mem, "");
   if(state.bones) L.push("", ...boneLines(state.bones), "");
   if(state.sieve){
     L.push("");
@@ -2992,6 +2999,19 @@ $("src-seg").onclick=async e=>{
   fillTypeFilter(); renderFiles(); updateReport();
 };
 // ファイルの中に入っているモデルの選択（部分0＝本体、ほかは簡易版らしい）
+// メモリの写しを読む。読むのはこのページの仕事で、あなたはゲームを動かすだけでいい
+$("memfile").onchange=async e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f) return;
+  const st=$("mem-status");
+  st.textContent=`${f.name}（${fmtSize(f.size)}）を読んでいます…`;
+  try{
+    const buf=new Uint8Array(await f.arrayBuffer());
+    state.mem=memBoneLines(buf,state.src&&state.src.exe);
+    st.textContent=`${f.name} を読みました。結果は「解析」に出ています。`;
+  }catch(err){ console.error(err); state.mem=["メモリの写しを読めませんでした: "+err.message];
+    st.textContent="読めませんでした: "+err.message }
+  updateReport(); openTab("info");
+};
 $("t1part").onchange=e=>{ state.t1Part=+e.target.value;
   if(state.sel>=0) selectEntry(state.sel) };
 function fillT1Part(inf){
@@ -3334,6 +3354,91 @@ function boneLines(hits){
       +`持ち方 ${h.b.form.size}B（${h.b.form.name}）${h.b.skip?`　頭を ${h.b.skip}B 飛ばす`:""}`);
     L.push(boneSample(h.b,0));
     L.push(boneSample(h.b,1));
+  }
+  return L;
+}
+// ---- 実行中のメモリを読む ----
+// ここまでの探索は「実行ファイルにどう書かれているか」を追うものだったが、骨の表は
+// 実行時にしか存在しない。プレステのメモリの写し（DuckStation のセーブステートなど）
+// を直接読めば、表そのものが取れる。
+// 写しの形式は決め打ちしない。実行ファイルの中身そのものを手がかりに、
+// 写しの中で RAM がどこから始まるかを探す（0x80010000 は RAM の 0x10000 にあるはず）
+const PSX_RAM=0x200000, PSX_TEXT=0x10000;
+function findPsxRam(buf,exe){
+  if(!buf||!exe||exe.length<0x900||buf.length<PSX_TEXT+0x100) return -1;
+  const need=exe.subarray(0x800,0x840);          // 実行ファイルの本体の先頭64バイト
+  const last=buf.length-need.length;
+  for(let p=0;p<=last;p++){
+    if(buf[p]!==need[0]) continue;
+    let hit=true;
+    for(let k=1;k<need.length;k++) if(buf[p+k]!==need[k]){ hit=false; break }
+    if(!hit) continue;
+    const base=p-PSX_TEXT;
+    if(base>=0&&base+0x100000<=buf.length) return base;   // 1MB ぶんは入っていること
+  }
+  return -1;
+}
+function memReader(buf,base){
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+  const off=a=>base+((a>>>0)&0x1fffff);
+  const inside=a=>{ const o=off(a); return o>=0&&o+4<=buf.length };
+  return {
+    base,
+    u8:a=>inside(a)?buf[off(a)]:0,
+    u32:a=>inside(a)?dv.getUint32(off(a),true):0,
+    bytes:(a,n)=>inside(a)?buf.subarray(off(a),Math.min(off(a)+n,buf.length)):new Uint8Array(0),
+    // プレステの RAM を指すまともなポインタか
+    ptr:a=>{ const v=a>>>0; return (v>=0x80010000&&v<0x80200000)||(v>=0x00010000&&v<0x00200000) },
+  };
+}
+const MEM_TABLES=[["表B",0x800CBE8C],["表A（命令5が引く）",0x800CBE90],["表C（部品）",0x800CBE94]];
+// 表の中身を並べ、その先が行列として読めるかまで確かめる
+function memBoneLines(buf,exe){
+  const L=[];
+  const base=findPsxRam(buf,exe);
+  if(base<0){
+    L.push("メモリの写しの中に実行ファイルが見つかりませんでした。");
+    L.push("  圧縮された形式のセーブステートかもしれません。DuckStation の設定で");
+    L.push("  セーブステートの圧縮を切るか、メモリをそのまま書き出したファイルを使ってください。");
+    return L;
+  }
+  L.push(`メモリの写しを読みました（RAM の先頭は ファイルの +0x${base.toString(16)}）`);
+  const M=memReader(buf,base);
+  const hx=(a,n)=>Array.from(M.bytes(a,n),v=>v.toString(16).padStart(2,"0")).join(" ");
+  L.push(`  旗 0x800CBE88 = ${M.u8(0x800CBE88)}`);
+  L.push("  0x800CBE80 のあたり: "+hx(0x800CBE80,32));
+  for(const [name,addr] of MEM_TABLES){
+    const p=M.u32(addr);
+    L.push(`  ${name} 0x${addr.toString(16).toUpperCase()} → 0x${p.toString(16).toUpperCase()}`
+      +(M.ptr(p)?"":"（メモリの外。描画が終わったあとの写しだとこうなる）"));
+    if(!M.ptr(p)) continue;
+    // 表は「進めたあと」の位置を指しているので、手前も見る
+    const from=p-0x40;
+    const ent=[]; for(let k=0;k<32;k++) ent.push(M.u32(from+k*4));
+    L.push(`    表の中身（0x${(from>>>0).toString(16).toUpperCase()} から32件、太い区切りが今の位置）:`);
+    for(let r=0;r<4;r++)
+      L.push("      "+ent.slice(r*8,r*8+8).map((v,i)=>
+        ((from+(r*8+i)*4)>>>0)===(p>>>0)?`[${v.toString(16).padStart(8,"0")}]`:` ${v.toString(16).padStart(8,"0")} `).join(""));
+    // 表の先を辿って、行列として読めるかを確かめる
+    let tried=0;
+    for(const e of ent){
+      if(tried>=3||!M.ptr(e)) continue;
+      tried++;
+      const blk=M.bytes(e,32*16);
+      const b=blk.length>=64?boneScanBest(blk):null;
+      L.push(`    0x${e.toString(16).toUpperCase()} の先: `
+        +(b?`行列${b.n}個のうち ${b.good}個が回転として筋が通る（持ち方 ${b.form.size}B）`:"行列としては読めない"));
+      if(b&&b.good){ L.push(boneSample(b,0)); L.push(boneSample(b,1)) }
+      else L.push("      生のバイト: "+Array.from(blk.subarray(0,32),v=>v.toString(16).padStart(2,"0")).join(" "));
+    }
+  }
+  // 行列積みの現在地。ここが指す32バイトが「いま使っている行列」
+  const cur=M.u32(0x800CC910);
+  L.push(`  行列積みの現在地 0x800CC910 → 0x${cur.toString(16).toUpperCase()}`);
+  if(M.ptr(cur)){
+    const b=boneScanBest(M.bytes(cur-0x80,0x100));
+    L.push("    そのあたり: "+(b?`行列${b.n}個のうち ${b.good}個が筋が通る（持ち方 ${b.form.size}B）`:"行列としては読めない"));
+    L.push("    生のバイト: "+hx(cur,32));
   }
   return L;
 }
