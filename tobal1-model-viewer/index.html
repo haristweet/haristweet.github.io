@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.6.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.7.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1013,6 +1013,28 @@ function mipsDispatch(exe,fn){
   }
   return out;
 }
+
+// ある番地（グローバル変数）を読み書きしている場所を実行ファイル全体から探す。
+// MIPS はいつも「lui で上位16bit → lw/sw で下位をずらす」の2手なので、その形を追う
+function mipsRefs(exe,addr,limit){
+  const t=exeText(exe); if(!t) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const hi=new Array(32).fill(-1), out=[];   // 上位16bit。符号なしで持つ
+  const MEM=op=>(op>=0x20&&op<=0x2e)||op===0x30||op===0x32||op===0x38||op===0x3a;
+  for(let p=0;p+4<=t.body.length;p+=4){
+    const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31;
+    const im=w&0xffff, se=im>0x7fff?im-0x10000:im;
+    if(op===0x0f){ hi[rt]=(im<<16)>>>0; continue }               // lui
+    if(MEM(op)){
+      if(hi[rs]>=0&&((hi[rs]+se)>>>0)===(addr>>>0)) out.push({at:t.base+p,store:op>=0x28,w});
+      if(op>=0x20&&op<=0x27) hi[rt]=-1;                          // 読み込み先は上位が消える
+      if(out.length>=(limit||16)) break;
+      continue;
+    }
+    if(op===0) hi[rd]=-1; else if(op!==0x02&&op!==0x03&&op>=0x08) hi[rt]=-1;
+  }
+  return out;
+}
 // ============================================================
 //  アーカイブを直接さらう
 //  表の形が分からなくても、アーカイブの中を 2048 バイトごとに見て
@@ -1409,17 +1431,19 @@ function modelInfoT1(d){
 // ============================================================
 function t1ObjectOffsets(d){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
-  const out=[]; let o=8;
+  const out=[], grp=[]; let o=8, g=0;
   for(let guard=0;guard<16&&o+4<=d.length;guard++){
     const n=dv.getUint32(o,true); o+=4;
     if(n<1||n>64) break;
+    g++;
     for(let k=0;k<n&&o+4<=d.length;k++,o+=4){
       const p=dv.getUint32(o,true);
-      if(p>=16&&p+56<=d.length) out.push(p);
+      if(p>=16&&p+56<=d.length){ out.push(p); grp.push(g) }
     }
   }
   const tableAt=dv.getUint32(4,true);           // 本体そのものの部品
-  if(tableAt>=16&&tableAt+56<=d.length) out.push(tableAt);
+  if(tableAt>=16&&tableAt+56<=d.length){ out.push(tableAt); grp.push(0) }
+  out.group=grp;                                // どの組から出てきたか（0＝本体）
   return out;
 }
 // 頂点や法線の「数」はヘッダの決まった場所にあるとは限らない（実物で、頂点51/法線51 の
@@ -1539,6 +1563,19 @@ function buildT1Mesh(d,objs){
     if(o.run&&Math.abs(o.run.verts-o.nv)>2) o.run=null;
     if(!o.run){ o.walkTry=t1WalkFaces(d,o); o.walkOK=t1WalkGood(o.walkTry) } }
   if(!t1Show.all){ const real=objs.filter(o=>o.run||o.walkOK); if(real.length) objs=real }
+  // 組の中身が「同じ面数の同じ形」なら、それはポーズ違い（実物では手だった）。
+  // 実際に出るのは組から1つだけで、全部出すと原点で重なって棘になる。
+  // 面の大きさがばらばらな組は別々の部品なので、そのまま全部出す
+  if(!t1Show.all&&!t1Show.spread){
+    const same=new Map();
+    for(const o of objs){ if(!o.group) continue;
+      const v=same.get(o.group);
+      if(v===undefined) same.set(o.group,o.faceBytes||0);
+      else if(v!==(o.faceBytes||0)) same.set(o.group,-1) }
+    const seen=new Set();
+    objs=objs.filter(o=>{ const g=o.group; if(!g||same.get(g)===-1) return true;
+      if(seen.has(g)) return false; seen.add(g); return true });
+  }
   // 「本体だけ」…いちばん頂点の多い部品（キャラクターの胴体）だけにする
   if(t1Show.only){ const big=objs.slice().sort((a,b)=>b.nv-a.nv)[0]; if(big) objs=[big] }
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
@@ -2201,14 +2238,24 @@ function buildModelInner(raw,info){
     if(out&&out.length>=64) bodies.push({i,out,packed:p[0]===0x0b});
   });
   if(!bodies.length) throw new Error("展開できる中身がありませんでした（部分の大きさ: "+info.partSizes.join(", ")+"）");
+  // 本体以外の部分はまだ何も読めていない。骨（部品の置き場所）がここにある見込みが高いので、
+  // 中身をそのまま控えて報告に出す
+  info.otherParts=parts.map((p,i)=>{
+    let out=p; try{ if(p&&p[0]===0x0b) out=decompress(p) }catch(_){}
+    return {i,len:p?p.length:0,out};
+  });
   bodies.sort((a,b)=>b.out.length-a.out.length);
 
   // トバルNo.1 のモデル（0x90000000）なら、専用の読み方で組む
   for(const b of bodies.slice(0,4)){
     if(!modelInfoT1(b.out)) continue;
-    const objs=t1ObjectOffsets(b.out).map(p=>readT1Object(b.out,p)).filter(Boolean);
+    const offs=t1ObjectOffsets(b.out);
+    const objs=offs.map((p,i)=>{ const o=readT1Object(b.out,p); if(o) o.group=offs.group?offs.group[i]:0; return o }).filter(Boolean);
     const okObjs=objs.filter(o=>o.ok);
     info.t1Parts=`${okObjs.length}/${objs.length} 部品`;
+    { const by=new Map(); for(const o of objs) by.set(o.group||0,(by.get(o.group||0)||0)+1);
+      info.t1Groups="  部品の組: "+[...by].map(([g,n])=>g?`組${g} ${n}個`:`本体 ${n}個`).join("　")
+        +"（組の中は同じ形のポーズ違い＝手。実際に出るのは組から1つ）"; }
     if(!okObjs.length) continue;
     const r1=buildT1Mesh(b.out,okObjs);
     { const P=r1.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
@@ -2514,7 +2561,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.6.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.7.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2575,6 +2622,16 @@ function updateReport(){
         if(!want.has(d.code)||seenH.has(d.addr)) continue;
         seenH.add(d.addr);
         L.push(...mipsBlock(s.exe,d.addr,18,`命令 ${d.code} の中身 `));
+      }
+      // 命令5 は 0x800CBE90 / 0x800CBE8C にある「表」から次の1件を取り出していた。
+      // その表を用意しているのが誰なのかが分かれば、部品の置き場所にたどり着く
+      for(const g of [0x800CBE90,0x800CBE8C,0x800CC910]){
+        const refs=mipsRefs(s.exe,g,14);
+        if(!refs.length) continue;
+        L.push(`  ${hex(g)} を使っている場所（${refs.length}件）: `
+          +refs.map(r=>hex(r.at)+(r.store?"書":"読")).join(" "));
+        const st=refs.filter(r=>r.store);
+        for(const r of st.slice(0,2)) L.push(...mipsBlock(s.exe,r.at-0x20,12,"  そこの前後 "));
       }
       // 部品ごとの下ごしらえ。行列を積むならこの関数
       for(const c of deep){ const n=(c.to-c.from)/4;
@@ -2638,6 +2695,18 @@ function updateReport(){
   if(state.selErr) L.push("  → 表示できず: "+state.selErr);
   if(inf){
     L.push(`  部分 ${inf.parts}  [${inf.partSizes.join(", ")}]`);
+    if(inf.otherParts) for(const q of inf.otherParts){
+      if(q.i===inf.bodyPart||!q.out||!q.out.length) continue;
+      const hx=(f,n)=>Array.from(q.out.subarray(f,f+n),v=>v.toString(16).padStart(2,"0")).join(" ");
+      const dvq=new DataView(q.out.buffer,q.out.byteOffset,q.out.byteLength);
+      const i16=n=>{ const a=[]; for(let k=0;k<n&&k*2+2<=q.out.length;k++) a.push(dvq.getInt16(k*2,true)); return a.join(" ") };
+      const i32=n=>{ const a=[]; for(let k=0;k<n&&k*4+4<=q.out.length;k++) a.push(dvq.getInt32(k*4,true)); return a.join(" ") };
+      L.push(`  部分${q.i}（${q.len} B${q.out.length!==q.len?` → 展開後 ${q.out.length} B`:""}）まだ読めていない部分:`);
+      L.push("    "+hx(0,32));
+      L.push("    "+hx(32,32));
+      L.push("    16bit: "+i16(16));
+      L.push("    32bit: "+i32(8));
+    }
     L.push(`  モデル本体: 部分${inf.bodyPart===undefined?"?":inf.bodyPart}  ${inf.compressed?"圧縮あり":"圧縮なし"}  展開後 ${inf.decLen} B　（試した: ${inf.tried||"-"}）`);
     L.push(`  テクスチャの部分: ${inf.texIndex<0?"見つからず":inf.texIndex}`
       +(inf.texChain?`　No.1 形式の転送の列: ${inf.texChain}枚 (+${hex(inf.texChainAt,4)})  ${inf.texSample}`:""));
@@ -2649,6 +2718,7 @@ function updateReport(){
     if(inf.t1Lays){ L.push("  面の読み方（選ばれたもの）:"); inf.t1Lays.forEach(x=>L.push("    "+x)) }
     if(inf.t1Size) L.push(inf.t1Size);
     if(inf.t1Prof) L.push(inf.t1Prof);
+    if(inf.t1Groups) L.push(inf.t1Groups);
     if(inf.t1Seg) L.push(...inf.t1Seg);
     if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
