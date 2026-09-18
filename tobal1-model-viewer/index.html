@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.10.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.11.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1033,13 +1033,17 @@ function mipsRefs(exe,addr,limit){
     const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31;
     const im=w&0xffff, se=im>0x7fff?im-0x10000:im;
     if(op===0x0f){ hi[rt]=(im<<16)>>>0; continue }               // lui
+    // lui のあと addiu/ori で番地を作り、その register を土台に読み書きすることがある。
+    // これを追わないと、構造体ごしの書き込みを取りこぼす（0x800CBE90 がまさにそれだった）
+    if(op===0x09&&hi[rs]>=0){ hi[rt]=((hi[rs]+se)>>>0); continue }        // addiu
+    if(op===0x0d&&hi[rs]>=0){ hi[rt]=((hi[rs]|im)>>>0); continue }        // ori
     if(MEM(op)){
       if(hi[rs]>=0&&((hi[rs]+se)>>>0)===(addr>>>0)) out.push({at:t.base+p,store:op>=0x28,w});
       if(op>=0x20&&op<=0x27) hi[rt]=-1;                          // 読み込み先は上位が消える
       if(out.length>=(limit||16)) break;
       continue;
     }
-    if(op===0) hi[rd]=-1; else if(op!==0x02&&op!==0x03&&op>=0x08) hi[rt]=-1;
+    if(op===0) hi[rd]=-1; else if(op!==0x02&&op!==0x03&&op>=0x08) hi[rt]=-1;   // 分岐以外は行き先の上位が消える
   }
   return out;
 }
@@ -2574,7 +2578,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.10.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.11.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2645,6 +2649,15 @@ function updateReport(){
           +refs.map(r=>hex(r.at)+(r.store?"書":"読")).join(" "));
         const st=refs.filter(r=>r.store);
         for(const r of st.slice(0,2)) L.push(...mipsBlock(s.exe,r.at-0x20,12,"  そこの前後 "));
+      }
+      // 骨の表（0x800CBE90 / 0x800CBE8C）を用意しているのは、モデルを描く関数のはず。
+      // 署名 0x9000 を作っている関数のうち、大きいほうを丸ごと出して読む
+      for(const h of hits){
+        const n=(h.to-h.from)/4;
+        if(n<40||n>200) continue;
+        L.push(`  モデルを描く関数 ${hex(ex.text+h.from)}（${n}命令）:`);
+        L.push(...mipsLines(s.exe,h,h.from));
+        break;
       }
       // 部品ごとの下ごしらえ。行列を積むならこの関数
       for(const c of deep){ const n=(c.to-c.from)/4;
@@ -3157,12 +3170,18 @@ function readMatrix(dv,o,f){
 }
 // 回転行列なら、3本の行はどれも長さ 4096 で、互いに直角になる。
 // でたらめなバイト列がこれを満たすことはまずない
+// 1.0 が 4096 とは限らないので、目盛りは決め打ちしない。
+// 「3本の行の長さが互いに等しく、互いに直角」なら、目盛りがいくつでも回転行列
 function matrixOK(M){
   const r=[[M.m[0],M.m[1],M.m[2]],[M.m[3],M.m[4],M.m[5]],[M.m[6],M.m[7],M.m[8]]];
-  for(const v of r){ const L=Math.hypot(v[0],v[1],v[2]);
-    if(L<MAT_ONE*0.88||L>MAT_ONE*1.12) return false }
-  const dot=(a,b)=>(a[0]*b[0]+a[1]*b[1]+a[2]*b[2])/(MAT_ONE*MAT_ONE);
-  return Math.abs(dot(r[0],r[1]))<0.12&&Math.abs(dot(r[0],r[2]))<0.12&&Math.abs(dot(r[1],r[2]))<0.12;
+  const L=r.map(v=>Math.hypot(v[0],v[1],v[2]));
+  const one=(L[0]+L[1]+L[2])/3;
+  if(one<256||one>46341) return false;                 // 小さすぎ・大きすぎは論外
+  if(L.some(v=>Math.abs(v-one)>one*0.08)) return false; // 3本の長さがそろっている
+  const dot=(a,b)=>(a[0]*b[0]+a[1]*b[1]+a[2]*b[2])/(one*one);
+  if(Math.abs(dot(r[0],r[1]))>=0.12||Math.abs(dot(r[0],r[2]))>=0.12||Math.abs(dot(r[1],r[2]))>=0.12) return false;
+  M.one=Math.round(one);
+  return true;
 }
 function boneScan(buf,form,skip){
   const f=form||MAT_FORMS[0]; skip=skip||0;
@@ -3184,7 +3203,7 @@ function boneScanBest(buf){
 }
 function boneSample(b,k){
   const M=b.list[k]; if(!M) return "";
-  return `      [${k}]${M.ok?"○":"×"} 回転 ${M.m.join(",")}　移動 ${M.t.join(",")}`;
+  return `      [${k}]${M.ok?"○":"×"} 回転 ${M.m.join(",")}${M.one?`（1.0＝${M.one}）`:""}　移動 ${M.t.join(",")}`;
 }
 // アーカイブの中を全部あたって、32バイトの行列が並んでいる塊を探す
 async function boneHunt(onProgress){
