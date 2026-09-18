@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.9.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.10.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2574,7 +2574,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.9.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.10.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -3074,7 +3074,7 @@ function surveyLines(rows){
 // ============================================================
 async function sieveAll(onProgress){
   const list=state.entries.filter(e=>!e.kind||e.kind!=="raw").sort((a,b)=>b.size-a.size);
-  const tex=[], vag=[], other=[], broken=[];
+  const tex=[], vag=[], other=[], broken=[], bones=[];
   for(let i=0;i<list.length;i++){
     const e=list[i];
     if(onProgress&&i%4===0) onProgress(i/list.length);
@@ -3084,11 +3084,15 @@ async function sieveAll(onProgress){
       let parts=unpack(raw); if(!parts) parts=[raw];
       // いちばん大きい部分を展開してみる
       let body=null;
-      for(const p of parts){
-        if(!p||p.length<8) continue;
-        let out=null; try{ out=p[0]===0x0b?decompress(p):p }catch(_){ continue }
-        if(out&&out.length>=64&&(!body||out.length>body.length)) body=out;
-      }
+      parts.forEach((p,pi)=>{
+        if(!p||p.length<8) return;
+        let out=null; try{ out=p[0]===0x0b?decompress(p):p }catch(_){ return }
+        if(!out||out.length<64) return;
+        if(!body||out.length>body.length) body=out;
+        // ついでに「32バイトの行列の並び」かどうかも見る。骨の表はこの形のはず
+        const bs=boneScanBest(out);
+        if(bs&&bs.n>=8&&bs.ratio>=0.5) bones.push({e,pi,len:out.length,b:bs});
+      });
       if(!body){ broken.push({e,why:"展開できない"}); continue }
       const ti=textureInfoT1(body);
       if(ti){ tex.push({e,pairs:ti.pairs,colors:ti.colors,dec:body.length}); continue }
@@ -3101,7 +3105,8 @@ async function sieveAll(onProgress){
     }catch(err){ broken.push({e,why:err.message}) }
   }
   if(onProgress) onProgress(1);
-  return {tex,vag,other,broken,total:list.length};
+  bones.sort((a,b)=>b.b.ratio-a.b.ratio||b.b.n-a.b.n);
+  return {tex,vag,other,broken,bones,total:list.length};
 }
 function sieveLines(s){
   const L=[];
@@ -3110,6 +3115,7 @@ function sieveLines(s){
     const by=s.tex.reduce((m,t)=>m.set(t.colors,(m.get(t.colors)||0)+1),new Map());
     L.push("  テクスチャの色数: "+[...by].map(([k,v])=>`${k}色×${v}`).join("  "));
   }
+  if(s.bones) L.push(...boneLines(s.bones).map(x=>"  "+x));
   const sig=s.other.filter(o=>o.words&&o.words[0]===0x90000000);
   if(sig.length){
     L.push(`  ── モデルの署名 0x90000000 があるもの: ${sig.length}件 ──`);
@@ -3135,9 +3141,19 @@ function sieveLines(s){
 // キャラクターのモデル（sector 5927）の並びにある 928 バイトの塊は 32 で割り切れて
 // 29個ぶん。骨の表ならこの形をしているはずなので、それを確かめる
 const MAT_SIZE=32, MAT_ONE=4096;
-function readMatrix(dv,o){
+// 行列の持ち方は1つとは限らない。ありそうな形を3つ試す
+const MAT_FORMS=[
+  {size:32,tAt:20,tBits:32,name:"回転int16×9＋詰め物＋移動int32×3"},
+  {size:24,tAt:18,tBits:16,name:"回転int16×9＋移動int16×3"},
+  {size:20,tAt:-1,tBits:0, name:"回転int16×9だけ"},
+];
+function readMatrix(dv,o,f){
+  f=f||MAT_FORMS[0];
   const m=[]; for(let k=0;k<9;k++) m.push(dv.getInt16(o+k*2,true));
-  return {m, t:[dv.getInt32(o+20,true),dv.getInt32(o+24,true),dv.getInt32(o+28,true)]};
+  const t=f.tAt<0?[0,0,0]
+    :f.tBits===32?[dv.getInt32(o+f.tAt,true),dv.getInt32(o+f.tAt+4,true),dv.getInt32(o+f.tAt+8,true)]
+    :[dv.getInt16(o+f.tAt,true),dv.getInt16(o+f.tAt+2,true),dv.getInt16(o+f.tAt+4,true)];
+  return {m,t};
 }
 // 回転行列なら、3本の行はどれも長さ 4096 で、互いに直角になる。
 // でたらめなバイト列がこれを満たすことはまずない
@@ -3148,12 +3164,23 @@ function matrixOK(M){
   const dot=(a,b)=>(a[0]*b[0]+a[1]*b[1]+a[2]*b[2])/(MAT_ONE*MAT_ONE);
   return Math.abs(dot(r[0],r[1]))<0.12&&Math.abs(dot(r[0],r[2]))<0.12&&Math.abs(dot(r[1],r[2]))<0.12;
 }
-function boneScan(buf){
-  if(!buf||buf.length<MAT_SIZE*2||buf.length%MAT_SIZE) return null;
+function boneScan(buf,form,skip){
+  const f=form||MAT_FORMS[0]; skip=skip||0;
+  if(!buf||buf.length-skip<f.size*2||(buf.length-skip)%f.size) return null;
   const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
-  const n=buf.length/MAT_SIZE, list=[]; let good=0;
-  for(let k=0;k<n;k++){ const M=readMatrix(dv,k*MAT_SIZE); M.ok=matrixOK(M); if(M.ok) good++; list.push(M) }
-  return {n,good,ratio:good/n,list};
+  const n=(buf.length-skip)/f.size, list=[]; let good=0;
+  for(let k=0;k<n;k++){ const M=readMatrix(dv,skip+k*f.size,f); M.ok=matrixOK(M); if(M.ok) good++; list.push(M) }
+  return {n,good,ratio:good/n,list,form:f,skip};
+}
+// どの持ち方でいちばん筋が通るかを試す。頭に小さな見出しが付いている見込みも入れる
+function boneScanBest(buf){
+  let best=null;
+  for(const f of MAT_FORMS) for(const skip of [0,4,8,16]){
+    const b=boneScan(buf,f,skip);
+    if(!b||b.n<8) continue;
+    if(!best||b.ratio>best.ratio||(b.ratio===best.ratio&&b.n>best.n)) best=b;
+  }
+  return best;
 }
 function boneSample(b,k){
   const M=b.list[k]; if(!M) return "";
@@ -3173,7 +3200,7 @@ async function boneHunt(onProgress){
       parts.forEach((p,pi)=>{
         if(!p||p.length<64) return;
         let out=p; try{ if(p[0]===0x0b) out=decompress(p) }catch(_){ return }
-        const b=boneScan(out);
+        const b=boneScanBest(out);
         if(b&&b.n>=8&&b.ratio>=0.5) hits.push({e,pi,len:out.length,b});
       });
     }catch(_){}
@@ -3188,7 +3215,8 @@ function boneLines(hits){
   L.push(`  ${hits.length}件`);
   for(const h of hits.slice(0,12)){
     L.push(`  #${h.e.no} sector ${h.e.sector} 部分${h.pi}　${h.len} B ＝ 行列${h.b.n}個　`
-      +`回転として筋が通るもの ${h.b.good}/${h.b.n}`);
+      +`回転として筋が通るもの ${h.b.good}/${h.b.n}　`
+      +`持ち方 ${h.b.form.size}B（${h.b.form.name}）${h.b.skip?`　頭を ${h.b.skip}B 飛ばす`:""}`);
     L.push(boneSample(h.b,0));
     L.push(boneSample(h.b,1));
   }
