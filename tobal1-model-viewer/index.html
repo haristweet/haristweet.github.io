@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.7.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.8.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -133,6 +133,10 @@ canvas:active{cursor:grabbing}
     <div data-tab="file"><p class="label">向き</p>
       <div class="seg" id="up-seg"><button data-up="0" aria-pressed="false">そのまま</button><button data-up="1" aria-pressed="false">X を上に</button><button data-up="2" aria-pressed="true">X を上（逆）</button><button data-up="3" aria-pressed="false">Z を上に</button></div>
       <p class="note">モデルの「背の高さ」がどの軸かはファイルに書かれていません。実物は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）でした。そのうえで上下をひっくり返した「X を上（逆）」が既定です。人の形にならないときはここを変えてみてください。</p>
+    </div>
+    <div data-tab="file" id="t1part-box" hidden><p class="label">ファイルの中のモデル</p>
+      <select id="t1part"></select>
+      <p class="note">1つのファイルに 0x90000000 のモデルが複数入っています。いちばん大きいものがキャラクター本体で、小さいものは部品の少ない簡易版のようです。</p>
     </div>
     <div data-tab="file"><p class="label">骨格の組み方</p>
       <div class="seg" id="rig-seg"><button data-v="t2" aria-pressed="true">トバル2と同じ</button><button data-v="flat" aria-pressed="false">関節を使わない</button></div>
@@ -205,6 +209,7 @@ const state={
   src:null,          // 読み込み元（ディスク or 取り出し済みファイル）
   tables:[],         // 実行ファイルから見つけたファイル表の候補
   tableIdx:0,
+  t1Part:-1,          // ファイルの中のどのモデルを出すか（-1＝いちばん大きいもの）
   entries:[],        // 表示中の一覧（アーカイブ or ディスクのファイル）
   scan:null,         // アーカイブを直接さらった結果
   survey:null,       // モデル候補をまとめて調べた結果
@@ -1455,7 +1460,8 @@ function readT1Object(d,base){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const g=k=>base+(k+1)*4<=d.length?dv.getUint32(base+k*4,true):0;
   const o={base,facePtr:g(0),vertPtr:g(1),normPtr:g(2),colPtr:g(3),nv:0,nn:0,counts:null,countsAt:-1};
-  if(!(o.vertPtr>=16&&o.vertPtr<o.normPtr&&o.normPtr<o.facePtr&&o.facePtr<o.colPtr)) return o;
+  // 法線を持たない部品がある（部分1・部分3 は 法線の位置＝面の位置で、法線の数が0）
+  if(!(o.vertPtr>=16&&o.vertPtr<o.normPtr&&o.normPtr<=o.facePtr&&o.facePtr<o.colPtr)) return o;
   if((o.normPtr-o.vertPtr)%8||(o.facePtr-o.normPtr)%8) return o;
   o.nv=(o.normPtr-o.vertPtr)/8;
   o.nn=(o.facePtr-o.normPtr)/8;
@@ -2238,13 +2244,17 @@ function buildModelInner(raw,info){
     if(out&&out.length>=64) bodies.push({i,out,packed:p[0]===0x0b});
   });
   if(!bodies.length) throw new Error("展開できる中身がありませんでした（部分の大きさ: "+info.partSizes.join(", ")+"）");
-  // 本体以外の部分はまだ何も読めていない。骨（部品の置き場所）がここにある見込みが高いので、
-  // 中身をそのまま控えて報告に出す
+  // 部分1・部分3 も 0x90000000 のモデルだった（骨ではない）。中身を控えて報告に出し、
+  // どれを出すかを選べるようにする
   info.otherParts=parts.map((p,i)=>{
     let out=p; try{ if(p&&p[0]===0x0b) out=decompress(p) }catch(_){}
-    return {i,len:p?p.length:0,out};
+    let model=null; try{ model=modelInfoT1(out)?out.length:0 }catch(_){}
+    return {i,len:p?p.length:0,out,model};
   });
+  info.modelParts=info.otherParts.filter(q=>q.model).map(q=>q.i);
   bodies.sort((a,b)=>b.out.length-a.out.length);
+  // 「どのモデルを出すか」が選ばれていれば、それを先頭に持ってくる
+  if(state.t1Part>=0){ const k=bodies.findIndex(b=>b.i===state.t1Part); if(k>0) bodies.unshift(bodies.splice(k,1)[0]) }
 
   // トバルNo.1 のモデル（0x90000000）なら、専用の読み方で組む
   for(const b of bodies.slice(0,4)){
@@ -2518,7 +2528,7 @@ async function selectEntry(i){
     state.selErr=err.message; state.selInfo=err.info||null; console.error(err);
     clearMesh(); draw();
   }
-  busy(""); updateStatus(); updateReport();
+  busy(""); updateStatus(); updateReport(); fillT1Part(state.selInfo);
 }
 // モデル候補を順に開いて、最初に三角形が出たものを表示する
 async function selectFirstModel(limit=16){
@@ -2561,7 +2571,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.7.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.8.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2701,7 +2711,8 @@ function updateReport(){
       const dvq=new DataView(q.out.buffer,q.out.byteOffset,q.out.byteLength);
       const i16=n=>{ const a=[]; for(let k=0;k<n&&k*2+2<=q.out.length;k++) a.push(dvq.getInt16(k*2,true)); return a.join(" ") };
       const i32=n=>{ const a=[]; for(let k=0;k<n&&k*4+4<=q.out.length;k++) a.push(dvq.getInt32(k*4,true)); return a.join(" ") };
-      L.push(`  部分${q.i}（${q.len} B${q.out.length!==q.len?` → 展開後 ${q.out.length} B`:""}）まだ読めていない部分:`);
+      L.push(`  部分${q.i}（${q.len} B${q.out.length!==q.len?` → 展開後 ${q.out.length} B`:""}）`
+        +(q.model?"これも 0x90000000 のモデル（部品が少ない＝簡易版らしい）:":"モデルではない:"));
       L.push("    "+hx(0,32));
       L.push("    "+hx(32,32));
       L.push("    16bit: "+i16(16));
@@ -2867,6 +2878,19 @@ $("src-seg").onclick=async e=>{
   rebuildEntries(); busy("調べています…"); await probeSamples(); busy("");
   fillTypeFilter(); renderFiles(); updateReport();
 };
+// ファイルの中に入っているモデルの選択（部分0＝本体、ほかは簡易版らしい）
+$("t1part").onchange=e=>{ state.t1Part=+e.target.value;
+  if(state.sel>=0) selectEntry(state.sel) };
+function fillT1Part(inf){
+  const box=$("t1part-box"), sel=$("t1part"), list=inf&&inf.modelParts||[];
+  if(list.length<2){ box.hidden=true; return }
+  box.hidden=false;
+  const want=String(state.t1Part);
+  sel.innerHTML='<option value="-1">いちばん大きいもの（本体）</option>'
+    +list.map(i=>{ const q=inf.otherParts.find(x=>x.i===i);
+      return `<option value="${i}">部分${i}（${q?q.out.length:0} B）</option>` }).join("");
+  sel.value=[...sel.options].some(o=>o.value===want)?want:"-1";
+}
 $("rig-seg").onclick=e=>{
   const b=e.target.closest("button"); if(!b) return;
   state.rig=b.dataset.v;
