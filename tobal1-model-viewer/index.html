@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.5.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.6.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -164,6 +164,7 @@ canvas:active{cursor:grabbing}
       <label id="showall-opt"><input type="checkbox" id="showall"> 読めない部品も出す</label>
       <label id="showonly-opt"><input type="checkbox" id="showonly"> 本体だけ</label>
       <label id="segcol-opt"><input type="checkbox" id="segcol"> 骨ごとに色分け</label>
+      <label id="spread-opt"><input type="checkbox" id="spread"> 部品を並べる</label>
       <label><input type="checkbox" id="shot-clear"> 背景なし</label>
       <label id="crop-opt"><input type="checkbox" id="shot-crop"> キャラだけ切り抜き</label>
       <button id="shot">スクショを保存</button>
@@ -1492,10 +1493,11 @@ function t1WalkLine(W){
 }
 const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメラの合わせ枠が壊れるので落とす
 // 見せ方の切り替え。どこがおかしいのかを切り分けるための道具
-const t1Show={all:false,only:false,segColor:false,up:2};
+const t1Show={all:false,only:false,segColor:false,spread:false,up:2};
 try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.only=localStorage.getItem("t1only")==="1";
      t1Show.segColor=localStorage.getItem("t1segcol")==="1";
+     t1Show.spread=localStorage.getItem("t1spread")==="1";
      // 向きの記憶は v3.5.0 で作り直した（前の既定値が上下逆だったので、古い記憶は捨てる）
      const u=localStorage.getItem("t1up2"); if(u!=null) t1Show.up=+u }catch(_){}
 // モデルの「背の高さ」がどの軸かは決め打ちできないので、向きを選べるようにする。
@@ -1512,6 +1514,22 @@ const T1_UP=[
 const T1_SEG_COL=[[.95,.35,.35],[.35,.85,.45],[.40,.55,.95],[.95,.80,.30],
                   [.85,.45,.90],[.30,.85,.85],[.95,.60,.35],[.60,.60,.95],
                   [.45,.95,.70],[.95,.45,.65],[.70,.85,.35],[.50,.75,.95]];
+// 部品を横一列に並べるときの置き場所。重なって見えないので、1つずつ形を確かめるため
+function t1Layout(objs,dv,up){
+  const box=[], gap=60; let total=0;
+  for(const o of objs){
+    const mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+    for(let i=0;i<o.nv;i++){ const p=o.base+o.vertPtr+i*8;
+      const v=up(dv.getInt16(p,true),dv.getInt16(p+2,true),dv.getInt16(p+4,true));
+      for(let a=0;a<3;a++){ if(v[a]<mn[a])mn[a]=v[a]; if(v[a]>mx[a])mx[a]=v[a] } }
+    const w=Math.max(1,mx[0]-mn[0]); box.push({mn,mx,w}); total+=w+gap;
+  }
+  const out=new Map(); let x=-total/2;
+  objs.forEach((o,k)=>{ const b=box[k];
+    out.set(o,[x-b.mn[0], -(b.mn[1]+b.mx[1])/2, -(b.mn[2]+b.mx[2])/2]);
+    x+=b.w+gap });
+  return out;
+}
 function buildT1Mesh(d,objs){
   // 法線つきで読める部品が1つでもあれば、それがキャラクターの見た目。
   // 読めない部品は当たり判定か影なので、ふだんは出さない
@@ -1524,6 +1542,7 @@ function buildT1Mesh(d,objs){
   // 「本体だけ」…いちばん頂点の多い部品（キャラクターの胴体）だけにする
   if(t1Show.only){ const big=objs.slice().sort((a,b)=>b.nv-a.nv)[0]; if(big) objs=[big] }
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const lay=t1Show.spread?t1Layout(objs,dv,(T1_UP[t1Show.up]||T1_UP[0]).f):null;
   const pos=[],col=[],t0=[],t1=[],sm=[],nrm=[];
   let used=0, tris=0, dropped=0;
   for(const o of objs){
@@ -1535,9 +1554,11 @@ function buildT1Mesh(d,objs){
         for(let a=0;a<3;a++){ const v=dv.getInt16(p+a*2,true); if(v<mn[a])mn[a]=v; if(v>mx[a])mx[a]=v } }
       o.box=mn.map((v,a)=>`${v}..${mx[a]}`).join(" "); o.span=Math.max(...mx.map((v,a)=>v-mn[a])); }
     const up=(T1_UP[t1Show.up]||T1_UP[0]).f;
-    const V0=i=>up(dv.getInt16(o.base+o.vertPtr+i*8,true),
-                   dv.getInt16(o.base+o.vertPtr+i*8+2,true),
-                   dv.getInt16(o.base+o.vertPtr+i*8+4,true));
+    const sp=lay?lay.get(o):null;
+    const V0=i=>{ const v=up(dv.getInt16(o.base+o.vertPtr+i*8,true),
+                             dv.getInt16(o.base+o.vertPtr+i*8+2,true),
+                             dv.getInt16(o.base+o.vertPtr+i*8+4,true));
+                  return sp?[v[0]+sp[0],v[1]+sp[1],v[2]+sp[2]]:v };
     const C0=i=>{ const q=o.base+o.colPtr+i*4;
                   return q+2<d.length?[d[q]/255,d[q+1]/255,d[q+2]/255]:[.5,.5,.5] };
     const far=i=>V0(i).some(v=>Math.abs(v)>T1_MAX_COORD);
@@ -2493,7 +2514,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.5.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.6.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2547,6 +2568,17 @@ function updateReport(){
         }
 
       }
+      // 命令 3/4/5/6/7 が何をしているかはまだ分からない。部品を置く位置（骨の行列）は
+      // この中にあるはずなので、中身をそのまま出して読む
+      const want=new Set([3,4,5,6,7]), seenH=new Set();
+      for(const c of deep) for(const d of mipsDispatch(s.exe,c)){
+        if(!want.has(d.code)||seenH.has(d.addr)) continue;
+        seenH.add(d.addr);
+        L.push(...mipsBlock(s.exe,d.addr,18,`命令 ${d.code} の中身 `));
+      }
+      // 部品ごとの下ごしらえ。行列を積むならこの関数
+      for(const c of deep){ const n=(c.to-c.from)/4;
+        if(n>=20&&n<=80){ L.push(`  部品ごとの下ごしらえ ${hex(c.addr)}（${n}命令）:`); L.push(...mipsLines(s.exe,c)); break } }
       L.push("");
     } else L.push("モデルを読んでいるコードは見つかりませんでした\n");
   }catch(err){ L.push("コードの読み取りに失敗: "+err.message+"\n") }
@@ -2829,6 +2861,7 @@ for(const x of $("up-seg").children) x.setAttribute("aria-pressed",String(+x.dat
 showToggle("showall","all","t1all");
 showToggle("showonly","only","t1only");
 showToggle("segcol","segColor","t1segcol");
+showToggle("spread","spread","t1spread");
 $("gouraud").checked=shading.gouraud;
 $("gouraud").onchange=e=>{
   shading.gouraud=e.target.checked; try{ localStorage.setItem("t1gouraud",shading.gouraud?"1":"0") }catch(_){}
@@ -2858,13 +2891,13 @@ BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.
 // ---- スマホの配置 ----
 const mobileMQ=matchMedia("(max-width:720px)");
 const shotOpt=$("shot-clear").closest("label"), gouraudOpt=$("gouraud-opt"), cropOpt=$("crop-opt"),
-      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt");
+      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt");
 function applyLayout(){
   const m=mobileMQ.matches, stage=document.querySelector(".stage");
-  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,shotOpt,cropOpt);
-          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className="shot-opt"; $("bg-box").hidden=false }
-  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
-          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=""; closeSheet() }
+  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,shotOpt,cropOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className="shot-opt"; $("bg-box").hidden=false }
+  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=""; closeSheet() }
   requestAnimationFrame(draw);
 }
 function openTab(t){
