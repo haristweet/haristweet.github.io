@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.8.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.9.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -815,8 +815,9 @@ const s16=v=>v&0x8000?v-0x10000:v;
 function mipsDis(w,pc){
   if(w===0) return "nop";
   const op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31, sa=(w>>>6)&31,
-        fn=w&63, im=w&0xffff, tgt=(pc&0xf0000000)|((w&0x3ffffff)<<2);
+        fn=w&63, im=w&0xffff, tgt=((pc&0xf0000000)|((w&0x3ffffff)<<2))>>>0;
   const br=()=>"0x"+((pc+4+s16(im)*4)>>>0).toString(16);
+  const jt=()=>"0x"+tgt.toString(16);
   if(op===0){
     const n=MIPS_SPECIAL[fn]; if(!n) return `.word 0x${w.toString(16)}`;
     if(fn===0x08) return `jr ${r(rs)}`;
@@ -827,7 +828,7 @@ function mipsDis(w,pc){
     return `${n} ${r(rd)}, ${r(rs)}, ${r(rt)}`;
   }
   if(op===1) return `${rt&1?"bgez":"bltz"} ${r(rs)}, ${br()}`;
-  if(op===2||op===3) return `${op===2?"j":"jal"} 0x${tgt.toString(16)}`;
+  if(op===2||op===3) return `${op===2?"j":"jal"} ${jt()}`;
   if(op===4) return `beq ${r(rs)}, ${r(rt)}, ${br()}`;
   if(op===5) return `bne ${r(rs)}, ${r(rt)}, ${br()}`;
   if(op===6) return `blez ${r(rs)}, ${br()}`;
@@ -889,6 +890,23 @@ function mipsLines(exe,fn,mark){
     L.push(`    ${p===mark?"→":" "} 0x${(t.base+p).toString(16)}  ${w.toString(16).padStart(8,"0")}  ${mipsDis(w,t.base+p)}`);
   }
   return L;
+}
+
+// 見つけた関数が呼んでいる先を集める。モデルを開く関数から、部品を読む関数へ辿るため
+function mipsCalls(exe,fn){
+  const t=exeText(exe); if(!t) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const out=[], seen=new Set();
+  for(let p=fn.from;p<fn.to&&p+4<=t.body.length;p+=4){
+    const w=dv.getUint32(p,true);
+    if((w>>>26)!==3) continue;                                   // jal だけ
+    const addr=((((t.base+p)&0xf0000000)|((w&0x3ffffff)<<2))>>>0);
+    const off=addr-t.base;
+    if(off<0||off+4>t.body.length||seen.has(off)) continue;
+    seen.add(off);
+    out.push({at:off,addr,from:off,to:mipsFunc(t.body,off,0,400).to});
+  }
+  return out;
 }
 // ============================================================
 //  アーカイブを直接さらう
@@ -2206,7 +2224,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v1.8.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v1.9.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2214,14 +2232,25 @@ function updateReport(){
   L.push("");
   // 実行ファイルの中で、モデルの署名 0x90000000 を作っている場所＝モデルを読む関数
   try{
-    const hits=findModelCode(s.exe);
+    const all=findModelCode(s.exe), seen=new Set(), hits=[];
+    for(const h of all){ if(seen.has(h.from)) continue; seen.add(h.from); hits.push(h) }
     if(hits.length){
-      L.push(`モデルを読んでいるコード（lui ??, 0x9000 が ${hits.length}か所）:`);
+      L.push(`モデルを読んでいるコード（lui ??, 0x9000 が ${all.length}か所 → 関数 ${hits.length}個）:`);
+      const callees=new Map();
       hits.slice(0,3).forEach((h,i)=>{
         L.push(`  [${i}] ${hex(h.addr)}　関数 ${hex(ex.text+h.from)}…${hex(ex.text+h.to)}（${(h.to-h.from)/4}命令）`);
         L.push(...mipsLines(s.exe,h,h.at));
+        for(const c of mipsCalls(s.exe,h)) if(!seen.has(c.from)&&!callees.has(c.from)) callees.set(c.from,c);
       });
-      if(hits.length>3) L.push(`  …ほか ${hits.length-3} か所`);
+      // 呼び出し先も追う。部品を読む本体はこの先にある
+      let k=0;
+      for(const c of callees.values()){
+        if(k>=3) break;
+        const n=(c.to-c.from)/4; if(n<4||n>400) continue;
+        L.push(`  呼び出し先 ${hex(c.addr)}（${n}命令）:`);
+        L.push(...mipsLines(s.exe,c,-1));
+        k++;
+      }
       L.push("");
     } else L.push("モデルを読んでいるコードは見つかりませんでした\n");
   }catch(err){ L.push("コードの読み取りに失敗: "+err.message+"\n") }
