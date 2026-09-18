@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.7.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.8.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -786,6 +786,109 @@ function buildVram(part){
     o+=w*h*2;
   }
   return vram;
+}
+// ============================================================
+//  実行ファイルのコードを読む
+// ============================================================
+// ============================================================
+//  MIPS(R3000) の逆アセンブラ
+//
+//  トバルNo.1 の実行ファイルの中から、モデルを読んでいる場所を探して中身を読むため。
+//  手掛かりは署名 0x90000000 との比較。これは必ず `lui ○, 0x9000` という命令になり、
+//  バイト列では 00 90 ?? 3C と並ぶ。そこを起点に、前後へ関数の切れ目まで広げて出す。
+// ============================================================
+const MIPS_REG=["zero","at","v0","v1","a0","a1","a2","a3","t0","t1","t2","t3","t4","t5","t6","t7",
+                "s0","s1","s2","s3","s4","s5","s6","s7","t8","t9","k0","k1","gp","sp","fp","ra"];
+const MIPS_SPECIAL={0x00:"sll",0x02:"srl",0x03:"sra",0x04:"sllv",0x06:"srlv",0x07:"srav",
+  0x08:"jr",0x09:"jalr",0x0c:"syscall",0x0d:"break",0x10:"mfhi",0x11:"mthi",0x12:"mflo",0x13:"mtlo",
+  0x18:"mult",0x19:"multu",0x1a:"div",0x1b:"divu",0x20:"add",0x21:"addu",0x22:"sub",0x23:"subu",
+  0x24:"and",0x25:"or",0x26:"xor",0x27:"nor",0x2a:"slt",0x2b:"sltu"};
+const MIPS_OP={0x08:"addi",0x09:"addiu",0x0a:"slti",0x0b:"sltiu",0x0c:"andi",0x0d:"ori",0x0e:"xori",
+  0x20:"lb",0x21:"lh",0x22:"lwl",0x23:"lw",0x24:"lbu",0x25:"lhu",0x26:"lwr",
+  0x28:"sb",0x29:"sh",0x2a:"swl",0x2b:"sw",0x2e:"swr"};
+// GTE（座標を変換する専用回路）。頂点を触るところに必ず出てくる
+const GTE_OP={0x01:"RTPS",0x06:"NCLIP",0x0c:"OP",0x10:"DPCS",0x11:"INTPL",0x12:"MVMVA",0x13:"NCDS",
+  0x14:"CDP",0x16:"NCDT",0x1b:"NCCS",0x1c:"CC",0x1e:"NCS",0x20:"NCT",0x28:"SQR",0x29:"DCPL",
+  0x2a:"DPCT",0x2d:"AVSZ3",0x2e:"AVSZ4",0x30:"RTPT",0x3d:"GPF",0x3e:"GPL",0x3f:"NCCT"};
+const r=n=>"$"+MIPS_REG[n];
+const s16=v=>v&0x8000?v-0x10000:v;
+function mipsDis(w,pc){
+  if(w===0) return "nop";
+  const op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31, sa=(w>>>6)&31,
+        fn=w&63, im=w&0xffff, tgt=(pc&0xf0000000)|((w&0x3ffffff)<<2);
+  const br=()=>"0x"+((pc+4+s16(im)*4)>>>0).toString(16);
+  if(op===0){
+    const n=MIPS_SPECIAL[fn]; if(!n) return `.word 0x${w.toString(16)}`;
+    if(fn===0x08) return `jr ${r(rs)}`;
+    if(fn===0x09) return `jalr ${r(rd)}, ${r(rs)}`;
+    if(fn<=0x03) return `${n} ${r(rd)}, ${r(rt)}, ${sa}`;
+    if(fn>=0x10&&fn<=0x13) return `${n} ${r(fn&1?rs:rd)}`;
+    if(fn>=0x18&&fn<=0x1b) return `${n} ${r(rs)}, ${r(rt)}`;
+    return `${n} ${r(rd)}, ${r(rs)}, ${r(rt)}`;
+  }
+  if(op===1) return `${rt&1?"bgez":"bltz"} ${r(rs)}, ${br()}`;
+  if(op===2||op===3) return `${op===2?"j":"jal"} 0x${tgt.toString(16)}`;
+  if(op===4) return `beq ${r(rs)}, ${r(rt)}, ${br()}`;
+  if(op===5) return `bne ${r(rs)}, ${r(rt)}, ${br()}`;
+  if(op===6) return `blez ${r(rs)}, ${br()}`;
+  if(op===7) return `bgtz ${r(rs)}, ${br()}`;
+  if(op===0x0f) return `lui ${r(rt)}, 0x${im.toString(16)}`;
+  if(op===0x12){                                   // COP2 = GTE
+    if(rs===0) return `mfc2 ${r(rt)}, $${rd}`;
+    if(rs===2) return `cfc2 ${r(rt)}, $${rd}`;
+    if(rs===4) return `mtc2 ${r(rt)}, $${rd}`;
+    if(rs===6) return `ctc2 ${r(rt)}, $${rd}`;
+    const g=GTE_OP[w&0x3f]; return g?`${g}`:`cop2 0x${(w&0x1ffffff).toString(16)}`;
+  }
+  if(op===0x32) return `lwc2 $${rt}, ${s16(im)}(${r(rs)})`;
+  if(op===0x3a) return `swc2 $${rt}, ${s16(im)}(${r(rs)})`;
+  const n=MIPS_OP[op];
+  if(!n) return `.word 0x${w.toString(16)}`;
+  if(op>=0x20) return `${n} ${r(rt)}, ${s16(im)}(${r(rs)})`;
+  if(op>=0x0c&&op<=0x0e) return `${n} ${r(rt)}, ${r(rs)}, 0x${im.toString(16)}`;
+  return `${n} ${r(rt)}, ${r(rs)}, ${s16(im)}`;
+}
+// 実行ファイルの中身（ヘッダ 2048 バイトのあと）が text 番地に載る
+function exeText(exe){
+  const i=exeInfo(exe);
+  return i.ok?{body:exe.subarray(0x800),base:i.text}:null;
+}
+// 起点から前後へ、関数の切れ目（addiu $sp,$sp,-N ／ jr $ra）まで広げる
+function mipsFunc(body,at,maxBack,maxFwd){
+  const dv=new DataView(body.buffer,body.byteOffset,body.byteLength);
+  let s=at;
+  for(let k=0;k<(maxBack||160);k++){ const p=at-k*4; if(p<0) break;
+    const w=dv.getUint32(p,true);
+    if((w>>>16)===0x27bd&&(w&0x8000)){ s=p; break }            // addiu $sp, $sp, -N
+    s=p;
+  }
+  let e=at;
+  for(let k=0;k<(maxFwd||200);k++){ const p=at+k*4; if(p+4>body.length) break;
+    e=p+8;                                                      // jr のあとの1命令まで
+    if(dv.getUint32(p,true)===0x03e00008) break;                // jr $ra
+  }
+  return {from:s,to:Math.min(e,body.length)};
+}
+// 署名 0x90000000 を作る lui を探す
+function findModelCode(exe){
+  const t=exeText(exe); if(!t) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const hits=[];
+  for(let p=0;p+4<=t.body.length;p+=4){
+    const w=dv.getUint32(p,true);
+    if((w>>>26)===0x0f&&(w&0xffff)===0x9000) hits.push(p);      // lui ??, 0x9000
+  }
+  return hits.map(at=>({at,addr:t.base+at,...mipsFunc(t.body,at)}));
+}
+function mipsLines(exe,fn,mark){
+  const t=exeText(exe); if(!t) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const L=[];
+  for(let p=fn.from;p<fn.to&&p+4<=t.body.length;p+=4){
+    const w=dv.getUint32(p,true);
+    L.push(`    ${p===mark?"→":" "} 0x${(t.base+p).toString(16)}  ${w.toString(16).padStart(8,"0")}  ${mipsDis(w,t.base+p)}`);
+  }
+  return L;
 }
 // ============================================================
 //  アーカイブを直接さらう
@@ -2103,12 +2206,25 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v1.7.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v1.8.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
   L.push(`アーカイブ: ${s.arcName}  ${fmtSize(s.arcSize)}`);
   L.push("");
+  // 実行ファイルの中で、モデルの署名 0x90000000 を作っている場所＝モデルを読む関数
+  try{
+    const hits=findModelCode(s.exe);
+    if(hits.length){
+      L.push(`モデルを読んでいるコード（lui ??, 0x9000 が ${hits.length}か所）:`);
+      hits.slice(0,3).forEach((h,i)=>{
+        L.push(`  [${i}] ${hex(h.addr)}　関数 ${hex(ex.text+h.from)}…${hex(ex.text+h.to)}（${(h.to-h.from)/4}命令）`);
+        L.push(...mipsLines(s.exe,h,h.at));
+      });
+      if(hits.length>3) L.push(`  …ほか ${hits.length-3} か所`);
+      L.push("");
+    } else L.push("モデルを読んでいるコードは見つかりませんでした\n");
+  }catch(err){ L.push("コードの読み取りに失敗: "+err.message+"\n") }
   const kn=knownDisc(s.exeName);
   if(kn){
     L.push("");
