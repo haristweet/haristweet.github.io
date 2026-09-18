@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.2.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.3.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -158,6 +158,8 @@ canvas:active{cursor:grabbing}
     <div class="shot" id="shot-box" hidden>
       <label id="gouraud-opt"><input type="checkbox" id="gouraud"> なめらかな陰影</label>
       <label id="showall-opt"><input type="checkbox" id="showall"> 読めない部品も出す</label>
+      <label id="showonly-opt"><input type="checkbox" id="showonly"> 本体だけ</label>
+      <label id="segcol-opt"><input type="checkbox" id="segcol"> 骨ごとに色分け</label>
       <label><input type="checkbox" id="shot-clear"> 背景なし</label>
       <label id="crop-opt"><input type="checkbox" id="shot-crop"> キャラだけ切り抜き</label>
       <button id="shot">スクショを保存</button>
@@ -1485,8 +1487,15 @@ function t1WalkLine(W){
     +`いちばん大きい頂点番号 ${W.maxIdx}`;
 }
 const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメラの合わせ枠が壊れるので落とす
-const t1Show={all:false};  // 法線を持たない部品（当たり判定らしきもの）も出すか
-try{ t1Show.all=localStorage.getItem("t1all")==="1" }catch(_){}
+// 見せ方の切り替え。どこがおかしいのかを切り分けるための道具
+const t1Show={all:false,only:false,segColor:false};
+try{ t1Show.all=localStorage.getItem("t1all")==="1";
+     t1Show.only=localStorage.getItem("t1only")==="1";
+     t1Show.segColor=localStorage.getItem("t1segcol")==="1" }catch(_){}
+// 骨ごとに色を変えるときの色。棘がどの骨から出ているかを目で追うため
+const T1_SEG_COL=[[.95,.35,.35],[.35,.85,.45],[.40,.55,.95],[.95,.80,.30],
+                  [.85,.45,.90],[.30,.85,.85],[.95,.60,.35],[.60,.60,.95],
+                  [.45,.95,.70],[.95,.45,.65],[.70,.85,.35],[.50,.75,.95]];
 function buildT1Mesh(d,objs){
   // 法線つきで読める部品が1つでもあれば、それがキャラクターの見た目。
   // 読めない部品は当たり判定か影なので、ふだんは出さない
@@ -1496,6 +1505,8 @@ function buildT1Mesh(d,objs){
     if(o.run&&Math.abs(o.run.verts-o.nv)>2) o.run=null;
     if(!o.run){ o.walkTry=t1WalkFaces(d,o); o.walkOK=t1WalkGood(o.walkTry) } }
   if(!t1Show.all){ const real=objs.filter(o=>o.run||o.walkOK); if(real.length) objs=real }
+  // 「本体だけ」…いちばん頂点の多い部品（キャラクターの胴体）だけにする
+  if(t1Show.only){ const big=objs.slice().sort((a,b)=>b.nv-a.nv)[0]; if(big) objs=[big] }
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const pos=[],col=[],t0=[],t1=[],sm=[],nrm=[];
   let used=0, tris=0, dropped=0;
@@ -1522,7 +1533,8 @@ function buildT1Mesh(d,objs){
         if(a.some(far)){ dropped++; continue }
         const strip=a.length===4?[[0,1,2],[0,2,3]]:[[0,1,2]];
         for(const t of strip){
-          for(const j of t){ pos.push(...V0(a[j])); col.push(...C0(a[j])); t0.push(0,0,0); t1.push(0,0,0,0) }
+          const sc=t1Show.segColor?T1_SEG_COL[(f.seg||0)%T1_SEG_COL.length]:null;
+          for(const j of t){ pos.push(...V0(a[j])); col.push(...(sc||C0(a[j]))); t0.push(0,0,0); t1.push(0,0,0,0) }
           if(f.n) nrm.push(f.n[0],f.n[1],f.n[2]); else nrm.push(0,0,0);
           sm.push(1); tris++;
         }
@@ -1549,7 +1561,8 @@ function buildT1Mesh(d,objs){
         if(a.some(far)){ dropped++; continue }
         const strip=a.length===4?[[0,1,2],[0,2,3]]:[[0,1,2]];
         for(const t of strip){
-          for(const j of t){ pos.push(...V0(a[j])); col.push(...C0(a[j])); t0.push(0,0,0); t1.push(0,0,0,0) }
+          const sc=t1Show.segColor?T1_SEG_COL[(f.seg||0)%T1_SEG_COL.length]:null;
+          for(const j of t){ pos.push(...V0(a[j])); col.push(...(sc||C0(a[j]))); t0.push(0,0,0); t1.push(0,0,0,0) }
           if(f.n) nrm.push(f.n[0],f.n[1],f.n[2]);
           else if(o.nv===o.nn){ const q=o.base+o.normPtr+a[t[0]]*8;
             nrm.push(dv.getInt16(q,true),dv.getInt16(q+2,true),dv.getInt16(q+4,true)) }
@@ -2159,6 +2172,10 @@ function buildModelInner(raw,info){
     info.t1Parts=`${okObjs.length}/${objs.length} 部品`;
     if(!okObjs.length) continue;
     const r1=buildT1Mesh(b.out,okObjs);
+    { const P=r1.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+      for(let i=0;i<P.length;i+=3) for(let a=0;a<3;a++){ if(P[i+a]<mn[a])mn[a]=P[i+a]; if(P[i+a]>mx[a])mx[a]=P[i+a] }
+      info.t1Size=`  モデル全体の縦横: X ${Math.round(mx[0]-mn[0])}　Y ${Math.round(mx[1]-mn[1])}　Z ${Math.round(mx[2]-mn[2])}`
+        +`（いちばん長い軸が背の高さのはず）`; }
     info.t1Detail=objs.slice(0,12).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}${o.run?"命令で実行":(o.walk?"法線あり":"見た目から推測")}(頂${o.nv} 法${o.nn} 面${o.faceBytes||0}B${o.tris?" 三角"+o.tris:""}${o.box?" 範囲 "+o.box:""})`).join("\n    ");
     if(r1.tris>0){
       info.t1Dropped=r1.dropped;
@@ -2451,7 +2468,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.2.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.3.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2573,6 +2590,7 @@ function updateReport(){
       +(inf.t1Distinct?`　別々の位置 ${inf.t1Distinct}点`:""));
     if(inf.t1Detail) L.push("  部品の内訳: "+inf.t1Detail);
     if(inf.t1Lays){ L.push("  面の読み方（選ばれたもの）:"); inf.t1Lays.forEach(x=>L.push("    "+x)) }
+    if(inf.t1Size) L.push(inf.t1Size);
     if(inf.t1Seg) L.push(...inf.t1Seg);
     if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
@@ -2766,11 +2784,16 @@ $("copy-report").onclick=async()=>{
 };
 $("bgm").onchange=e=>bgmPlay(+e.target.value);
 $("bgm-vol").oninput=e=>{ bgm.volume=+e.target.value; if(bgm.gain) bgm.gain.gain.value=bgm.volume };
-$("showall").checked=t1Show.all;
-$("showall").onchange=e=>{
-  t1Show.all=e.target.checked; try{ localStorage.setItem("t1all",t1Show.all?"1":"0") }catch(_){}
-  if(state.sel!=null&&state.sel>=0) selectEntry(state.sel);
+const redraw=()=>{ if(state.sel!=null&&state.sel>=0) selectEntry(state.sel) };
+const showToggle=(id,key,store)=>{
+  $(id).checked=t1Show[key];
+  $(id).onchange=e=>{ t1Show[key]=e.target.checked;
+    try{ localStorage.setItem(store,t1Show[key]?"1":"0") }catch(_){}
+    redraw() };
 };
+showToggle("showall","all","t1all");
+showToggle("showonly","only","t1only");
+showToggle("segcol","segColor","t1segcol");
 $("gouraud").checked=shading.gouraud;
 $("gouraud").onchange=e=>{
   shading.gouraud=e.target.checked; try{ localStorage.setItem("t1gouraud",shading.gouraud?"1":"0") }catch(_){}
@@ -2799,11 +2822,14 @@ BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.
 (()=>{ let i=0; try{ i=+localStorage.getItem("t1bg")||0 }catch(_){} setBackground(i) })();
 // ---- スマホの配置 ----
 const mobileMQ=matchMedia("(max-width:720px)");
-const shotOpt=$("shot-clear").closest("label"), gouraudOpt=$("gouraud-opt"), cropOpt=$("crop-opt"), allOpt=$("showall-opt");
+const shotOpt=$("shot-clear").closest("label"), gouraudOpt=$("gouraud-opt"), cropOpt=$("crop-opt"),
+      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt");
 function applyLayout(){
   const m=mobileMQ.matches, stage=document.querySelector(".stage");
-  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,shotOpt,cropOpt); shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className="shot-opt"; $("bg-box").hidden=false }
-  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt); shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=""; closeSheet() }
+  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,shotOpt,cropOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className="shot-opt"; $("bg-box").hidden=false }
+  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=""; closeSheet() }
   requestAnimationFrame(draw);
 }
 function openTab(t){
