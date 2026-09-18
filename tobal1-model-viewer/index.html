@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.14.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.15.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -137,7 +137,7 @@ canvas:active{cursor:grabbing}
     </div>
     <div data-tab="file"><p class="label">メモリの写し（骨さがし）</p>
       <label class="pick" style="display:inline-block">セーブステートを選ぶ<input id="memfile" type="file" hidden></label>
-      <p class="note">DuckStation でゲームを動かし、キャラクターが立っている場面でセーブステートを作ってください。そのファイルをここで選ぶと、<b>メモリの中身はこのページが読みます</b>。骨の表は実行中にしか存在しないので、これが一番の近道です。圧縮されたセーブステートだと読めないので、その場合は設定で圧縮を切ってください。</p>
+      <p class="note">DuckStation でゲームを動かし、キャラクターが立っている場面でセーブステートを作ってください。そのファイルをここで選ぶと、<b>メモリの中身はこのページが読みます</b>。骨の表は実行中にしか存在しないので、これが一番の近道です。圧縮されていてもほどけるものはほどきます。zstd で圧縮されている場合だけはブラウザがほどけないので、そのときは解析結果に出る手順に従ってください。</p>
       <div class="note" id="mem-status"></div>
     </div>
     <div data-tab="file" id="t1part-box" hidden><p class="label">ファイルの中のモデル</p>
@@ -2647,7 +2647,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.14.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.15.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -3005,8 +3005,10 @@ $("memfile").onchange=async e=>{
   const st=$("mem-status");
   st.textContent=`${f.name}（${fmtSize(f.size)}）を読んでいます…`;
   try{
-    const buf=new Uint8Array(await f.arrayBuffer());
-    state.mem=memBoneLines(buf,state.src&&state.src.exe);
+    let buf=new Uint8Array(await f.arrayBuffer());
+    const exe=state.src&&state.src.exe;
+    const prep=await memPrepare(buf,exe);
+    state.mem=[`メモリの写し: ${f.name}（${fmtSize(f.size)}）${prep.note}`,...memBoneLines(prep.buf,exe)];
     st.textContent=`${f.name} を読みました。結果は「解析」に出ています。`;
   }catch(err){ console.error(err); state.mem=["メモリの写しを読めませんでした: "+err.message];
     st.textContent="読めませんでした: "+err.message }
@@ -3364,19 +3366,69 @@ function boneLines(hits){
 // 写しの形式は決め打ちしない。実行ファイルの中身そのものを手がかりに、
 // 写しの中で RAM がどこから始まるかを探す（0x80010000 は RAM の 0x10000 にあるはず）
 const PSX_RAM=0x200000, PSX_TEXT=0x10000;
+// 実行ファイルの先頭は起動後に書き換わっていることがあるので、手がかりを何か所か試す。
+// exe の +0x800 が RAM の 0x10000 にあたるので、そこからのずれをそのまま使う
+const RAM_NEEDLES=[0x800,0x10800,0x20800,0x40800,0x60800];
 function findPsxRam(buf,exe){
-  if(!buf||!exe||exe.length<0x900||buf.length<PSX_TEXT+0x100) return -1;
-  const need=exe.subarray(0x800,0x840);          // 実行ファイルの本体の先頭64バイト
-  const last=buf.length-need.length;
-  for(let p=0;p<=last;p++){
-    if(buf[p]!==need[0]) continue;
-    let hit=true;
-    for(let k=1;k<need.length;k++) if(buf[p+k]!==need[k]){ hit=false; break }
-    if(!hit) continue;
-    const base=p-PSX_TEXT;
-    if(base>=0&&base+0x100000<=buf.length) return base;   // 1MB ぶんは入っていること
+  if(!buf||!exe||exe.length<0x900||buf.length<0x1000) return -1;
+  for(const at of RAM_NEEDLES){
+    if(at+64>exe.length) continue;
+    const need=exe.subarray(at,at+64);
+    const ramOff=PSX_TEXT+(at-0x800);            // その中身が RAM のどこにあるはずか
+    const last=buf.length-need.length;
+    for(let p=0;p<=last;p++){
+      if(buf[p]!==need[0]) continue;
+      let hit=true;
+      for(let k=1;k<need.length;k++) if(buf[p+k]!==need[k]){ hit=false; break }
+      if(!hit) continue;
+      const base=p-ramOff;
+      if(base>=0&&base+0x100000<=buf.length) return base;   // 1MB ぶんは入っていること
+    }
   }
   return -1;
+}
+// ---- 圧縮されたセーブステートをほどく ----
+// DuckStation は既定でセーブステートを圧縮する。ブラウザが自前でほどけるのは
+// deflate/gzip だけなので、それらを試し、zstd のときは正直にそう言う
+const MEM_MAGIC=[
+  {sig:[0x28,0xb5,0x2f,0xfd],name:"zstd"},
+  {sig:[0x04,0x22,0x4d,0x18],name:"LZ4"},
+  {sig:[0x1f,0x8b],name:"gzip"},
+  {sig:[0x78,0x01],name:"zlib"},{sig:[0x78,0x9c],name:"zlib"},{sig:[0x78,0xda],name:"zlib"},
+];
+function memFindMagic(buf,limit){
+  const out=[], last=Math.min(buf.length,limit||0x40000);
+  for(let p=0;p<last;p++) for(const m of MEM_MAGIC){
+    let hit=true;
+    for(let k=0;k<m.sig.length;k++) if(buf[p+k]!==m.sig[k]){ hit=false; break }
+    if(hit){ out.push({at:p,name:m.name}); if(out.length>=8) return out }
+  }
+  return out;
+}
+async function memInflate(buf,start,fmt){
+  if(typeof DecompressionStream!=="function") return null;
+  try{
+    const ds=new DecompressionStream(fmt), w=ds.writable.getWriter();
+    w.write(buf.slice(start)).catch(()=>{}); w.close().catch(()=>{});
+    const rd=ds.readable.getReader(), parts=[]; let n=0;
+    try{ for(;;){ const {done,value}=await rd.read(); if(done) break;
+      parts.push(value); n+=value.length; if(n>0x900000) break } }catch(_){}   // 途中で切れても拾う
+    if(n<0x100000) return null;
+    const out=new Uint8Array(n); let o=0;
+    for(const q of parts){ out.set(q,o); o+=q.length }
+    return out;
+  }catch(_){ return null }
+}
+// 写しをそのまま読めなければ、ほどいてから読む
+async function memPrepare(buf,exe){
+  if(findPsxRam(buf,exe)>=0) return {buf,note:""};
+  const mags=memFindMagic(buf);
+  for(const fmt of ["deflate","gzip","deflate-raw"])
+    for(const st of [0,...mags.filter(m=>m.name==="zlib"||m.name==="gzip").map(m=>m.at)].slice(0,6)){
+      const out=await memInflate(buf,st,fmt);
+      if(out&&findPsxRam(out,exe)>=0) return {buf:out,note:`（+0x${st.toString(16)} から ${fmt} でほどきました）`};
+    }
+  return {buf,note:"",mags};
 }
 function memReader(buf,base){
   const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
@@ -3398,8 +3450,17 @@ function memBoneLines(buf,exe){
   const base=findPsxRam(buf,exe);
   if(base<0){
     L.push("メモリの写しの中に実行ファイルが見つかりませんでした。");
-    L.push("  圧縮された形式のセーブステートかもしれません。DuckStation の設定で");
-    L.push("  セーブステートの圧縮を切るか、メモリをそのまま書き出したファイルを使ってください。");
+    L.push(`  ファイルの大きさ: ${buf.length} B（プレステの RAM は 2,097,152 B）`);
+    L.push("  先頭64バイト: "+Array.from(buf.subarray(0,64),v=>v.toString(16).padStart(2,"0")).join(" "));
+    L.push("  読める字: "+Array.from(buf.subarray(0,64),v=>(v>=32&&v<127)?String.fromCharCode(v):".").join(""));
+    const mags=memFindMagic(buf);
+    if(mags.length){
+      L.push("  見つかった圧縮の印: "+mags.map(m=>`${m.name}@+0x${m.at.toString(16)}`).join(" "));
+      if(mags.some(m=>m.name==="zstd"))
+        L.push("  → zstd で圧縮されています。ブラウザはこれをほどけません。下の手をとってください。");
+    } else L.push("  圧縮の印は見つかりませんでした");
+    L.push("  【確実な手】DuckStation でデバッグ表示を有効にして、メモリをそのまま");
+    L.push("    書き出したファイル（2MB ちょうど）を作り、それをここで選んでください。");
     return L;
   }
   L.push(`メモリの写しを読みました（RAM の先頭は ファイルの +0x${base.toString(16)}）`);
