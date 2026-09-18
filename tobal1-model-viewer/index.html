@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.0.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.1.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -157,7 +157,7 @@ canvas:active{cursor:grabbing}
     <div class="bgs" id="bg-box" hidden aria-label="背景の色"></div>
     <div class="shot" id="shot-box" hidden>
       <label id="gouraud-opt"><input type="checkbox" id="gouraud"> なめらかな陰影</label>
-      <label id="showall-opt"><input type="checkbox" id="showall"> 当たり判定も出す</label>
+      <label id="showall-opt"><input type="checkbox" id="showall"> 読めない部品も出す</label>
       <label><input type="checkbox" id="shot-clear"> 背景なし</label>
       <label id="crop-opt"><input type="checkbox" id="shot-crop"> キャラだけ切り抜き</label>
       <button id="shot">スクショを保存</button>
@@ -2007,7 +2007,8 @@ function upload(mesh,fit=true,li=0){
     const ds=[];
     for(let i=0;i<P.length;i+=3) ds.push(Math.hypot(P[i]-center[0],P[i+1]-center[1],P[i+2]-center[2]));
     ds.sort((a,b)=>a-b);
-    radius=ds[Math.min(ds.length-1,Math.floor(ds.length*0.98))]||1;
+    // 読み方が固まったので、ほぼ全部が入るように取る（飛んだ点だけ落とす）
+    radius=ds[Math.min(ds.length-1,Math.floor(ds.length*0.999))]||1;
     view.pan=[0,0,0];
   } else if(fit){ center=[0,0,0]; radius=1; view.pan=[0,0,0] }
   if(mesh.vram&&L.vram!==mesh.vram){ gl.bindTexture(gl.TEXTURE_2D,L.tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1024,512,0,gl.RGBA,gl.UNSIGNED_BYTE,mesh.vram); L.vram=mesh.vram }
@@ -2416,7 +2417,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.0.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.1.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2431,7 +2432,6 @@ function updateReport(){
       const callees=new Map();
       hits.slice(0,3).forEach((h,i)=>{
         L.push(`  [${i}] ${hex(h.addr)}　関数 ${hex(ex.text+h.from)}…${hex(ex.text+h.to)}（${(h.to-h.from)/4}命令）`);
-        L.push(...mipsLines(s.exe,h,h.at));
         for(const c of mipsCalls(s.exe,h)) if(!seen.has(c.from)&&!callees.has(c.from)) callees.set(c.from,c);
       });
       // 呼び出し先も追う。部品を読む本体はこの先にある
@@ -2439,17 +2439,11 @@ function updateReport(){
       for(const c of callees.values()){
         if(k>=3) break;
         const n=(c.to-c.from)/4; if(n<4||n>400) continue;
-        L.push(`  呼び出し先 ${hex(c.addr)}（${n}命令）:`);
-        L.push(...mipsLines(s.exe,c,-1));
+        L.push(`  呼び出し先 ${hex(c.addr)}（${n}命令）`);
         deep.push(c); k++;
       }
       // 命令ごとの処理は分岐の先にある。飛び先と、飛び先の表を読む
       for(const c of deep){
-        const tabs=mipsTables(s.exe,c).filter(x=>x.looksTable);
-        for(const tb of tabs.slice(0,2)){
-          L.push(`  飛び先の表 ${hex(tb.addr)}（命令8番から順に）:`);
-          tb.vals.forEach((v,i)=>{ if(v) L.push(`      [${i+8}] ${hex(v)}`) });
-        }
         // 命令ごとの「1つの長さ」をコードから割り出して一覧にする
         const disp=mipsDispatch(s.exe,c);
         if(disp.length){
@@ -2464,7 +2458,7 @@ function updateReport(){
               +`読む語 ${inf.reads.map(x=>"+"+x).join(",")||"-"}　`
               +(inf.vertMove?"頂点を進める　":"")+(inf.gte?"座標変換":""));
           }
-          const tabs2=mipsTables(s.exe,c).filter(x=>x.looksTable);
+          const tabs2=[];   // 飛び先の表はもう読み終えたので出さない
           for(const tb of tabs2.slice(0,1)) tb.vals.forEach((v,i)=>{
             if(!v||v<0x80010000||v>0x800d0000) return;
             const inf=mipsCmdInfo(s.exe,v,0x8001efa8,300); if(!inf) return;
@@ -2475,8 +2469,7 @@ function updateReport(){
           });
           if(rows.length){ L.push("  命令の一覧（コードから割り出したもの）:"); L.push(...rows) }
         }
-        const br=mipsBranches(s.exe,c);
-        br.slice(0,2).forEach((a,i)=>L.push(...mipsBlock(s.exe,a,32,`命令の処理 [${i}] `)));
+
       }
       L.push("");
     } else L.push("モデルを読んでいるコードは見つかりませんでした\n");
@@ -2546,14 +2539,7 @@ function updateReport(){
       +(inf.t1Distinct?`　別々の位置 ${inf.t1Distinct}点`:""));
     if(inf.t1Detail) L.push("  部品の内訳: "+inf.t1Detail);
     if(inf.t1Lays){ L.push("  面の読み方（選ばれたもの）:"); inf.t1Lays.forEach(x=>L.push("    "+x)) }
-    if(inf.t1Faces) L.push(...inf.t1Faces);
     if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
-    if(inf.t1Spans) L.push(...inf.t1Spans);
-    if(inf.t1Group) L.push(inf.t1Group);
-    if(inf.t1Win) L.push(...inf.t1Win);
-    if(inf.t1Cut) L.push(...inf.t1Cut);
-    if(inf.t1Bad) L.push(...inf.t1Bad);
-    if(inf.t1Gap2) L.push(...inf.t1Gap2);
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
     if(inf.modelOffs) L.push("  ヘッダにある位置: "+inf.modelOffs);
     if(inf.layout) L.push(`  並び: ${inf.layout}　広がり ${inf.extent}`);
