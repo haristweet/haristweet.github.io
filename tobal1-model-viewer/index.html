@@ -113,7 +113,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.6.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v1.7.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1513,6 +1513,58 @@ function t1BadDump(d,o,W,n){
   return L;
 }
 
+// 頂点番号が途中で 0 に戻っている。頂点854個に対して面が使う番号は 0..167 しかない。
+// 小部品ごとに 0 から振り直されているとみて、区切りを当てずっぽうではなく計算で決める。
+//
+//   決め手: ひとつの小部品は、自分の頂点を 0 から順に「ひとつ残らず」使うはず。
+//   つまり区切りの中で使われた番号が ちょうど {0,1,…,最大} になっていること。
+//   さらに、区切りの幅を全部足すと頂点の数ちょうどになること。
+//   この2つを同時に満たす切り方を探す。見つかればそれが正解。
+function t1GroupFaces(faces,nv){
+  const F=faces.length;
+  if(!F||nv<1||nv>4096) return null;
+  const MIN_W=16, MIN_N=4;                 // 小さすぎる区切りは相手にしない
+  // 頭を s にしたとき、どこで「0..最大 をひとつ残らず使った」状態になるか
+  const seen=new Int32Array(nv), ends=[];
+  let stamp=0, work=0;
+  for(let s0=0;s0<F;s0++){
+    stamp++; let max=-1, count=0; const list=[];
+    for(let e=s0;e<F;e++){
+      let bad=false;
+      for(const v of faces[e].idx){
+        if(v>=nv){ bad=true; break }
+        if(seen[v]!==stamp){ seen[v]=stamp; count++ }
+        if(v>max) max=v;
+      }
+      if(bad) break;
+      if(count===max+1&&max+1>=MIN_W&&e-s0+1>=MIN_N) list.push([e+1,max+1]);
+      if(max+1>nv) break;
+    }
+    ends.push(list); work+=list.length;
+  }
+  if(work>200000) return null;             // 手に負えない並びは深追いしない
+  // 区切りの幅の合計がちょうど頂点の数になる切り方のうち、区切りがいちばん少ないもの。
+  // 「全部使い切る」だけだと切り方がいくつも成り立つので、少ないほうを選ぶ
+  const W=nv+1, INF=0x3fffffff;
+  const cost=new Int32Array((F+1)*W).fill(INF), from=new Int32Array((F+1)*W).fill(-1);
+  cost[0]=0;
+  for(let f=0;f<F;f++) for(let v=0;v<=nv;v++){
+    const c=cost[f*W+v]; if(c>=INF) continue;
+    for(const [e,w] of ends[f]){
+      const nv2=v+w; if(nv2>nv) continue;
+      const k=e*W+nv2;
+      if(c+1<cost[k]){ cost[k]=c+1; from[k]=f*W+v }
+    }
+  }
+  if(cost[F*W+nv]>=INF) return null;
+  const cuts=[]; let cur=F*W+nv;
+  while(cur>0){ const pr=from[cur]; if(pr<0) return null;
+    cuts.push({from:(pr/W)|0,to:(cur/W)|0,base:pr%W,n:((cur/W)|0)-((pr/W)|0),width:cur%W-pr%W});
+    cur=pr; }
+  cuts.reverse();
+  return cuts;
+}
+// 当てずっぽうの区切り（報告用）。計算で決まらなかったときの手掛かりに使う
 // 頂点番号が途中で 0 に戻っていないかを見る。本体は小部品の入れ物らしく、
 // 番号が小部品ごとに振り直されている疑いがある（頂点854個なのに最大276だった）。
 // 面を並び順に区切って、区切りごとの番号の幅を出す。
@@ -1536,6 +1588,40 @@ function t1SpanBases(W,nv){
   let sum=0; const bases=[];
   for(const s of W.spans){ bases.push(sum); sum+=s.hi+1 }
   return {bases,sum,nv,fits:Math.abs(sum-nv)<=Math.max(4,nv*0.02)};
+}
+
+// 頂点を 64個ずつに区切って、それぞれがどのあたりに置かれているかを見る。
+// 小部品ごとに固まっていれば、区切りの位置で範囲がはっきり飛ぶはず。
+function t1VertWindows(d,o,step){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const L=[`  頂点を${step||64}個ずつ見た置き場所（部品 +${o.base.toString(16)}、頂点${o.nv}）:`];
+  const n=step||64;
+  for(let s0=0;s0<o.nv;s0+=n){
+    const mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+    for(let i=s0;i<Math.min(s0+n,o.nv);i++){
+      const p=o.base+o.vertPtr+i*8; if(p+6>d.length) break;
+      for(let a=0;a<3;a++){ const v=dv.getInt16(p+a*2,true); if(v<mn[a])mn[a]=v; if(v>mx[a])mx[a]=v }
+    }
+    L.push(`    ${String(s0).padStart(4)}..${String(Math.min(s0+n,o.nv)-1).padStart(4)}  `
+      +mn.map((v,a)=>`${String(v).padStart(5)}..${String(mx[a]).padEnd(5)}`).join(" "));
+  }
+  return L;
+}
+// 面の並びの切れ目まわりを生で見る。区切りの目印が挟まっているかどうか
+function t1CutDump(d,o,W,n){
+  if(!W||!W.spans||W.spans.length<2) return null;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  // 面ごとのバイト位置を数え直す
+  const at=[]; let p=o.base+o.facePtr;
+  for(const f of W.faces){ at.push(p); p+=f.idx.length*4+(f.n?8:0) }
+  const hx=(f,len)=>Array.from(d.subarray(Math.max(0,f),Math.max(0,f)+len),
+                               v=>v.toString(16).padStart(2,"0")).join(" ");
+  const L=["  面の並びの切れ目まわり（左が前の区切りの終わり、右が次の始まり）:"];
+  for(const sp of W.spans.slice(1,(n||4)+1)){
+    const q=at[sp.from]; if(q==null) continue;
+    L.push(`    +${(q-o.base-o.facePtr)}  ${hx(q-24,24)} ┃ ${hx(q,32)}`);
+  }
+  return L;
 }
 // ============================================================
 //  WebGL
@@ -1760,8 +1846,15 @@ function buildModelInner(raw,info){
           const W=big.walkTry, B=t1SpanBases(W,big.nv);
           info.t1Spans=[`  頂点番号の区切り（部品 +${hex(big.base,4)}、頂点${big.nv}、面${W.faces.length}枚）:`,
             `    区切り ${W.spans.length}個　幅を足すと ${B.sum}　頂点の数 ${big.nv}　${B.fits?"→ 一致（番号は区切りごとに振り直し）":"→ 合わない"}`];
-          W.spans.slice(0,20).forEach((sp,i)=>info.t1Spans.push(
+          W.spans.slice(0,8).forEach((sp,i)=>info.t1Spans.push(
             `    [${i}] ${sp.n}枚　番号 ${sp.lo}..${sp.hi}　足し込む位置 ${B.bases[i]}`));
+        }
+        if(big&&big.walkTry){
+          info.t1Win=t1VertWindows(b.out,big,64);
+          const c=t1CutDump(b.out,big,big.walkTry,5); if(c) info.t1Cut=c;
+          const G=t1GroupFaces(big.walkTry.faces,big.nv);
+          info.t1Group=G?`  区切りを計算で解くと ${G.length}個: 幅 ${G.map(x=>x.width).join(",")}`
+                        :"  区切りは計算では決まらなかった（切り方がいくつも成り立つ）";
         }
         // 本体のヘッダと頂点のあいだ（小部品の目録らしき 1504 バイト）を全部出す
         if(big&&big.vertPtr>0x100){
@@ -2010,7 +2103,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v1.6.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v1.7.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2084,6 +2177,9 @@ function updateReport(){
     if(inf.t1Faces) L.push(...inf.t1Faces);
     if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
     if(inf.t1Spans) L.push(...inf.t1Spans);
+    if(inf.t1Group) L.push(inf.t1Group);
+    if(inf.t1Win) L.push(...inf.t1Win);
+    if(inf.t1Cut) L.push(...inf.t1Cut);
     if(inf.t1Bad) L.push(...inf.t1Bad);
     if(inf.t1Gap2) L.push(...inf.t1Gap2);
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
