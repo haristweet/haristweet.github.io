@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.44.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.45.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1784,6 +1784,9 @@ function buildT1Mesh(d,objs){
   // 「本体だけ」…いちばん頂点の多い部品（キャラクターの胴体）だけにする
   if(t1Show.only){ const big=objs.slice().sort((a,b)=>b.nv-a.nv)[0]; if(big) objs=[big] }
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  // 色の引き方を部品ごとに測っておく（頂点ごと／面の頂点ごと／面に1色）
+  const cfit=new Map();
+  try{ for(const c of t1ColorFit(d,objs)) if(c.exact) cfit.set(c.base,c.fit) }catch(_){}
   const lay=t1Show.spread?t1Layout(objs,dv,(T1_UP[t1Show.up]||T1_UP[0]).f):null;
   // 骨の区切りごとに並べる（どの区切りが何なのかを見るため）
   const segLay=t1Show.segSpread?t1SegLayout(d,objs,(T1_UP[t1Show.up]||T1_UP[0]).f):null;
@@ -1816,6 +1819,9 @@ function buildT1Mesh(d,objs){
                   return sp?[v[0]+sp[0],v[1]+sp[1],v[2]+sp[2]]:v };
     const C0=i=>{ const q=o.base+o.colPtr+i*4;
                   return q+2<d.length?[d[q]/255,d[q+1]/255,d[q+2]/255]:[.5,.5,.5] };
+    // 色の引き方は部品ごとに測って決める。頂点ごとでない部品を頂点番号で引くと模様が乱れる
+    const byCorner=cfit.get(o.base)==="面の頂点ごと";
+    let ci=0;
     const far=(i,seg)=>V0(i,seg).some(v=>Math.abs(v)>T1_MAX_COORD);
     void far;
     // まず部品を「命令の列」として実行する（実行ファイルのコードから読み取った本物の手順）
@@ -1829,11 +1835,13 @@ function buildT1Mesh(d,objs){
         if(skipPart) continue;
         if(t1Show.segOnly>=0&&(f.seg|0)!==t1Show.segOnly) continue;
         const a=f.idx;
+        const cbase=ci; ci+=a.length;          // 面ごとに色が並んでいるときの引き位置
         if(a.some(i=>far(i,f.seg))){ dropped++; continue }
         const strip=a.length===4?[[0,1,2],[0,2,3]]:[[0,1,2]];
         for(const t of strip){
           const sc=t1Show.segColor?T1_SEG_COL[(f.seg||0)%T1_SEG_COL.length]:null;
-          for(const j of t){ pos.push(...V0(a[j],f.seg)); col.push(...(sc||C0(a[j]))); t0.push(0,0,0); t1.push(0,0,0,0) }
+          for(const j of t){ pos.push(...V0(a[j],f.seg));
+            col.push(...(sc||C0(byCorner?cbase+j:a[j]))); t0.push(0,0,0); t1.push(0,0,0,0) }
           if(f.n) nrm.push(...up(f.n[0],f.n[1],f.n[2])); else nrm.push(0,0,0);
           sm.push(1); tris++;
         }
@@ -2714,6 +2722,43 @@ function t1GuessBones(d,o,spread){
   list.pairs=pairs; list.gap=gap;
   return list;
 }
+
+// ============================================================
+//  色の引き方を確かめる
+//
+//  いまは「色は頂点ごと、頂点番号で引く」と決め打ちしている。
+//  #68 はそれで合っているが、模様が混ざって見えるモデルがいくつかある。
+//  色の置き場所の大きさを測れば、引き方が違うかどうかは数で分かる:
+//    頂点の数 × 4 と一致      → 頂点ごと（いまの読み方で正しい）
+//    面の頂点の延べ数 × 4 と一致 → 面ごと（引き方が違う）
+//    面の数 × 4 と一致        → 面に1色
+//  色の終わりは、次の部品の始まりか、ファイルの終わり
+// ============================================================
+function t1ColorFit(d,objs){
+  const ends=objs.map(o=>o.base).filter(x=>x>0).sort((a,b)=>a-b);
+  const out=[];
+  for(const o of objs){
+    if(!o.ok||!o.run) continue;
+    const start=o.base+o.colPtr;
+    let end=d.length;
+    for(const b of ends) if(b>start&&b<end) end=b;         // 次の部品の手前まで
+    const bytes=end-start;
+    let corner=0; for(const f of o.run.faces) corner+=f.idx.length;
+    const cand=[["頂点ごと",o.nv*4],["面の頂点ごと",corner*4],["面に1色",o.run.faces.length*4]];
+    let best=null;
+    for(const [name,n] of cand){ const d2=Math.abs(bytes-n);
+      if(!best||d2<best.diff) best={name,n,diff:d2} }
+    out.push({base:o.base,bytes,nv:o.nv,corner,faces:o.run.faces.length,
+              fit:best.name,diff:best.diff,
+              exact:best.diff<=8});
+  }
+  return out;
+}
+function t1ColorLine(c){
+  return `+${c.base.toString(16)}: 色 ${c.bytes}B ／ 頂点${c.nv}×4=${c.nv*4}`
+    +` 面の頂点${c.corner}×4=${c.corner*4} 面${c.faces}×4=${c.faces*4}`
+    +` → ${c.fit}${c.exact?"（ぴったり）":`（${c.diff}ずれ）`}`;
+}
 // ============================================================
 //  WebGL
 // ============================================================
@@ -2869,7 +2914,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.44.0";
+const VERSION="v3.45.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -2951,6 +2996,14 @@ function buildModelInner(raw,info){
       for(const o of okObjs){ if(o.run) run++; else { if(o.walk) guess++;
         if(o.why&&why.indexOf(o.why)<0) why.push(o.why);
         if(audit.length<4){ try{ audit.push(t1AuditLine(t1Audit(b.out,o))) }catch(_){} } } }
+      try{ const cf=t1ColorFit(b.out,okObjs);
+        if(cf.length){
+          const by=new Map();
+          for(const c of cf) by.set(c.fit,(by.get(c.fit)||0)+1);
+          info.t1Color="  色の引き方: "+[...by].map(([k,n])=>`${k} ${n}部品`).join("　")
+            +(by.size>1||!cf.every(c=>c.exact)?"　← 頂点ごと以外が混ざると模様が乱れます":"");
+          info.t1ColorLines=cf.slice(0,4).map(t1ColorLine);
+        } }catch(_){}
       info.t1Read={run,guess,total:okObjs.length,why,audit,
                    vari:T1_VAR_FOUND?t1VarName(T1_VAR_FOUND):""}; }
     { const P=r1.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
@@ -3562,6 +3615,8 @@ function updateReport(){
     if(inf.t1UV) L.push(inf.t1UV);
     if(inf.t1Read) L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個`
       +(inf.t1Read.guess?`／当てずっぽう ${inf.t1Read.guess}個（ここが多いと形が崩れる）`:"（全部きちんと読めています）"));
+    if(inf.t1Color) L.push(inf.t1Color);
+    if(inf.t1ColorLines) inf.t1ColorLines.forEach(x=>L.push("    "+x));
     if(inf.t1Guess) L.push(inf.t1Guess);
     if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`
       +(T1_BONES?`　メモリから取った骨 ${T1_BONES.length}個 を当てています`
