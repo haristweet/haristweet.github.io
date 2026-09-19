@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.55.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.56.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2882,6 +2882,26 @@ function t1ColorBest(d,o,cands){
   }
   return best;
 }
+
+// ============================================================
+//  キャラクターの名前
+//
+//  名前と内部番号は裏技の一覧（P1 Character Modifier）から:
+//    00 Chuji 01 Oliem 02 Epon 03 Hom 04 Fei 05 Mary 06 Illgoga 07 Gren
+//    08 Mufu  09 Emperor Upan  0A Super Nork  0B Tori
+//  モデルとの対応は、ゲーム画面（プラクティスモード）の配色と突き合わせて決めた。
+//  15セクター離れた対が「同じキャラの衣装2着」で、若い側が2着目（2P側の色）。
+//  8人 × 衣装2 ＋ ボス4 ＝ 20 は、形でまとめた種類数とぴったり合う
+// ============================================================
+const T1_NAMES={
+  8755:"エポン（別衣装）", 8770:"エポン",
+  8835:"オリエム（別衣装）",8850:"オリエム",
+  8931:"フェイ（別衣装）", 8946:"フェイ",
+  9117:"グレン（別衣装）", 9132:"グレン",
+  9274:"メアリー（別衣装）",9289:"メアリー",
+  9470:"ホム（別衣装）",   9484:"ホム",
+};
+function t1NameOf(sector){ return T1_NAMES[sector]||"" }
 // ============================================================
 //  WebGL
 // ============================================================
@@ -3037,7 +3057,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.55.0";
+const VERSION="v3.56.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3429,7 +3449,13 @@ async function selectFirstModel(limit=16){
   if(firstShown>=0) await selectEntry(firstShown);   // 見つからなければ 1件目を見せる
   return false;
 }
-function entryLabel(e){ return e?(e.src==="iso"?e.name:(e.label?`#${e.no}　sector ${e.sector}　${e.label}`:`#${e.no}　種類 ${e.type}`)):"" }
+function entryLabel(e){
+  if(!e) return "";
+  if(e.src==="iso") return e.name;
+  const nm=t1NameOf(e.sector);          // 名前が分かっているものは先に出す
+  const base=e.label?`#${e.no}　sector ${e.sector}　${e.label}`:`#${e.no}　種類 ${e.type}`;
+  return nm?`${nm}　${base}`:base;
+}
 function updateStatus(){
   const e=state.entries[state.sel];
   if(!e){ $("status").textContent="左の一覧からファイルを選んでください"; return }
@@ -3456,7 +3482,8 @@ function updateHud(){
   const inf=state.selInfo, e=state.entries[state.sel];
   if(!inf||!e){ box.hidden=true; return }
   const L=[];
-  L.push(`#${e.no} sector ${e.sector}　三角形 ${inf.tris||0}`);
+  const nm=t1NameOf(e.sector);
+  L.push((nm?`${nm}　`:"")+`#${e.no} sector ${e.sector}　三角形 ${inf.tris||0}`);
   if(inf.t1Read) L.push(`部品 ${inf.t1Read.run}/${inf.t1Read.total} 命令の列として実行`
     +(inf.t1Segs?`　骨の区切り ${inf.t1Segs}`:"")
     +(T1_BONES?`　骨 ${T1_BONES.length} を当てている`:""));
@@ -4031,7 +4058,8 @@ $("mdlgal").onclick=async()=>{
       const cv=grabThumb(132); if(!cv) continue;
       const fig=document.createElement("figure"), cap=document.createElement("figcaption");
       const r=info.t1Read;
-      cap.textContent=`#${e.no}　sector ${e.sector}`
+      const nm=t1NameOf(e.sector);
+      cap.textContent=(nm?`${nm}\n`:"")+`#${e.no}　sector ${e.sector}`
         +`\n三角形 ${info.tris}`
         +(r?`　命令${r.run}`+(r.guess?`／推測${r.guess}`:""):"");
       cap.style.whiteSpace="pre-line";
