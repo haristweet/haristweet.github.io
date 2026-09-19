@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.57.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.58.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2606,10 +2606,19 @@ function t1RunPair(d,o,limit,V,okr){
       if(okr(r)&&r.faceBytes===scan.faceBytes) hits.push({r,A:Object.assign({},A,ka),B:Object.assign({},B,kb)});
     }
   if(!hits.length) return null;
+  // 命令14と命令15の出現回数が同じだと、大きさを入れ替えても勘定は合う。
+  // 既に分かっている組は 8→3頂点/9→4頂点、10→3頂点/11→4頂点 と、
+  // 若い番号が小さいほうだった。同じ並びになる読み方を先に採る
+  const pairOK=h=>{ const [lo,hi]=h.A.op<h.B.op?[h.A,h.B]:[h.B,h.A];
+    return lo.size<=hi.size?0:1 };
+  hits.sort((x,y)=>pairOK(x)-pairOK(y)
+    ||(x.A.op-y.A.op)||(x.A.size-y.A.size)||(x.B.size-y.B.size));
   const sizes=k=>new Set(hits.map(h=>h[k].size));
   const one=sizes("A").size===1&&sizes("B").size===1;
   const h=hits[0];
-  if(one){ t1Learn(h.A.op,h.A); t1Learn(h.B.op,h.B) }
+  // 1つに絞れなくても覚える。覚えないと毎回解き直すことになり、
+  // 読むたびに形が変わってしまう（三角形の数が回ごとに違っていた）
+  t1Learn(h.A.op,h.A); t1Learn(h.B.op,h.B);
   return Object.assign(h.r,{solved2:{a:h.A,b:h.B,ways:hits.length,sure:one}});
 }
 
@@ -3062,7 +3071,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.57.0";
+const VERSION="v3.58.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4588,7 +4597,8 @@ function sieveLines(s){
         for(const o of dg) for(const x of (o.diag.pairs||[])){
           const f=y=>`命令${y.op}=${y.size}B(頂点${y.n}${y.nrm?"・法線あり":""})`;
           L.push(`    組で割り出した: ${f(x.a)} ${f(x.b)}　`
-            +(x.sure?"（通る読み方はこれだけ）":`（通る読み方が ${x.ways}通りあるので当てにしない）`));
+            +(x.sure?"（通る読み方はこれだけ）"
+                    :`（通る読み方が ${x.ways}通り。若い番号を小さいほうにする決まりで選んだ）`));
         }
         const kept=Object.keys(T1_LEARNED).sort((a,b)=>a-b);
         if(kept.length) L.push("    覚えた命令: "+kept.map(op=>
