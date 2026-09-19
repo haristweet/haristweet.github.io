@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.43.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.44.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -202,7 +202,7 @@ canvas:active{cursor:grabbing}
       <label id="spread-opt"><input type="checkbox" id="spread"> 部品を並べる</label>
       <label id="segspread-opt"><input type="checkbox" id="segspread"> 骨の区切りごとに並べる</label>
       <label id="guessbone-opt"><input type="checkbox" id="guessbone"> 仮の骨組みで左右に開く（推測）</label>
-      <label id="gbamt-opt">開く量 <input type="range" id="gbamt" min="0" max="120" value="50" step="5"><span id="gbamt-v">0.50</span></label>
+      <label id="gbamt-opt">開く量 <input type="range" id="gbamt" min="0" max="120" value="60" step="5"><span id="gbamt-v">0.60</span></label>
       <button class="btn" id="viewreset" style="margin-left:6px">見た目をふつうに戻す</button>
       <label><input type="checkbox" id="shot-clear"> 背景なし</label>
       <label id="crop-opt"><input type="checkbox" id="shot-crop"> キャラだけ切り抜き</label>
@@ -1687,7 +1687,7 @@ const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメ�
 // 見せ方の切り替え。どこがおかしいのかを切り分けるための道具
 // segOnly ＝ この区切りだけ描く。segPart ＝ その区切りがどの部品のものか。
 // 区切りの番号は部品ごとに0から振り直されるので、部品を決めないと別物が混ざる
-const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,guessBone:false,guessAmt:0.5,up:2};
+const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,guessBone:false,guessAmt:0.6,up:2};
 try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.only=localStorage.getItem("t1only")==="1";
      t1Show.segColor=localStorage.getItem("t1segcol")==="1";
@@ -2692,13 +2692,23 @@ function t1GuessBones(d,o,spread){
   for(const [k,b] of box){ if(pairs.has(k)) continue;
     widest=Math.max(widest,b.mx[2]-b.mn[2]) }
   const gap=(widest||200)*(spread==null?t1Show.guessAmt:spread);
+  // 肩は広く、腰は狭い。対の「高さ」で開く量を変える。
+  // 高さの軸は生の X（実物 #68 で X が背の高さだった）
+  let hi=-1e9, lo=1e9;
+  for(const [k,b] of box){ if(!pairs.has(k)) continue;
+    const c=(b.mn[0]+b.mx[0])/2; if(c>hi)hi=c; if(c<lo)lo=c }
+  const span=hi>lo?hi-lo:1;
   const max=Math.max(...box.keys());
   const list=[];
   for(let k=0;k<=max;k++){
     const I={m:[4096,0,0,0,4096,0,0,0,4096],t:[0,0,0],one:4096};
     const j=pairs.get(k);
     // 対のうち、番号が小さいほうを ＋Z、大きいほうを −Z へ寄せる
-    if(j!=null) I.t=[0,0,(k<j?1:-1)*gap];
+    if(j!=null){
+      const b=box.get(k), c=(b.mn[0]+b.mx[0])/2;
+      const h=(c-lo)/span;                       // 0＝いちばん下、1＝いちばん上
+      I.t=[0,0,(k<j?1:-1)*gap*(0.45+0.55*h)];
+    }
     list.push(I);
   }
   list.pairs=pairs; list.gap=gap;
@@ -2859,7 +2869,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.43.0";
+const VERSION="v3.44.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
