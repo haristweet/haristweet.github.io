@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.30.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.31.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2634,7 +2634,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.30.0";
+const VERSION="v3.31.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3040,6 +3040,9 @@ function digestLines(){
     for(const w of (inf.t1Read&&inf.t1Read.why)||[]) L.push(`    読めない理由: ${w}`);
     for(const a of (inf.t1Read&&inf.t1Read.audit)||[]) L.push(`    読めなかった部品: ${a}`);
   }
+  if(state.galGroups&&state.galGroups.length){
+    L.push(""); L.push("同じ形でまとめた結果:"); L.push(...state.galGroups);
+  }
   if(state.galWhy&&state.galWhy.length){
     L.push(""); L.push("一覧で読めなかったモデル:"); L.push(...state.galWhy.slice(0,8));
   }
@@ -3443,7 +3446,7 @@ $("src-seg").onclick=async e=>{
 function gridToPng(gridId,title,name){
   const figs=[...$(gridId).querySelectorAll("figure")].filter(f=>f.querySelector("canvas"));
   if(!figs.length) return false;
-  const CELL=132, CAP=32, PAD=10, HEAD=26;
+  const CELL=132, CAP=45, PAD=10, HEAD=26;   // 説明は3行まで（組の名札が増えた）
   const COLS=Math.max(1,Math.min(6,figs.length));
   const rows=Math.ceil(figs.length/COLS);
   const W=PAD+COLS*(CELL+PAD), H=PAD+HEAD+rows*(CELL+CAP+PAD);
@@ -3464,7 +3467,7 @@ function gridToPng(gridId,title,name){
     const w=Math.max(1,cv.width*sc), h=Math.max(1,cv.height*sc);
     g.drawImage(cv,cx+(CELL-w)/2,cy+(CELL-h)/2,w,h);
     g.font="11px sans-serif"; g.fillStyle="#bdb7ac";
-    (f.querySelector("figcaption").textContent||"").split("\n").slice(0,2)
+    (f.querySelector("figcaption").textContent||"").split("\n").slice(0,3)
       .forEach((t,k)=>g.fillText(t,cx,cy+CELL+3+k*13));
   });
   out.toBlob(b=>saveBlob(b,name),"image/png");
@@ -3485,6 +3488,30 @@ function galleryEntries(limit){
     if(out.length>=(limit||32)) break }
   return out;
 }
+// 同じキャラかどうかの見分け方。色や模様は違っても、
+// 三角形の数と部品の数が同じなら同じ形＝同一キャラの色違い・衣装違い
+function t1CharKey(info){
+  return `${info.tris}/${(info.t1Read&&info.t1Read.total)||0}`;
+}
+// 同じ形のものに 組A・組B… と名札を付け、絵の説明にも足す
+function labelCharGroups(made){
+  const by=new Map();
+  for(const m of made){ if(!by.has(m.key)) by.set(m.key,[]); by.get(m.key).push(m) }
+  const groups=[...by.values()].sort((a,b)=>b.length-a.length||b[0].tris-a[0].tris);
+  const L=[], NAME="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let gi=0;
+  for(const g of groups){
+    if(g.length<2) continue;
+    const name="組"+(NAME[gi++]||"?");
+    for(const m of g) m.cap.textContent+=`\n${name}（${g.length}体で同じ形）`;
+    L.push(`  ${name}: ${g.length}体　三角形 ${g[0].tris}　${g.map(m=>"#"+m.e.no).join(" ")}`);
+  }
+  const alone=groups.filter(g=>g.length===1);
+  if(alone.length) L.push(`  ほかに1体だけのもの ${alone.length}件: `
+    +alone.map(g=>`#${g[0].e.no}(${g[0].tris})`).join(" "));
+  L.unshift(`  同じ形でまとめると ${groups.length}種類（${made.length}体から）`);
+  return L;
+}
 // いま描かれている絵を、キャラクターのところだけ切り出して小さくする
 function grabThumb(side){
   const b=opaqueBox(null); if(!b) return null;
@@ -3502,7 +3529,7 @@ $("mdlgal").onclick=async()=>{
   const grid=$("mdlgrid"), note=$("mdlnote"), keep=state.sel;
   grid.innerHTML="";
   const list=galleryEntries(32);
-  const whyAll=[]; let n=0;
+  const whyAll=[], made=[]; let n=0;
   for(let k=0;k<list.length;k++){
     const e=list[k];
     note.textContent=`モデルを描いています… ${k+1}/${list.length}`;
@@ -3524,8 +3551,12 @@ $("mdlgal").onclick=async()=>{
       cv.style.cursor="pointer";
       cv.onclick=()=>{ const i=state.entries.indexOf(e); if(i>=0) selectEntry(i) };
       fig.append(cv,cap); grid.append(fig); n++;
+      made.push({e,cap,key:t1CharKey(info),tris:info.tris});
     }catch(_){}
   }
+  // 同じ形（三角形の数も部品の数も同じ）のものは、同一キャラの色違い。
+  // 40体がいくつのキャラに畳めるかは、名前を当てるときの手がかりになる
+  state.galGroups=labelCharGroups(made);
   state.galWhy=whyAll;
   note.textContent=`${n}体を並べました。絵を押すと、そのモデルに切り替わります`
     +(whyAll.length?`　読めないものが ${whyAll.length}体（理由は「解析」に出ています）`:"");
