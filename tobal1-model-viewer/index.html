@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.36.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.37.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -198,6 +198,7 @@ canvas:active{cursor:grabbing}
       <label id="showonly-opt"><input type="checkbox" id="showonly"> 本体だけ</label>
       <label id="segcol-opt"><input type="checkbox" id="segcol"> 骨ごとに色分け</label>
       <label id="spread-opt"><input type="checkbox" id="spread"> 部品を並べる</label>
+      <label id="segspread-opt"><input type="checkbox" id="segspread"> 骨の区切りごとに並べる</label>
       <label><input type="checkbox" id="shot-clear"> 背景なし</label>
       <label id="crop-opt"><input type="checkbox" id="shot-crop"> キャラだけ切り抜き</label>
       <button id="shot">スクショを保存</button>
@@ -1679,11 +1680,12 @@ function t1WalkLine(W){
 }
 const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメラの合わせ枠が壊れるので落とす
 // 見せ方の切り替え。どこがおかしいのかを切り分けるための道具
-const t1Show={all:false,only:false,segColor:false,spread:false,up:2};
+const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,up:2};
 try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.only=localStorage.getItem("t1only")==="1";
      t1Show.segColor=localStorage.getItem("t1segcol")==="1";
      t1Show.spread=localStorage.getItem("t1spread")==="1";
+     t1Show.segSpread=localStorage.getItem("t1segspread")==="1";
      // 向きの記憶は v3.5.0 で作り直した（前の既定値が上下逆だったので、古い記憶は捨てる）
      const u=localStorage.getItem("t1up2"); if(u!=null) t1Show.up=+u }catch(_){}
 // モデルの「背の高さ」がどの軸かは決め打ちできないので、向きを選べるようにする。
@@ -1716,6 +1718,36 @@ function t1Layout(objs,dv,up){
     x+=b.w+gap });
   return out;
 }
+// 骨の区切り（命令5）ごとに横へ並べる。
+// 「どの区切りが腕で、どれが脚で、どれが胴なのか」は、重なったままでは分からない。
+// 一度ばらして見れば、形から骨を組むための土台になる
+function t1SegLayout(d,objs,up){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const box=new Map(), gap=50;
+  for(const o of objs){
+    if(!o.run) continue;
+    for(const f of o.run.faces){
+      const k=f.seg|0;
+      let b=box.get(k);
+      if(!b){ b={mn:[1e9,1e9,1e9],mx:[-1e9,-1e9,-1e9],n:0}; box.set(k,b) }
+      b.n++;
+      for(const i of f.idx){ const p=o.base+o.vertPtr+i*8;
+        if(p+6>d.length) continue;
+        const v=up(dv.getInt16(p,true),dv.getInt16(p+2,true),dv.getInt16(p+4,true));
+        for(let a=0;a<3;a++){ if(v[a]<b.mn[a])b.mn[a]=v[a]; if(v[a]>b.mx[a])b.mx[a]=v[a] } }
+    }
+  }
+  const keys=[...box.keys()].sort((a,b)=>a-b);
+  let total=0;
+  for(const k of keys) total+=Math.max(1,box.get(k).mx[0]-box.get(k).mn[0])+gap;
+  const out=new Map(); let x=-total/2;
+  for(const k of keys){ const b=box.get(k);
+    const w=Math.max(1,b.mx[0]-b.mn[0]);
+    out.set(k,[x-b.mn[0], -(b.mn[1]+b.mx[1])/2, -(b.mn[2]+b.mx[2])/2]);
+    x+=w+gap }
+  out.box=box; out.keys=keys;
+  return out;
+}
 function buildT1Mesh(d,objs){
   // 法線つきで読める部品が1つでもあれば、それがキャラクターの見た目。
   // 読めない部品は当たり判定か影なので、ふだんは出さない
@@ -1744,6 +1776,8 @@ function buildT1Mesh(d,objs){
   if(t1Show.only){ const big=objs.slice().sort((a,b)=>b.nv-a.nv)[0]; if(big) objs=[big] }
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const lay=t1Show.spread?t1Layout(objs,dv,(T1_UP[t1Show.up]||T1_UP[0]).f):null;
+  // 骨の区切りごとに並べる（どの区切りが何なのかを見るため）
+  const segLay=t1Show.segSpread?t1SegLayout(d,objs,(T1_UP[t1Show.up]||T1_UP[0]).f):null;
   const pos=[],col=[],t0=[],t1=[],sm=[],nrm=[];
   let used=0, tris=0, dropped=0;
   for(const o of objs){
@@ -1768,6 +1802,8 @@ function buildT1Mesh(d,objs){
                     const Z=(M.m[6]*x+M.m[7]*y+M.m[8]*z)/k+M.t[2];
                     x=X; y=Y; z=Z }
                   const v=up(x,y,z);
+                  const g=segLay?segLay.get(seg|0):null;
+                  if(g) return [v[0]+g[0],v[1]+g[1],v[2]+g[2]];
                   return sp?[v[0]+sp[0],v[1]+sp[1],v[2]+sp[2]]:v };
     const C0=i=>{ const q=o.base+o.colPtr+i*4;
                   return q+2<d.length?[d[q]/255,d[q+1]/255,d[q+2]/255]:[.5,.5,.5] };
@@ -2739,7 +2775,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.36.0";
+const VERSION="v3.37.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -2849,6 +2885,12 @@ function buildModelInner(raw,info){
           if(S){
             // 区切りの数＝要る骨の数。メモリから表を選ぶときの手がかりになる
             info.t1Segs=Math.max(...S.map(x=>x.seg))+1;
+            // 区切りひとつひとつの「細長さ」。腕・脚・胴の見分けは、これで付く。
+            // 絵を見なくても読めるように、まとめにも出す
+            info.t1SegLine=S.map(x=>{
+              const w=x.box.split(" ").map(r=>{ const [a,b]=r.split(".."); return Math.round(b-a) });
+              return `${x.seg}:${x.n}枚 ${w.join("×")}`;
+            });
             info.t1Seg=[`  骨ごとの置き場所（部品 +${hex(bigO.base,4)}、命令5で区切る、${S.length}区切り）:`,
               `    区切りが小さくまとまっていれば、部品は別々の座標系にあり行列で運ぶ必要がある`];
             S.slice(0,24).forEach(x=>info.t1Seg.push(
@@ -3148,6 +3190,10 @@ function digestLines(){
       L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個／当てずっぽう ${inf.t1Read.guess}個`
         +(inf.t1Read.vari&&inf.t1Read.vari!=="既定"?`／頂点を入れる読み方: ${inf.t1Read.vari}`:""));
     if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`+(T1_BONES?`／骨 ${T1_BONES.length}個 を当てている`:"／骨はまだ無い"));
+    if(inf.t1SegLine&&inf.t1SegLine.length){
+      L.push("  区切りごとの大きさ（番号:面数 幅×高×奥）:");
+      for(let i=0;i<inf.t1SegLine.length;i+=4) L.push("    "+inf.t1SegLine.slice(i,i+4).join("　"));
+    }
     for(const w of (inf.t1Read&&inf.t1Read.why)||[]) L.push(`    読めない理由: ${w}`);
     for(const a of (inf.t1Read&&inf.t1Read.audit)||[]) L.push(`    読めなかった部品: ${a}`);
   }
@@ -3923,6 +3969,7 @@ showToggle("showall","all","t1all");
 showToggle("showonly","only","t1only");
 showToggle("segcol","segColor","t1segcol");
 showToggle("spread","spread","t1spread");
+showToggle("segspread","segSpread","t1segspread");
 $("gouraud").checked=shading.gouraud;
 $("gouraud").onchange=e=>{
   shading.gouraud=e.target.checked; try{ localStorage.setItem("t1gouraud",shading.gouraud?"1":"0") }catch(_){}
@@ -3952,13 +3999,13 @@ BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.
 // ---- スマホの配置 ----
 const mobileMQ=matchMedia("(max-width:720px)");
 const shotOpt=$("shot-clear").closest("label"), gouraudOpt=$("gouraud-opt"), cropOpt=$("crop-opt"),
-      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt");
+      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt"), sspOpt=$("segspread-opt");
 function applyLayout(){
   const m=mobileMQ.matches, stage=document.querySelector(".stage");
-  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,shotOpt,cropOpt);
-          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className="shot-opt"; $("bg-box").hidden=false }
-  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
-          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=""; closeSheet() }
+  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,sspOpt,shotOpt,cropOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className="shot-opt"; $("bg-box").hidden=false }
+  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(sspOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=""; closeSheet() }
   requestAnimationFrame(draw);
 }
 function openTab(t){
