@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.21.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.22.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2357,11 +2357,6 @@ function buildModelInner(raw,info){
     const objs=offs.map((p,i)=>{ const o=readT1Object(b.out,p); if(o) o.group=offs.group?offs.group[i]:0; return o }).filter(Boolean);
     const okObjs=objs.filter(o=>o.ok);
     info.t1Parts=`${okObjs.length}/${objs.length} 部品`;
-    // どの部品が「命令の列として実行できた」かを数える。
-    // 実行できず当てずっぽうに落ちた部品が多いモデルは、絵がぐちゃぐちゃになる
-    { let run=0, guess=0;
-      for(const o of okObjs){ if(o.run) run++; else if(o.walk) guess++ }
-      info.t1Read={run,guess,total:okObjs.length}; }
     // テクスチャを貼れるかどうかを、面のバイトの内訳から判定して出す
     { const big=okObjs.slice().sort((a,b)=>b.nv-a.nv)[0];
       const R=big&&t1Run(b.out,big.base);
@@ -2372,6 +2367,11 @@ function buildModelInner(raw,info){
         +"（組の中は同じ形のポーズ違い＝手。実際に出るのは組から1つ）"; }
     if(!okObjs.length) continue;
     const r1=buildT1Mesh(b.out,okObjs);
+    // どの部品が「命令の列として実行できた」かを数える。読み方を決めるのは
+    // buildT1Mesh なので、必ずそのあとで数えること（前だと全部0になる）
+    { let run=0, guess=0;
+      for(const o of okObjs){ if(o.run) run++; else if(o.walk) guess++ }
+      info.t1Read={run,guess,total:okObjs.length}; }
     { const P=r1.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
       for(let i=0;i<P.length;i+=3) for(let a=0;a<3;a++){ if(P[i+a]<mn[a])mn[a]=P[i+a]; if(P[i+a]>mx[a])mx[a]=P[i+a] }
       info.t1Size=`  モデル全体の縦横: X ${Math.round(mx[0]-mn[0])}　Y ${Math.round(mx[1]-mn[1])}　Z ${Math.round(mx[2]-mn[2])}`
@@ -2675,7 +2675,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.21.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.22.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
