@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.22.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.23.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -235,7 +235,8 @@ const state={
   mem:null,          // メモリの写しから読んだ骨の表
   bones:null,        // 骨さがしの結果
   boning:false,
-  galling:false,   // モデルを並べている最中か
+  galling:false,
+  galWhy:null,     // 一覧で読めなかったモデルの理由   // モデルを並べている最中か
   t1Part:-1,          // ファイルの中のどのモデルを出すか（-1＝いちばん大きいもの）
   entries:[],        // 表示中の一覧（アーカイブ or ディスクのファイル）
   scan:null,         // アーカイブを直接さらった結果
@@ -1660,7 +1661,9 @@ function buildT1Mesh(d,objs){
   for(const o of objs){ if(!o.ok) continue;
     o.run=t1Run(d,o.base);
     // 読んだ頂点の数がファイルの頂点数と合えば、命令の読み方で間違いない
-    if(o.run&&Math.abs(o.run.verts-o.nv)>2) o.run=null;
+    if(o.run&&Math.abs(o.run.verts-o.nv)>2){
+      o.why=`読んだ頂点 ${o.run.verts}個 とファイルの頂点 ${o.nv}個 が合わない`; o.run=null;
+    }else if(!o.run) o.why=t1RunWhy;
     if(!o.run){ o.walkTry=t1WalkFaces(d,o); o.walkOK=t1WalkGood(o.walkTry) } }
   if(!t1Show.all){ const real=objs.filter(o=>o.run||o.walkOK); if(real.length) objs=real }
   // 組の中身が「同じ面数の同じ形」なら、それはポーズ違い（実物では手だった）。
@@ -2081,8 +2084,11 @@ const T1_CMD_LEN={0:0,1:12,2:16,3:8,4:16,5:4,6:8,7:12};
 const T1_FACE_OP={8:{size:20,n:3,nrm:true},9:{size:24,n:4,nrm:true},
                   10:{size:12,n:3,nrm:false},11:{size:16,n:4,nrm:false}};
 const T1_SLOTS=256;
+let t1RunWhy="";    // 直前の t1Run が失敗した理由（読めないモデルの原因を追うため）
 function t1Run(d,base,limit){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const no=(why,at)=>{ t1RunWhy=`${why}（+0x${((at||0)-base).toString(16)}）`; return null };
+  t1RunWhy="";
   const g=p=>p+4<=d.length?dv.getUint32(p,true):0;
   const facePtr=base+g(base), colPtr=base+g(base+12);
   let fp=base+0x10, xp=facePtr, vi=0, steps=0, seg=0;
@@ -2096,21 +2102,21 @@ function t1Run(d,base,limit){
       if(op===5) seg++;                                   // 命令5 = 次の骨の行列を取り出す
       if(op===1||op===2){
         const n=dv.getUint32(fp+8,true);
-        if(arg<0||arg+n>T1_SLOTS||n>4096) return null;
+        if(arg<0||arg+n>T1_SLOTS||n>4096) return no(`命令${op} の置き場所 ${arg}／個数 ${n} が枠(${T1_SLOTS})に収まらない`,fp);
         for(let k=0;k<n;k++) slot[arg+k]=vi++;
       }
       fp+=T1_CMD_LEN[op];
     }else if(T1_FACE_OP[op]){
       const k=T1_FACE_OP[op], cnt=dv.getUint32(fp+4,true);
-      if(cnt>4096) return null;
+      if(cnt>4096) return no(`命令${op} の枚数 ${cnt} が多すぎる`,fp);
       for(let f=0;f<cnt;f++){
-        if(xp+k.size>colPtr) return null;
+        if(xp+k.size>colPtr) return no(`面の並びが色の手前を越えた`,xp);
         const idx=[];
         for(let j=0;j<k.n;j++){
           const v=dv.getUint32(xp+j*4,true);
-          if(v&3) return null;
+          if(v&3) return no(`頂点番号 ${v} が4の倍数でない`,xp+j*4);
           const s=v/4;
-          if(s>=T1_SLOTS||slot[s]<0) return null;      // 入っていない置き場所を指している
+          if(s>=T1_SLOTS||slot[s]<0) return no(`まだ入れていない置き場所 ${s} を指している`,xp+j*4);   // 頂点が置かれる前に使われた
           idx.push(slot[s]);
         }
         let nr=null;
@@ -2119,10 +2125,10 @@ function t1Run(d,base,limit){
         xp+=k.size;
       }
       fp+=8;
-    }else return null;                                  // 知らない命令
+    }else return no(`知らない命令 ${op}`,fp);          // 表に無い命令
     steps++;
   }
-  if(!faces.length) return null;
+  if(!faces.length) return no("面が1枚も出てこなかった",fp);
   return {faces,verts:vi,steps,segs:seg,used:[...used.entries()].sort((a,b)=>a[0]-b[0]),
           faceBytes:xp-facePtr, cmdBytes:fp+4-(base+0x10)};
 }
@@ -2369,9 +2375,10 @@ function buildModelInner(raw,info){
     const r1=buildT1Mesh(b.out,okObjs);
     // どの部品が「命令の列として実行できた」かを数える。読み方を決めるのは
     // buildT1Mesh なので、必ずそのあとで数えること（前だと全部0になる）
-    { let run=0, guess=0;
-      for(const o of okObjs){ if(o.run) run++; else if(o.walk) guess++ }
-      info.t1Read={run,guess,total:okObjs.length}; }
+    { let run=0, guess=0; const why=[];
+      for(const o of okObjs){ if(o.run) run++; else { if(o.walk) guess++;
+        if(o.why&&why.indexOf(o.why)<0) why.push(o.why) } }
+      info.t1Read={run,guess,total:okObjs.length,why}; }
     { const P=r1.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
       for(let i=0;i<P.length;i+=3) for(let a=0;a<3;a++){ if(P[i+a]<mn[a])mn[a]=P[i+a]; if(P[i+a]>mx[a])mx[a]=P[i+a] }
       info.t1Size=`  モデル全体の縦横: X ${Math.round(mx[0]-mn[0])}　Y ${Math.round(mx[1]-mn[1])}　Z ${Math.round(mx[2]-mn[2])}`
@@ -2383,7 +2390,8 @@ function buildModelInner(raw,info){
         if(P[i+2]<g[2])g[2]=P[i+2]; if(P[i+2]>g[3])g[3]=P[i+2] }
       info.t1Prof="  上から下への横幅: "+seg.map(g=>g[1]<g[0]?"-":Math.round(Math.max(g[1]-g[0],g[3]-g[2]))).join(" ")
         +"（頭→肩→腰→足の順。肩のあたりがいちばん広ければ上下は合っている）"; }
-    info.t1Detail=objs.slice(0,12).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}${o.run?"命令で実行":(o.walk?"法線あり":"見た目から推測")}(頂${o.nv} 法${o.nn} 面${o.faceBytes||0}B${o.tris?" 三角"+o.tris:""}${o.box?" 範囲 "+o.box:""})`).join("\n    ");
+    info.t1Detail=objs.slice(0,12).map(o=>`+${hex(o.base,4)}${o.ok?"○":"×"}${o.run?"命令で実行":(o.walk?"法線あり":"見た目から推測")}(頂${o.nv} 法${o.nn} 面${o.faceBytes||0}B${o.tris?" 三角"+o.tris:""}${o.box?" 範囲 "+o.box:""})`
+      +(o.run?"":o.why?`\n      読めない理由: ${o.why}`:"")).join("\n    ");
     if(r1.tris>0){
       info.t1Dropped=r1.dropped;
       // 面のバイト列。区画のダンプは先頭と末尾しか出しておらず、面は真ん中にあって見えなかった
@@ -2675,7 +2683,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.22.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.23.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2835,6 +2843,8 @@ function updateReport(){
     L.push("大きいファイル 5件（アーカイブの選び方の確認用）:");
     for(const f of [...s.iso].sort((x,y)=>y.size-x.size).slice(0,5)) L.push(`  ${f.path||f.name}  ${fmtSize(f.size)}`);
   }
+  if(state.galWhy&&state.galWhy.length)
+    L.push("","一覧で読めなかったモデルと、その理由:",...state.galWhy,"");
   if(state.mem) L.push("", ...state.mem, "");
   if(state.bones) L.push("", ...boneLines(state.bones), "");
   if(state.sieve){
@@ -2881,6 +2891,8 @@ function updateReport(){
     if(inf.t1UV) L.push(inf.t1UV);
     if(inf.t1Read) L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個`
       +(inf.t1Read.guess?`／当てずっぽう ${inf.t1Read.guess}個（ここが多いと形が崩れる）`:"（全部きちんと読めています）"));
+    if(inf.t1Read&&inf.t1Read.why&&inf.t1Read.why.length)
+      inf.t1Read.why.forEach(w=>L.push(`    読めない理由: ${w}`));
     if(inf.t1Seg) L.push(...inf.t1Seg);
     if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
@@ -3094,7 +3106,7 @@ $("mdlgal").onclick=async()=>{
   const grid=$("mdlgrid"), note=$("mdlnote"), keep=state.sel;
   grid.innerHTML="";
   const list=galleryEntries(32);
-  let n=0;
+  const whyAll=[]; let n=0;
   for(let k=0;k<list.length;k++){
     const e=list[k];
     note.textContent=`モデルを描いています… ${k+1}/${list.length}`;
@@ -3103,6 +3115,8 @@ $("mdlgal").onclick=async()=>{
       const {mesh,info}=buildModel(await readFull(e));
       if(!info||!info.tris){ clearMesh(); continue }
       upload(mesh); draw();
+      if(info.t1Read&&info.t1Read.why&&info.t1Read.why.length)
+        whyAll.push(`  #${e.no} sector ${e.sector}　命令${info.t1Read.run}／推測${info.t1Read.guess}　${info.t1Read.why[0]}`);
       const cv=grabThumb(132); if(!cv) continue;
       const fig=document.createElement("figure"), cap=document.createElement("figcaption");
       const r=info.t1Read;
@@ -3116,7 +3130,9 @@ $("mdlgal").onclick=async()=>{
       fig.append(cv,cap); grid.append(fig); n++;
     }catch(_){}
   }
-  note.textContent=`${n}体を並べました。絵を押すと、そのモデルに切り替わります`;
+  state.galWhy=whyAll;
+  note.textContent=`${n}体を並べました。絵を押すと、そのモデルに切り替わります`
+    +(whyAll.length?`　読めないものが ${whyAll.length}体（理由は「解析」に出ています）`:"");
   state.galling=false;
   if(keep>=0) selectEntry(keep); else { clearMesh(); draw() }
 };
