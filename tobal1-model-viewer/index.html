@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.24.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.25.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1659,7 +1659,7 @@ function buildT1Mesh(d,objs){
   // 法線つきで読める部品が1つでもあれば、それがキャラクターの見た目。
   // 読めない部品は当たり判定か影なので、ふだんは出さない
   for(const o of objs){ if(!o.ok) continue;
-    o.run=t1Run(d,o.base);
+    o.run=t1Run(d,o.base)||t1RunExtra(d,o.base);
     // 読んだ頂点の数がファイルの頂点数と合えば、命令の読み方で間違いない
     if(o.run&&Math.abs(o.run.verts-o.nv)>2){
       o.why=`読んだ頂点 ${o.run.verts}個 とファイルの頂点 ${o.nv}個 が合わない`; o.run=null;
@@ -2085,7 +2085,7 @@ const T1_FACE_OP={8:{size:20,n:3,nrm:true},9:{size:24,n:4,nrm:true},
                   10:{size:12,n:3,nrm:false},11:{size:16,n:4,nrm:false}};
 const T1_SLOTS=256;
 let t1RunWhy="";    // 直前の t1Run が失敗した理由（読めないモデルの原因を追うため）
-function t1Run(d,base,limit){
+function t1Run(d,base,limit,extra){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const no=(why,at)=>{ t1RunWhy=`${why}（+0x${((at||0)-base).toString(16)}）`; return null };
   t1RunWhy="";
@@ -2106,8 +2106,8 @@ function t1Run(d,base,limit){
         for(let k=0;k<n;k++) slot[arg+k]=vi++;
       }
       fp+=T1_CMD_LEN[op];
-    }else if(T1_FACE_OP[op]){
-      const k=T1_FACE_OP[op], cnt=dv.getUint32(fp+4,true);
+    }else if(T1_FACE_OP[op]||(extra&&extra[op])){
+      const k=T1_FACE_OP[op]||extra[op], cnt=dv.getUint32(fp+4,true);
       if(cnt>4096) return no(`命令${op} の枚数 ${cnt} が多すぎる`,fp);
       for(let f=0;f<cnt;f++){
         if(xp+k.size>colPtr) return no(`面の並びが色の手前を越えた`,xp);
@@ -2120,6 +2120,8 @@ function t1Run(d,base,limit){
           idx.push(slot[s]);
         }
         let nr=null;
+        // 法線の持ち方は3通り: 面に1つ / 頂点ごとに番号 / 頂点ごとにそのもの。
+        // 絵にするときは面に1つあれば足りるので、先頭の1つだけ取る
         if(k.nrm) nr=[dv.getInt16(xp+k.n*4,true),dv.getInt16(xp+k.n*4+2,true),dv.getInt16(xp+k.n*4+4,true)];
         faces.push({idx,n:nr,seg}); used.set(op,(used.get(op)||0)+1);
         xp+=k.size;
@@ -2160,20 +2162,83 @@ function t1SegBoxes(d,o){
 function t1Diagnose(d){
   const offs=t1ObjectOffsets(d);
   const objs=offs.map(p=>readT1Object(d,p)).filter(o=>o&&o.ok);
-  let run=0; const why=[];
+  let run=0; const why=[], solved=[];
   for(const o of objs){
-    const r=t1Run(d,o.base);
-    if(r&&Math.abs(r.verts-o.nv)<=2){ run++; continue }
+    const r=t1Run(d,o.base)||t1RunExtra(d,o.base);
+    if(r&&Math.abs(r.verts-o.nv)<=2){ run++; if(r.solved) solved.push(r.solved); continue }
     const w=r?`読んだ頂点 ${r.verts}個 とファイルの頂点 ${o.nv}個 が合わない`:t1RunWhy;
     if(w&&why.indexOf(w)<0) why.push(w);
   }
-  return {parts:objs.length,run,fail:objs.length-run,why};
+  return {parts:objs.length,run,fail:objs.length-run,why,solved};
 }
 // 理由の「種類」だけを取り出す（位置や数を除いてまとめるため）
 function t1WhyKind(w){
   return String(w||"")
     .replace(/（\+0x[0-9a-f]+）/,"")
     .replace(/\d+/g,"N").trim();
+}
+
+// ============================================================
+//  命令12〜15 の「面1枚のバイト数」を、バイト数の勘定から割り出す
+//  実行ファイルの表（0x80010308）は15命令ぶんあるのに、こちらは11までしか
+//  知らなかった。37体が「知らない命令 12」で止まっていたのはこれが理由。
+//  面の領域は「枚数 × 1枚の大きさ」の合計にぴったり一致するはずなので、
+//  未知の大きさは引き算で出る（10と11のときと同じやり方）
+// ============================================================
+const T1_KNOWN_SIZE={8:20,9:24,10:12,11:16};
+// 面のバイトを消費せず、命令と枚数だけ数える。知らない命令も (命令,枚数) の
+// 8バイトだとみなして読み進める（8〜11 がその形なので、続きも同じはず）
+function t1ScanOps(d,base,limit){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const g=p=>p+4<=d.length?dv.getUint32(p,true):0;
+  const facePtr=g(base), colPtr=g(base+12);
+  const counts=new Map();
+  let fp=base+0x10, steps=0;
+  while(fp+8<=d.length&&steps<(limit||4096)){
+    const op=dv.getUint32(fp,true);
+    if(op===0) break;
+    if(op in T1_CMD_LEN){ fp+=T1_CMD_LEN[op]; steps++; continue }
+    if(op<8||op>15) return null;                 // 命令は 1..15 しかない
+    counts.set(op,(counts.get(op)||0)+dv.getUint32(fp+4,true));
+    fp+=8; steps++;
+  }
+  return {counts,faceBytes:colPtr-facePtr};
+}
+// 未知の命令が1つだけなら、その大きさは引き算で決まる
+function t1SolveSize(scan){
+  if(!scan) return null;
+  let known=0; const unknown=[];
+  for(const [op,n] of scan.counts){
+    if(T1_KNOWN_SIZE[op]) known+=T1_KNOWN_SIZE[op]*n; else unknown.push([op,n]);
+  }
+  if(unknown.length!==1) return null;
+  const [op,n]=unknown[0], rest=scan.faceBytes-known;
+  if(n<1||rest<=0||rest%n) return null;
+  const size=rest/n;
+  if(size<8||size>64||size%4) return null;
+  return {op,size,count:n};
+}
+// 大きさが決まれば、中身の並べ方は数通りしかない
+function t1Layouts(size){
+  const out=[];
+  for(const n of [3,4]){
+    const rest=size-n*4;
+    if(rest===0) out.push({size,n,nrm:false});          // 頂点番号だけ
+    else if(rest===8) out.push({size,n,nrm:true});       // ＋面に法線1つ
+    else if(rest===n*4) out.push({size,n,nrm:false});    // ＋頂点ごとの法線番号
+    else if(rest===n*8) out.push({size,n,nrm:true});     // ＋頂点ごとの法線
+  }
+  return out;
+}
+// 未知の命令を含む部品を、大きさと並べ方を当てながら読む
+function t1RunExtra(d,base,limit){
+  const sol=t1SolveSize(t1ScanOps(d,base,limit));
+  if(!sol) return null;
+  for(const k of t1Layouts(sol.size)){
+    const r=t1Run(d,base,limit,{[sol.op]:k});
+    if(r&&r.faceBytes===t1ScanOps(d,base,limit).faceBytes) return Object.assign(r,{solved:{op:sol.op,size:sol.size,n:k.n,nrm:k.nrm}});
+  }
+  return null;
 }
 // ============================================================
 //  WebGL
@@ -2704,7 +2769,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.24.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.25.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -3498,6 +3563,15 @@ function sieveLines(s){
         const k=t1WhyKind(w);
         if(!byKind.has(k)) byKind.set(k,{n:0,ex:w,files:[]});
         const v=byKind.get(k); v.n++; if(v.files.length<6) v.files.push("#"+o.e.no);
+      }
+      // 大きさを割り出せた命令は、その内訳を出す（推測ではなく引き算の結果）
+      { const sv=new Map();
+        for(const o of dg) for(const x of (o.diag.solved||[])){
+          const k=`命令${x.op} は 1枚 ${x.size}バイト（頂点${x.n}個${x.nrm?"・法線あり":""}）`;
+          sv.set(k,(sv.get(k)||0)+1);
+        }
+        for(const [k,n] of [...sv].sort((a,b)=>b[1]-a[1]))
+          L.push(`    割り出した: ${k}　${n}部品で一致`);
       }
       for(const [k,v] of [...byKind].sort((a,b)=>b[1].n-a[1].n)){
         L.push(`    ${v.n}件: ${k}`);
