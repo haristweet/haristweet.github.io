@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.49.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.50.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1786,7 +1786,17 @@ function buildT1Mesh(d,objs){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   // 色の引き方を部品ごとに測っておく（頂点ごと／面の頂点ごと／面に1色）
   const cfit=new Map();
-  try{ for(const c of t1ColorFit(d,objs)) if(c.exact||c.near) cfit.set(c.base,c.fit) }catch(_){}
+  try{
+    const CMODES=["頂点ごと","面の頂点ごと","面に1色","面に1色（四角は2枚ぶん）"];
+    for(const c of t1ColorFit(d,objs)){
+      const o=objs.find(x=>x.base===c.base);
+      if(c.exact){ cfit.set(c.base,c.fit); continue }
+      // バイト数がぴったりでないときは、当ててみて「隣り合う面の色が揃う」ほうを採る
+      const b=o?t1ColorBest(d,o,CMODES):null;
+      cfit.set(c.base,b?b.mode:(c.near?c.fit:"頂点ごと"));
+      if(b) c.picked=b.mode, c.score=Math.round(b.score);
+    }
+  }catch(_){}
   const lay=t1Show.spread?t1Layout(objs,dv,(T1_UP[t1Show.up]||T1_UP[0]).f):null;
   // 骨の区切りごとに並べる（どの区切りが何なのかを見るため）
   const segLay=t1Show.segSpread?t1SegLayout(d,objs,(T1_UP[t1Show.up]||T1_UP[0]).f):null;
@@ -2775,7 +2785,78 @@ function t1ColorLine(c){
     +` 面の頂点${c.corner}×4=${c.corner*4} 面${c.faces}×4=${c.faces*4}`
     +` 三角${c.tri}×4=${c.tri*4}（四角${c.quads}枚）`
     +` → ${c.fit}${c.exact?"（ぴったり）":`（${c.diff}ずれ）`}`
+    +(c.picked?`／当ててみて選んだ: ${c.picked}（隣の面との色差 ${c.score}）`:"")
     +`／いちばん大きい頂点番号 ${c.maxSlot}`;
+}
+
+
+// ============================================================
+//  色の引き方を「当ててみて」決める
+//
+//  バイト数の一致だけでは決まらない部品がある（#135 がそれだった）。
+//  そこで骨のときと同じやり方にする: 候補ごとに実際に色を引いてみて、
+//  結果が筋の通るものを選ぶ。
+//
+//  筋の通り方の見方: **隣り合う面の色は似ているはず**。
+//  キャラクターは面がひとかたまりで同じ色に塗られているので、
+//  辺を共有する面どうしの色の差は小さい。引き方を間違えると色はでたらめに散り、
+//  その差が跳ね上がる。中身の意味を知らなくても測れる
+// ============================================================
+function t1ColorIndexOf(o,mode,faceIdx,corner,slotIdx){
+  if(mode==="面に1色") return faceIdx;
+  if(mode==="面に1色（四角は2枚ぶん）"){
+    let n=0; const F=o.run.faces;
+    for(let i=0;i<faceIdx;i++) n+=F[i].idx.length===4?2:1;
+    return n;
+  }
+  if(mode==="面の頂点ごと"){
+    let n=0; const F=o.run.faces;
+    for(let i=0;i<faceIdx;i++) n+=F[i].idx.length;
+    return n+corner;
+  }
+  return slotIdx;                                  // 頂点ごと
+}
+function t1ColorSmooth(d,o,mode){
+  if(!o||!o.run) return Infinity;
+  const F=o.run.faces;
+  const col=k=>{ const q=o.base+o.colPtr+k*4;
+    return q+2<d.length?[d[q],d[q+1],d[q+2]]:null };
+  // 面ごとの代表色（角ぜんぶの平均）。先頭の角だけだと、
+  // 角によって色が変わる引き方の違いが見えない
+  const rep=new Array(F.length);
+  for(let i=0;i<F.length;i++){
+    const a=F[i].idx; let r=0,g=0,b=0,n=0;
+    for(let j=0;j<a.length;j++){
+      const c=col(t1ColorIndexOf(o,mode,i,j,a[j]));
+      if(c){ r+=c[0]; g+=c[1]; b+=c[2]; n++ }
+    }
+    rep[i]=n?[r/n,g/n,b/n]:null;
+  }
+  // 辺を共有する面の組を集めて、その色の差を平均する
+  let sum=0, n=0;
+  const seen=new Map();
+  for(let i=0;i<F.length;i++){
+    const a=F[i].idx;
+    for(let j=0;j<a.length;j++){
+      const p=a[j], q=a[(j+1)%a.length];
+      const key=p<q?p*100000+q:q*100000+p;
+      const prev=seen.get(key);
+      if(prev===undefined){ seen.set(key,i); continue }
+      const A=rep[prev], B=rep[i];
+      if(!A||!B) continue;
+      sum+=Math.abs(A[0]-B[0])+Math.abs(A[1]-B[1])+Math.abs(A[2]-B[2]); n++;
+    }
+  }
+  return n?sum/n:Infinity;
+}
+// 候補の中から、隣り合う面の色がいちばん揃うものを選ぶ
+function t1ColorBest(d,o,cands){
+  let best=null;
+  for(const m of cands){
+    const s=t1ColorSmooth(d,o,m);
+    if(best===null||s<best.score) best={mode:m,score:s};
+  }
+  return best;
 }
 // ============================================================
 //  WebGL
@@ -2932,7 +3013,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.49.0";
+const VERSION="v3.50.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
