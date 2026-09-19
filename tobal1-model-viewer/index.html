@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.47.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.48.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1824,7 +1824,9 @@ function buildT1Mesh(d,objs){
     //   面の頂点ごと … 面を描きながら、頂点1つにつき1つ進める
     //   面に1色     … 面1枚につき1色。3つの角とも同じ色になる（べた塗り）
     const cmode=cfit.get(o.base)||"頂点ごと";
-    const byCorner=cmode==="面の頂点ごと", byFace=cmode==="面に1色";
+    const byCorner=cmode==="面の頂点ごと";
+    const byFace=cmode==="面に1色"||cmode==="面に1色（四角は2枚ぶん）";
+    const faceSplit=cmode==="面に1色（四角は2枚ぶん）";
     let ci=0, fi=0;
     const far=(i,seg)=>V0(i,seg).some(v=>Math.abs(v)>T1_MAX_COORD);
     void far;
@@ -1840,7 +1842,7 @@ function buildT1Mesh(d,objs){
         if(t1Show.segOnly>=0&&(f.seg|0)!==t1Show.segOnly) continue;
         const a=f.idx;
         const cbase=ci; ci+=a.length;          // 面の頂点ごとに色が並んでいるときの引き位置
-        const cface=fi++;                      // 面に1色のときの引き位置
+        const cface=fi; fi+=faceSplit&&a.length===4?2:1;   // 面に1色のときの引き位置
         if(a.some(i=>far(i,f.seg))){ dropped++; continue }
         const strip=a.length===4?[[0,1,2],[0,2,3]]:[[0,1,2]];
         for(const t of strip){
@@ -2749,11 +2751,15 @@ function t1ColorFit(d,objs){
     for(const b of ends) if(b>start&&b<end) end=b;         // 次の部品の手前まで
     const bytes=end-start;
     let corner=0; for(const f of o.run.faces) corner+=f.idx.length;
-    const cand=[["頂点ごと",o.nv*4],["面の頂点ごと",corner*4],["面に1色",o.run.faces.length*4]];
+    // 「置き場所ごと」＝ 面が指す枠の番号でそのまま引く形。
+    // 大きい部品では枠が使い回されるので、頂点の並び順とはずれる
+    let maxSlot=0; for(const f of o.run.faces) for(const i of f.idx) if(i>maxSlot) maxSlot=i;
+    const cand=[["頂点ごと",o.nv*4],["面の頂点ごと",corner*4],["面に1色",o.run.faces.length*4],
+                ["面に1色（四角は2枚ぶん）",o.run.faces.reduce((a,f)=>a+(f.idx.length===4?2:1),0)*4]];
     let best=null;
     for(const [name,n] of cand){ const d2=Math.abs(bytes-n);
       if(!best||d2<best.diff) best={name,n,diff:d2} }
-    out.push({base:o.base,bytes,nv:o.nv,corner,faces:o.run.faces.length,
+    out.push({base:o.base,bytes,nv:o.nv,corner,faces:o.run.faces.length,maxSlot,
               fit:best.name,diff:best.diff,
               exact:best.diff<=8});
   }
@@ -2762,7 +2768,8 @@ function t1ColorFit(d,objs){
 function t1ColorLine(c){
   return `+${c.base.toString(16)}: 色 ${c.bytes}B ／ 頂点${c.nv}×4=${c.nv*4}`
     +` 面の頂点${c.corner}×4=${c.corner*4} 面${c.faces}×4=${c.faces*4}`
-    +` → ${c.fit}${c.exact?"（ぴったり）":`（${c.diff}ずれ）`}`;
+    +` → ${c.fit}${c.exact?"（ぴったり）":`（${c.diff}ずれ）`}`
+    +`／いちばん大きい頂点番号 ${c.maxSlot}`;
 }
 // ============================================================
 //  WebGL
@@ -2919,7 +2926,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.47.0";
+const VERSION="v3.48.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3007,7 +3014,8 @@ function buildModelInner(raw,info){
           for(const c of cf) by.set(c.fit,(by.get(c.fit)||0)+1);
           info.t1Color="  色の引き方: "+[...by].map(([k,n])=>`${k} ${n}部品`).join("　")
             +(by.size>1||!cf.every(c=>c.exact)?"　← 頂点ごと以外が混ざると模様が乱れます":"");
-          info.t1ColorLines=cf.slice(0,4).map(t1ColorLine);
+          // 大きい部品（＝本体）から順に出す。小さい部品ばかり出しても本丸が見えない
+          info.t1ColorLines=cf.slice().sort((a,b)=>b.nv-a.nv).slice(0,4).map(t1ColorLine);
         } }catch(_){}
       info.t1Read={run,guess,total:okObjs.length,why,audit,
                    vari:T1_VAR_FOUND?t1VarName(T1_VAR_FOUND):""}; }
