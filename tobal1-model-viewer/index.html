@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.38.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.39.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2779,7 +2779,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.38.0";
+const VERSION="v3.39.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3800,38 +3800,54 @@ async function texAll(){
 // ---- 骨の区切りを1つずつ並べる ----
 // 横一列に伸ばすと小さすぎて読めなかったので、モデル一覧と同じくタイルにする。
 // どの区切りが腕で、どれが脚で、どれが胴なのか——ここが決まらないと骨組みは組めない
+// 画面ぜんぶを小さくして取る（切り抜かない）。
+// 切り抜いて大きさを合わせると、6枚の輪も134枚の塊も同じ大きさに見えてしまい、
+// どれが腕でどれが脚かが分からなくなる
+function grabFrame(side){
+  const S=side||132, cv=document.createElement("canvas");
+  cv.width=S; cv.height=S;
+  const sc=Math.min(S/canvas.width,S/canvas.height);
+  const w=Math.max(1,Math.round(canvas.width*sc)), h=Math.max(1,Math.round(canvas.height*sc));
+  cv.getContext("2d").drawImage(canvas,0,0,canvas.width,canvas.height,(S-w)/2,(S-h)/2,w,h);
+  return cv;
+}
 $("seggal").onclick=async()=>{
   const grid=$("mdlgrid"), note=$("mdlnote");
-  const inf=state.selInfo;
-  if(!inf||!inf.t1Segs){ note.textContent="先にキャラクターのモデルを選んでください"; return }
+  const e=state.entries[state.sel], inf=state.selInfo;
+  if(!e||!inf||!inf.t1Segs){ note.textContent="先にキャラクターのモデルを選んでください"; return }
   grid.innerHTML="";
-  const keepOnly=t1Show.segOnly, keepSpread=t1Show.segSpread, keepCol=t1Show.segColor;
-  t1Show.segSpread=false; t1Show.segColor=false;
+  const keep={only:t1Show.segOnly,spread:t1Show.segSpread,col:t1Show.segColor};
+  t1Show.segSpread=false; t1Show.segColor=false; t1Show.segOnly=-1;
   const sizes=new Map();
   for(const line of inf.t1SegLine||[]){
     const m=/^(\d+):(\d+)枚 (.+)$/.exec(line);
     if(m) sizes.set(+m[1],{n:+m[2],wh:m[3]});
   }
   let made=0;
-  for(const k of [...sizes.keys()].sort((a,b)=>a-b)){
-    note.textContent=`区切りを描いています… ${made+1}/${sizes.size}`;
-    await idle();
-    t1Show.segOnly=k;
-    try{
-      selectEntry(state.sel);
-      const cv=grabThumb(132); if(!cv) continue;
+  try{
+    const raw=await readFull(e);
+    // まずモデル全体でカメラを合わせ、以後は合わせ直さない。
+    // 同じ縮尺・同じ角度で並ぶので、大きさと位置をそのまま見比べられる
+    upload(buildModel(raw).mesh, true); draw();
+    for(const k of [...sizes.keys()].sort((a,b)=>a-b)){
+      note.textContent=`区切りを描いています… ${made+1}/${sizes.size}`;
+      await idle();
+      t1Show.segOnly=k;
+      const {mesh}=buildModel(raw);
+      upload(mesh,false); draw();
+      const cv=grabFrame(132);
       const fig=document.createElement("figure"), cap=document.createElement("figcaption");
       const z=sizes.get(k);
       cap.textContent=`区切り ${k}\n${z.n}枚　${z.wh}`;
       cap.style.whiteSpace="pre-line";
       cv.style.cursor="default";
       fig.append(cv,cap); grid.append(fig); made++;
-    }catch(_){}
-  }
-  t1Show.segOnly=keepOnly; t1Show.segSpread=keepSpread; t1Show.segColor=keepCol;
-  selectEntry(state.sel);
+    }
+  }catch(err){ note.textContent="区切りを描けませんでした: "+err.message }
+  t1Show.segOnly=keep.only; t1Show.segSpread=keep.spread; t1Show.segColor=keep.col;
+  await selectEntry(state.sel);
   state.segGal=true;
-  note.textContent=`${made}個の区切りを並べました。「この一覧を画像で保存」で1枚にできます`;
+  note.textContent=`${made}個の区切りを、同じ縮尺・同じ角度で並べました。「この一覧を画像で保存」で1枚にできます`;
 };
 $("mdlsave").onclick=()=>{
   const t=state.segGal?"トバルNo.1 骨の区切り":"トバルNo.1 モデル一覧";
