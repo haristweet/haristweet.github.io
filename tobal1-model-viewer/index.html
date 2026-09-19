@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.26.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.27.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1659,7 +1659,7 @@ function buildT1Mesh(d,objs){
   // 法線つきで読める部品が1つでもあれば、それがキャラクターの見た目。
   // 読めない部品は当たり判定か影なので、ふだんは出さない
   for(const o of objs){ if(!o.ok) continue;
-    o.run=t1Run(d,o.base)||t1RunExtra(d,o.base);
+    o.run=t1RunBest(d,o);
     // 読んだ頂点の数がファイルの頂点数と合えば、命令の読み方で間違いない
     if(o.run&&Math.abs(o.run.verts-o.nv)>2){
       o.why=`読んだ頂点 ${o.run.verts}個 とファイルの頂点 ${o.nv}個 が合わない`; o.run=null;
@@ -2084,8 +2084,12 @@ const T1_CMD_LEN={0:0,1:12,2:16,3:8,4:16,5:4,6:8,7:12};
 const T1_FACE_OP={8:{size:20,n:3,nrm:true},9:{size:24,n:4,nrm:true},
                   10:{size:12,n:3,nrm:false},11:{size:16,n:4,nrm:false}};
 const T1_SLOTS=256;
+// 頂点を置き場所に入れる命令の「読み方」。既定は「1と2だけが入れる／語1が置き場所／語2が個数」。
+// これで読めない部品があるので、別の読み方も用意して、合うものを探して覚える
+const T1_VAR0={};
 let t1RunWhy="";    // 直前の t1Run が失敗した理由（読めないモデルの原因を追うため）
-function t1Run(d,base,limit,extra){
+function t1Run(d,base,limit,extra,V){
+  V=V||T1_VAR0;
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const no=(why,at)=>{ t1RunWhy=`${why}（+0x${((at||0)-base).toString(16)}）`; return null };
   t1RunWhy="";
@@ -2100,10 +2104,14 @@ function t1Run(d,base,limit,extra){
     if(op in T1_CMD_LEN){
       const arg=dv.getUint32(fp+4,true);
       if(op===5) seg++;                                   // 命令5 = 次の骨の行列を取り出す
-      if(op===1||op===2){
-        const n=dv.getUint32(fp+8,true);
-        if(arg<0||arg+n>T1_SLOTS||n>4096) return no(`命令${op} の置き場所 ${arg}／個数 ${n} が枠(${T1_SLOTS})に収まらない`,fp);
-        for(let k=0;k<n;k++) slot[arg+k]=vi++;
+      if(op===1||op===2||(V.load4&&op===4)||(V.load7&&op===7)){
+        // 置き場所と個数の位置・数え方は、読み方によって変わる（t1RunBest が選ぶ）
+        let at=arg, n=dv.getUint32(fp+8,true);
+        if(V.swap){ const t=at; at=n; n=t }
+        if(V.unit4) at>>=2;
+        n+=V.plus||0;
+        if(at<0||at+n>T1_SLOTS||n>4096) return no(`命令${op} の置き場所 ${at}／個数 ${n} が枠(${T1_SLOTS})に収まらない`,fp);
+        for(let k=0;k<n;k++) slot[at+k]=vi++;
       }
       fp+=T1_CMD_LEN[op];
     }else if(T1_FACE_OP[op]||(extra&&extra[op])){
@@ -2162,14 +2170,17 @@ function t1SegBoxes(d,o){
 function t1Diagnose(d){
   const offs=t1ObjectOffsets(d);
   const objs=offs.map(p=>readT1Object(d,p)).filter(o=>o&&o.ok);
-  const done=new Set(), why=[], solved=[];
+  const done=new Set(), why=[], solved=[], vars=[], audit=[];
+  const budget={n:4};                     // 総当たりは1ファイルにつき4部品まで（全件にかけるので）
+  const best=o=>t1RunBest(d,o,0,budget);
   // 1つ解けると「分かっているもの」が増えて次が解けるので、進まなくなるまで回す
   for(let pass=0;pass<4;pass++){
     const before=done.size;
     for(const o of objs){
       if(done.has(o.base)) continue;
-      const r=t1Run(d,o.base)||t1RunExtra(d,o.base);
-      if(r&&Math.abs(r.verts-o.nv)<=2){ done.add(o.base); if(r.solved) solved.push(r.solved); continue }
+      const r=best(o);
+      if(r&&Math.abs(r.verts-o.nv)<=2){ done.add(o.base); if(r.solved) solved.push(r.solved);
+        if(r.variant) vars.push(t1VarName(r.variant)); continue }
     }
     if(done.size===before&&pass>0) break;
     if(done.size===objs.length) break;
@@ -2178,11 +2189,13 @@ function t1Diagnose(d){
   // （途中で集めると、あとで解けたものの理由まで残ってしまう）
   for(const o of objs){
     if(done.has(o.base)) continue;
-    const r=t1Run(d,o.base)||t1RunExtra(d,o.base);
+    const r=t1RunBest(d,o,0,false);
     const w=r?`読んだ頂点 ${r.verts}個 とファイルの頂点 ${o.nv}個 が合わない`:t1RunWhy;
     if(w&&why.indexOf(w)<0) why.push(w);
+    // 読めなかった部品は「数えるだけ」の調べもつけておく（理由の当たりをつけるため）
+    if(audit.length<3){ try{ audit.push(t1AuditLine(t1Audit(d,o))) }catch(_){} }
   }
-  return {parts:objs.length,run:done.size,fail:objs.length-done.size,why,solved};
+  return {parts:objs.length,run:done.size,fail:objs.length-done.size,why,solved,vars,audit};
 }
 // 理由の「種類」だけを取り出す（位置や数を除いてまとめるため）
 function t1WhyKind(w){
@@ -2252,7 +2265,7 @@ function t1Layouts(size){
   return out;
 }
 // 未知の命令を含む部品を、大きさと並べ方を当てながら読む
-function t1RunExtra(d,base,limit){
+function t1RunExtra(d,base,limit,V){
   const scan=t1ScanOps(d,base,limit);
   if(!scan) return null;
   // 覚えている命令はそのまま使う
@@ -2260,20 +2273,127 @@ function t1RunExtra(d,base,limit){
   for(const op of Object.keys(T1_LEARNED)) extra[op]=T1_LEARNED[op];
   // 覚えているだけで読めるなら、それで済ませる
   if(Object.keys(extra).length){
-    const r0=t1Run(d,base,limit,extra);
+    const r0=t1Run(d,base,limit,extra,V);
     if(r0&&r0.faceBytes===scan.faceBytes) return r0;
   }
   // まだ未知が1つ残っているなら、引き算で解く
   const sol=t1SolveSize(scan);
   if(!sol) return null;
   for(const k of t1Layouts(sol.size)){
-    const r=t1Run(d,base,limit,Object.assign({},extra,{[sol.op]:k}));
+    const r=t1Run(d,base,limit,Object.assign({},extra,{[sol.op]:k}),V);
     if(r&&r.faceBytes===scan.faceBytes){
       t1Learn(sol.op,k);
       return Object.assign(r,{solved:{op:sol.op,size:sol.size,n:k.n,nrm:k.nrm}});
     }
   }
   return null;
+}
+
+// ============================================================
+//  頂点を置き場所に入れる命令の「読み方」を探す
+//
+//  既定の読み方（1と2だけが入れる）では、36体のうちほとんどが
+//  「まだ入れていない置き場所を指している」で止まった。
+//  命令4（16B）と命令7（12B）は 命令2・命令1 と同じ形をしているので、
+//  これも頂点を入れる命令である見込みが高い。ほかに考えられる読み違いは
+//    ・語1が置き場所ではなく個数（swap）
+//    ・語1は置き場所のバイト位置で、4で割ると置き場所（unit4）
+//    ・個数が「n個」ではなく「n+1個」（plus）
+//  の3つ。全部で32通りしかないので、片っ端から試して
+//  「読んだ頂点数＝ファイルの頂点数」かつ「面のバイト数がぴったり」に
+//  なるものを選ぶ。当たったら覚えて、次の部品ではそれを先に試す
+// ============================================================
+const T1_VARIANTS=(()=>{
+  const out=[];
+  for(const L of [{},{load7:1},{load4:1},{load4:1,load7:1}])
+    for(const p of [0,1]) for(const u of [0,1]) for(const w of [0,1]){
+      if(!p&&!u&&!w&&!L.load4&&!L.load7) continue;      // 既定は別に試す
+      out.push(Object.assign({},L,{plus:p,unit4:u,swap:w}));
+    }
+  return out;
+})();
+function t1VarName(V){
+  if(!V||!Object.keys(V).some(k=>V[k])) return "既定";
+  const a=[];
+  if(V.load4) a.push("命令4も頂点を入れる");
+  if(V.load7) a.push("命令7も頂点を入れる");
+  if(V.swap) a.push("語1が個数・語2が置き場所");
+  if(V.unit4) a.push("置き場所は4で割る");
+  if(V.plus) a.push("個数は+1");
+  return a.join("・")||"既定";
+}
+let T1_VAR_FOUND=null;      // 当たった読み方（覚えておいて次から先に試す）
+// 部品ひとつを、いちばん確からしい読み方で読む。
+// 「読んだ頂点数＝ファイルの頂点数」かつ「面のバイト数がぴったり」なら合格
+function t1RunBest(d,o,limit,sweep){
+  const okr=r=>!!r&&Math.abs(r.verts-o.nv)<=2&&(!o.faceBytes||r.faceBytes===o.faceBytes);
+  let first=null;
+  const tries=[null];
+  if(T1_VAR_FOUND) tries.push(T1_VAR_FOUND);
+  for(const V of tries){
+    const a=t1Run(d,o.base,limit,null,V); if(okr(a)) return a; first=first||a;
+    const b=t1RunExtra(d,o.base,limit,V); if(okr(b)) return b; first=first||b;
+  }
+  const firstWhy=t1RunWhy;
+  // 総当たりは重い。false なら省く。{n:回数} を渡すと、その回数だけ総当たりする
+  if(sweep===false) return first;
+  if(sweep&&typeof sweep==="object"){ if(sweep.n<=0) return first; sweep.n-- }
+  for(const V of T1_VARIANTS){
+    const a=t1Run(d,o.base,limit,null,V);
+    if(okr(a)){ T1_VAR_FOUND=V; return Object.assign(a,{variant:V}) }
+    const b=t1RunExtra(d,o.base,limit,V);
+    if(okr(b)){ T1_VAR_FOUND=V; return Object.assign(b,{variant:V}) }
+  }
+  t1RunWhy=firstWhy;        // 理由は既定の読み方のものを返す（そちらが本筋）
+  return first;
+}
+
+// ============================================================
+//  読めなかった部品を「数えるだけ」で調べる。
+//  面のバイトを一切消費しないので、どこかで読み違えても数は狂わない。
+//  知りたいのは2つ:
+//    ・面のバイト数の勘定が合うか（＝1枚の大きさの表が正しいか）
+//    ・頂点を入れる命令の個数の合計が、ファイルの頂点数と合うか
+//  合わなければ、頂点を入れる命令が他にもある、ということになる
+// ============================================================
+function t1Audit(d,o){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const g=p=>p+4<=d.length?dv.getUint32(p,true):0;
+  const faceBytes=g(o.base+12)-g(o.base);
+  const cmd=new Map(), face=new Map(), cnt=new Map(), cnt2=new Map(), argMax=new Map();
+  let fp=o.base+0x10, steps=0, bad=0;
+  while(fp+8<=d.length&&steps<4096){
+    const op=g(fp);
+    if(op===0) break;
+    cmd.set(op,(cmd.get(op)||0)+1);
+    if(op in T1_CMD_LEN){
+      if(T1_CMD_LEN[op]>=12){
+        cnt.set(op,(cnt.get(op)||0)+g(fp+8));
+        argMax.set(op,Math.max(argMax.get(op)||0,g(fp+4)));
+      }
+      if(T1_CMD_LEN[op]>=16) cnt2.set(op,(cnt2.get(op)||0)+g(fp+12));
+      fp+=T1_CMD_LEN[op];
+    }else if(op<=15){ face.set(op,(face.get(op)||0)+g(fp+4)); fp+=8 }
+    else { bad=op; break }
+    steps++;
+  }
+  let known=0; const unknown=[];
+  for(const [op,n] of face){ const sz=t1SizeOf(op); if(sz) known+=sz*n; else unknown.push(op) }
+  const sum=m=>[...m.values()].reduce((a,b)=>a+b,0);
+  return {cmd,face,cnt,cnt2,argMax,faceBytes,known,unknown,bad,nv:o.nv,
+          load12:(cnt.get(1)||0)+(cnt.get(2)||0),
+          load47:(cnt.get(4)||0)+(cnt.get(7)||0),
+          faces:sum(face),
+          gap:unknown.length?null:known-faceBytes};
+}
+// 部品ひとつぶんの調べた結果を1行にする
+function t1AuditLine(a){
+  const ord=m=>[...m.entries()].sort((x,y)=>x[0]-y[0]);
+  const c=ord(a.cmd).map(([op,n])=>`${op}×${n}`).join(" ");
+  const ld=ord(a.cnt).map(([op,n])=>`命令${op}:${n}`).join(" ");
+  return `頂点 ${a.nv} ／ 入れる合計 ${a.load12}${a.load47?`（＋4と7で ${a.load47}）`:""}`
+    +` [${ld}] ／ 面 ${a.faceBytes}B 勘定 ${a.gap==null?`未知の命令 ${a.unknown.join(",")}`:(a.gap===0?"ぴったり":`${a.gap>0?"+":""}${a.gap}`)}`
+    +` ／ 命令 ${c}`;
 }
 // ============================================================
 //  WebGL
@@ -2496,10 +2616,12 @@ function buildModelInner(raw,info){
     const r1=buildT1Mesh(b.out,okObjs);
     // どの部品が「命令の列として実行できた」かを数える。読み方を決めるのは
     // buildT1Mesh なので、必ずそのあとで数えること（前だと全部0になる）
-    { let run=0, guess=0; const why=[];
+    { let run=0, guess=0; const why=[], audit=[];
       for(const o of okObjs){ if(o.run) run++; else { if(o.walk) guess++;
-        if(o.why&&why.indexOf(o.why)<0) why.push(o.why) } }
-      info.t1Read={run,guess,total:okObjs.length,why}; }
+        if(o.why&&why.indexOf(o.why)<0) why.push(o.why);
+        if(audit.length<4){ try{ audit.push(t1AuditLine(t1Audit(b.out,o))) }catch(_){} } } }
+      info.t1Read={run,guess,total:okObjs.length,why,audit,
+                   vari:T1_VAR_FOUND?t1VarName(T1_VAR_FOUND):""}; }
     { const P=r1.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
       for(let i=0;i<P.length;i+=3) for(let a=0;a<3;a++){ if(P[i+a]<mn[a])mn[a]=P[i+a]; if(P[i+a]>mx[a])mx[a]=P[i+a] }
       info.t1Size=`  モデル全体の縦横: X ${Math.round(mx[0]-mn[0])}　Y ${Math.round(mx[1]-mn[1])}　Z ${Math.round(mx[2]-mn[2])}`
@@ -2804,7 +2926,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.26.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.27.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -3012,8 +3134,12 @@ function updateReport(){
     if(inf.t1UV) L.push(inf.t1UV);
     if(inf.t1Read) L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個`
       +(inf.t1Read.guess?`／当てずっぽう ${inf.t1Read.guess}個（ここが多いと形が崩れる）`:"（全部きちんと読めています）"));
+    if(inf.t1Read&&inf.t1Read.vari&&inf.t1Read.vari!=="既定")
+      L.push(`    頂点を入れる命令の読み方: ${inf.t1Read.vari}`);
     if(inf.t1Read&&inf.t1Read.why&&inf.t1Read.why.length)
       inf.t1Read.why.forEach(w=>L.push(`    読めない理由: ${w}`));
+    if(inf.t1Read&&inf.t1Read.audit&&inf.t1Read.audit.length)
+      inf.t1Read.audit.forEach(a=>L.push(`    読めなかった部品: ${a}`));
     if(inf.t1Seg) L.push(...inf.t1Seg);
     if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
@@ -3611,10 +3737,22 @@ function sieveLines(s){
         if(kept.length) L.push("    覚えた命令: "+kept.map(op=>
           `命令${op}=${T1_LEARNED[op].size}B(頂点${T1_LEARNED[op].n}${T1_LEARNED[op].nrm?"・法線あり":""})`).join(" "));
       }
+      // 当たった「読み方」（命令4や7も頂点を入れる、など）
+      { const vs=new Map();
+        for(const o of dg) for(const v of (o.diag.vars||[])) vs.set(v,(vs.get(v)||0)+1);
+        for(const [k,n] of [...vs].sort((a,b)=>b[1]-a[1]))
+          L.push(`    当たった読み方: ${k}　${n}部品で一致`);
+        if(T1_VAR_FOUND) L.push(`    覚えた読み方: ${t1VarName(T1_VAR_FOUND)}`); }
       for(const [k,v] of [...byKind].sort((a,b)=>b[1].n-a[1].n)){
         L.push(`    ${v.n}件: ${k}`);
         L.push(`      例: ${v.ex}　（${v.files.join(" ")}）`);
       }
+      // 読めなかった部品を「数えるだけ」で調べた結果。
+      // 頂点の数と入れる命令の合計が合わないなら、入れる命令を見落としている
+      { const au=[];
+        for(const o of bad) for(const a of (o.diag.audit||[]))
+          if(au.length<6) au.push(`      #${o.e.no} ${a}`);
+        if(au.length){ L.push("    読めなかった部品の数え上げ:"); L.push(...au) } }
       for(const o of bad.slice(0,12))
         L.push(`    #${o.e.no} sector ${o.e.sector}　部品${o.diag.parts}個中 読めた${o.diag.run}個`);
       if(bad.length>12) L.push(`    …ほか ${bad.length-12}件`);
