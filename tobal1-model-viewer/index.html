@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.48.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.49.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1786,7 +1786,7 @@ function buildT1Mesh(d,objs){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   // 色の引き方を部品ごとに測っておく（頂点ごと／面の頂点ごと／面に1色）
   const cfit=new Map();
-  try{ for(const c of t1ColorFit(d,objs)) if(c.exact) cfit.set(c.base,c.fit) }catch(_){}
+  try{ for(const c of t1ColorFit(d,objs)) if(c.exact||c.near) cfit.set(c.base,c.fit) }catch(_){}
   const lay=t1Show.spread?t1Layout(objs,dv,(T1_UP[t1Show.up]||T1_UP[0]).f):null;
   // 骨の区切りごとに並べる（どの区切りが何なのかを見るため）
   const segLay=t1Show.segSpread?t1SegLayout(d,objs,(T1_UP[t1Show.up]||T1_UP[0]).f):null;
@@ -2759,15 +2759,21 @@ function t1ColorFit(d,objs){
     let best=null;
     for(const [name,n] of cand){ const d2=Math.abs(bytes-n);
       if(!best||d2<best.diff) best={name,n,diff:d2} }
-    out.push({base:o.base,bytes,nv:o.nv,corner,faces:o.run.faces.length,maxSlot,
+    const tri=o.run.faces.reduce((a,f)=>a+(f.idx.length===4?2:1),0);
+    const quads=o.run.faces.filter(f=>f.idx.length===4).length;
+    out.push({base:o.base,bytes,nv:o.nv,corner,faces:o.run.faces.length,maxSlot,tri,quads,
               fit:best.name,diff:best.diff,
-              exact:best.diff<=8});
+              exact:best.diff<=8,
+              // ぴったりでなくても、いちばん近いものが頂点でなく面なら面で引く。
+              // 「ぴったりのときしか使わない」作りだと、少しずれただけで既定に落ちて模様が乱れる
+              near:best.diff<=Math.max(64,bytes*0.08)});
   }
   return out;
 }
 function t1ColorLine(c){
   return `+${c.base.toString(16)}: 色 ${c.bytes}B ／ 頂点${c.nv}×4=${c.nv*4}`
     +` 面の頂点${c.corner}×4=${c.corner*4} 面${c.faces}×4=${c.faces*4}`
+    +` 三角${c.tri}×4=${c.tri*4}（四角${c.quads}枚）`
     +` → ${c.fit}${c.exact?"（ぴったり）":`（${c.diff}ずれ）`}`
     +`／いちばん大きい頂点番号 ${c.maxSlot}`;
 }
@@ -2926,7 +2932,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.48.0";
+const VERSION="v3.49.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3012,8 +3018,9 @@ function buildModelInner(raw,info){
         if(cf.length){
           const by=new Map();
           for(const c of cf) by.set(c.fit,(by.get(c.fit)||0)+1);
+          const loose=cf.filter(c=>!c.exact&&c.near).length;
           info.t1Color="  色の引き方: "+[...by].map(([k,n])=>`${k} ${n}部品`).join("　")
-            +(by.size>1||!cf.every(c=>c.exact)?"　← 頂点ごと以外が混ざると模様が乱れます":"");
+            +(loose?`　（うち ${loose}部品 はぴったりではないが、いちばん近い引き方を使っています）`:"");
           // 大きい部品（＝本体）から順に出す。小さい部品ばかり出しても本丸が見えない
           info.t1ColorLines=cf.slice().sort((a,b)=>b.nv-a.nv).slice(0,4).map(t1ColorLine);
         } }catch(_){}
