@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.28.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.29.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -176,8 +176,10 @@ canvas:active{cursor:grabbing}
       <p class="note">どのファイルがデータのまとまりかも自動で当てています。中身が 0% ばかりのときは変えてみてください。</p>
     </div>
     <div data-tab="info"><p class="label">解析結果</p>
+      <label class="filter"><input type="checkbox" id="rep-long"> 実行ファイルや生の中身まで出す（とても長い）</label>
       <textarea class="report" id="report" readonly spellcheck="false"></textarea>
-      <button class="btn wide" id="copy-report" style="margin-top:8px">この内容をコピー</button>
+      <button class="btn wide" id="copy-digest" style="margin-top:8px">作者に送るまとめをコピー（短い）</button>
+      <button class="btn wide" id="copy-report" style="margin-top:6px">この内容をぜんぶコピー</button>
       <p class="label" style="margin-top:16px">ファイル表の候補</p>
       <select id="table-pick" aria-label="ファイル表の候補"></select>
       <p class="note">実行ファイルの中から「位置と大きさの並び」らしいところを探しています。モデルが出てこないときは別の候補に切り替えてみてください。</p>
@@ -2620,6 +2622,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
+const VERSION="v3.29.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -2993,17 +2996,57 @@ function fileBase(){
   return ("tobal1_"+(e?(e.src==="iso"?e.name.replace(/\W+/g,"_"):`f${e.no}_t${e.type}`):"model")).replace(/[\\/:*?"<>|\s]/g,"_");
 }
 // ---- 解析の表示 ----
+// 報告は既定で「短く」。実行ファイルの逆アセンブルや生のバイト列は、
+// 毎回同じ内容なのに何百行にもなる。読む側の手間と、貼るときの量を減らすため、
+// 要るときだけ出す（覚えておく）
+function repLong(){ const c=$("rep-long"); return !!(c&&c.checked) }
+// 作者に送るぶんだけを集めた、短いまとめ。
+// 毎回同じ内容（実行ファイルの逆アセンブル、ファイルの一覧、生のバイト列）は入れない。
+// 入れるのは「前回と変わりうるもの」＝読めた数・読めない理由・数え上げ・覚えたことだけ
+function digestLines(){
+  const L=[], s=state.src;
+  L.push(`トバルNo.1 モデルビューア ${VERSION} ・ まとめ`);
+  if(s) L.push(`読み込み元: ${s.kind} / ${s.discName}`);
+  if(state.sieve){
+    const keep=sieveLines(state.sieve).filter(x=>
+      /キャラクターのモデル|割り出した|覚えた|当たった読み方|組で割り出した|件: |例: |数え上げ|部品\d+個中|^ {6}#/.test(x));
+    if(keep.length){ L.push(""); L.push(...keep.map(x=>x.replace(/^ {2}/,""))) }
+    const t=sieveLines(state.sieve).find(x=>/全 \d+件 →/.test(x));
+    if(t) L.push("", t.trim());
+  }
+  const inf=state.selInfo, e=state.entries[state.sel];
+  if(inf&&e){
+    L.push("");
+    L.push(`選んでいるファイル: #${e.no} sector ${e.sector}`);
+    for(const k of ["t1Parts","t1Size","t1Read"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
+    if(inf.t1Read&&inf.t1Read.run!=null)
+      L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個／当てずっぽう ${inf.t1Read.guess}個`
+        +(inf.t1Read.vari&&inf.t1Read.vari!=="既定"?`／頂点を入れる読み方: ${inf.t1Read.vari}`:""));
+    for(const w of (inf.t1Read&&inf.t1Read.why)||[]) L.push(`    読めない理由: ${w}`);
+    for(const a of (inf.t1Read&&inf.t1Read.audit)||[]) L.push(`    読めなかった部品: ${a}`);
+  }
+  if(state.galWhy&&state.galWhy.length){
+    L.push(""); L.push("一覧で読めなかったモデル:"); L.push(...state.galWhy.slice(0,8));
+  }
+  return L;
+}
+try{ addEventListener("DOMContentLoaded",()=>{ const c=$("rep-long"); if(!c) return;
+  try{ c.checked=localStorage.getItem("replong")==="1" }catch(_){}
+  c.addEventListener("change",()=>{ try{ localStorage.setItem("replong",c.checked?"1":"0") }catch(_){}
+    updateReport() }) }) }catch(_){}
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.28.0 ・ 解析結果");
+  L.push(`トバルNo.1 モデルビューア ${VERSION} ・ 解析結果`);
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
   L.push(`アーカイブ: ${s.arcName}  ${fmtSize(s.arcSize)}`);
   L.push("");
-  // 実行ファイルの中で、モデルの署名 0x90000000 を作っている場所＝モデルを読む関数
-  try{
+  // 実行ファイルの中で、モデルの署名 0x90000000 を作っている場所＝モデルを読む関数。
+  // ここは何百行にもなるうえ、毎回同じ内容なので、ふだんは出さない
+  if(!repLong()) L.push("（実行ファイルの中身・生のバイト列は「実行ファイルや生の中身まで出す」を入れると出ます）","");
+  else try{
     const all=findModelCode(s.exe), seen=new Set(), hits=[];
     for(const h of all){ if(seen.has(h.from)) continue; seen.add(h.from); hits.push(h) }
     if(hits.length){
@@ -3180,7 +3223,7 @@ function updateReport(){
     L.push("候補を全部ふるいにかけた結果:");
     L.push(...sieveLines(state.sieve));
   }
-  if(state.survey&&state.survey.length){
+  if(repLong()&&state.survey&&state.survey.length){
     L.push("");
     L.push(`モデル候補をまとめて調べた結果 (${state.survey.length}件・大きい順):`);
     L.push(...surveyLines(state.survey));
@@ -3225,19 +3268,22 @@ function updateReport(){
       inf.t1Read.why.forEach(w=>L.push(`    読めない理由: ${w}`));
     if(inf.t1Read&&inf.t1Read.audit&&inf.t1Read.audit.length)
       inf.t1Read.audit.forEach(a=>L.push(`    読めなかった部品: ${a}`));
-    if(inf.t1Seg) L.push(...inf.t1Seg);
-    if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
-    if(inf.modelOffs) L.push("  ヘッダにある位置: "+inf.modelOffs);
     if(inf.layout) L.push(`  並び: ${inf.layout}　広がり ${inf.extent}`);
     if(inf.dumpError) L.push("  ダンプ作りで失敗: "+inf.dumpError);
-    if(inf.words) L.push("  ブロックの頭 (32bit×16): "+inf.words.map(v=>hex(v)).join(" "));
-    if(inf.dlRaw) L.push("  0x20 からの生の並び: "+inf.dlRaw.map(([a,b])=>`(${a}, ${b})`).join(" "));
-    if(inf.dump&&inf.dump.length){ L.push("  展開した中身の頭:"); L.push(...inf.dump) }
-    if(inf.recs&&inf.recs.length){ L.push("  +0024 からの 24バイトごと:"); L.push(...inf.recs) }
-    if(inf.sections&&inf.sections.length){ L.push("  区画ごとの中身:"); L.push(...inf.sections) }
+    // ここから下は生のバイト列。毎回同じで長いので、ふだんは出さない
+    if(repLong()){
+      if(inf.t1Seg) L.push(...inf.t1Seg);
+      if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
+      if(inf.modelOffs) L.push("  ヘッダにある位置: "+inf.modelOffs);
+      if(inf.words) L.push("  ブロックの頭 (32bit×16): "+inf.words.map(v=>hex(v)).join(" "));
+      if(inf.dlRaw) L.push("  0x20 からの生の並び: "+inf.dlRaw.map(([a,b])=>`(${a}, ${b})`).join(" "));
+      if(inf.dump&&inf.dump.length){ L.push("  展開した中身の頭:"); L.push(...inf.dump) }
+      if(inf.recs&&inf.recs.length){ L.push("  +0024 からの 24バイトごと:"); L.push(...inf.recs) }
+      if(inf.sections&&inf.sections.length){ L.push("  区画ごとの中身:"); L.push(...inf.sections) }
+    }
   }
-  if(s.iso&&s.iso.length){
+  if(repLong()&&s.iso&&s.iso.length){
     L.push("");
     L.push(`ディスクのファイル (${s.iso.length}件):`);
     for(const f of s.iso.slice(0,80)) L.push(`  ${f.path||f.name}  ${fmtSize(f.size)}`);
@@ -3623,7 +3669,16 @@ $("bones").onclick=async()=>{
 $("copy-report").onclick=async()=>{
   const t=$("report");
   try{ await navigator.clipboard.writeText(t.value) }catch(_){ t.select(); document.execCommand("copy") }
-  $("copy-report").textContent="コピーしました"; setTimeout(()=>{$("copy-report").textContent="この内容をコピー"},1400);
+  $("copy-report").textContent="コピーしました"; setTimeout(()=>{$("copy-report").textContent="この内容をぜんぶコピー"},1400);
+};
+// 作者に送るまとめ。報告そのものより短く、前回と変わったところだけが入る
+$("copy-digest").onclick=async()=>{
+  const b=$("copy-digest"), txt=digestLines().join("\n");
+  try{ await navigator.clipboard.writeText(txt) }
+  catch(_){ const t=$("report"); const keep=t.value; t.value=txt; t.select();
+            document.execCommand("copy"); t.value=keep }
+  b.textContent=`コピーしました（${txt.length}文字）`;
+  setTimeout(()=>{b.textContent="作者に送るまとめをコピー（短い）"},1800);
 };
 $("bgm").onchange=e=>bgmPlay(+e.target.value);
 $("bgm-vol").oninput=e=>{ bgm.volume=+e.target.value; if(bgm.gain) bgm.gain.gain.value=bgm.volume };
@@ -3863,6 +3918,11 @@ function sieveLines(s){
         L.push(`    #${o.e.no} sector ${o.e.sector}　部品${o.diag.parts}個中 読めた${o.diag.run}個`);
       if(bad.length>12) L.push(`    …ほか ${bad.length-12}件`);
     } }
+  // 以下は一覧。毎回同じで長いので、ふだんは出さない
+  if(typeof repLong==="function"&&!repLong()){
+    L.push("  （モデルの一覧・生のバイト列は「実行ファイルや生の中身まで出す」を入れると出ます）");
+    return L;
+  }
   const sig=s.other.filter(o=>o.words&&o.words[0]===0x90000000);
   if(sig.length){
     L.push(`  ── モデルの署名 0x90000000 があるもの: ${sig.length}件 ──`);
