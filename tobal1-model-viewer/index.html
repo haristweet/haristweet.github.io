@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.40.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.41.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -201,6 +201,7 @@ canvas:active{cursor:grabbing}
       <label id="segcol-opt"><input type="checkbox" id="segcol"> 骨ごとに色分け</label>
       <label id="spread-opt"><input type="checkbox" id="spread"> 部品を並べる</label>
       <label id="segspread-opt"><input type="checkbox" id="segspread"> 骨の区切りごとに並べる</label>
+      <label id="guessbone-opt"><input type="checkbox" id="guessbone"> 仮の骨組みで左右に開く（推測）</label>
       <label><input type="checkbox" id="shot-clear"> 背景なし</label>
       <label id="crop-opt"><input type="checkbox" id="shot-crop"> キャラだけ切り抜き</label>
       <button id="shot">スクショを保存</button>
@@ -1684,12 +1685,13 @@ const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメ�
 // 見せ方の切り替え。どこがおかしいのかを切り分けるための道具
 // segOnly ＝ この区切りだけ描く。segPart ＝ その区切りがどの部品のものか。
 // 区切りの番号は部品ごとに0から振り直されるので、部品を決めないと別物が混ざる
-const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,up:2};
+const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,guessBone:false,up:2};
 try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.only=localStorage.getItem("t1only")==="1";
      t1Show.segColor=localStorage.getItem("t1segcol")==="1";
      t1Show.spread=localStorage.getItem("t1spread")==="1";
      t1Show.segSpread=localStorage.getItem("t1segspread")==="1";
+     t1Show.guessBone=localStorage.getItem("t1guessbone")==="1";
      // 向きの記憶は v3.5.0 で作り直した（前の既定値が上下逆だったので、古い記憶は捨てる）
      const u=localStorage.getItem("t1up2"); if(u!=null) t1Show.up=+u }catch(_){}
 // モデルの「背の高さ」がどの軸かは決め打ちできないので、向きを選べるようにする。
@@ -2201,7 +2203,8 @@ const T1_FACE_OP={8:{size:20,n:3,nrm:true},9:{size:24,n:4,nrm:true},
 const T1_SLOTS=256;
 // メモリから取れた骨の行列。区切り（命令5）の番号で引く。null なら骨なしで描く
 let T1_BONES=null;
-function t1SetBones(list){ T1_BONES=(list&&list.length)?list:null }
+let T1_BONES_REAL=false;         // メモリから取れた本物か（本物があれば推測は使わない）
+function t1SetBones(list,real){ T1_BONES=(list&&list.length)?list:null; if(real!=null) T1_BONES_REAL=!!real }
 // 頂点を置き場所に入れる命令の「読み方」。既定は「1と2だけが入れる／語1が置き場所／語2が個数」。
 // これで読めない部品があるので、別の読み方も用意して、合うものを探して覚える
 const T1_VAR0={};
@@ -2629,6 +2632,75 @@ function t1FitLine(f){
   return `枠に収まった頂点 ${Math.round(f.frac*1000)/10}%　大きさ ${f.span.map(v=>Math.round(v)).join("×")}`
     +`　${f.sane?"筋が通る":"筋が通らない"}`;
 }
+
+// ============================================================
+//  仮の骨組み（形から組み立てる）
+//
+//  メモリに本物の行列は無かった。だが測れる事実が1つある:
+//  区切りには「Z を反転しただけの対」がきれいに並んでいる。誤差1以内で一致する。
+//  これは左右の手足が、同じ形を鏡写しにして作られているということ。
+//  同じ場所に重なっているなら、対を左右に開くだけで形が出る。
+//
+//  推測なので既定では使わない。当てるかどうかは見る人が決める
+// ============================================================
+function t1SegBoxMap(d,o){
+  if(!o||!o.run) return null;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const box=new Map();
+  for(const f of o.run.faces){
+    const k=f.seg|0;
+    let b=box.get(k);
+    if(!b){ b={n:0,mn:[1e9,1e9,1e9],mx:[-1e9,-1e9,-1e9]}; box.set(k,b) }
+    b.n++;
+    for(const i of f.idx){ const p=o.base+o.vertPtr+i*8;
+      if(p+6>d.length) continue;
+      const v=[dv.getInt16(p,true),dv.getInt16(p+2,true),dv.getInt16(p+4,true)];
+      for(let a=0;a<3;a++){ if(v[a]<b.mn[a])b.mn[a]=v[a]; if(v[a]>b.mx[a])b.mx[a]=v[a] } }
+  }
+  return box;
+}
+// Z を反転すると重なる区切りどうしを見つける
+function t1MirrorPairs(box,tol){
+  const t=tol==null?10:tol, keys=[...box.keys()].sort((a,b)=>a-b), out=new Map();
+  const near=(a,b)=>Math.abs(a-b)<=t;
+  for(let i=0;i<keys.length;i++){
+    if(out.has(keys[i])) continue;
+    const a=box.get(keys[i]);
+    for(let j=i+1;j<keys.length;j++){
+      if(out.has(keys[j])) continue;
+      const b=box.get(keys[j]);
+      if(a.n!==b.n) continue;
+      if(near(a.mn[0],b.mn[0])&&near(a.mx[0],b.mx[0])&&
+         near(a.mn[1],b.mn[1])&&near(a.mx[1],b.mx[1])&&
+         near(a.mn[2],-b.mx[2])&&near(a.mx[2],-b.mn[2])){
+        out.set(keys[i],keys[j]); out.set(keys[j],keys[i]); break;
+      }
+    }
+  }
+  return out;
+}
+// 対を左右に開く。開く量は、対にならない区切り（胴）の奥行きから決める
+function t1GuessBones(d,o,spread){
+  const box=t1SegBoxMap(d,o); if(!box) return null;
+  const pairs=t1MirrorPairs(box);
+  if(!pairs.size) return null;
+  // 対にならない区切り＝中心線。いちばん大きいものを胴とみなす
+  let widest=0;
+  for(const [k,b] of box){ if(pairs.has(k)) continue;
+    widest=Math.max(widest,b.mx[2]-b.mn[2]) }
+  const gap=(widest||200)*(spread==null?0.5:spread);
+  const max=Math.max(...box.keys());
+  const list=[];
+  for(let k=0;k<=max;k++){
+    const I={m:[4096,0,0,0,4096,0,0,0,4096],t:[0,0,0],one:4096};
+    const j=pairs.get(k);
+    // 対のうち、番号が小さいほうを ＋Z、大きいほうを −Z へ寄せる
+    if(j!=null) I.t=[0,0,(k<j?1:-1)*gap];
+    list.push(I);
+  }
+  list.pairs=pairs; list.gap=gap;
+  return list;
+}
 // ============================================================
 //  WebGL
 // ============================================================
@@ -2784,7 +2856,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.40.0";
+const VERSION="v3.41.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -2849,6 +2921,16 @@ function buildModelInner(raw,info){
         +"（組の中は同じ形のポーズ違い＝手。実際に出るのは組から1つ）"; }
     if(!okObjs.length) continue;
     state.t1Objs={d:b.out,objs:okObjs};      // 骨を当てて確かめるときに使う
+    // 仮の骨組み。本物の行列が無いときに、鏡の対を左右へ開いて形を出す（推測）
+    if(t1Show.guessBone&&!T1_BONES_REAL){
+      // 先に区切りを知るため、いったん骨なしで組み立てる
+      t1SetBones(null); buildT1Mesh(b.out,okObjs);
+      const big=okObjs.filter(x=>x.run).sort((x,y)=>y.nv-x.nv)[0];
+      const g=big?t1GuessBones(b.out,big):null;
+      t1SetBones(g);
+      info.t1Guess=g?`  仮の骨組み: 鏡の対 ${g.pairs.size/2}組を ±${Math.round(g.gap)} だけ左右に開いています（推測）`
+                    :"  仮の骨組み: 鏡の対が見つからないので、何もしていません";
+    }
     const r1=buildT1Mesh(b.out,okObjs);
     // どの部品が「命令の列として実行できた」かを数える。読み方を決めるのは
     // buildT1Mesh なので、必ずそのあとで数えること（前だと全部0になる）
@@ -3467,6 +3549,7 @@ function updateReport(){
     if(inf.t1UV) L.push(inf.t1UV);
     if(inf.t1Read) L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個`
       +(inf.t1Read.guess?`／当てずっぽう ${inf.t1Read.guess}個（ここが多いと形が崩れる）`:"（全部きちんと読めています）"));
+    if(inf.t1Guess) L.push(inf.t1Guess);
     if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`
       +(T1_BONES?`　メモリから取った骨 ${T1_BONES.length}個 を当てています`
                :`　骨の行列がまだ無いので、手足は胴に畳み込まれたまま出ます`));
@@ -3908,7 +3991,7 @@ $("memfile").onchange=async e=>{
       for(const c of pick.list.slice(0,8))
         hunt.lines.push(`    ${c.sane===false?"":""}${c.kind} +0x${c.at.toString(16)} ${c.n}個 → ${t1FitLine(c.fit)}`);
       const best=pick.list.find(c=>c.fit.sane);
-      t1SetBones(best?best.list:null);
+      t1SetBones(best?best.list:null,!!best);
       state.boneSel=best?state.boneCands.indexOf(best):-1;
       note=best?`骨 ${best.n}個 を当てました`
                :"当ててみて筋の通る表がなかったので、骨なしのままにしました";
@@ -4036,6 +4119,7 @@ showToggle("showonly","only","t1only");
 showToggle("segcol","segColor","t1segcol");
 showToggle("spread","spread","t1spread");
 showToggle("segspread","segSpread","t1segspread");
+showToggle("guessbone","guessBone","t1guessbone");
 $("gouraud").checked=shading.gouraud;
 $("gouraud").onchange=e=>{
   shading.gouraud=e.target.checked; try{ localStorage.setItem("t1gouraud",shading.gouraud?"1":"0") }catch(_){}
@@ -4065,13 +4149,13 @@ BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.
 // ---- スマホの配置 ----
 const mobileMQ=matchMedia("(max-width:720px)");
 const shotOpt=$("shot-clear").closest("label"), gouraudOpt=$("gouraud-opt"), cropOpt=$("crop-opt"),
-      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt"), sspOpt=$("segspread-opt");
+      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt"), sspOpt=$("segspread-opt"), gbOpt=$("guessbone-opt");
 function applyLayout(){
   const m=mobileMQ.matches, stage=document.querySelector(".stage");
-  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,sspOpt,shotOpt,cropOpt);
-          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className="shot-opt"; $("bg-box").hidden=false }
-  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(sspOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
-          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=""; closeSheet() }
+  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,sspOpt,gbOpt,shotOpt,cropOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className="shot-opt"; $("bg-box").hidden=false }
+  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(gbOpt); $("shot-box").prepend(sspOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=""; closeSheet() }
   requestAnimationFrame(draw);
 }
 function openTab(t){
