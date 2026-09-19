@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.25.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.26.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2162,14 +2162,27 @@ function t1SegBoxes(d,o){
 function t1Diagnose(d){
   const offs=t1ObjectOffsets(d);
   const objs=offs.map(p=>readT1Object(d,p)).filter(o=>o&&o.ok);
-  let run=0; const why=[], solved=[];
+  const done=new Set(), why=[], solved=[];
+  // 1つ解けると「分かっているもの」が増えて次が解けるので、進まなくなるまで回す
+  for(let pass=0;pass<4;pass++){
+    const before=done.size;
+    for(const o of objs){
+      if(done.has(o.base)) continue;
+      const r=t1Run(d,o.base)||t1RunExtra(d,o.base);
+      if(r&&Math.abs(r.verts-o.nv)<=2){ done.add(o.base); if(r.solved) solved.push(r.solved); continue }
+    }
+    if(done.size===before&&pass>0) break;
+    if(done.size===objs.length) break;
+  }
+  // 最後まで読めなかった部品の理由は、回し終えてから集める
+  // （途中で集めると、あとで解けたものの理由まで残ってしまう）
   for(const o of objs){
+    if(done.has(o.base)) continue;
     const r=t1Run(d,o.base)||t1RunExtra(d,o.base);
-    if(r&&Math.abs(r.verts-o.nv)<=2){ run++; if(r.solved) solved.push(r.solved); continue }
     const w=r?`読んだ頂点 ${r.verts}個 とファイルの頂点 ${o.nv}個 が合わない`:t1RunWhy;
     if(w&&why.indexOf(w)<0) why.push(w);
   }
-  return {parts:objs.length,run,fail:objs.length-run,why,solved};
+  return {parts:objs.length,run:done.size,fail:objs.length-done.size,why,solved};
 }
 // 理由の「種類」だけを取り出す（位置や数を除いてまとめるため）
 function t1WhyKind(w){
@@ -2186,6 +2199,13 @@ function t1WhyKind(w){
 //  未知の大きさは引き算で出る（10と11のときと同じやり方）
 // ============================================================
 const T1_KNOWN_SIZE={8:20,9:24,10:12,11:16};
+// 引き算で分かった命令は覚えておく。未知が1つのときしか解けないので、
+// 1つ解けるたびに「分かっているもの」が増え、次が解けるようになる（雪だるま式）
+const T1_LEARNED={};
+function t1Learn(op,k){ T1_LEARNED[op]={size:k.size,n:k.n,nrm:k.nrm} }
+function t1SizeOf(op){
+  return T1_KNOWN_SIZE[op]||(T1_LEARNED[op]&&T1_LEARNED[op].size)||0;
+}
 // 面のバイトを消費せず、命令と枚数だけ数える。知らない命令も (命令,枚数) の
 // 8バイトだとみなして読み進める（8〜11 がその形なので、続きも同じはず）
 function t1ScanOps(d,base,limit){
@@ -2209,7 +2229,8 @@ function t1SolveSize(scan){
   if(!scan) return null;
   let known=0; const unknown=[];
   for(const [op,n] of scan.counts){
-    if(T1_KNOWN_SIZE[op]) known+=T1_KNOWN_SIZE[op]*n; else unknown.push([op,n]);
+    const sz=t1SizeOf(op);
+    if(sz) known+=sz*n; else unknown.push([op,n]);
   }
   if(unknown.length!==1) return null;
   const [op,n]=unknown[0], rest=scan.faceBytes-known;
@@ -2232,11 +2253,25 @@ function t1Layouts(size){
 }
 // 未知の命令を含む部品を、大きさと並べ方を当てながら読む
 function t1RunExtra(d,base,limit){
-  const sol=t1SolveSize(t1ScanOps(d,base,limit));
+  const scan=t1ScanOps(d,base,limit);
+  if(!scan) return null;
+  // 覚えている命令はそのまま使う
+  const extra={};
+  for(const op of Object.keys(T1_LEARNED)) extra[op]=T1_LEARNED[op];
+  // 覚えているだけで読めるなら、それで済ませる
+  if(Object.keys(extra).length){
+    const r0=t1Run(d,base,limit,extra);
+    if(r0&&r0.faceBytes===scan.faceBytes) return r0;
+  }
+  // まだ未知が1つ残っているなら、引き算で解く
+  const sol=t1SolveSize(scan);
   if(!sol) return null;
   for(const k of t1Layouts(sol.size)){
-    const r=t1Run(d,base,limit,{[sol.op]:k});
-    if(r&&r.faceBytes===t1ScanOps(d,base,limit).faceBytes) return Object.assign(r,{solved:{op:sol.op,size:sol.size,n:k.n,nrm:k.nrm}});
+    const r=t1Run(d,base,limit,Object.assign({},extra,{[sol.op]:k}));
+    if(r&&r.faceBytes===scan.faceBytes){
+      t1Learn(sol.op,k);
+      return Object.assign(r,{solved:{op:sol.op,size:sol.size,n:k.n,nrm:k.nrm}});
+    }
   }
   return null;
 }
@@ -2769,7 +2804,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.25.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.26.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -3572,6 +3607,9 @@ function sieveLines(s){
         }
         for(const [k,n] of [...sv].sort((a,b)=>b[1]-a[1]))
           L.push(`    割り出した: ${k}　${n}部品で一致`);
+        const kept=Object.keys(T1_LEARNED).sort((a,b)=>a-b);
+        if(kept.length) L.push("    覚えた命令: "+kept.map(op=>
+          `命令${op}=${T1_LEARNED[op].size}B(頂点${T1_LEARNED[op].n}${T1_LEARNED[op].nrm?"・法線あり":""})`).join(" "));
       }
       for(const [k,v] of [...byKind].sort((a,b)=>b[1].n-a[1].n)){
         L.push(`    ${v.n}件: ${k}`);
