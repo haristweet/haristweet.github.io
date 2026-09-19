@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.20.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.21.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -143,11 +143,13 @@ canvas:active{cursor:grabbing}
     <div data-tab="file"><p class="label">キャラクターを見分ける</p>
       <button class="btn wide" id="mdlgal">モデルを並べて見る</button>
       <p class="note" id="mdlnote">キャラクターのモデルを順に描いて、小さな絵にして並べます。形と色で誰が誰かを見分けるための道具です。絵を押すと、そのモデルに切り替わります。見出しの「命令」は命令の列として実行できた部品の数で、「推測」が付いているもの（橙色）は読み切れずに形が崩れています。</p>
+      <button class="btn wide" id="mdlsave" style="margin-top:6px">この一覧を画像で保存</button>
       <div id="mdlgrid" class="texgrid"></div>
     </div>
     <div data-tab="file"><p class="label">テクスチャ</p>
       <select id="texpick"></select>
       <p class="note" id="texnote">キャラクターの<b>体</b>には貼り先（UV）がなく、頂点の色だけで塗られています。テクスチャは<b>顔のパーツ（目・口）</b>や背景・文字に使われていて、体とは別に描かれます。「すべて並べて見る」で見比べられます。</p>
+      <button class="btn wide" id="texsave" style="margin-top:6px">この一覧を画像で保存</button>
       <div id="texgrid" class="texgrid"></div>
     </div>
     <div data-tab="file"><p class="label">メモリの写し（骨さがし）</p>
@@ -2673,7 +2675,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.20.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.21.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -3028,6 +3030,39 @@ $("src-seg").onclick=async e=>{
   fillTypeFilter(); renderFiles(); updateReport();
 };
 // ファイルの中に入っているモデルの選択（部分0＝本体、ほかは簡易版らしい）
+// ---- 並べた一覧を1枚の画像にして保存する ----
+// 画面を何度もスクリーンショットしなくて済むように、見出しごと1枚にまとめる
+function gridToPng(gridId,title,name){
+  const figs=[...$(gridId).querySelectorAll("figure")].filter(f=>f.querySelector("canvas"));
+  if(!figs.length) return false;
+  const CELL=132, CAP=32, PAD=10, HEAD=26;
+  const COLS=Math.max(1,Math.min(6,figs.length));
+  const rows=Math.ceil(figs.length/COLS);
+  const W=PAD+COLS*(CELL+PAD), H=PAD+HEAD+rows*(CELL+CAP+PAD);
+  const out=document.createElement("canvas"); out.width=W; out.height=H;
+  const g=out.getContext("2d");
+  g.fillStyle="#1e1d1b"; g.fillRect(0,0,W,H);
+  g.textBaseline="top";
+  g.fillStyle="#e8e4dc"; g.font="bold 14px sans-serif"; g.fillText(title,PAD,PAD);
+  figs.forEach((f,i)=>{
+    const cv=f.querySelector("canvas");
+    const cx=PAD+(i%COLS)*(CELL+PAD), cy=PAD+HEAD+((i/COLS)|0)*(CELL+CAP+PAD);
+    // 市松模様。透けている所が分かるように
+    for(let y=0;y<CELL;y+=12) for(let x=0;x<CELL;x+=12){
+      g.fillStyle=((x/12+y/12)&1)?"#2e2e2e":"#3a3a3a";
+      g.fillRect(cx+x,cy+y,Math.min(12,CELL-x),Math.min(12,CELL-y));
+    }
+    const sc=Math.min(CELL/cv.width,CELL/cv.height);
+    const w=Math.max(1,cv.width*sc), h=Math.max(1,cv.height*sc);
+    g.drawImage(cv,cx+(CELL-w)/2,cy+(CELL-h)/2,w,h);
+    g.font="11px sans-serif"; g.fillStyle="#bdb7ac";
+    (f.querySelector("figcaption").textContent||"").split("\n").slice(0,2)
+      .forEach((t,k)=>g.fillText(t,cx,cy+CELL+3+k*13));
+  });
+  out.toBlob(b=>saveBlob(b,name),"image/png");
+  return true;
+}
+
 // ---- キャラクターのモデルを並べて見る ----
 // どのファイルが誰なのかは、形と色を見比べるのが一番早い。
 // 署名つきで「語1 が 0x14 でない」ものがキャラクターのモデル（0x14 は小さい別物）
@@ -3136,6 +3171,14 @@ async function texAll(){
   }
   note.textContent=`${tex.length}件から ${drawn}枚（各ファイル先頭3枚まで）。同じ顔ぶれが並ぶので、どれが誰かを見比べられます`;
 }
+$("mdlsave").onclick=()=>{
+  if(!gridToPng("mdlgrid","トバルNo.1 モデル一覧",`tobal1_models_${state.entries.length}.png`))
+    $("mdlnote").textContent="先に「モデルを並べて見る」を押してください";
+};
+$("texsave").onclick=()=>{
+  if(!gridToPng("texgrid","トバルNo.1 テクスチャ一覧","tobal1_textures.png"))
+    $("texnote").textContent="先にテクスチャを選んでください";
+};
 $("texpick").onchange=async e=>{
   const i=+e.target.value, grid=$("texgrid"), note=$("texnote");
   grid.innerHTML="";
