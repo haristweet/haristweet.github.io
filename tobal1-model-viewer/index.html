@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.46.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.47.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1819,9 +1819,13 @@ function buildT1Mesh(d,objs){
                   return sp?[v[0]+sp[0],v[1]+sp[1],v[2]+sp[2]]:v };
     const C0=i=>{ const q=o.base+o.colPtr+i*4;
                   return q+2<d.length?[d[q]/255,d[q+1]/255,d[q+2]/255]:[.5,.5,.5] };
-    // 色の引き方は部品ごとに測って決める。頂点ごとでない部品を頂点番号で引くと模様が乱れる
-    const byCorner=cfit.get(o.base)==="面の頂点ごと";
-    let ci=0;
+    // 色の引き方は部品ごとに測って決める。頂点ごとでない部品を頂点番号で引くと模様が乱れる。
+    //   頂点ごと     … 頂点番号で引く
+    //   面の頂点ごと … 面を描きながら、頂点1つにつき1つ進める
+    //   面に1色     … 面1枚につき1色。3つの角とも同じ色になる（べた塗り）
+    const cmode=cfit.get(o.base)||"頂点ごと";
+    const byCorner=cmode==="面の頂点ごと", byFace=cmode==="面に1色";
+    let ci=0, fi=0;
     const far=(i,seg)=>V0(i,seg).some(v=>Math.abs(v)>T1_MAX_COORD);
     void far;
     // まず部品を「命令の列」として実行する（実行ファイルのコードから読み取った本物の手順）
@@ -1835,13 +1839,14 @@ function buildT1Mesh(d,objs){
         if(skipPart) continue;
         if(t1Show.segOnly>=0&&(f.seg|0)!==t1Show.segOnly) continue;
         const a=f.idx;
-        const cbase=ci; ci+=a.length;          // 面ごとに色が並んでいるときの引き位置
+        const cbase=ci; ci+=a.length;          // 面の頂点ごとに色が並んでいるときの引き位置
+        const cface=fi++;                      // 面に1色のときの引き位置
         if(a.some(i=>far(i,f.seg))){ dropped++; continue }
         const strip=a.length===4?[[0,1,2],[0,2,3]]:[[0,1,2]];
         for(const t of strip){
           const sc=t1Show.segColor?T1_SEG_COL[(f.seg||0)%T1_SEG_COL.length]:null;
           for(const j of t){ pos.push(...V0(a[j],f.seg));
-            col.push(...(sc||C0(byCorner?cbase+j:a[j]))); t0.push(0,0,0); t1.push(0,0,0,0) }
+            col.push(...(sc||C0(byFace?cface:byCorner?cbase+j:a[j]))); t0.push(0,0,0); t1.push(0,0,0,0) }
           if(f.n) nrm.push(...up(f.n[0],f.n[1],f.n[2])); else nrm.push(0,0,0);
           sm.push(1); tris++;
         }
@@ -2914,7 +2919,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.46.0";
+const VERSION="v3.47.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
