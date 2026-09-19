@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.19.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.20.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -142,7 +142,7 @@ canvas:active{cursor:grabbing}
     </div>
     <div data-tab="file"><p class="label">キャラクターを見分ける</p>
       <button class="btn wide" id="mdlgal">モデルを並べて見る</button>
-      <p class="note" id="mdlnote">キャラクターのモデルを順に描いて、小さな絵にして並べます。形と色で誰が誰かを見分けるための道具です。絵を押すと、そのモデルに切り替わります。</p>
+      <p class="note" id="mdlnote">キャラクターのモデルを順に描いて、小さな絵にして並べます。形と色で誰が誰かを見分けるための道具です。絵を押すと、そのモデルに切り替わります。見出しの「命令」は命令の列として実行できた部品の数で、「推測」が付いているもの（橙色）は読み切れずに形が崩れています。</p>
       <div id="mdlgrid" class="texgrid"></div>
     </div>
     <div data-tab="file"><p class="label">テクスチャ</p>
@@ -2355,6 +2355,11 @@ function buildModelInner(raw,info){
     const objs=offs.map((p,i)=>{ const o=readT1Object(b.out,p); if(o) o.group=offs.group?offs.group[i]:0; return o }).filter(Boolean);
     const okObjs=objs.filter(o=>o.ok);
     info.t1Parts=`${okObjs.length}/${objs.length} 部品`;
+    // どの部品が「命令の列として実行できた」かを数える。
+    // 実行できず当てずっぽうに落ちた部品が多いモデルは、絵がぐちゃぐちゃになる
+    { let run=0, guess=0;
+      for(const o of okObjs){ if(o.run) run++; else if(o.walk) guess++ }
+      info.t1Read={run,guess,total:okObjs.length}; }
     // テクスチャを貼れるかどうかを、面のバイトの内訳から判定して出す
     { const big=okObjs.slice().sort((a,b)=>b.nv-a.nv)[0];
       const R=big&&t1Run(b.out,big.base);
@@ -2668,7 +2673,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.19.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.20.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2872,6 +2877,8 @@ function updateReport(){
     if(inf.t1Prof) L.push(inf.t1Prof);
     if(inf.t1Groups) L.push(inf.t1Groups);
     if(inf.t1UV) L.push(inf.t1UV);
+    if(inf.t1Read) L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個`
+      +(inf.t1Read.guess?`／当てずっぽう ${inf.t1Read.guess}個（ここが多いと形が崩れる）`:"（全部きちんと読めています）"));
     if(inf.t1Seg) L.push(...inf.t1Seg);
     if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
@@ -3063,7 +3070,12 @@ $("mdlgal").onclick=async()=>{
       upload(mesh); draw();
       const cv=grabThumb(132); if(!cv) continue;
       const fig=document.createElement("figure"), cap=document.createElement("figcaption");
-      cap.textContent=`#${e.no}　sector ${e.sector}`;
+      const r=info.t1Read;
+      cap.textContent=`#${e.no}　sector ${e.sector}`
+        +`\n三角形 ${info.tris}`
+        +(r?`　命令${r.run}`+(r.guess?`／推測${r.guess}`:""):"");
+      cap.style.whiteSpace="pre-line";
+      if(r&&r.guess) cap.style.color="#c2683f";   // 当てずっぽうが混じるものは目立たせる
       cv.style.cursor="pointer";
       cv.onclick=()=>{ const i=state.entries.indexOf(e); if(i>=0) selectEntry(i) };
       fig.append(cv,cap); grid.append(fig); n++;
