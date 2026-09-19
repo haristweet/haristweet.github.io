@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.32.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.33.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2698,7 +2698,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.32.0";
+const VERSION="v3.33.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4204,12 +4204,27 @@ const PSX_RAM=0x200000, PSX_TEXT=0x10000;
 // 実行ファイルの先頭は起動後に書き換わっていることがあるので、手がかりを何か所か試す。
 // exe の +0x800 が RAM の 0x10000 にあたるので、そこからのずれをそのまま使う
 const RAM_NEEDLES=[0x800,0x10800,0x20800,0x40800,0x60800];
-function findPsxRam(buf,exe){
-  if(!buf||!exe||exe.length<0x900||buf.length<0x1000) return -1;
+// 64バイト一致しただけでは、たまたま同じ並びの別の場所かもしれない。
+// 先頭を仮に決めたら、実行ファイルの中身を何か所も突き合わせて確かめる。
+// 起動後に書き換わる場所もあるので、100% は求めず、割合で見る
+function memBaseScore(buf,base,exe){
+  if(base<0||base+PSX_TEXT+0x1000>buf.length) return 0;
+  let same=0, seen=0;
+  for(let at=0x800;at+256<=exe.length&&at<0x100000;at+=0x2000){
+    const q=base+PSX_TEXT+(at-0x800);
+    if(q+256>buf.length) break;
+    for(let k=0;k<256;k++){ seen++; if(buf[q+k]===exe[at+k]) same++ }
+  }
+  return seen?same/seen:0;
+}
+// 一致した場所を全部拾って、いちばん確からしいものを選ぶ
+function findPsxRamAll(buf,exe){
+  if(!buf||!exe||exe.length<0x900||buf.length<0x1000) return [];
+  const out=[], seen=new Set();
   for(const at of RAM_NEEDLES){
     if(at+64>exe.length) continue;
     const need=exe.subarray(at,at+64);
-    const ramOff=PSX_TEXT+(at-0x800);            // その中身が RAM のどこにあるはずか
+    const ramOff=PSX_TEXT+(at-0x800);
     const last=buf.length-need.length;
     for(let p=0;p<=last;p++){
       if(buf[p]!==need[0]) continue;
@@ -4217,10 +4232,18 @@ function findPsxRam(buf,exe){
       for(let k=1;k<need.length;k++) if(buf[p+k]!==need[k]){ hit=false; break }
       if(!hit) continue;
       const base=p-ramOff;
-      if(base>=0&&base+0x100000<=buf.length) return base;   // 1MB ぶんは入っていること
+      if(base<0||base+0x100000>buf.length) continue;
+      if(seen.has(base)) continue;
+      seen.add(base);
+      out.push({base,score:memBaseScore(buf,base,exe)});
     }
   }
-  return -1;
+  out.sort((a,b)=>b.score-a.score);
+  return out;
+}
+function findPsxRam(buf,exe){
+  const all=findPsxRamAll(buf,exe);
+  return all.length?all[0].base:-1;
 }
 // ---- 圧縮されたセーブステートをほどく ----
 // DuckStation は既定でセーブステートを圧縮する。ブラウザが自前でほどけるのは
@@ -4381,28 +4404,40 @@ function memMatrixRuns(buf,base,minN){
   return out;
 }
 // (2) 行列を指す位置が並んでいるところ（表A の形）
+//  命令5 のコードは「0 なら飛ばす」（beq $t5,$zero）ので、表には空の骨が混ざる。
+//  0 で打ち切ると、そこから先が見えなくなる。0 は「骨なし」として run に入れる
 function memMatrixPtrTables(buf,base,minN){
   const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
   const R=memReader(buf,base);
-  const out=[]; let run=[], start=0;
+  const out=[]; let run=[], hits=0, start=0;
   const end=Math.min(buf.length,base+0x200000);
+  const flush=()=>{
+    // 末尾の空きは表の外なので落とす
+    while(run.length&&run[run.length-1]<0) run.pop();
+    if(hits>=(minN||MEM_MIN_BONES)&&run.length)
+      out.push({at:start-base,n:run.length,hits,offs:run.slice(),kind:"位置の表"});
+    run=[]; hits=0;
+  };
   for(let p=base;p+4<=end;p+=4){
     const v=dv.getUint32(p,true)>>>0;
     let ok=false, off=-1;
     if(R.ptr(v)){ off=base+(v&0x1fffff);
       if(off+MAT_SIZE<=buf.length) ok=matrixOK(readMatrix(dv,off,MAT_FORMS[0])); }
-    if(ok){ if(!run.length) start=p; run.push(off) }
-    else { if(run.length>=(minN||MEM_MIN_BONES)) out.push({at:start-base,n:run.length,offs:run.slice(),kind:"位置の表"});
-           run=[] }
+    if(ok){ if(!run.length) start=p; run.push(off); hits++ }
+    else if(v===0&&run.length&&run.length<256) run.push(-1);   // 空の骨
+    else flush();
   }
-  if(run.length>=(minN||MEM_MIN_BONES)) out.push({at:start-base,n:run.length,offs:run.slice(),kind:"位置の表"});
+  flush();
   return out;
 }
 // 見つけたところから、行列そのものを取り出す
 function memBonesAt(buf,base,hit){
   const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
   const list=[];
-  if(hit.offs) for(const o of hit.offs) list.push(readMatrix(dv,o,MAT_FORMS[0]));
+  // 空の骨（表の中の 0）は、何もしない行列として置く
+  const ID={m:[4096,0,0,0,4096,0,0,0,4096],t:[0,0,0],one:4096,empty:true};
+  if(hit.offs) for(const o of hit.offs)
+    list.push(o<0?{m:ID.m.slice(),t:[0,0,0],one:4096,empty:true}:readMatrix(dv,o,MAT_FORMS[0]));
   else for(let k=0;k<hit.n;k++) list.push(readMatrix(dv,base+hit.at+k*MAT_SIZE,MAT_FORMS[0]));
   for(const M of list) matrixOK(M);           // 目盛り（1.0 がいくつか）を入れる
   return list;
@@ -4417,13 +4452,19 @@ function memPickBones(hits,segs){
 }
 // メモリから骨をさがして、結果を1行ずつにする
 function memBoneHunt(buf,exe,segs){
-  const base=findPsxRam(buf,exe);
-  if(base<0) return {base:-1,hits:[],lines:["  メモリの中に RAM の先頭が見つかりませんでした"]};
+  const all=findPsxRamAll(buf,exe);
+  if(!all.length) return {base:-1,hits:[],lines:["  メモリの中に RAM の先頭が見つかりませんでした"]};
+  const base=all[0].base;
+  const L=[`  RAM の先頭の候補 ${all.length}件（実行ファイルとの一致率）:`];
+  for(const a of all.slice(0,4))
+    L.push(`    +0x${a.base.toString(16)}　一致 ${Math.round(a.score*1000)/10}%${a.base===base?"　← 使う":""}`);
+  if(all[0].score<0.5)
+    L.push("    ※ 一致率が低い。RAM の先頭を取り違えている見込みが高い");
   const hits=memMatrixPtrTables(buf,base).concat(memMatrixRuns(buf,base));
-  hits.sort((a,b)=>b.n-a.n);
-  const L=[`  メモリの中の骨さがし: ${hits.length}か所`];
+  hits.sort((a,b)=>(b.hits||b.n)-(a.hits||a.n));
+  L.push(`  メモリの中の骨さがし: ${hits.length}か所`);
   for(const h of hits.slice(0,8))
-    L.push(`    ${h.kind} +0x${h.at.toString(16)}　${h.n}個`);
+    L.push(`    ${h.kind} +0x${h.at.toString(16)}　${h.n}個${h.hits&&h.hits!==h.n?`（うち中身あり ${h.hits}個）`:""}`);
   if(!hits.length) L.push("    行列の並びは見つかりませんでした");
   // 候補ごとに行列そのものも取り出しておく。どれを使うかは「当ててみて」決める
   const cands=hits.slice(0,16).map(h=>Object.assign({},h,{list:memBonesAt(buf,base,h)}));
