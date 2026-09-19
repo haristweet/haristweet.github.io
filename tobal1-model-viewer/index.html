@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.54.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.55.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3037,7 +3037,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.54.0";
+const VERSION="v3.55.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4013,6 +4013,10 @@ $("mdlgal").onclick=async()=>{
   grid.innerHTML="";
   const list=galleryEntries(32);
   state.segGal=false;
+  // 一覧は見比べるための道具なので、角度を揃える。
+  // 見る人が回した向きのままだと、肩の上が見えたり潰れたりして比べられない
+  const keepView={yaw:view.yaw,pitch:view.pitch,dist:view.dist,pan:view.pan.slice()};
+  view.yaw=0; view.pitch=0.08; view.dist=1; view.pan=[0,0,0];
   const whyAll=[], made=[]; let n=0;
   for(let k=0;k<list.length;k++){
     const e=list[k];
@@ -4041,6 +4045,7 @@ $("mdlgal").onclick=async()=>{
   // 同じ形（三角形の数も部品の数も同じ）のものは、同一キャラの色違い。
   // 40体がいくつのキャラに畳めるかは、名前を当てるときの手がかりになる
   state.galGroups=labelCharGroups(made);
+  Object.assign(view,keepView);            // 見る人の向きは戻す
   state.galWhy=whyAll;
   note.textContent=`${n}体を並べました。絵を押すと、そのモデルに切り替わります`
     +(whyAll.length?`　読めないものが ${whyAll.length}体（理由は「解析」に出ています）`:"");
@@ -4126,6 +4131,8 @@ $("seggal").onclick=async()=>{
     if(m) sizes.set(+m[1],{n:+m[2],wh:m[3]});
   }
   let made=0;
+  const keepView2={yaw:view.yaw,pitch:view.pitch,dist:view.dist,pan:view.pan.slice()};
+  view.yaw=0; view.pitch=0.08; view.dist=1; view.pan=[0,0,0];
   try{
     const raw=await readFull(e);
     // まずモデル全体でカメラを合わせ、以後は合わせ直さない。
@@ -4146,6 +4153,7 @@ $("seggal").onclick=async()=>{
       fig.append(cv,cap); grid.append(fig); made++;
     }
   }catch(err){ note.textContent="区切りを描けませんでした: "+err.message }
+  Object.assign(view,keepView2);
   t1Show.segOnly=keep.only; t1Show.segSpread=keep.spread; t1Show.segColor=keep.col; t1Show.segPart=-1;
   await selectEntry(state.sel);
   state.segGal=true;
