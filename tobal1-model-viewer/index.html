@@ -62,6 +62,11 @@ canvas:active{cursor:grabbing}
 /* 窓が狭いと背景の丸とぶつかるので、折り返して逃がす */
 .shot{position:absolute;right:12px;top:12px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;align-items:center;color:rgba(255,255,255,.75);font-size:12px;max-width:calc(100% - 280px)}
 .shot label{display:flex;gap:4px;align-items:center;cursor:pointer}
+/* 調べた結果を画面に重ねて出す。貼り付けなくてもスクショだけで分かるように */
+.hud{position:absolute;left:12px;bottom:44px;max-width:min(560px,calc(100% - 24px));
+  font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(255,255,255,.82);
+  background:rgba(0,0,0,.38);padding:6px 9px;border-radius:8px;white-space:pre-wrap;pointer-events:none}
+.stage.light .hud{color:rgba(0,0,0,.78);background:rgba(255,255,255,.55)}
 .shot button{all:unset;cursor:pointer;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:6px 10px;font-size:12px}
 .shot button:hover{background:rgba(255,255,255,.24)}
 .hint{position:absolute;right:14px;bottom:12px;color:rgba(255,255,255,.55);font-size:12px;pointer-events:none}
@@ -118,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.51.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.52.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -193,6 +198,7 @@ canvas:active{cursor:grabbing}
   </aside>
   <section class="stage">
     <canvas id="gl"></canvas>
+    <div class="hud" id="hud" hidden></div>
     <div class="bgs" id="bg-box" hidden aria-label="背景の色"></div>
     <div class="shot" id="shot-box" hidden>
       <label id="gouraud-opt"><input type="checkbox" id="gouraud"> なめらかな陰影</label>
@@ -202,6 +208,7 @@ canvas:active{cursor:grabbing}
       <label id="spread-opt"><input type="checkbox" id="spread"> 部品を並べる</label>
       <label id="segspread-opt"><input type="checkbox" id="segspread"> 骨の区切りごとに並べる</label>
       <label id="guessbone-opt"><input type="checkbox" id="guessbone"> 仮の骨組みで左右に開く（推測）</label>
+      <label id="hud-opt"><input type="checkbox" id="hudon" checked> 調べた結果を画面に出す</label>
       <label id="gbamt-opt">開く量 <input type="range" id="gbamt" min="0" max="120" value="60" step="5"><span id="gbamt-v">0.60</span></label>
       <button class="btn" id="viewreset" style="margin-left:6px">見た目をふつうに戻す</button>
       <label><input type="checkbox" id="shot-clear"> 背景なし</label>
@@ -3025,7 +3032,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.51.0";
+const VERSION="v3.52.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3391,7 +3398,7 @@ async function selectEntry(i){
     state.selErr=err.message; state.selInfo=err.info||null; console.error(err);
     clearMesh(); draw();
   }
-  busy(""); updateStatus(); updateReport(); fillT1Part(state.selInfo);
+  busy(""); updateStatus(); updateReport(); updateHud(); fillT1Part(state.selInfo);
 }
 // モデル候補を順に開いて、最初に三角形が出たものを表示する
 async function selectFirstModel(limit=16){
@@ -3435,6 +3442,24 @@ function fileBase(){
 // 毎回同じ内容なのに何百行にもなる。読む側の手間と、貼るときの量を減らすため、
 // 要るときだけ出す（覚えておく）
 function repLong(){ const c=$("rep-long"); return !!(c&&c.checked) }
+// 調べた結果を画面に重ねて出す。
+// 報告を貼ってもらわなくても、スクショ1枚で今どう読めているかが分かるように
+function updateHud(){
+  const box=$("hud"), on=$("hudon");
+  if(!box) return;
+  if(on&&!on.checked){ box.hidden=true; return }
+  const inf=state.selInfo, e=state.entries[state.sel];
+  if(!inf||!e){ box.hidden=true; return }
+  const L=[];
+  L.push(`#${e.no} sector ${e.sector}　三角形 ${inf.tris||0}`);
+  if(inf.t1Read) L.push(`部品 ${inf.t1Read.run}/${inf.t1Read.total} 命令の列として実行`
+    +(inf.t1Segs?`　骨の区切り ${inf.t1Segs}`:"")
+    +(T1_BONES?`　骨 ${T1_BONES.length} を当てている`:""));
+  if(inf.t1Color) L.push(inf.t1Color.trim());
+  for(const x of (inf.t1ColorLines||[]).slice(0,2)) L.push(x);
+  box.textContent=L.join("\n");
+  box.hidden=false;
+}
 // 作者に送るぶんだけを集めた、短いまとめ。
 // 毎回同じ内容（実行ファイルの逆アセンブル、ファイルの一覧、生のバイト列）は入れない。
 // 入れるのは「前回と変わりうるもの」＝読めた数・読めない理由・数え上げ・覚えたことだけ
@@ -4302,6 +4327,9 @@ showToggle("segcol","segColor","t1segcol");
 showToggle("spread","spread","t1spread");
 showToggle("segspread","segSpread","t1segspread");
 showToggle("guessbone","guessBone","t1guessbone");
+try{ const h=$("hudon"); if(h){ try{ h.checked=localStorage.getItem("t1hud")!=="0" }catch(_){}
+  h.onchange=()=>{ try{ localStorage.setItem("t1hud",h.checked?"1":"0") }catch(_){} updateHud() };
+  updateHud() } }catch(_){}
 // 切り替えを増やしすぎた。1つ押せばふつうの見た目に戻せるようにする。
 // 調べもの用の切り替え（並べる・色分け・読めない部品も出す）を全部切る
 $("viewreset").onclick=()=>{
@@ -4352,13 +4380,13 @@ BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.
 // ---- スマホの配置 ----
 const mobileMQ=matchMedia("(max-width:720px)");
 const shotOpt=$("shot-clear").closest("label"), gouraudOpt=$("gouraud-opt"), cropOpt=$("crop-opt"),
-      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt"), sspOpt=$("segspread-opt"), gbOpt=$("guessbone-opt"), gaOpt=$("gbamt-opt"), vrBtn=$("viewreset");
+      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt"), sspOpt=$("segspread-opt"), gbOpt=$("guessbone-opt"), gaOpt=$("gbamt-opt"), vrBtn=$("viewreset"), hudOpt=$("hud-opt");
 function applyLayout(){
   const m=mobileMQ.matches, stage=document.querySelector(".stage");
-  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,sspOpt,gbOpt,gaOpt,vrBtn,shotOpt,cropOpt);
-          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=gaOpt.className="shot-opt"; $("bg-box").hidden=false }
-  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(vrBtn); $("shot-box").prepend(gaOpt); $("shot-box").prepend(gbOpt); $("shot-box").prepend(sspOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
-          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=gaOpt.className=""; closeSheet() }
+  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,sspOpt,gbOpt,gaOpt,vrBtn,hudOpt,shotOpt,cropOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=gaOpt.className=hudOpt.className="shot-opt"; $("bg-box").hidden=false }
+  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(hudOpt); $("shot-box").prepend(vrBtn); $("shot-box").prepend(gaOpt); $("shot-box").prepend(gbOpt); $("shot-box").prepend(sspOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=gaOpt.className=hudOpt.className=""; closeSheet() }
   requestAnimationFrame(draw);
 }
 function openTab(t){
