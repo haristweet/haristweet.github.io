@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.29.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.30.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1711,13 +1711,22 @@ function buildT1Mesh(d,objs){
       o.box=mn.map((v,a)=>`${v}..${mx[a]}`).join(" "); o.span=Math.max(...mx.map((v,a)=>v-mn[a])); }
     const up=(T1_UP[t1Show.up]||T1_UP[0]).f;
     const sp=lay?lay.get(o):null;
-    const V0=i=>{ const v=up(dv.getInt16(o.base+o.vertPtr+i*8,true),
-                             dv.getInt16(o.base+o.vertPtr+i*8+2,true),
-                             dv.getInt16(o.base+o.vertPtr+i*8+4,true));
+    // 頂点は「その骨のローカル座標」で入っている。骨の行列が分かっていれば
+    // ここでかける。無ければそのまま（手足が胴に畳み込まれた形になる）
+    const BM=T1_BONES;
+    const V0=(i,seg)=>{ const q=o.base+o.vertPtr+i*8;
+                  let x=dv.getInt16(q,true), y=dv.getInt16(q+2,true), z=dv.getInt16(q+4,true);
+                  const M=BM&&BM[(seg|0)%BM.length];
+                  if(M){ const k=M.one||4096;
+                    const X=(M.m[0]*x+M.m[1]*y+M.m[2]*z)/k+M.t[0];
+                    const Y=(M.m[3]*x+M.m[4]*y+M.m[5]*z)/k+M.t[1];
+                    const Z=(M.m[6]*x+M.m[7]*y+M.m[8]*z)/k+M.t[2];
+                    x=X; y=Y; z=Z }
+                  const v=up(x,y,z);
                   return sp?[v[0]+sp[0],v[1]+sp[1],v[2]+sp[2]]:v };
     const C0=i=>{ const q=o.base+o.colPtr+i*4;
                   return q+2<d.length?[d[q]/255,d[q+1]/255,d[q+2]/255]:[.5,.5,.5] };
-    const far=i=>V0(i).some(v=>Math.abs(v)>T1_MAX_COORD);
+    const far=(i,seg)=>V0(i,seg).some(v=>Math.abs(v)>T1_MAX_COORD);
     void far;
     // まず部品を「命令の列」として実行する（実行ファイルのコードから読み取った本物の手順）
     const R=o.run;
@@ -1725,11 +1734,11 @@ function buildT1Mesh(d,objs){
       const before=tris;
       for(const f of R.faces){
         const a=f.idx;
-        if(a.some(far)){ dropped++; continue }
+        if(a.some(i=>far(i,f.seg))){ dropped++; continue }
         const strip=a.length===4?[[0,1,2],[0,2,3]]:[[0,1,2]];
         for(const t of strip){
           const sc=t1Show.segColor?T1_SEG_COL[(f.seg||0)%T1_SEG_COL.length]:null;
-          for(const j of t){ pos.push(...V0(a[j])); col.push(...(sc||C0(a[j]))); t0.push(0,0,0); t1.push(0,0,0,0) }
+          for(const j of t){ pos.push(...V0(a[j],f.seg)); col.push(...(sc||C0(a[j]))); t0.push(0,0,0); t1.push(0,0,0,0) }
           if(f.n) nrm.push(...up(f.n[0],f.n[1],f.n[2])); else nrm.push(0,0,0);
           sm.push(1); tris++;
         }
@@ -2100,6 +2109,9 @@ const T1_CMD_LEN={0:0,1:12,2:16,3:8,4:16,5:4,6:8,7:12};
 const T1_FACE_OP={8:{size:20,n:3,nrm:true},9:{size:24,n:4,nrm:true},
                   10:{size:12,n:3,nrm:false},11:{size:16,n:4,nrm:false}};
 const T1_SLOTS=256;
+// メモリから取れた骨の行列。区切り（命令5）の番号で引く。null なら骨なしで描く
+let T1_BONES=null;
+function t1SetBones(list){ T1_BONES=(list&&list.length)?list:null }
 // 頂点を置き場所に入れる命令の「読み方」。既定は「1と2だけが入れる／語1が置き場所／語2が個数」。
 // これで読めない部品があるので、別の読み方も用意して、合うものを探して覚える
 const T1_VAR0={};
@@ -2622,7 +2634,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.29.0";
+const VERSION="v3.30.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -2727,6 +2739,8 @@ function buildModelInner(raw,info){
         if(bigO&&bigO.run){
           const S=t1SegBoxes(b.out,bigO);
           if(S){
+            // 区切りの数＝要る骨の数。メモリから表を選ぶときの手がかりになる
+            info.t1Segs=Math.max(...S.map(x=>x.seg))+1;
             info.t1Seg=[`  骨ごとの置き場所（部品 +${hex(bigO.base,4)}、命令5で区切る、${S.length}区切り）:`,
               `    区切りが小さくまとまっていれば、部品は別々の座標系にあり行列で運ぶ必要がある`];
             S.slice(0,24).forEach(x=>info.t1Seg.push(
@@ -3022,6 +3036,7 @@ function digestLines(){
     if(inf.t1Read&&inf.t1Read.run!=null)
       L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個／当てずっぽう ${inf.t1Read.guess}個`
         +(inf.t1Read.vari&&inf.t1Read.vari!=="既定"?`／頂点を入れる読み方: ${inf.t1Read.vari}`:""));
+    if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`+(T1_BONES?`／骨 ${T1_BONES.length}個 を当てている`:"／骨はまだ無い"));
     for(const w of (inf.t1Read&&inf.t1Read.why)||[]) L.push(`    読めない理由: ${w}`);
     for(const a of (inf.t1Read&&inf.t1Read.audit)||[]) L.push(`    読めなかった部品: ${a}`);
   }
@@ -3262,6 +3277,9 @@ function updateReport(){
     if(inf.t1UV) L.push(inf.t1UV);
     if(inf.t1Read) L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個`
       +(inf.t1Read.guess?`／当てずっぽう ${inf.t1Read.guess}個（ここが多いと形が崩れる）`:"（全部きちんと読めています）"));
+    if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`
+      +(T1_BONES?`　メモリから取った骨 ${T1_BONES.length}個 を当てています`
+               :`　骨の行列がまだ無いので、手足は胴に畳み込まれたまま出ます`));
     if(inf.t1Read&&inf.t1Read.vari&&inf.t1Read.vari!=="既定")
       L.push(`    頂点を入れる命令の読み方: ${inf.t1Read.vari}`);
     if(inf.t1Read&&inf.t1Read.why&&inf.t1Read.why.length)
@@ -3601,8 +3619,16 @@ $("memfile").onchange=async e=>{
     let buf=new Uint8Array(await f.arrayBuffer());
     const exe=state.src&&state.src.exe;
     const prep=await memPrepare(buf,exe);
-    state.mem=[`メモリの写し: ${f.name}（${fmtSize(f.size)}）${prep.note}`,...memBoneLines(prep.buf,exe)];
-    st.textContent=`${f.name} を読みました。結果は「解析」に出ています。`;
+    // いま選んでいるモデルの区切りの数に合う骨の表を探して、そのまま使う
+    const segs=(state.selInfo&&state.selInfo.t1Segs)||0;
+    const hunt=memBoneHunt(prep.buf,exe,segs);
+    t1SetBones(hunt.list);
+    state.mem=[`メモリの写し: ${f.name}（${fmtSize(f.size)}）${prep.note}`,
+               ...hunt.lines,...memBoneLines(prep.buf,exe)];
+    st.textContent=hunt.list
+      ? `${f.name} から骨を ${hunt.list.length}個 取りました。モデルに当てています。`
+      : `${f.name} を読みましたが、骨の並びは見つかりませんでした。結果は「解析」に出ています。`;
+    if(state.sel>=0) selectEntry(state.sel);            // 骨をかけて組み立て直す
   }catch(err){ console.error(err); state.mem=["メモリの写しを読めませんでした: "+err.message];
     st.textContent="読めませんでした: "+err.message }
   updateReport(); openTab("info");
@@ -4195,6 +4221,80 @@ function memBoneLines(buf,exe){
     L.push("    生のバイト: "+hx(cur,32));
   }
   return L;
+}
+
+// ============================================================
+//  メモリの中から「骨の行列」を探す
+//
+//  命令5 は 0x800CBE90 の表から次の行列を引いてくる。ところがこの2つの番地は
+//  描いている最中に進められるカーソルで、保存した瞬間の値はあてにならない。
+//  そこで番地に頼らず、RAM 全体から
+//    (1) 32バイトの行列がずらりと並んでいる場所
+//    (2) 行列を指す位置がずらりと並んでいる場所（表A はこちらの形）
+//  を探す。回転行列は「3本の行の長さがそろっていて互いに直角」という
+//  きつい条件を満たすので、でたらめなバイト列が紛れ込むことはまずない
+// ============================================================
+const MEM_MIN_BONES=6;
+// (1) 行列がそのまま並んでいるところ
+function memMatrixRuns(buf,base,minN){
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+  const out=[]; let run=0, start=0;
+  for(let p=base;p+MAT_SIZE<=buf.length;p+=MAT_SIZE){
+    const M=readMatrix(dv,p,MAT_FORMS[0]);
+    if(matrixOK(M)){ if(!run) start=p; run++ }
+    else { if(run>=(minN||MEM_MIN_BONES)) out.push({at:start-base,n:run,kind:"並び"}); run=0 }
+  }
+  if(run>=(minN||MEM_MIN_BONES)) out.push({at:start-base,n:run,kind:"並び"});
+  return out;
+}
+// (2) 行列を指す位置が並んでいるところ（表A の形）
+function memMatrixPtrTables(buf,base,minN){
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+  const R=memReader(buf,base);
+  const out=[]; let run=[], start=0;
+  const end=Math.min(buf.length,base+0x200000);
+  for(let p=base;p+4<=end;p+=4){
+    const v=dv.getUint32(p,true)>>>0;
+    let ok=false, off=-1;
+    if(R.ptr(v)){ off=base+(v&0x1fffff);
+      if(off+MAT_SIZE<=buf.length) ok=matrixOK(readMatrix(dv,off,MAT_FORMS[0])); }
+    if(ok){ if(!run.length) start=p; run.push(off) }
+    else { if(run.length>=(minN||MEM_MIN_BONES)) out.push({at:start-base,n:run.length,offs:run.slice(),kind:"位置の表"});
+           run=[] }
+  }
+  if(run.length>=(minN||MEM_MIN_BONES)) out.push({at:start-base,n:run.length,offs:run.slice(),kind:"位置の表"});
+  return out;
+}
+// 見つけたところから、行列そのものを取り出す
+function memBonesAt(buf,base,hit){
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+  const list=[];
+  if(hit.offs) for(const o of hit.offs) list.push(readMatrix(dv,o,MAT_FORMS[0]));
+  else for(let k=0;k<hit.n;k++) list.push(readMatrix(dv,base+hit.at+k*MAT_SIZE,MAT_FORMS[0]));
+  for(const M of list) matrixOK(M);           // 目盛り（1.0 がいくつか）を入れる
+  return list;
+}
+// 骨の数がモデルの区切りの数に近いものを選ぶ。
+// 区切りより少ない表では足りないので、まず「足りるもの」の中から、いちばん近いもの
+function memPickBones(hits,segs){
+  if(!hits||!hits.length) return null;
+  const enough=hits.filter(h=>h.n>=segs);
+  const pool=enough.length?enough:hits;
+  return pool.slice().sort((a,b)=>Math.abs(a.n-segs)-Math.abs(b.n-segs)||b.n-a.n)[0];
+}
+// メモリから骨をさがして、結果を1行ずつにする
+function memBoneHunt(buf,exe,segs){
+  const base=findPsxRam(buf,exe);
+  if(base<0) return {base:-1,hits:[],lines:["  メモリの中に RAM の先頭が見つかりませんでした"]};
+  const hits=memMatrixPtrTables(buf,base).concat(memMatrixRuns(buf,base));
+  hits.sort((a,b)=>b.n-a.n);
+  const L=[`  メモリの中の骨さがし: ${hits.length}か所`];
+  for(const h of hits.slice(0,8))
+    L.push(`    ${h.kind} +0x${h.at.toString(16)}　${h.n}個`);
+  if(!hits.length) L.push("    行列の並びは見つかりませんでした");
+  const pick=memPickBones(hits,segs||0);
+  if(pick) L.push(`  使うもの: ${pick.kind} +0x${pick.at.toString(16)}　${pick.n}個（モデルの区切りは ${segs||"?"}個）`);
+  return {base,hits,pick,lines:L,list:pick?memBonesAt(buf,base,pick):null};
 }
 // ============================================================
 //  トバルNo.1 のテクスチャを絵にする
