@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.33.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.34.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2698,7 +2698,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.33.0";
+const VERSION="v3.34.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3108,7 +3108,7 @@ function digestLines(){
     for(const a of (inf.t1Read&&inf.t1Read.audit)||[]) L.push(`    読めなかった部品: ${a}`);
   }
   if(state.mem&&state.mem.length){
-    L.push(""); L.push(...state.mem.filter(x=>/骨|メモリの写し|収まった/.test(x)).slice(0,12));
+    L.push(""); L.push(...state.mem.filter(x=>/骨|メモリの写し|収まった|RAM|一致|読める場所/.test(x)).slice(0,16));
   }
   if(state.galGroups&&state.galGroups.length){
     L.push(""); L.push("同じ形でまとめた結果:"); L.push(...state.galGroups);
@@ -4392,15 +4392,32 @@ function memBoneLines(buf,exe){
 // ============================================================
 const MEM_MIN_BONES=6;
 // (1) 行列がそのまま並んでいるところ
-function memMatrixRuns(buf,base,minN){
+//  32バイトずつ進めると「先頭からの距離が32の倍数」の場所しか見ない。
+//  実際の並びは4バイト境界にあればよいので、それでは8か所に1か所しか見ていない。
+//  まず4バイトおきに「ここから行列として読めるか」を全部印に取り、
+//  そのあと 32バイト間隔でつながっているところを拾う
+function memMatrixOKMap(buf){
   const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
-  const out=[]; let run=0, start=0;
-  for(let p=base;p+MAT_SIZE<=buf.length;p+=MAT_SIZE){
-    const M=readMatrix(dv,p,MAT_FORMS[0]);
-    if(matrixOK(M)){ if(!run) start=p; run++ }
-    else { if(run>=(minN||MEM_MIN_BONES)) out.push({at:start-base,n:run,kind:"並び"}); run=0 }
+  const n=Math.max(0,(buf.length-MAT_SIZE)>>2)+1;
+  const ok=new Uint8Array(n);
+  for(let i=0;i<n;i++){
+    const p=i<<2;
+    // 全部 0 の場所は数が多いので先に落とす（速さのため）
+    if(!dv.getInt16(p,true)&&!dv.getInt16(p+8,true)&&!dv.getInt16(p+16,true)) continue;
+    if(matrixOK(readMatrix(dv,p,MAT_FORMS[0]))) ok[i]=1;
   }
-  if(run>=(minN||MEM_MIN_BONES)) out.push({at:start-base,n:run,kind:"並び"});
+  return ok;
+}
+function memMatrixRuns(buf,base,minN,okMap){
+  const ok=okMap||memMatrixOKMap(buf);
+  const out=[], used=new Uint8Array(ok.length);
+  const step=MAT_SIZE>>2;                       // 32バイト＝4バイト枠で8つ
+  for(let i=0;i<ok.length;i++){
+    if(!ok[i]||used[i]) continue;
+    let k=i, n=0;
+    while(k<ok.length&&ok[k]){ used[k]=1; k+=step; n++ }
+    if(n>=(minN||MEM_MIN_BONES)) out.push({at:(i<<2)-base,abs:i<<2,n,kind:"並び"});
+  }
   return out;
 }
 // (2) 行列を指す位置が並んでいるところ（表A の形）
@@ -4438,7 +4455,8 @@ function memBonesAt(buf,base,hit){
   const ID={m:[4096,0,0,0,4096,0,0,0,4096],t:[0,0,0],one:4096,empty:true};
   if(hit.offs) for(const o of hit.offs)
     list.push(o<0?{m:ID.m.slice(),t:[0,0,0],one:4096,empty:true}:readMatrix(dv,o,MAT_FORMS[0]));
-  else for(let k=0;k<hit.n;k++) list.push(readMatrix(dv,base+hit.at+k*MAT_SIZE,MAT_FORMS[0]));
+  else { const b=hit.abs!=null?hit.abs:base+hit.at;
+         for(let k=0;k<hit.n;k++) list.push(readMatrix(dv,b+k*MAT_SIZE,MAT_FORMS[0])) }
   for(const M of list) matrixOK(M);           // 目盛り（1.0 がいくつか）を入れる
   return list;
 }
@@ -4460,7 +4478,10 @@ function memBoneHunt(buf,exe,segs){
     L.push(`    +0x${a.base.toString(16)}　一致 ${Math.round(a.score*1000)/10}%${a.base===base?"　← 使う":""}`);
   if(all[0].score<0.5)
     L.push("    ※ 一致率が低い。RAM の先頭を取り違えている見込みが高い");
-  const hits=memMatrixPtrTables(buf,base).concat(memMatrixRuns(buf,base));
+  const okMap=memMatrixOKMap(buf);
+  const nOK=okMap.reduce((a,b)=>a+b,0);
+  L.push(`  行列として読める場所: ${nOK}か所（4バイトおきに全部当たった結果）`);
+  const hits=memMatrixPtrTables(buf,base).concat(memMatrixRuns(buf,base,0,okMap));
   hits.sort((a,b)=>(b.hits||b.n)-(a.hits||a.n));
   L.push(`  メモリの中の骨さがし: ${hits.length}か所`);
   for(const h of hits.slice(0,8))
