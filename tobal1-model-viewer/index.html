@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.34.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.35.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -715,7 +715,10 @@ const MAX_TYPE=64;
 function exeInfo(exe){
   const dv=new DataView(exe.buffer,exe.byteOffset,exe.byteLength);
   const ok=String.fromCharCode(...exe.subarray(0,8))==="PS-X EXE";
-  return {ok, text:ok?dv.getUint32(0x18,true):0, size:ok?dv.getUint32(0x1c,true):0, pc:ok?dv.getUint32(0x10,true):0};
+  // +0x14 は起動時の $gp。このゲームはグローバル変数を $gp 相対で読み書きしているので、
+  // これが分からないと「その変数を使っている場所」を見つけられない
+  return {ok, text:ok?dv.getUint32(0x18,true):0, size:ok?dv.getUint32(0x1c,true):0,
+          pc:ok?dv.getUint32(0x10,true):0, gp:ok?dv.getUint32(0x14,true):0};
 }
 // 表の1件がどう並んでいるか。トバル2 は前者だったが、No.1 で違っていても拾えるように両方試す
 const TABLE_SHAPES=[
@@ -1055,10 +1058,16 @@ function mipsDispatch(exe,fn){
 
 // ある番地（グローバル変数）を読み書きしている場所を実行ファイル全体から探す。
 // MIPS はいつも「lui で上位16bit → lw/sw で下位をずらす」の2手なので、その形を追う
-function mipsRefs(exe,addr,limit){
+// このゲームはグローバル変数を $gp 相対で読み書きしている（lw $v1, 3444($gp) など）。
+// $gp は起動時に決まった値が入り、以後変わらないので、それを入れておけば
+// lui を経由しない読み書きも追える。これを見ていなかったために
+// 「骨の表を用意しているコードが無い」と何度も見誤っていた
+const MIPS_GP=28;
+function mipsRefs(exe,addr,limit,gp){
   const t=exeText(exe); if(!t) return [];
   const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
   const hi=new Array(32).fill(-1), out=[];   // 上位16bit。符号なしで持つ
+  if(gp) hi[MIPS_GP]=gp>>>0;                // $gp は動かないので、ずっと入れておく
   const MEM=op=>(op>=0x20&&op<=0x2e)||op===0x30||op===0x32||op===0x38||op===0x3a;
   for(let p=0;p+4<=t.body.length;p+=4){
     const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31;
@@ -1070,21 +1079,23 @@ function mipsRefs(exe,addr,limit){
     if(op===0x0d&&hi[rs]>=0){ hi[rt]=((hi[rs]|im)>>>0); continue }        // ori
     if(MEM(op)){
       if(hi[rs]>=0&&((hi[rs]+se)>>>0)===(addr>>>0)) out.push({at:t.base+p,store:op>=0x28,w});
-      if(op>=0x20&&op<=0x27) hi[rt]=-1;                          // 読み込み先は上位が消える
+      if(op>=0x20&&op<=0x27&&rt!==MIPS_GP) hi[rt]=-1;            // 読み込み先は上位が消える（$gp は別）
       if(out.length>=(limit||16)) break;
       continue;
     }
-    if(op===0) hi[rd]=-1; else if(op!==0x02&&op!==0x03&&op>=0x08) hi[rt]=-1;   // 分岐以外は行き先の上位が消える
+    if(op===0){ if(rd!==MIPS_GP) hi[rd]=-1 }
+    else if(op!==0x02&&op!==0x03&&op>=0x08&&rt!==MIPS_GP) hi[rt]=-1;   // 分岐以外は行き先の上位が消える
   }
   return out;
 }
 
 // ある「範囲」を読み書きしている場所を探す。番地を1つずつ指定するのでは、
 // 構造体の先頭を土台にして別のずれで書く形を取りこぼす
-function mipsRefsRange(exe,from,to,limit){
+function mipsRefsRange(exe,from,to,limit,gp){
   const t=exeText(exe); if(!t) return [];
   const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
   const hi=new Array(32).fill(-1), out=[];
+  if(gp) hi[MIPS_GP]=gp>>>0;
   const MEM=op=>(op>=0x20&&op<=0x2e)||op===0x30||op===0x32||op===0x38||op===0x3a;
   for(let p=0;p+4<=t.body.length;p+=4){
     const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31;
@@ -1095,11 +1106,12 @@ function mipsRefsRange(exe,from,to,limit){
     if(MEM(op)){
       if(hi[rs]>=0){ const a=((hi[rs]+se)>>>0);
         if(a>=(from>>>0)&&a<=(to>>>0)) out.push({at:t.base+p,addr:a,store:op>=0x28,w}) }
-      if(op>=0x20&&op<=0x27) hi[rt]=-1;
+      if(op>=0x20&&op<=0x27&&rt!==MIPS_GP) hi[rt]=-1;
       if(out.length>=(limit||24)) break;
       continue;
     }
-    if(op===0) hi[rd]=-1; else if(op!==0x02&&op!==0x03&&op>=0x08) hi[rt]=-1;
+    if(op===0){ if(rd!==MIPS_GP) hi[rd]=-1 }
+    else if(op!==0x02&&op!==0x03&&op>=0x08&&rt!==MIPS_GP) hi[rt]=-1;
   }
   return out;
 }
@@ -1128,7 +1140,8 @@ function mipsAddrOf(exe,from,to,limit){
         if(out.length>=(limit||16)) break }
       continue;
     }
-    if(op===0) hi[rd]=-1; else if(op!==0x02&&op!==0x03&&op>=0x08) hi[rt]=-1;
+    if(op===0){ if(rd!==MIPS_GP) hi[rd]=-1 }
+    else if(op!==0x02&&op!==0x03&&op>=0x08&&rt!==MIPS_GP) hi[rt]=-1;
   }
   return out;
 }
@@ -2698,7 +2711,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.34.0";
+const VERSION="v3.35.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3095,6 +3108,9 @@ function digestLines(){
     const t=sieveLines(state.sieve).find(x=>/全 \d+件 →/.test(x));
     if(t) L.push("", t.trim());
   }
+  // 骨の表を触っている場所（いま追っている本丸）
+  { const src=(state.report||"").split("\n").filter(x=>/^起動時の \$gp|^  表[ABC]/.test(x));
+    if(src.length){ L.push(""); L.push(...src) } }
   const inf=state.selInfo, e=state.entries[state.sel];
   if(inf&&e){
     L.push("");
@@ -3192,7 +3208,7 @@ function updateReport(){
       // 命令5 は 0x800CBE90 / 0x800CBE8C にある「表」から次の1件を取り出していた。
       // その表を用意しているのが誰なのかが分かれば、部品の置き場所にたどり着く
       for(const g of [0x800CBE90,0x800CBE8C,0x800CC910]){
-        const refs=mipsRefs(s.exe,g,14);
+        const refs=mipsRefs(s.exe,g,14,ex.gp);
         if(!refs.length) continue;
         L.push(`  ${hex(g)} を使っている場所（${refs.length}件）: `
           +refs.map(r=>hex(r.at)+(r.store?"書":"読")).join(" "));
@@ -3210,7 +3226,7 @@ function updateReport(){
       }
       // 骨の表は 0x800CBE88/8C/90 と3つ並んでいる（構造体らしい）。
       // 番地を1つずつ見ていると、先頭を土台に別のずれで書く形を取りこぼすので、範囲で探す
-      { const rr=mipsRefsRange(s.exe,0x800CBE80,0x800CBE9F,24);
+      { const rr=mipsRefsRange(s.exe,0x800CBE80,0x800CBE9F,24,ex.gp);
         if(rr.length){
           L.push(`  骨の表のあたり 0x800CBE80…0x800CBE9F を使っている場所（${rr.length}件）:`);
           L.push("    "+rr.map(r=>`${hex(r.addr)}${r.store?"書":"読"}@${hex(r.at)}`).join(" "));
@@ -3262,6 +3278,20 @@ function updateReport(){
       L.push("");
     } else L.push("モデルを読んでいるコードは見つかりませんでした\n");
   }catch(err){ L.push("コードの読み取りに失敗: "+err.message+"\n") }
+  // 骨の表（0x800CBE8C/90/94）を触っている場所。$gp 相対も含めて数える。
+  // ここは短い報告にも出す。毎回変わりうるうえ、いま追っている本丸だから
+  try{
+    if(ex.ok){
+      L.push(`起動時の $gp = ${hex(ex.gp)}`);
+      for(const [nm,a] of [["表B",0x800CBE8C],["表A（命令5が引く）",0x800CBE90],["表C（部品）",0x800CBE94]]){
+        const r=mipsRefs(s.exe,a,24,ex.gp);
+        const rd=r.filter(x=>!x.store).length, wr=r.filter(x=>x.store).length;
+        L.push(`  ${nm} ${hex(a)}: 読み ${rd}か所 / 書き ${wr}か所`
+          +(r.length?`　${r.map(x=>hex(x.at)+(x.store?"書":"読")).join(" ")}`:"　見つからない"));
+      }
+      L.push("");
+    }
+  }catch(err){ L.push("骨の表の参照さがしで失敗: "+err.message,"") }
   const kn=knownDisc(s.exeName);
   if(kn){
     L.push("");
@@ -3381,7 +3411,8 @@ function updateReport(){
     if(s.iso.length>80) L.push(`  …ほか ${s.iso.length-80} 件`);
   }
   if(bgm.tracks.length) L.push("", `XA: ${bgm.tracks.length} チャンネル`);
-  $("report").value=L.join("\n");
+  state.report=L.join("\n");   // まとめを作るときに、ここから拾う
+  $("report").value=state.report;
 }
 // 候補の裏取り: その表が指す先を実際に何件か読んで、トバルのファイルらしいかを見る。
 // 本物の表なら中身が入れ子か圧縮になっているはずで、まぐれで並んだだけの表はここで落ちる。
