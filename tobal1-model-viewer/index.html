@@ -110,10 +110,15 @@ canvas:active{cursor:grabbing}
   .hint{display:none}
   .drop{padding:14px} .drop .card{padding:20px}
 }
+.texgrid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.texgrid figure{margin:0;font-size:11px;color:var(--ink2);text-align:center}
+.texgrid canvas{display:block;image-rendering:pixelated;background:
+  repeating-conic-gradient(#3a3a3a 0% 25%,#2e2e2e 0% 50%) 50%/12px 12px;
+  border:1px solid var(--line);max-width:160px;height:auto}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.16.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.17.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -134,6 +139,11 @@ canvas:active{cursor:grabbing}
     <div data-tab="file"><p class="label">向き</p>
       <div class="seg" id="up-seg"><button data-up="0" aria-pressed="false">そのまま</button><button data-up="1" aria-pressed="false">X を上に</button><button data-up="2" aria-pressed="true">X を上（逆）</button><button data-up="3" aria-pressed="false">Z を上に</button></div>
       <p class="note">モデルの「背の高さ」がどの軸かはファイルに書かれていません。実物は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）でした。そのうえで上下をひっくり返した「X を上（逆）」が既定です。人の形にならないときはここを変えてみてください。</p>
+    </div>
+    <div data-tab="file"><p class="label">テクスチャ</p>
+      <select id="texpick"></select>
+      <p class="note" id="texnote">キャラクターのモデルには貼り先（UV）がありません。テクスチャは背景・顔・文字などに使われている別物なので、ここでは中身をそのまま絵にして見ます。</p>
+      <div id="texgrid" class="texgrid"></div>
     </div>
     <div data-tab="file"><p class="label">メモリの写し（骨さがし）</p>
       <label class="pick" style="display:inline-block">セーブステートを選ぶ<input id="memfile" type="file" hidden></label>
@@ -2339,6 +2349,11 @@ function buildModelInner(raw,info){
     const objs=offs.map((p,i)=>{ const o=readT1Object(b.out,p); if(o) o.group=offs.group?offs.group[i]:0; return o }).filter(Boolean);
     const okObjs=objs.filter(o=>o.ok);
     info.t1Parts=`${okObjs.length}/${objs.length} 部品`;
+    // テクスチャを貼れるかどうかを、面のバイトの内訳から判定して出す
+    { const big=okObjs.slice().sort((a,b)=>b.nv-a.nv)[0];
+      const R=big&&t1Run(b.out,big.base);
+      const u=t1HasUV(R);
+      if(R) info.t1UV=`  テクスチャの貼り先: ${u.uv?"あり":"なし"}　面の ${u.total} バイトを頂点番号と法線で使い切っている（${u.why}）`; }
     { const by=new Map(); for(const o of objs) by.set(o.group||0,(by.get(o.group||0)||0)+1);
       info.t1Groups="  部品の組: "+[...by].map(([g,n])=>g?`組${g} ${n}個`:`本体 ${n}個`).join("　")
         +"（組の中は同じ形のポーズ違い＝手。実際に出るのは組から1つ）"; }
@@ -2647,7 +2662,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.16.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.17.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -2850,6 +2865,7 @@ function updateReport(){
     if(inf.t1Size) L.push(inf.t1Size);
     if(inf.t1Prof) L.push(inf.t1Prof);
     if(inf.t1Groups) L.push(inf.t1Groups);
+    if(inf.t1UV) L.push(inf.t1UV);
     if(inf.t1Seg) L.push(...inf.t1Seg);
     if(inf.t1Heads){ L.push("  部品ヘッダの生の数字:"); inf.t1Heads.forEach(x=>L.push("    "+x)) }
     if(inf.modelSig) L.push(`  モデルの署名 0x90000000  種類${inf.modelSig}　位置の表 +${hex(inf.modelTableAt,4)}`);
@@ -2977,7 +2993,7 @@ async function start(files){
     // ふるいは「いま表示している一覧」にかける。表の当てにならない一覧にかけると
     // でたらめな大きさで確保に失敗するので、さらった結果に切り替えたあとで行う
     if(state.src.readArc){
-      try{ state.sieve=await sieveAll(p=>busy(`候補を全部ふるいにかけています… ${Math.round(p*100)}%`)) }
+      try{ state.sieve=await sieveAll(p=>busy(`候補を全部ふるいにかけています… ${Math.round(p*100)}%`)); fillTexPick() }
       catch(err){ console.warn(err) }
       busy("");
     }
@@ -2999,6 +3015,56 @@ $("src-seg").onclick=async e=>{
   fillTypeFilter(); renderFiles(); updateReport();
 };
 // ファイルの中に入っているモデルの選択（部分0＝本体、ほかは簡易版らしい）
+// ---- テクスチャの一覧と絵 ----
+// ふるい分けで見つけたテクスチャのファイルを選べるようにする
+function fillTexPick(){
+  const sel=$("texpick"), box=sel.closest("div");
+  const tex=(state.sieve&&state.sieve.tex)||[];
+  if(!tex.length){ box.hidden=true; return }
+  box.hidden=false;
+  sel.innerHTML='<option value="-1">選んでください（'+tex.length+'件）</option>'
+    +tex.map((t,i)=>`<option value="${i}">#${t.e.no} sector ${t.e.sector}　${t.colors}色　${t.pairs}組</option>`).join("");
+}
+// 選んだファイルの中身を取り出す（入れ子と圧縮をほどいて、いちばん大きい部分）
+async function texBytes(e){
+  const raw=await readFull(e);
+  let parts=unpack(raw); if(!parts) parts=[raw];
+  let best=null;
+  for(const p of parts){
+    if(!p||p.length<8) continue;
+    let out=null; try{ out=p[0]===0x0b?decompress(p):p }catch(_){ continue }
+    if(out&&(!best||out.length>best.length)) best=out;
+  }
+  return best;
+}
+$("texpick").onchange=async e=>{
+  const i=+e.target.value, grid=$("texgrid"), note=$("texnote");
+  grid.innerHTML="";
+  if(i<0) return;
+  const t=state.sieve.tex[i];
+  note.textContent=`#${t.e.no} を読んでいます…`;
+  try{
+    const d=await texBytes(t.e);
+    const P=d?t1TexPairs(d):null;
+    if(!P||!P.pairs.length){ note.textContent="絵にできる組が見つかりませんでした"; return }
+    let drawn=0;
+    for(const p of P.pairs.slice(0,64)){
+      const img=t1TexRGBA(d,p); if(!img) continue;
+      const cv=document.createElement("canvas");
+      cv.width=img.w; cv.height=img.h;
+      cv.getContext("2d").putImageData(new ImageData(img.data,img.w,img.h),0,0);
+      const fig=document.createElement("figure");
+      fig.append(cv);
+      const cap=document.createElement("figcaption");
+      cap.textContent=`${img.w}×${img.h}　${p.colors}色`;
+      fig.append(cap); grid.append(fig); drawn++;
+    }
+    note.textContent=`#${t.e.no} sector ${t.e.sector}　${drawn}枚`
+      +(P.pairs.length>drawn?`（ほか ${P.pairs.length-drawn}枚）`:"")
+      +`　転送 ${P.blocks}回`;
+  }catch(err){ console.error(err); note.textContent="読めませんでした: "+err.message }
+};
+
 // メモリの写しを読む。読むのはこのページの仕事で、あなたはゲームを動かすだけでいい
 $("memfile").onchange=async e=>{
   const f=e.target.files&&e.target.files[0]; if(!f) return;
@@ -3055,7 +3121,7 @@ $("type-filter").onchange=renderFiles;
 $("model-only").onchange=renderFiles;
 $("scan-all").onclick=scanAll;
 $("survey").onclick=async()=>{
-  if(!state.surveying){ try{ state.sieve=await sieveAll(p=>busy(`候補を全部ふるいにかけています… ${Math.round(p*100)}%`)) }catch(err){ console.warn(err) } }
+  if(!state.surveying){ try{ state.sieve=await sieveAll(p=>busy(`候補を全部ふるいにかけています… ${Math.round(p*100)}%`)); fillTexPick() }catch(err){ console.warn(err) } }
   if(state.surveying) return;
   state.surveying=true; $("survey").textContent="調べています…";
   try{
@@ -3519,6 +3585,66 @@ function memBoneLines(buf,exe){
     L.push("    生のバイト: "+hx(cur,32));
   }
   return L;
+}
+// ============================================================
+//  トバルNo.1 のテクスチャを絵にする
+//  キャラクターのモデルには貼り先（UV）が無い。面のバイトを数えると:
+//    命令8 三角+法線 20B = 頂点番号12 + 法線8 → 余り0
+//    命令9 四角+法線 24B = 頂点番号16 + 法線8 → 余り0
+//    命令10 三角    12B = 頂点番号12        → 余り0
+//    命令11 四角    16B = 頂点番号16        → 余り0
+//    193×20 + 210×24 + 93×12 + 170×16 = 12,736 ＝ 面の領域ぴったり
+//  1バイトも余らないので、UV の入る場所が無い。キャラクターは頂点の色だけで塗る。
+//  だからテクスチャは「別物」として見る道具を用意する。
+// ============================================================
+// VRAM への転送は「パレット1枚 ＋ 画像1枚」の組で並ぶ。
+// パレットは 高さ1 で 幅16（16色）か 幅256（256色）なので、そこで見分ける
+function t1TexPairs(d){
+  const found=findVramChainT1(d); if(!found) return null;
+  const pairs=[]; let clut=null;
+  for(const t of found.list){
+    if(t.h===1&&(t.w===16||t.w===256)){ clut=t; continue }
+    if(clut) pairs.push({clut,img:t,colors:clut.w});
+  }
+  return {pairs,info:found.info,blocks:found.list.length};
+}
+// プレステの色は BGR555。最上位ビットは半透明の印。全部0 の色は「透ける」決まり
+function t1Color(v){
+  return [(v&31)*255/31|0, ((v>>>5)&31)*255/31|0, ((v>>>10)&31)*255/31|0, v===0?0:255];
+}
+// 16色なら16bitの語に4画素、256色なら2画素。だから絵の幅は転送の幅の4倍か2倍になる
+function t1TexRGBA(d,p){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const pal=[];
+  for(let i=0;i<p.colors;i++){
+    const s=p.clut.off+i*2;
+    pal.push(s+1<d.length?t1Color(dv.getUint16(s,true)):[0,0,0,0]);
+  }
+  const bpp=p.colors===16?4:8, per=16/bpp, mask=(1<<bpp)-1;
+  const w=p.img.w*per, h=p.img.h;
+  if(w<1||h<1||w*h>4194304) return null;
+  const out=new Uint8ClampedArray(w*h*4);
+  for(let j=0;j<h;j++) for(let i=0;i<p.img.w;i++){
+    const s=p.img.off+(j*p.img.w+i)*2; if(s+1>=d.length) continue;
+    const v=dv.getUint16(s,true);
+    for(let k=0;k<per;k++){
+      const c=pal[(v>>>(k*bpp))&mask]||[0,0,0,0], q=(j*w+i*per+k)*4;
+      out[q]=c[0]; out[q+1]=c[1]; out[q+2]=c[2]; out[q+3]=c[3];
+    }
+  }
+  return {w,h,data:out};
+}
+// モデルにテクスチャを貼れるかどうかを、面のバイトの内訳から判定する
+function t1HasUV(run){
+  if(!run||!run.used) return {uv:false,why:"面が読めていない"};
+  const SZ={8:20,9:24,10:12,11:16}, NEED={8:20,9:24,10:12,11:16};
+  let extra=0, total=0;
+  for(const [op,n] of run.used){
+    const sz=SZ[op]||0; total+=sz*n; extra+=(sz-(NEED[op]||sz))*n;
+  }
+  return {uv:extra>0, extra, total,
+    why:extra>0?`1枚あたり ${extra} バイト余っている`
+               :"頂点番号と法線で使い切っていて、UV の入る場所が1バイトも無い"};
 }
 // ============================================================
 //  保存
