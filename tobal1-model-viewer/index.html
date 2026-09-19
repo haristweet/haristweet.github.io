@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.17.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.18.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -142,7 +142,7 @@ canvas:active{cursor:grabbing}
     </div>
     <div data-tab="file"><p class="label">テクスチャ</p>
       <select id="texpick"></select>
-      <p class="note" id="texnote">キャラクターのモデルには貼り先（UV）がありません。テクスチャは背景・顔・文字などに使われている別物なので、ここでは中身をそのまま絵にして見ます。</p>
+      <p class="note" id="texnote">キャラクターの<b>体</b>には貼り先（UV）がなく、頂点の色だけで塗られています。テクスチャは<b>顔のパーツ（目・口）</b>や背景・文字に使われていて、体とは別に描かれます。「すべて並べて見る」で見比べられます。</p>
       <div id="texgrid" class="texgrid"></div>
     </div>
     <div data-tab="file"><p class="label">メモリの写し（骨さがし）</p>
@@ -2662,7 +2662,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.17.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.18.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -3023,6 +3023,7 @@ function fillTexPick(){
   if(!tex.length){ box.hidden=true; return }
   box.hidden=false;
   sel.innerHTML='<option value="-1">選んでください（'+tex.length+'件）</option>'
+    +'<option value="-2">すべて並べて見る</option>'
     +tex.map((t,i)=>`<option value="${i}">#${t.e.no} sector ${t.e.sector}　${t.colors}色　${t.pairs}組</option>`).join("");
 }
 // 選んだファイルの中身を取り出す（入れ子と圧縮をほどいて、いちばん大きい部分）
@@ -3037,9 +3038,37 @@ async function texBytes(e){
   }
   return best;
 }
+// 絵を1枚ぶん作って並べる
+function texAppend(grid,d,p,label){
+  const img=t1TexRGBA(d,p); if(!img) return false;
+  const cv=document.createElement("canvas");
+  cv.width=img.w; cv.height=img.h;
+  cv.getContext("2d").putImageData(new ImageData(img.data,img.w,img.h),0,0);
+  const fig=document.createElement("figure"), cap=document.createElement("figcaption");
+  cap.textContent=label||`${img.w}×${img.h}　${p.colors}色`;
+  fig.append(cv,cap); grid.append(fig);
+  return true;
+}
+// すべてのテクスチャを少しずつ並べる。どのファイルが誰の顔かを見比べるため
+async function texAll(){
+  const grid=$("texgrid"), note=$("texnote"), tex=state.sieve.tex;
+  grid.innerHTML=""; let drawn=0;
+  for(let k=0;k<tex.length;k++){
+    const t=tex[k];
+    note.textContent=`すべて並べています… ${k+1}/${tex.length}`;
+    await idle();
+    try{
+      const d=await texBytes(t.e); if(!d) continue;
+      const P=t1TexPairs(d); if(!P||!P.pairs.length) continue;
+      for(const p of P.pairs.slice(0,3)) if(texAppend(grid,d,p,`#${t.e.no}`)) drawn++;
+    }catch(_){}
+  }
+  note.textContent=`${tex.length}件から ${drawn}枚（各ファイル先頭3枚まで）。同じ顔ぶれが並ぶので、どれが誰かを見比べられます`;
+}
 $("texpick").onchange=async e=>{
   const i=+e.target.value, grid=$("texgrid"), note=$("texnote");
   grid.innerHTML="";
+  if(i===-2){ await texAll(); return }
   if(i<0) return;
   const t=state.sieve.tex[i];
   note.textContent=`#${t.e.no} を読んでいます…`;
@@ -3048,17 +3077,7 @@ $("texpick").onchange=async e=>{
     const P=d?t1TexPairs(d):null;
     if(!P||!P.pairs.length){ note.textContent="絵にできる組が見つかりませんでした"; return }
     let drawn=0;
-    for(const p of P.pairs.slice(0,64)){
-      const img=t1TexRGBA(d,p); if(!img) continue;
-      const cv=document.createElement("canvas");
-      cv.width=img.w; cv.height=img.h;
-      cv.getContext("2d").putImageData(new ImageData(img.data,img.w,img.h),0,0);
-      const fig=document.createElement("figure");
-      fig.append(cv);
-      const cap=document.createElement("figcaption");
-      cap.textContent=`${img.w}×${img.h}　${p.colors}色`;
-      fig.append(cap); grid.append(fig); drawn++;
-    }
+    for(const p of P.pairs.slice(0,64)) if(texAppend(grid,d,p)) drawn++;
     note.textContent=`#${t.e.no} sector ${t.e.sector}　${drawn}枚`
       +(P.pairs.length>drawn?`（ほか ${P.pairs.length-drawn}枚）`:"")
       +`　転送 ${P.blocks}回`;
