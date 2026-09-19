@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.39.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.40.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1682,7 +1682,9 @@ function t1WalkLine(W){
 }
 const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメラの合わせ枠が壊れるので落とす
 // 見せ方の切り替え。どこがおかしいのかを切り分けるための道具
-const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,up:2};
+// segOnly ＝ この区切りだけ描く。segPart ＝ その区切りがどの部品のものか。
+// 区切りの番号は部品ごとに0から振り直されるので、部品を決めないと別物が混ざる
+const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,up:2};
 try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.only=localStorage.getItem("t1only")==="1";
      t1Show.segColor=localStorage.getItem("t1segcol")==="1";
@@ -1815,8 +1817,11 @@ function buildT1Mesh(d,objs){
     const R=o.run;
     if(R){
       const before=tris;
+      const skipPart=t1Show.segOnly>=0&&t1Show.segPart>=0&&o.base!==t1Show.segPart;
       for(const f of R.faces){
-        // 区切りを1つだけ描く（どの区切りが何なのかを見分けるため）
+        // 区切りを1つだけ描く（どの区切りが何なのかを見分けるため）。
+        // 番号は部品ごとに振り直されるので、部品も合っていないといけない
+        if(skipPart) continue;
         if(t1Show.segOnly>=0&&(f.seg|0)!==t1Show.segOnly) continue;
         const a=f.idx;
         if(a.some(i=>far(i,f.seg))){ dropped++; continue }
@@ -2779,7 +2784,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.39.0";
+const VERSION="v3.40.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -2889,6 +2894,7 @@ function buildModelInner(raw,info){
           if(S){
             // 区切りの数＝要る骨の数。メモリから表を選ぶときの手がかりになる
             info.t1Segs=Math.max(...S.map(x=>x.seg))+1;
+            info.t1SegBase=bigO.base;        // 区切りの番号は、この部品のもの
             // 区切りひとつひとつの「細長さ」。腕・脚・胴の見分けは、これで付く。
             // 絵を見なくても読めるように、まとめにも出す
             info.t1SegLine=S.map(x=>{
@@ -3818,6 +3824,7 @@ $("seggal").onclick=async()=>{
   grid.innerHTML="";
   const keep={only:t1Show.segOnly,spread:t1Show.segSpread,col:t1Show.segColor};
   t1Show.segSpread=false; t1Show.segColor=false; t1Show.segOnly=-1;
+  t1Show.segPart=inf.t1SegBase!=null?inf.t1SegBase:-1;   // 数字を出したのと同じ部品だけを描く
   const sizes=new Map();
   for(const line of inf.t1SegLine||[]){
     const m=/^(\d+):(\d+)枚 (.+)$/.exec(line);
@@ -3844,7 +3851,7 @@ $("seggal").onclick=async()=>{
       fig.append(cv,cap); grid.append(fig); made++;
     }
   }catch(err){ note.textContent="区切りを描けませんでした: "+err.message }
-  t1Show.segOnly=keep.only; t1Show.segSpread=keep.spread; t1Show.segColor=keep.col;
+  t1Show.segOnly=keep.only; t1Show.segSpread=keep.spread; t1Show.segColor=keep.col; t1Show.segPart=-1;
   await selectEntry(state.sel);
   state.segGal=true;
   note.textContent=`${made}個の区切りを、同じ縮尺・同じ角度で並べました。「この一覧を画像で保存」で1枚にできます`;
