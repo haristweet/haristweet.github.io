@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.53.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.54.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -208,7 +208,7 @@ canvas:active{cursor:grabbing}
       <label id="spread-opt"><input type="checkbox" id="spread"> 部品を並べる</label>
       <label id="segspread-opt"><input type="checkbox" id="segspread"> 骨の区切りごとに並べる</label>
       <label id="guessbone-opt"><input type="checkbox" id="guessbone"> 仮の骨組みで左右に開く（推測）</label>
-      <label id="flatcol-opt"><input type="checkbox" id="flatcol"> 色を面ごとにそろえる（平面塗り）</label>
+      <label id="flatcol-opt"><input type="checkbox" id="flatcol" checked> 色を面ごとにそろえる（平面塗り）</label>
       <label id="hud-opt"><input type="checkbox" id="hudon" checked> 調べた結果を画面に出す</label>
       <label id="gbamt-opt">開く量 <input type="range" id="gbamt" min="0" max="120" value="60" step="5"><span id="gbamt-v">0.60</span></label>
       <button class="btn" id="viewreset" style="margin-left:6px">見た目をふつうに戻す</button>
@@ -1695,14 +1695,14 @@ const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメ�
 // 見せ方の切り替え。どこがおかしいのかを切り分けるための道具
 // segOnly ＝ この区切りだけ描く。segPart ＝ その区切りがどの部品のものか。
 // 区切りの番号は部品ごとに0から振り直されるので、部品を決めないと別物が混ざる
-const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,guessBone:false,guessAmt:0.6,flatColor:false,up:2};
+const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,guessBone:false,guessAmt:0.6,flatColor:true,up:2};
 try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.only=localStorage.getItem("t1only")==="1";
      t1Show.segColor=localStorage.getItem("t1segcol")==="1";
      t1Show.spread=localStorage.getItem("t1spread")==="1";
      t1Show.segSpread=localStorage.getItem("t1segspread")==="1";
      t1Show.guessBone=localStorage.getItem("t1guessbone")==="1";
-     t1Show.flatColor=localStorage.getItem("t1flatcol")==="1";
+     { const f=localStorage.getItem("t1flatcol"); if(f!=null) t1Show.flatColor=f==="1" }
      { const a=localStorage.getItem("t1guessamt"); if(a!=null) t1Show.guessAmt=+a }
      // 向きの記憶は v3.5.0 で作り直した（前の既定値が上下逆だったので、古い記憶は捨てる）
      const u=localStorage.getItem("t1up2"); if(u!=null) t1Show.up=+u }catch(_){}
@@ -3037,7 +3037,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.53.0";
+const VERSION="v3.54.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
