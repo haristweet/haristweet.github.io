@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.35.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.36.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1167,6 +1167,34 @@ function mipsJalIn(exe,addr,n){
     if((w>>>26)===3) return ((((addr+k*4)&0xf0000000)|((w&0x03ffffff)<<2))>>>0);
   }
   return 0;
+}
+
+// 起動時の $gp は PS-X EXE ヘッダの +0x14 に入っていることになっているが、
+// 0 のままの実行ファイルも多い（トバルNo.1 もそうだった）。
+// その場合でも $gp はコードの中で必ず作られる:
+//     lui  $gp, 0x800d
+//     addiu $gp, $gp, -0x2ac0
+// この形を実行ファイル全体から拾い、いちばん多く出てくる値を採る。
+// $gp は動かない前提の土台なので、作る場所は数えるほどしかない
+function mipsFindGp(exe){
+  const t=exeText(exe); if(!t) return 0;
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const tally=new Map(); let hi=-1;
+  for(let p=0;p+4<=t.body.length;p+=4){
+    const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31;
+    const im=w&0xffff, se=im>0x7fff?im-0x10000:im;
+    if(op===0x0f&&rt===MIPS_GP){ hi=(im<<16)>>>0; continue }        // lui $gp
+    if(hi>=0&&rt===MIPS_GP&&rs===MIPS_GP){
+      let v=0;
+      if(op===0x09) v=(hi+se)>>>0;                                   // addiu $gp,$gp,imm
+      else if(op===0x0d) v=(hi|im)>>>0;                              // ori  $gp,$gp,imm
+      else { hi=-1; continue }
+      tally.set(v,(tally.get(v)||0)+1); hi=-1; continue;
+    }
+    if(rt===MIPS_GP||rs===MIPS_GP) hi=-1;
+  }
+  if(!tally.size) return 0;
+  return [...tally].sort((a,b)=>b[1]-a[1]||a[0]-b[0])[0][0];
 }
 // ============================================================
 //  アーカイブを直接さらう
@@ -2711,7 +2739,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.35.0";
+const VERSION="v3.36.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3208,7 +3236,7 @@ function updateReport(){
       // 命令5 は 0x800CBE90 / 0x800CBE8C にある「表」から次の1件を取り出していた。
       // その表を用意しているのが誰なのかが分かれば、部品の置き場所にたどり着く
       for(const g of [0x800CBE90,0x800CBE8C,0x800CC910]){
-        const refs=mipsRefs(s.exe,g,14,ex.gp);
+        const refs=mipsRefs(s.exe,g,14,ex.gp||mipsFindGp(s.exe));
         if(!refs.length) continue;
         L.push(`  ${hex(g)} を使っている場所（${refs.length}件）: `
           +refs.map(r=>hex(r.at)+(r.store?"書":"読")).join(" "));
@@ -3226,7 +3254,7 @@ function updateReport(){
       }
       // 骨の表は 0x800CBE88/8C/90 と3つ並んでいる（構造体らしい）。
       // 番地を1つずつ見ていると、先頭を土台に別のずれで書く形を取りこぼすので、範囲で探す
-      { const rr=mipsRefsRange(s.exe,0x800CBE80,0x800CBE9F,24,ex.gp);
+      { const rr=mipsRefsRange(s.exe,0x800CBE80,0x800CBE9F,24,ex.gp||mipsFindGp(s.exe));
         if(rr.length){
           L.push(`  骨の表のあたり 0x800CBE80…0x800CBE9F を使っている場所（${rr.length}件）:`);
           L.push("    "+rr.map(r=>`${hex(r.addr)}${r.store?"書":"読"}@${hex(r.at)}`).join(" "));
@@ -3282,9 +3310,12 @@ function updateReport(){
   // ここは短い報告にも出す。毎回変わりうるうえ、いま追っている本丸だから
   try{
     if(ex.ok){
-      L.push(`起動時の $gp = ${hex(ex.gp)}`);
+      // ヘッダの $gp が 0 のときは、コードの中で作っている場所から拾う
+      const gp=ex.gp||mipsFindGp(s.exe);
+      L.push(`起動時の $gp = ${hex(gp)}`
+        +(ex.gp?"（実行ファイルの +0x14 から）":gp?"（コードの lui＋addiu から割り出した）":"（見つからない）"));
       for(const [nm,a] of [["表B",0x800CBE8C],["表A（命令5が引く）",0x800CBE90],["表C（部品）",0x800CBE94]]){
-        const r=mipsRefs(s.exe,a,24,ex.gp);
+        const r=mipsRefs(s.exe,a,24,gp);
         const rd=r.filter(x=>!x.store).length, wr=r.filter(x=>x.store).length;
         L.push(`  ${nm} ${hex(a)}: 読み ${rd}か所 / 書き ${wr}か所`
           +(r.length?`　${r.map(x=>hex(x.at)+(x.store?"書":"読")).join(" ")}`:"　見つからない"));
