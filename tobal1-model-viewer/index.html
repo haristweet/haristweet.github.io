@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.23.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.24.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2154,6 +2154,27 @@ function t1SegBoxes(d,o){
     span:Math.max(...b.mx.map((v,a)=>v-b.mn[a])),
     mid:b.mn.map((v,a)=>Math.round((v+b.mx[a])/2)).join(",")}));
 }
+
+// モデル1つが「命令の列として読めるか」だけを確かめる。絵にしないので速い。
+// ふるい分けのついでに全ファイルにかけられるので、ボタンを押さなくても結果が出る
+function t1Diagnose(d){
+  const offs=t1ObjectOffsets(d);
+  const objs=offs.map(p=>readT1Object(d,p)).filter(o=>o&&o.ok);
+  let run=0; const why=[];
+  for(const o of objs){
+    const r=t1Run(d,o.base);
+    if(r&&Math.abs(r.verts-o.nv)<=2){ run++; continue }
+    const w=r?`読んだ頂点 ${r.verts}個 とファイルの頂点 ${o.nv}個 が合わない`:t1RunWhy;
+    if(w&&why.indexOf(w)<0) why.push(w);
+  }
+  return {parts:objs.length,run,fail:objs.length-run,why};
+}
+// 理由の「種類」だけを取り出す（位置や数を除いてまとめるため）
+function t1WhyKind(w){
+  return String(w||"")
+    .replace(/（\+0x[0-9a-f]+）/,"")
+    .replace(/\d+/g,"N").trim();
+}
 // ============================================================
 //  WebGL
 // ============================================================
@@ -2683,7 +2704,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.23.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.24.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -3445,8 +3466,13 @@ async function sieveAll(onProgress){
       // VAGp = PS1 の音声。効果音やボイス
       if(body[0]===0x56&&body[1]===0x41&&body[2]===0x47&&body[3]===0x70){ vag.push({e,dec:body.length}); continue }
       const dv=new DataView(body.buffer,body.byteOffset,body.byteLength);
-      other.push({e,dec:body.length,parts:parts.map(p=>p.length).join("/"),
-        words:Array.from({length:Math.min(8,body.length>>2)},(_,k)=>dv.getUint32(k*4,true)),
+      const words=Array.from({length:Math.min(8,body.length>>2)},(_,k)=>dv.getUint32(k*4,true));
+      // キャラクターのモデル（署名つきで語1が0x14でない）は、読めるかどうかまで見る
+      let diag=null;
+      if(words[0]===0x90000000&&words[1]!==0x14){
+        try{ diag=t1Diagnose(body) }catch(_){}
+      }
+      other.push({e,dec:body.length,parts:parts.map(p=>p.length).join("/"),words,diag,
         head:Array.from(body.subarray(0,24),v=>v.toString(16).padStart(2,"0")).join(" ")});
     }catch(err){ broken.push({e,why:err.message}) }
   }
@@ -3462,6 +3488,25 @@ function sieveLines(s){
     L.push("  テクスチャの色数: "+[...by].map(([k,v])=>`${k}色×${v}`).join("  "));
   }
   if(s.bones) L.push(...boneLines(s.bones).map(x=>"  "+x));
+  // キャラクターのモデルが読めているかの内訳。理由の種類ごとにまとめる
+  { const dg=s.other.filter(o=>o.diag);
+    if(dg.length){
+      const bad=dg.filter(o=>o.diag.fail>0);
+      L.push(`  ── キャラクターのモデル ${dg.length}件: 全部読めた ${dg.length-bad.length}件 / 読めないものがある ${bad.length}件 ──`);
+      const byKind=new Map();
+      for(const o of bad) for(const w of o.diag.why){
+        const k=t1WhyKind(w);
+        if(!byKind.has(k)) byKind.set(k,{n:0,ex:w,files:[]});
+        const v=byKind.get(k); v.n++; if(v.files.length<6) v.files.push("#"+o.e.no);
+      }
+      for(const [k,v] of [...byKind].sort((a,b)=>b[1].n-a[1].n)){
+        L.push(`    ${v.n}件: ${k}`);
+        L.push(`      例: ${v.ex}　（${v.files.join(" ")}）`);
+      }
+      for(const o of bad.slice(0,12))
+        L.push(`    #${o.e.no} sector ${o.e.sector}　部品${o.diag.parts}個中 読めた${o.diag.run}個`);
+      if(bad.length>12) L.push(`    …ほか ${bad.length-12}件`);
+    } }
   const sig=s.other.filter(o=>o.words&&o.words[0]===0x90000000);
   if(sig.length){
     L.push(`  ── モデルの署名 0x90000000 があるもの: ${sig.length}件 ──`);
