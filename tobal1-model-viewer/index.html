@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.58.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.59.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -209,6 +209,14 @@ canvas:active{cursor:grabbing}
       <label id="segspread-opt"><input type="checkbox" id="segspread"> 骨の区切りごとに並べる</label>
       <label id="guessbone-opt"><input type="checkbox" id="guessbone"> 仮の骨組みで左右に開く（推測）</label>
       <label id="flatcol-opt"><input type="checkbox" id="flatcol" checked> 色を面ごとにそろえる（平面塗り）</label>
+      <label id="colmode-opt">色の引き方
+        <select id="colmode">
+          <option value="">自動で決める</option>
+          <option value="頂点ごと">頂点ごと</option>
+          <option value="面の頂点ごと">面の頂点ごと</option>
+          <option value="面に1色">面に1色</option>
+          <option value="面に1色（四角は2枚ぶん）">面に1色（四角は2枚ぶん）</option>
+        </select></label>
       <label id="hud-opt"><input type="checkbox" id="hudon" checked> 調べた結果を画面に出す</label>
       <label id="gbamt-opt">開く量 <input type="range" id="gbamt" min="0" max="120" value="60" step="5"><span id="gbamt-v">0.60</span></label>
       <button class="btn" id="viewreset" style="margin-left:6px">見た目をふつうに戻す</button>
@@ -1695,7 +1703,7 @@ const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメ�
 // 見せ方の切り替え。どこがおかしいのかを切り分けるための道具
 // segOnly ＝ この区切りだけ描く。segPart ＝ その区切りがどの部品のものか。
 // 区切りの番号は部品ごとに0から振り直されるので、部品を決めないと別物が混ざる
-const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,guessBone:false,guessAmt:0.6,flatColor:true,up:2};
+const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,guessBone:false,guessAmt:0.6,flatColor:true,colMode:"",up:2};
 try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.only=localStorage.getItem("t1only")==="1";
      t1Show.segColor=localStorage.getItem("t1segcol")==="1";
@@ -1703,6 +1711,7 @@ try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.segSpread=localStorage.getItem("t1segspread")==="1";
      t1Show.guessBone=localStorage.getItem("t1guessbone")==="1";
      { const f=localStorage.getItem("t1flatcol"); if(f!=null) t1Show.flatColor=f==="1" }
+     t1Show.colMode=localStorage.getItem("t1colmode")||"";
      { const a=localStorage.getItem("t1guessamt"); if(a!=null) t1Show.guessAmt=+a }
      // 向きの記憶は v3.5.0 で作り直した（前の既定値が上下逆だったので、古い記憶は捨てる）
      const u=localStorage.getItem("t1up2"); if(u!=null) t1Show.up=+u }catch(_){}
@@ -1797,6 +1806,9 @@ function buildT1Mesh(d,objs){
   const cfit=new Map();
   try{
     const CMODES=["頂点ごと","面の頂点ごと","面に1色","面に1色（四角は2枚ぶん）"];
+    // 手で選ばれているときは、測らずにそれを使う（自動の判定が僅差で外すことがある）
+    if(t1Show.colMode){ for(const o of objs) cfit.set(o.base,t1Show.colMode) }
+    else
     for(const c of t1ColorFit(d,objs)){
       const o=objs.find(x=>x.base===c.base);
       if(c.exact){ cfit.set(c.base,c.fit); continue }
@@ -2803,6 +2815,7 @@ function t1ColorFit(d,objs){
     const quads=o.run.faces.filter(f=>f.idx.length===4).length;
     out.push({base:o.base,bytes,nv:o.nv,corner,faces:o.run.faces.length,maxSlot,tri,quads,
               tags,colors:hue.size,
+              cand:cand.map(([n,v])=>`${n}:${Math.abs(bytes-v)}`).join(" "),
               fit:best.name,diff:best.diff,
               exact:best.diff<=8,
               // ぴったりでなくても、いちばん近いものが頂点でなく面なら面で引く。
@@ -2818,7 +2831,7 @@ function t1ColorLine(c){
     +` → ${c.fit}${c.exact?"（ぴったり）":`（${c.diff}ずれ）`}`
     +(c.picked?`／当ててみて選んだ: ${c.picked}（隣の面との色差 ${c.score}）`:"")
     +`／4バイト目 ${(c.tags||[]).map(([v,n])=>`0x${v.toString(16).padStart(2,"0")}×${n}`).join(" ")}`
-    +`／色の種類 ${c.colors}`
+    +`／色の種類 ${c.colors}／ずれ ${c.cand}`
     +`／いちばん大きい頂点番号 ${c.maxSlot}`;
 }
 
@@ -3071,7 +3084,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.58.0";
+const VERSION="v3.59.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4383,6 +4396,11 @@ showToggle("spread","spread","t1spread");
 showToggle("segspread","segSpread","t1segspread");
 showToggle("guessbone","guessBone","t1guessbone");
 showToggle("flatcol","flatColor","t1flatcol");
+// 色の引き方の自動判定は僅差になることがある。手で選べるようにしておく
+try{ const cm=$("colmode"); if(cm){ cm.value=t1Show.colMode||"";
+  cm.onchange=()=>{ t1Show.colMode=cm.value;
+    try{ localStorage.setItem("t1colmode",cm.value) }catch(_){}
+    if(state.sel>=0) selectEntry(state.sel) } } }catch(_){}
 try{ const h=$("hudon"); if(h){ try{ h.checked=localStorage.getItem("t1hud")!=="0" }catch(_){}
   h.onchange=()=>{ try{ localStorage.setItem("t1hud",h.checked?"1":"0") }catch(_){} updateHud() };
   updateHud() } }catch(_){}
@@ -4436,13 +4454,13 @@ BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.
 // ---- スマホの配置 ----
 const mobileMQ=matchMedia("(max-width:720px)");
 const shotOpt=$("shot-clear").closest("label"), gouraudOpt=$("gouraud-opt"), cropOpt=$("crop-opt"),
-      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt"), sspOpt=$("segspread-opt"), gbOpt=$("guessbone-opt"), gaOpt=$("gbamt-opt"), vrBtn=$("viewreset"), hudOpt=$("hud-opt"), fcOpt=$("flatcol-opt");
+      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt"), sspOpt=$("segspread-opt"), gbOpt=$("guessbone-opt"), gaOpt=$("gbamt-opt"), vrBtn=$("viewreset"), hudOpt=$("hud-opt"), fcOpt=$("flatcol-opt"), cmOpt=$("colmode-opt");
 function applyLayout(){
   const m=mobileMQ.matches, stage=document.querySelector(".stage");
-  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,sspOpt,gbOpt,gaOpt,vrBtn,fcOpt,hudOpt,shotOpt,cropOpt);
-          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=gaOpt.className=hudOpt.className=fcOpt.className="shot-opt"; $("bg-box").hidden=false }
-  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(hudOpt); $("shot-box").prepend(fcOpt); $("shot-box").prepend(vrBtn); $("shot-box").prepend(gaOpt); $("shot-box").prepend(gbOpt); $("shot-box").prepend(sspOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
-          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=gaOpt.className=hudOpt.className=fcOpt.className=""; closeSheet() }
+  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,sspOpt,gbOpt,gaOpt,vrBtn,fcOpt,cmOpt,hudOpt,shotOpt,cropOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=gaOpt.className=hudOpt.className=fcOpt.className=cmOpt.className="shot-opt"; $("bg-box").hidden=false }
+  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(hudOpt); $("shot-box").prepend(cmOpt); $("shot-box").prepend(fcOpt); $("shot-box").prepend(vrBtn); $("shot-box").prepend(gaOpt); $("shot-box").prepend(gbOpt); $("shot-box").prepend(sspOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=gaOpt.className=hudOpt.className=fcOpt.className=cmOpt.className=""; closeSheet() }
   requestAnimationFrame(draw);
 }
 function openTab(t){
