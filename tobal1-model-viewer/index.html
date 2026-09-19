@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.31.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.32.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -154,6 +154,10 @@ canvas:active{cursor:grabbing}
     </div>
     <div data-tab="file"><p class="label">メモリの写し（骨さがし）</p>
       <label class="pick" style="display:inline-block">セーブステートを選ぶ<input id="memfile" type="file" hidden></label>
+      <div id="bonepick-box" hidden style="margin-top:8px">
+        <p class="label">使う骨の表（当ててみた結果の良い順）</p>
+        <select id="bonepick" aria-label="使う骨の表"></select>
+      </div>
       <p class="note">DuckStation でゲームを動かし、キャラクターが立っている場面でセーブステートを作ってください。そのファイルをここで選ぶと、<b>メモリの中身はこのページが読みます</b>。骨の表は実行中にしか存在しないので、これが一番の近道です。DuckStation の設定 →詳細 の「セーブステートの圧縮」を <b>Deflate</b> か <b>なし</b> にしてから作ってください。既定の zstd はブラウザがほどけません。</p>
       <div class="note" id="mem-status"></div>
     </div>
@@ -2479,6 +2483,66 @@ function t1RunPair(d,o,limit,V,okr){
   if(one){ t1Learn(h.A.op,h.A); t1Learn(h.B.op,h.B) }
   return Object.assign(h.r,{solved2:{a:h.A,b:h.B,ways:hits.length,sure:one}});
 }
+
+// ============================================================
+//  骨の表が「本当に骨か」を、当ててみて確かめる
+//
+//  個数が近いというだけで選ぶと、まるで違う行列の並び（画面用や光源用）を
+//  掴んでしまい、頂点が全部どこかへ飛んで何も残らなくなる。
+//  そこで候補ごとに実際に頂点を運んでみて、
+//    ・枠の中に収まった頂点の割合
+//    ・全体の大きさが人として筋が通るか
+//  を見る。これなら中身を知らなくても良し悪しが決まる
+// ============================================================
+function t1BoneFit(d,objs,list){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+  let good=0, total=0;
+  for(const o of objs){
+    if(!o.run||!o.ok) continue;
+    for(const f of o.run.faces) for(const i of f.idx){
+      const q=o.base+o.vertPtr+i*8;
+      if(q+6>d.length) continue;
+      let x=dv.getInt16(q,true), y=dv.getInt16(q+2,true), z=dv.getInt16(q+4,true);
+      const M=list&&list.length?list[(f.seg|0)%list.length]:null;
+      if(M){ const k=M.one||4096;
+        const X=(M.m[0]*x+M.m[1]*y+M.m[2]*z)/k+M.t[0];
+        const Y=(M.m[3]*x+M.m[4]*y+M.m[5]*z)/k+M.t[1];
+        const Z=(M.m[6]*x+M.m[7]*y+M.m[8]*z)/k+M.t[2];
+        x=X; y=Y; z=Z }
+      total++;
+      if(Math.abs(x)<T1_MAX_COORD&&Math.abs(y)<T1_MAX_COORD&&Math.abs(z)<T1_MAX_COORD){
+        good++;
+        const p=[x,y,z];
+        for(let a=0;a<3;a++){ if(p[a]<mn[a])mn[a]=p[a]; if(p[a]>mx[a])mx[a]=p[a] }
+      }
+    }
+  }
+  if(!total) return null;
+  const span=[0,1,2].map(a=>mx[a]>mn[a]?mx[a]-mn[a]:0).sort((a,b)=>b-a);
+  const frac=good/total;
+  // 人として筋が通る大きさか（背の高さ 150〜4000、いちばん長い軸が短い軸の 1.2〜6倍）
+  const ratio=span[1]>0?span[0]/span[1]:99;
+  const sane=frac>=0.995&&span[0]>=150&&span[0]<=4000&&ratio>=1.1&&ratio<=6;
+  return {frac,span,ratio,sane,n:list?list.length:0};
+}
+// 候補の中から、当ててみて筋が通ったものだけを残し、良い順に並べる
+function t1BonePick(d,objs,cands){
+  const base=t1BoneFit(d,objs,null);
+  const out=[];
+  for(const c of cands||[]){
+    const fit=t1BoneFit(d,objs,c.list);
+    if(fit) out.push(Object.assign({},c,{fit}));
+  }
+  out.sort((a,b)=>(b.fit.sane-a.fit.sane)||(b.fit.frac-a.fit.frac)||(b.n-a.n));
+  return {base,list:out};
+}
+// 当ててみた結果を1行にする
+function t1FitLine(f){
+  if(!f) return "確かめられません";
+  return `枠に収まった頂点 ${Math.round(f.frac*1000)/10}%　大きさ ${f.span.map(v=>Math.round(v)).join("×")}`
+    +`　${f.sane?"筋が通る":"筋が通らない"}`;
+}
 // ============================================================
 //  WebGL
 // ============================================================
@@ -2634,7 +2698,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.31.0";
+const VERSION="v3.32.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -2698,6 +2762,7 @@ function buildModelInner(raw,info){
       info.t1Groups="  部品の組: "+[...by].map(([g,n])=>g?`組${g} ${n}個`:`本体 ${n}個`).join("　")
         +"（組の中は同じ形のポーズ違い＝手。実際に出るのは組から1つ）"; }
     if(!okObjs.length) continue;
+    state.t1Objs={d:b.out,objs:okObjs};      // 骨を当てて確かめるときに使う
     const r1=buildT1Mesh(b.out,okObjs);
     // どの部品が「命令の列として実行できた」かを数える。読み方を決めるのは
     // buildT1Mesh なので、必ずそのあとで数えること（前だと全部0になる）
@@ -2709,8 +2774,10 @@ function buildModelInner(raw,info){
                    vari:T1_VAR_FOUND?t1VarName(T1_VAR_FOUND):""}; }
     { const P=r1.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
       for(let i=0;i<P.length;i+=3) for(let a=0;a<3;a++){ if(P[i+a]<mn[a])mn[a]=P[i+a]; if(P[i+a]>mx[a])mx[a]=P[i+a] }
-      info.t1Size=`  モデル全体の縦横: X ${Math.round(mx[0]-mn[0])}　Y ${Math.round(mx[1]-mn[1])}　Z ${Math.round(mx[2]-mn[2])}`
-        +`（いちばん長い軸が背の高さのはず）`;
+      info.t1Size=P.length
+        ? `  モデル全体の縦横: X ${Math.round(mx[0]-mn[0])}　Y ${Math.round(mx[1]-mn[1])}　Z ${Math.round(mx[2]-mn[2])}`
+          +`（いちばん長い軸が背の高さのはず）`
+        : `  モデル全体の縦横: 頂点が1つも残りませんでした（当てている骨の表が違う見込み）`;
       // 上から下へ10段に切って、それぞれの横幅を測る。上下が合っているかを目でなく数で見るため
       const h=mx[1]-mn[1]||1, seg=Array.from({length:10},()=>[1e9,-1e9,1e9,-1e9]);
       for(let i=0;i<P.length;i+=3){ let k=Math.floor((mx[1]-P[i+1])/h*10); if(k<0)k=0; if(k>9)k=9;
@@ -3039,6 +3106,9 @@ function digestLines(){
     if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`+(T1_BONES?`／骨 ${T1_BONES.length}個 を当てている`:"／骨はまだ無い"));
     for(const w of (inf.t1Read&&inf.t1Read.why)||[]) L.push(`    読めない理由: ${w}`);
     for(const a of (inf.t1Read&&inf.t1Read.audit)||[]) L.push(`    読めなかった部品: ${a}`);
+  }
+  if(state.mem&&state.mem.length){
+    L.push(""); L.push(...state.mem.filter(x=>/骨|メモリの写し|収まった/.test(x)).slice(0,12));
   }
   if(state.galGroups&&state.galGroups.length){
     L.push(""); L.push("同じ形でまとめた結果:"); L.push(...state.galGroups);
@@ -3653,16 +3723,48 @@ $("memfile").onchange=async e=>{
     // いま選んでいるモデルの区切りの数に合う骨の表を探して、そのまま使う
     const segs=(state.selInfo&&state.selInfo.t1Segs)||0;
     const hunt=memBoneHunt(prep.buf,exe,segs);
-    t1SetBones(hunt.list);
+    // 個数が近いというだけでは決めない。いま選んでいるモデルに実際に当ててみて、
+    // 頂点が枠に収まり、大きさが人として筋の通るものだけを候補に残す
+    state.boneCands=[]; let note="";
+    const cur=state.t1Objs;
+    if(cur&&cur.d&&cur.objs){
+      const pick=t1BonePick(cur.d,cur.objs,hunt.cands);
+      state.boneCands=pick.list;
+      hunt.lines.push(`  骨なしのとき: ${t1FitLine(pick.base)}`);
+      for(const c of pick.list.slice(0,8))
+        hunt.lines.push(`    ${c.sane===false?"":""}${c.kind} +0x${c.at.toString(16)} ${c.n}個 → ${t1FitLine(c.fit)}`);
+      const best=pick.list.find(c=>c.fit.sane);
+      t1SetBones(best?best.list:null);
+      state.boneSel=best?state.boneCands.indexOf(best):-1;
+      note=best?`骨 ${best.n}個 を当てました`
+               :"当ててみて筋の通る表がなかったので、骨なしのままにしました";
+    }else{ t1SetBones(null); note="先にモデルを選んでから、もう一度どうぞ" }
+    fillBonePick();
     state.mem=[`メモリの写し: ${f.name}（${fmtSize(f.size)}）${prep.note}`,
                ...hunt.lines,...memBoneLines(prep.buf,exe)];
-    st.textContent=hunt.list
-      ? `${f.name} から骨を ${hunt.list.length}個 取りました。モデルに当てています。`
-      : `${f.name} を読みましたが、骨の並びは見つかりませんでした。結果は「解析」に出ています。`;
+    st.textContent=`${f.name}: ${note}`;
     if(state.sel>=0) selectEntry(state.sel);            // 骨をかけて組み立て直す
   }catch(err){ console.error(err); state.mem=["メモリの写しを読めませんでした: "+err.message];
     st.textContent="読めませんでした: "+err.message }
   updateReport(); openTab("info");
+};
+// 骨の表を選び直せるようにする。自動で選んだものが気に入らないときのため
+function fillBonePick(){
+  const box=$("bonepick-box"), sel=$("bonepick");
+  const c=state.boneCands||[];
+  if(!c.length){ box.hidden=true; return }
+  box.hidden=false;
+  sel.innerHTML="";
+  const add=(v,t)=>{ const o=document.createElement("option"); o.value=v; o.textContent=t; sel.append(o) };
+  add(-1,"骨を使わない（手足は胴に畳み込まれたまま）");
+  c.forEach((x,i)=>add(i,`${x.fit.sane?"○":"×"} ${x.kind} +0x${x.at.toString(16)} ${x.n}個 / ${t1FitLine(x.fit)}`));
+  sel.value=String(state.boneSel==null?-1:state.boneSel);
+}
+$("bonepick").onchange=e=>{
+  const i=+e.target.value; state.boneSel=i;
+  const c=(state.boneCands||[])[i];
+  t1SetBones(c?c.list:null);
+  if(state.sel>=0) selectEntry(state.sel);
 };
 $("t1part").onchange=e=>{ state.t1Part=+e.target.value;
   if(state.sel>=0) selectEntry(state.sel) };
@@ -4323,9 +4425,9 @@ function memBoneHunt(buf,exe,segs){
   for(const h of hits.slice(0,8))
     L.push(`    ${h.kind} +0x${h.at.toString(16)}　${h.n}個`);
   if(!hits.length) L.push("    行列の並びは見つかりませんでした");
-  const pick=memPickBones(hits,segs||0);
-  if(pick) L.push(`  使うもの: ${pick.kind} +0x${pick.at.toString(16)}　${pick.n}個（モデルの区切りは ${segs||"?"}個）`);
-  return {base,hits,pick,lines:L,list:pick?memBonesAt(buf,base,pick):null};
+  // 候補ごとに行列そのものも取り出しておく。どれを使うかは「当ててみて」決める
+  const cands=hits.slice(0,16).map(h=>Object.assign({},h,{list:memBonesAt(buf,base,h)}));
+  return {base,hits,cands,lines:L,segs:segs||0};
 }
 // ============================================================
 //  トバルNo.1 のテクスチャを絵にする
