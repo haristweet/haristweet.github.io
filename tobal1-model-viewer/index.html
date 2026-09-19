@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.60.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.61.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2921,6 +2921,7 @@ const T1_NAMES={
   8931:"フェイ（別衣装）", 8946:"フェイ",
   9117:"グレン（別衣装）", 9132:"グレン",
   9274:"メアリー（別衣装）",9289:"メアリー",
+  9383:"ムフ",            // ボス。腹の赤い十字と橙の体で確定
   9470:"ホム（別衣装）",   9484:"ホム",
 };
 // この6人は、プラクティスモードの配色と直に突き合わせて決めた。
@@ -3089,7 +3090,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.60.0";
+const VERSION="v3.61.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
