@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.41.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.42.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -202,6 +202,7 @@ canvas:active{cursor:grabbing}
       <label id="spread-opt"><input type="checkbox" id="spread"> 部品を並べる</label>
       <label id="segspread-opt"><input type="checkbox" id="segspread"> 骨の区切りごとに並べる</label>
       <label id="guessbone-opt"><input type="checkbox" id="guessbone"> 仮の骨組みで左右に開く（推測）</label>
+      <label id="gbamt-opt">開く量 <input type="range" id="gbamt" min="0" max="120" value="50" step="5"><span id="gbamt-v">0.50</span></label>
       <label><input type="checkbox" id="shot-clear"> 背景なし</label>
       <label id="crop-opt"><input type="checkbox" id="shot-crop"> キャラだけ切り抜き</label>
       <button id="shot">スクショを保存</button>
@@ -1685,13 +1686,14 @@ const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメ�
 // 見せ方の切り替え。どこがおかしいのかを切り分けるための道具
 // segOnly ＝ この区切りだけ描く。segPart ＝ その区切りがどの部品のものか。
 // 区切りの番号は部品ごとに0から振り直されるので、部品を決めないと別物が混ざる
-const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,guessBone:false,up:2};
+const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,guessBone:false,guessAmt:0.5,up:2};
 try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.only=localStorage.getItem("t1only")==="1";
      t1Show.segColor=localStorage.getItem("t1segcol")==="1";
      t1Show.spread=localStorage.getItem("t1spread")==="1";
      t1Show.segSpread=localStorage.getItem("t1segspread")==="1";
      t1Show.guessBone=localStorage.getItem("t1guessbone")==="1";
+     { const a=localStorage.getItem("t1guessamt"); if(a!=null) t1Show.guessAmt=+a }
      // 向きの記憶は v3.5.0 で作り直した（前の既定値が上下逆だったので、古い記憶は捨てる）
      const u=localStorage.getItem("t1up2"); if(u!=null) t1Show.up=+u }catch(_){}
 // モデルの「背の高さ」がどの軸かは決め打ちできないので、向きを選べるようにする。
@@ -2688,7 +2690,7 @@ function t1GuessBones(d,o,spread){
   let widest=0;
   for(const [k,b] of box){ if(pairs.has(k)) continue;
     widest=Math.max(widest,b.mx[2]-b.mn[2]) }
-  const gap=(widest||200)*(spread==null?0.5:spread);
+  const gap=(widest||200)*(spread==null?t1Show.guessAmt:spread);
   const max=Math.max(...box.keys());
   const list=[];
   for(let k=0;k<=max;k++){
@@ -2856,7 +2858,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.41.0";
+const VERSION="v3.42.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4120,6 +4122,15 @@ showToggle("segcol","segColor","t1segcol");
 showToggle("spread","spread","t1spread");
 showToggle("segspread","segSpread","t1segspread");
 showToggle("guessbone","guessBone","t1guessbone");
+// 開く量。決め打ちより、見ながら合わせられるほうが早い
+$("gbamt").value=String(Math.round(t1Show.guessAmt*100));
+$("gbamt-v").textContent=t1Show.guessAmt.toFixed(2);
+$("gbamt").oninput=e=>{
+  t1Show.guessAmt=+e.target.value/100;
+  $("gbamt-v").textContent=t1Show.guessAmt.toFixed(2);
+  try{ localStorage.setItem("t1guessamt",String(t1Show.guessAmt)) }catch(_){}
+  if(t1Show.guessBone&&state.sel>=0) selectEntry(state.sel);
+};
 $("gouraud").checked=shading.gouraud;
 $("gouraud").onchange=e=>{
   shading.gouraud=e.target.checked; try{ localStorage.setItem("t1gouraud",shading.gouraud?"1":"0") }catch(_){}
@@ -4149,13 +4160,13 @@ BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.
 // ---- スマホの配置 ----
 const mobileMQ=matchMedia("(max-width:720px)");
 const shotOpt=$("shot-clear").closest("label"), gouraudOpt=$("gouraud-opt"), cropOpt=$("crop-opt"),
-      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt"), sspOpt=$("segspread-opt"), gbOpt=$("guessbone-opt");
+      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt"), sspOpt=$("segspread-opt"), gbOpt=$("guessbone-opt"), gaOpt=$("gbamt-opt");
 function applyLayout(){
   const m=mobileMQ.matches, stage=document.querySelector(".stage");
-  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,sspOpt,gbOpt,shotOpt,cropOpt);
-          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className="shot-opt"; $("bg-box").hidden=false }
-  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(gbOpt); $("shot-box").prepend(sspOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
-          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=""; closeSheet() }
+  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,sspOpt,gbOpt,gaOpt,shotOpt,cropOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=gaOpt.className="shot-opt"; $("bg-box").hidden=false }
+  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(gaOpt); $("shot-box").prepend(gbOpt); $("shot-box").prepend(sspOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
+          shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=gaOpt.className=""; closeSheet() }
   requestAnimationFrame(draw);
 }
 function openTab(t){
