@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.27.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.28.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1134,6 +1134,20 @@ function mipsTableAt(exe,addr,n){
   const out=[];
   for(let k=0;k<n;k++) out.push(dv.getUint32(off+k*4,true));
   return out;
+}
+// 命令の処理の中で最初に呼んでいる関数（jal の飛び先）を返す。
+// 面を描く処理はどれも「数を足して、描く関数を呼ぶ」形なので、
+// この飛び先が同じ命令どうしは、1枚の大きさも同じはず
+function mipsJalIn(exe,addr,n){
+  const t=exeText(exe); if(!t) return 0;
+  const off=addr-t.base; if(off<0) return 0;
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  for(let k=0;k<(n||12)&&off+k*4+4<=t.body.length;k++){
+    const w=dv.getUint32(off+k*4,true);
+    // 符号ありの | で潰れないよう、最後にまとめて符号なしに直す
+    if((w>>>26)===3) return ((((addr+k*4)&0xf0000000)|((w&0x03ffffff)<<2))>>>0);
+  }
+  return 0;
 }
 // ============================================================
 //  アーカイブを直接さらう
@@ -2170,7 +2184,7 @@ function t1SegBoxes(d,o){
 function t1Diagnose(d){
   const offs=t1ObjectOffsets(d);
   const objs=offs.map(p=>readT1Object(d,p)).filter(o=>o&&o.ok);
-  const done=new Set(), why=[], solved=[], vars=[], audit=[];
+  const done=new Set(), why=[], solved=[], vars=[], audit=[], pairs=[];
   const budget={n:4};                     // 総当たりは1ファイルにつき4部品まで（全件にかけるので）
   const best=o=>t1RunBest(d,o,0,budget);
   // 1つ解けると「分かっているもの」が増えて次が解けるので、進まなくなるまで回す
@@ -2180,6 +2194,7 @@ function t1Diagnose(d){
       if(done.has(o.base)) continue;
       const r=best(o);
       if(r&&Math.abs(r.verts-o.nv)<=2){ done.add(o.base); if(r.solved) solved.push(r.solved);
+        if(r.solved2) pairs.push(r.solved2);
         if(r.variant) vars.push(t1VarName(r.variant)); continue }
     }
     if(done.size===before&&pass>0) break;
@@ -2195,7 +2210,7 @@ function t1Diagnose(d){
     // 読めなかった部品は「数えるだけ」の調べもつけておく（理由の当たりをつけるため）
     if(audit.length<3){ try{ audit.push(t1AuditLine(t1Audit(d,o))) }catch(_){} }
   }
-  return {parts:objs.length,run:done.size,fail:objs.length-done.size,why,solved,vars,audit};
+  return {parts:objs.length,run:done.size,fail:objs.length-done.size,why,solved,vars,audit,pairs};
 }
 // 理由の「種類」だけを取り出す（位置や数を除いてまとめるため）
 function t1WhyKind(w){
@@ -2344,6 +2359,11 @@ function t1RunBest(d,o,limit,sweep){
     const b=t1RunExtra(d,o.base,limit,V);
     if(okr(b)){ T1_VAR_FOUND=V; return Object.assign(b,{variant:V}) }
   }
+  // ここまで来たら、未知の命令が2つ残っている見込み。大きさの組を総当たりする
+  for(const V of tries){
+    const p=t1RunPair(d,o,limit,V,okr);
+    if(p){ if(V) T1_VAR_FOUND=V; return p }
+  }
   t1RunWhy=firstWhy;        // 理由は既定の読み方のものを返す（そちらが本筋）
   return first;
 }
@@ -2394,6 +2414,56 @@ function t1AuditLine(a){
   return `頂点 ${a.nv} ／ 入れる合計 ${a.load12}${a.load47?`（＋4と7で ${a.load47}）`:""}`
     +` [${ld}] ／ 面 ${a.faceBytes}B 勘定 ${a.gap==null?`未知の命令 ${a.unknown.join(",")}`:(a.gap===0?"ぴったり":`${a.gap>0?"+":""}${a.gap}`)}`
     +` ／ 命令 ${c}`;
+}
+
+// ============================================================
+//  未知が2つ残ったとき（命令14 と 命令15）
+//
+//  引き算は未知が1つのときしか使えない。2つ残ったら、片方の大きさを決め打ちして
+//  もう片方を引き算で出す、を総当たりする。1枚の大きさは 8〜64 の4の倍数しかないので
+//  組は高々十数通りしかなく、そのうえ「読んだ頂点数＝ファイルの頂点数」かつ
+//  「面のバイト数がぴったり」を通るものはさらに少ない。
+//  答えが1つに絞れたときだけ覚える（絞れないのに覚えると、あとの部品を巻き添えにする）
+// ============================================================
+const T1_SIZE_TRY=[12,16,20,24,8,28,32,36,40,44,48,52,56,60,64];
+function t1SolveSize2(scan){
+  if(!scan) return null;
+  let known=0; const unknown=[];
+  for(const [op,n] of scan.counts){ const sz=t1SizeOf(op); if(sz) known+=sz*n; else unknown.push([op,n]) }
+  if(unknown.length!==2) return null;
+  const rest=scan.faceBytes-known; if(rest<=0) return null;
+  const [[opA,nA],[opB,nB]]=unknown;
+  if(nA<1||nB<1) return null;
+  const out=[];
+  for(const a of T1_SIZE_TRY){
+    const r=rest-a*nA;
+    if(r<=0||r%nB) continue;
+    const b=r/nB;
+    if(b<8||b>64||b%4) continue;
+    out.push([{op:opA,size:a},{op:opB,size:b}]);
+  }
+  return out.length?out:null;
+}
+// 未知2つの部品を、大きさの組と並べ方を当てながら読む。
+// 合格したものを全部集めて、大きさが1組に絞れたときだけ覚える
+function t1RunPair(d,o,limit,V,okr){
+  const scan=t1ScanOps(d,o.base,limit);
+  const pairs=t1SolveSize2(scan);
+  if(!pairs) return null;
+  const learned={}; for(const op of Object.keys(T1_LEARNED)) learned[op]=T1_LEARNED[op];
+  const hits=[];
+  for(const [A,B] of pairs)
+    for(const ka of t1Layouts(A.size)) for(const kb of t1Layouts(B.size)){
+      const extra=Object.assign({},learned,{[A.op]:ka,[B.op]:kb});
+      const r=t1Run(d,o.base,limit,extra,V);
+      if(okr(r)&&r.faceBytes===scan.faceBytes) hits.push({r,A:Object.assign({},A,ka),B:Object.assign({},B,kb)});
+    }
+  if(!hits.length) return null;
+  const sizes=k=>new Set(hits.map(h=>h[k].size));
+  const one=sizes("A").size===1&&sizes("B").size===1;
+  const h=hits[0];
+  if(one){ t1Learn(h.A.op,h.A); t1Learn(h.B.op,h.B) }
+  return Object.assign(h.r,{solved2:{a:h.A,b:h.B,ways:hits.length,sure:one}});
 }
 // ============================================================
 //  WebGL
@@ -2926,7 +2996,7 @@ function fileBase(){
 function updateReport(){
   const s=state.src; if(!s) return;
   const L=[], ex=exeInfo(s.exe);
-  L.push("トバルNo.1 モデルビューア v3.27.0 ・ 解析結果");
+  L.push("トバルNo.1 モデルビューア v3.28.0 ・ 解析結果");
   L.push("");
   L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
@@ -3033,6 +3103,21 @@ function updateReport(){
             L.push(`    命令 ${String(i+1).padStart(2)} → ${hex(v)}`
               +(inf?`　長さ ${inf.lens.length?inf.lens.join("/")+"B":"?"}　読む語 ${inf.reads.map(x=>"+"+x).join(",")||"-"}`:""));
           });
+          // 面を描く命令（8以上）は「飛び先の関数」が1枚の大きさを決めている。
+          // 飛び先でまとめると、同じ大きさの命令どうしが分かる
+          const byJal=new Map();
+          tb.forEach((v,i)=>{ const op=i+1;
+            if(op<8||!(v>=0x80010000&&v<0x800d0000)) return;
+            const j=mipsJalIn(s.exe,v,14); if(!j) return;
+            if(!byJal.has(j)) byJal.set(j,[]);
+            byJal.get(j).push(op); });
+          if(byJal.size){
+            L.push("  面を描く命令の飛び先（同じ飛び先なら1枚の大きさも同じはず）:");
+            for(const [j,ops] of [...byJal].sort((a,b)=>a[0]-b[0]))
+              L.push(`    命令 ${ops.join(",")} → ${hex(j)}`);
+            for(const [j,ops] of [...byJal].sort((a,b)=>a[0]-b[0]))
+              L.push(...mipsBlock(s.exe,j,10,`  命令 ${ops.join(",")} が呼ぶ関数 `));
+          }
         } }
       // 旗が立っていないときに呼ばれる関数。下ごしらえならここ
       L.push("  旗が立っていないときに呼ぶ関数 0x80019C78:");
@@ -3698,10 +3783,25 @@ async function sieveAll(onProgress){
       if(words[0]===0x90000000&&words[1]!==0x14){
         try{ diag=t1Diagnose(body) }catch(_){}
       }
+      // 読めなかったキャラクターのモデルは、あとでもう一度かける（そのときには
+      // ほかのモデルで覚えた命令が増えているので、読めるようになることがある）
       other.push({e,dec:body.length,parts:parts.map(p=>p.length).join("/"),words,diag,
+        retry:(diag&&diag.fail>0)?body:null,
         head:Array.from(body.subarray(0,24),v=>v.toString(16).padStart(2,"0")).join(" ")});
     }catch(err){ broken.push({e,why:err.message}) }
   }
+  // 2周目・3周目。1周目で覚えた命令と読み方があるので、そこで詰まったものが解ける
+  for(let pass=0;pass<2;pass++){
+    const left=other.filter(o=>o.retry);
+    if(!left.length) break;
+    let fixed=0;
+    for(const o of left){
+      try{ const g=t1Diagnose(o.retry); if(g.fail<o.diag.fail){ o.diag=g; fixed++ }
+           if(g.fail===0) o.retry=null }catch(_){}
+    }
+    if(!fixed) break;
+  }
+  for(const o of other) o.retry=null;          // 展開した中身は抱えたままにしない
   if(onProgress) onProgress(1);
   bones.sort((a,b)=>b.b.ratio-a.b.ratio||b.b.n-a.b.n);
   return {tex,vag,other,broken,bones,total:list.length};
@@ -3733,6 +3833,12 @@ function sieveLines(s){
         }
         for(const [k,n] of [...sv].sort((a,b)=>b[1]-a[1]))
           L.push(`    割り出した: ${k}　${n}部品で一致`);
+        // 未知が2つ残ったときの、大きさの組
+        for(const o of dg) for(const x of (o.diag.pairs||[])){
+          const f=y=>`命令${y.op}=${y.size}B(頂点${y.n}${y.nrm?"・法線あり":""})`;
+          L.push(`    組で割り出した: ${f(x.a)} ${f(x.b)}　`
+            +(x.sure?"（通る読み方はこれだけ）":`（通る読み方が ${x.ways}通りあるので当てにしない）`));
+        }
         const kept=Object.keys(T1_LEARNED).sort((a,b)=>a-b);
         if(kept.length) L.push("    覚えた命令: "+kept.map(op=>
           `命令${op}=${T1_LEARNED[op].size}B(頂点${T1_LEARNED[op].n}${T1_LEARNED[op].nrm?"・法線あり":""})`).join(" "));
