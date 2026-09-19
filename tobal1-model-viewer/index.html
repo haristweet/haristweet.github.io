@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.42.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.43.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -203,6 +203,7 @@ canvas:active{cursor:grabbing}
       <label id="segspread-opt"><input type="checkbox" id="segspread"> 骨の区切りごとに並べる</label>
       <label id="guessbone-opt"><input type="checkbox" id="guessbone"> 仮の骨組みで左右に開く（推測）</label>
       <label id="gbamt-opt">開く量 <input type="range" id="gbamt" min="0" max="120" value="50" step="5"><span id="gbamt-v">0.50</span></label>
+      <button class="btn" id="viewreset" style="margin-left:6px">見た目をふつうに戻す</button>
       <label><input type="checkbox" id="shot-clear"> 背景なし</label>
       <label id="crop-opt"><input type="checkbox" id="shot-crop"> キャラだけ切り抜き</label>
       <button id="shot">スクショを保存</button>
@@ -2858,7 +2859,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.42.0";
+const VERSION="v3.43.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4122,6 +4123,18 @@ showToggle("segcol","segColor","t1segcol");
 showToggle("spread","spread","t1spread");
 showToggle("segspread","segSpread","t1segspread");
 showToggle("guessbone","guessBone","t1guessbone");
+// 切り替えを増やしすぎた。1つ押せばふつうの見た目に戻せるようにする。
+// 調べもの用の切り替え（並べる・色分け・読めない部品も出す）を全部切る
+$("viewreset").onclick=()=>{
+  for(const [id,key,mem] of [["showall","all","t1all"],["showonly","only","t1only"],
+                             ["segcol","segColor","t1segcol"],["spread","spread","t1spread"],
+                             ["segspread","segSpread","t1segspread"]]){
+    t1Show[key]=false; const c=$(id); if(c) c.checked=false;
+    try{ localStorage.setItem(mem,"0") }catch(_){}
+  }
+  t1Show.segOnly=-1; t1Show.segPart=-1;
+  if(state.sel>=0) selectEntry(state.sel); else redraw();
+};
 // 開く量。決め打ちより、見ながら合わせられるほうが早い
 $("gbamt").value=String(Math.round(t1Show.guessAmt*100));
 $("gbamt-v").textContent=t1Show.guessAmt.toFixed(2);
@@ -4160,12 +4173,12 @@ BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.
 // ---- スマホの配置 ----
 const mobileMQ=matchMedia("(max-width:720px)");
 const shotOpt=$("shot-clear").closest("label"), gouraudOpt=$("gouraud-opt"), cropOpt=$("crop-opt"),
-      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt"), sspOpt=$("segspread-opt"), gbOpt=$("guessbone-opt"), gaOpt=$("gbamt-opt");
+      allOpt=$("showall-opt"), onlyOpt=$("showonly-opt"), segOpt=$("segcol-opt"), sprOpt=$("spread-opt"), sspOpt=$("segspread-opt"), gbOpt=$("guessbone-opt"), gaOpt=$("gbamt-opt"), vrBtn=$("viewreset");
 function applyLayout(){
   const m=mobileMQ.matches, stage=document.querySelector(".stage");
-  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,sspOpt,gbOpt,gaOpt,shotOpt,cropOpt);
+  if(m){ $("look-bg").append($("bg-box"),gouraudOpt,allOpt,onlyOpt,segOpt,sprOpt,sspOpt,gbOpt,gaOpt,vrBtn,shotOpt,cropOpt);
           shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=gaOpt.className="shot-opt"; $("bg-box").hidden=false }
-  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(gaOpt); $("shot-box").prepend(gbOpt); $("shot-box").prepend(sspOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
+  else { stage.insertBefore($("bg-box"),$("shot-box")); $("shot-box").prepend(cropOpt); $("shot-box").prepend(shotOpt); $("shot-box").prepend(vrBtn); $("shot-box").prepend(gaOpt); $("shot-box").prepend(gbOpt); $("shot-box").prepend(sspOpt); $("shot-box").prepend(sprOpt); $("shot-box").prepend(segOpt); $("shot-box").prepend(onlyOpt); $("shot-box").prepend(allOpt); $("shot-box").prepend(gouraudOpt);
           shotOpt.className=gouraudOpt.className=cropOpt.className=allOpt.className=onlyOpt.className=segOpt.className=sprOpt.className=sspOpt.className=gbOpt.className=gaOpt.className=""; closeSheet() }
   requestAnimationFrame(draw);
 }
