@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.45.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.46.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2914,7 +2914,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.45.0";
+const VERSION="v3.46.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3343,7 +3343,8 @@ function digestLines(){
   if(inf&&e){
     L.push("");
     L.push(`選んでいるファイル: #${e.no} sector ${e.sector}`);
-    for(const k of ["t1Parts","t1Size","t1Read"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
+    for(const k of ["t1Parts","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
+    for(const x of inf.t1ColorLines||[]) L.push("    "+x);
     if(inf.t1Read&&inf.t1Read.run!=null)
       L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個／当てずっぽう ${inf.t1Read.guess}個`
         +(inf.t1Read.vari&&inf.t1Read.vari!=="既定"?`／頂点を入れる読み方: ${inf.t1Read.vari}`:""));
