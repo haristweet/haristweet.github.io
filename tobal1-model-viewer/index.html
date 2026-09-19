@@ -118,7 +118,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.50.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.51.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2769,9 +2769,19 @@ function t1ColorFit(d,objs){
     let best=null;
     for(const [name,n] of cand){ const d2=Math.abs(bytes-n);
       if(!best||d2<best.diff) best={name,n,diff:d2} }
+    // 色の語の4バイト目。プレステの描画命令では、ここに命令コードが入る
+    //   （色の語 ＝ コード<<24 | B<<16 | G<<8 | R）。
+    // 0x20/0x28/0x30/0x38 などが並んでいたら、そこは色ではなく描画命令の並び
+    const tag=new Map(); const hue=new Set();
+    for(let q=start;q+4<=end;q+=4){
+      tag.set(d[q+3],(tag.get(d[q+3])||0)+1);
+      if(hue.size<4096) hue.add((d[q]<<16)|(d[q+1]<<8)|d[q+2]);
+    }
+    const tags=[...tag.entries()].sort((a,b)=>b[1]-a[1]).slice(0,4);
     const tri=o.run.faces.reduce((a,f)=>a+(f.idx.length===4?2:1),0);
     const quads=o.run.faces.filter(f=>f.idx.length===4).length;
     out.push({base:o.base,bytes,nv:o.nv,corner,faces:o.run.faces.length,maxSlot,tri,quads,
+              tags,colors:hue.size,
               fit:best.name,diff:best.diff,
               exact:best.diff<=8,
               // ぴったりでなくても、いちばん近いものが頂点でなく面なら面で引く。
@@ -2786,6 +2796,8 @@ function t1ColorLine(c){
     +` 三角${c.tri}×4=${c.tri*4}（四角${c.quads}枚）`
     +` → ${c.fit}${c.exact?"（ぴったり）":`（${c.diff}ずれ）`}`
     +(c.picked?`／当ててみて選んだ: ${c.picked}（隣の面との色差 ${c.score}）`:"")
+    +`／4バイト目 ${(c.tags||[]).map(([v,n])=>`0x${v.toString(16).padStart(2,"0")}×${n}`).join(" ")}`
+    +`／色の種類 ${c.colors}`
     +`／いちばん大きい頂点番号 ${c.maxSlot}`;
 }
 
@@ -3013,7 +3025,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.50.0";
+const VERSION="v3.51.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
