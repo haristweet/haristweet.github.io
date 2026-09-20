@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.64.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.65.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3106,7 +3106,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.64.0";
+const VERSION="v3.65.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3578,6 +3578,12 @@ function digestLines(){
   if(state.mem&&state.mem.length){
     L.push(""); L.push(...state.mem.filter(x=>/骨|メモリの写し|収まった|RAM|一致|読める場所/.test(x)).slice(0,16));
   }
+  // まだ名前の付いていないキャラクターのモデル。残りを数えるため
+  { const sig=((state.sieve&&state.sieve.other)||[])
+      .filter(o=>o.words&&o.words[0]===0x90000000&&o.words[1]!==0x14&&!t1NameOf(o.e.sector));
+    if(sig.length){ L.push("");
+      L.push(`名前の付いていないモデル ${sig.length}件: `
+        +sig.map(o=>`#${o.e.no}(${o.e.sector})`).join(" ")) } }
   if(state.galGroups&&state.galGroups.length){
     L.push(""); L.push("同じ形でまとめた結果:"); L.push(...state.galGroups);
   }
@@ -4044,7 +4050,7 @@ function galleryEntries(limit){
   // 同じ sector を二度出さない
   const seen=new Set(), out=[];
   for(const e of list){ if(seen.has(e.sector)) continue; seen.add(e.sector); out.push(e);
-    if(out.length>=(limit||32)) break }
+    if(out.length>=(limit||64)) break }   // 打ち切ると、そこにいるキャラを見落とす
   return out;
 }
 // 同じキャラかどうかの見分け方。色や模様は違っても、
@@ -4087,7 +4093,7 @@ $("mdlgal").onclick=async()=>{
   state.galling=true;
   const grid=$("mdlgrid"), note=$("mdlnote"), keep=state.sel;
   grid.innerHTML="";
-  const list=galleryEntries(32);
+  const list=galleryEntries(64);   // ふるい分けで見つかった数（40体）を全部出す
   state.segGal=false;
   // 一覧は見比べるための道具なので、角度を揃える。
   // 見る人が回した向きのままだと、肩の上が見えたり潰れたりして比べられない
