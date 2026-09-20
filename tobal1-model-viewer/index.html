@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.83.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.84.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1960,6 +1960,38 @@ function t1Layout(objs,dv,up){
 // 骨の区切り（命令5）ごとに横へ並べる。
 // 「どの区切りが腕で、どれが脚で、どれが胴なのか」は、重なったままでは分からない。
 // 一度ばらして見れば、形から骨を組むための土台になる
+// 「その区切りで入れられた頂点」でまとめた箱。
+//
+// これまで出していた箱は、面を区切りでまとめたものだった。
+// だが面が使う頂点は前の区切りで入れたものでもよく（置き場所は命令5をまたいで残る）、
+// そのせいで箱に別の骨の頂点が混ざっていた。
+// 実物 #123 の区切り8が 379×155×141 ——
+// 背丈746 のモデルで、前腕ひとつが半分の長さになるはずがない。
+// 混ざった数字の上に「親からの相対だ」と積み上げていた
+function t1VertBoxes(d,o){
+  if(!o.run||!o.run.vseg) return null;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const vs=o.run.vseg, box=new Map();
+  for(let i=0;i<vs.length;i++){
+    const k=vs[i]; if(k==null) continue;
+    const q=o.base+o.vertPtr+i*8; if(q+6>d.length) continue;
+    const p=[dv.getInt16(q,true),dv.getInt16(q+2,true),dv.getInt16(q+4,true)];
+    let b=box.get(k);
+    if(!b){ b={n:0,mn:[1e9,1e9,1e9],mx:[-1e9,-1e9,-1e9]}; box.set(k,b) }
+    b.n++;
+    for(let a=0;a<3;a++){ if(p[a]<b.mn[a])b.mn[a]=p[a]; if(p[a]>b.mx[a])b.mx[a]=p[a] }
+  }
+  return [...box.entries()].sort((a,b)=>a[0]-b[0]).map(([k,b])=>({
+    seg:k, n:b.n,
+    size:b.mn.map((v,a)=>Math.round(b.mx[a]-v)).join("×"),
+    mid:b.mn.map((v,a)=>Math.round((v+b.mx[a])/2)).join(",")}));
+}
+function t1VertBoxLine(V){
+  if(!V||!V.length) return "";
+  const big=Math.max(...V.map(x=>Math.max(...x.size.split("×").map(Number))));
+  return `  入れた区切りごとの頂点（面ではなく、頂点を入れた区切りでまとめたもの）`
+    +`　${V.length}区切り　いちばん大きい辺 ${big}`;
+}
 // 区切り（骨）ごとの中心が、原点のまわりに固まっているかを見る。
 //
 // なぜ見るのか：「みんなお腹のところに顔がある」から。
@@ -2513,6 +2545,10 @@ function t1Run(d,base,limit,extra,V){
   let fp=base+0x10, xp=facePtr, vi=0, steps=0, seg=0;
   const slot=new Int32Array(T1_SLOTS).fill(-1);
   const faces=[], used=new Map();
+  // その頂点が「どの区切り（命令5のあと）で入れられたか」を覚えておく。
+  // 面でまとめると、前の区切りで入れた頂点が混ざる（置き場所は命令5をまたいで残る）。
+  // 骨ごとの広がりを知りたいなら、入れたときの区切りでまとめないといけない
+  const vseg=[];
   while(fp+8<=d.length&&steps<(limit||4096)){
     const op=dv.getUint32(fp,true);
     if(op===0) break;
@@ -2526,7 +2562,7 @@ function t1Run(d,base,limit,extra,V){
         if(V.unit4) at>>=2;
         n+=V.plus||0;
         if(at<0||at+n>T1_SLOTS||n>4096) return no(`命令${op} の置き場所 ${at}／個数 ${n} が枠(${T1_SLOTS})に収まらない`,fp);
-        for(let k=0;k<n;k++) slot[at+k]=vi++;
+        for(let k=0;k<n;k++){ slot[at+k]=vi; vseg[vi]=seg; vi++ }
       }
       fp+=T1_CMD_LEN[op];
     }else if(T1_FACE_OP[op]||(extra&&extra[op])){
@@ -2554,7 +2590,7 @@ function t1Run(d,base,limit,extra,V){
     steps++;
   }
   if(!faces.length) return no("面が1枚も出てこなかった",fp);
-  return {faces,verts:vi,steps,segs:seg,used:[...used.entries()].sort((a,b)=>a[0]-b[0]),
+  return {faces,verts:vi,vseg,steps,segs:seg,used:[...used.entries()].sort((a,b)=>a[0]-b[0]),
           faceBytes:xp-facePtr, cmdBytes:fp+4-(base+0x10)};
 }
 
@@ -3529,7 +3565,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.83.0";
+const VERSION="v3.84.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3547,7 +3583,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.83.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.84.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -3705,6 +3741,15 @@ function buildModelInner(raw,info){
             // 「みんなお腹のところに顔がある」＝全部の部品が原点に重なっている、
             // という見立てが本当かを一行で出す。中心はずっと捨てていた
             info.t1SegOrigin=t1SegOriginLine(t1SegOrigin(S,info.t1Extent));
+            // 面でまとめた箱には別の骨の頂点が混ざる。
+            // 「入れた区切り」でまとめ直したものも出して、並べて比べられるようにする
+            try{
+              const V=t1VertBoxes(b.out,bigO);
+              if(V&&V.length){
+                info.t1VertBox=t1VertBoxLine(V);
+                info.t1VertBoxLine=V.map(x=>`${x.seg}:${x.n}点 ${x.size}@${x.mid}`);
+              }
+            }catch(_){}
             info.t1Seg=[`  骨ごとの置き場所（部品 +${hex(bigO.base,4)}、命令5で区切る、${S.length}区切り）:`,
               `    区切りが小さくまとまっていれば、部品は別々の座標系にあり行列で運ぶ必要がある`];
             S.slice(0,24).forEach(x=>info.t1Seg.push(
@@ -4048,6 +4093,11 @@ function digestLines(){
     if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`+(T1_BONES?`／骨 ${T1_BONES.length}個 を当てている`:"／骨はまだ無い"));
     if(inf.t1SegLine&&inf.t1SegLine.length){
       if(inf.t1SegOrigin) L.push(inf.t1SegOrigin);
+      if(inf.t1VertBox){
+        L.push(inf.t1VertBox);
+        const W=inf.t1VertBoxLine||[];
+        for(let i=0;i<W.length;i+=4) L.push("    "+W.slice(i,i+4).join("　"));
+      }
       L.push("  区切りごとの大きさ（番号:面数 幅×高×奥@中心）:");
       for(let i=0;i<inf.t1SegLine.length;i+=4) L.push("    "+inf.t1SegLine.slice(i,i+4).join("　"));
     }
