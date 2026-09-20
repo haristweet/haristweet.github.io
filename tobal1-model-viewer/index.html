@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.1.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.2.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3411,6 +3411,55 @@ function t1BoneCountCompare(A,B){
   return `  骨の数え方くらべ　${f("命令5だけ",a)}　／　${f("命令6も数える",b)}`
     +`　→ 骨らしいのは ${better}`;
 }
+// 隣り合う骨の境目で、頂点が同じ座標を共有しているかを数える。
+//
+// これを一度も測っていなかった。ここで話が決まる。
+//   共有している → ファイルは既に共通の空間にある。行列は要らない。
+//                   団子に見える原因は、こちらの読み方の別の所にある
+//   していない   → 骨ごとの別空間だと確定。行列が無いと組み立てられない
+//
+// 外からの助言（アプローチB）：どの頂点がどの骨に属するかは分かっているので、
+// 親の端と子の端で近接・共有される頂点を突き合わせれば、
+// 外の行列に頼らずメッシュの形から骨組みを組み直せる。
+// その前提が成り立つかどうかが、まずこれで分かる
+function t1SegTouch(d,o,tol){
+  if(!o||!o.run||!o.run.vseg) return null;
+  const t=tol==null?2:tol;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const vs=o.run.vseg, pts=new Map();          // 区切り → [[x,y,z],…]
+  for(let i=0;i<vs.length;i++){
+    const k=vs[i]; if(k==null) continue;
+    const q=o.base+o.vertPtr+i*8; if(q+6>d.length) continue;
+    if(!pts.has(k)) pts.set(k,[]);
+    pts.get(k).push([dv.getInt16(q,true),dv.getInt16(q+2,true),dv.getInt16(q+4,true)]);
+  }
+  const keys=[...pts.keys()].sort((a,b)=>a-b);
+  const out=[];
+  for(let i=0;i<keys.length;i++) for(let j=i+1;j<keys.length;j++){
+    const A=pts.get(keys[i]), B=pts.get(keys[j]);
+    if(A.length>400||B.length>400) continue;   // 大きすぎる組は飛ばす（重い）
+    let n=0;
+    for(const a of A) for(const b of B)
+      if(Math.abs(a[0]-b[0])<=t&&Math.abs(a[1]-b[1])<=t&&Math.abs(a[2]-b[2])<=t){ n++; break }
+    if(n) out.push({a:keys[i],b:keys[j],n,
+      near:keys[j]===keys[i]+1});
+  }
+  out.sort((x,y)=>y.n-x.n);
+  return {pairs:out, segs:keys.length,
+          adj:out.filter(x=>x.near).length,
+          adjPts:out.filter(x=>x.near).reduce((s,x)=>s+x.n,0)};
+}
+function t1SegTouchLine(r){
+  if(!r) return "";
+  if(!r.pairs.length)
+    return `  骨の境目で重なる頂点: 0組（${r.segs}区切り）`
+      +"　→ 骨ごとに別の空間。行列が無いと組み立てられない";
+  const top=r.pairs.slice(0,6).map(x=>`${x.a}-${x.b}:${x.n}点${x.near?"（隣）":""}`).join(" ");
+  return `  骨の境目で重なる頂点: ${r.pairs.length}組`
+    +`（うち番号が隣どうし ${r.adj}組・${r.adjPts}点）　${top}`
+    +(r.adj>=3?"　→ 隣の骨が端を共有している。共通の空間にある見込み"
+              :"　→ 隣どうしの共有が少ない。骨ごとに別の空間らしい");
+}
 // 「ぺたんこな区切り」を見つける。
 //
 // #68 の頂点の箱を高さの軸で見ると、こうなっていた。
@@ -3962,7 +4011,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.1.0";
+const VERSION="v4.2.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3980,7 +4029,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v4.1.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v4.2.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4209,6 +4258,8 @@ function buildModelInner(raw,info){
                 // 命令6も数えた場合の箱も作って、どちらが骨らしいか比べる
                 const Vb=t1VertBoxes(b.out,bigO,true);
                 info.t1BoneCmp=t1BoneCountCompare(V,Vb);
+                // 骨の境目で頂点が共有されているか。ここで話が決まる
+                try{ info.t1Touch=t1SegTouchLine(t1SegTouch(b.out,bigO)) }catch(_){}
                 const flat=t1FlatSegs(V);
                 if(flat.length) info.t1Flat=`  ぺたんこな区切り ${flat.length}個`
                   +`（厚みがほとんど無い板。点も少ない。手足の肉ではなく、`
@@ -4562,6 +4613,7 @@ function digestLines(){
       if(inf.t1ChainTry) L.push(inf.t1ChainTry);
       if(inf.t1SegOrigin) L.push(inf.t1SegOrigin);
       if(inf.t1PtrMove) L.push(inf.t1PtrMove);
+      if(inf.t1Touch) L.push(inf.t1Touch);
       if(inf.t1BoneCmp) L.push(inf.t1BoneCmp);
       if(inf.t1Flat) L.push(inf.t1Flat);
       if(inf.t1VertBox){
