@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.95.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.96.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1302,16 +1302,53 @@ function mipsFindSinTable(exe,limit){
 //   ・ゲーム独自の表
 //   ・こちらの走査が別のものを拾っている
 // のどちらか。決めつけずに、見つかったものを全部出す
-function mipsSinTableLines(exe){
+// 見つけたサイン表を、外からもらった照合用のバイト列と突き合わせる。
+//   512段・振幅4096:  00 00 32 00 64 00 97 00 C9 00 FB 00 2D 01 5E 01
+//   4096段・振幅4096: 00 00 06 00 0D 00 13 00 19 00 1F 00 26 00 2C 00
+// 先頭16バイトをそのまま出すので、どちらなのか（どちらでもないのか）が分かる。
+//
+// そして肝心なのは、その表を**読んでいる所**。
+// 0x8004B8A0 なら lui 0x8005 ＋ addiu -0x4760 で作られるはずで、
+// その形は mipsAddrOf が拾える。見つかればそこが行列を組んでいる関数
+function mipsSinTableLines(exe,gp){
   const L=mipsFindSinTable(exe,8);
   if(!L.length) return ["  サイン表は見つからない"];
-  const out=L.map(x=>`  サイン表 ${hexA(x.at)}　一周 ${x.n}段　1.0＝${x.one}`
-    +`　読んでいる所: `+(mipsRefs(exe,x.at,6).map(r=>hexA(r.at)).join(" ")||"（lui＋lw では見つからない）"));
+  const t=exeText(exe);
+  const dv=t&&new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const out=[];
+  for(const x of L){
+    const off=t?x.at-t.base:-1;
+    let head="";
+    if(dv&&off>=0&&off+16<=t.body.length){
+      const b=[]; for(let i=0;i<16;i++) b.push(t.body[off+i].toString(16).padStart(2,"0"));
+      head=`　先頭16バイト ${b.join(" ")}`;
+    }
+    out.push(`  サイン表 ${hexA(x.at)}　一周 ${x.n}段　1.0＝${x.one}${head}`);
+    // 表の番地を作っている所＝行列を組んでいる関数の入口
+    const mk=mipsAddrOf(exe,x.at-64,x.at+64,12,gp);
+    out.push(`    番地を作っている所: `
+      +(mk.length?mk.map(r=>`${hexA(r.at)}→${hexA(r.addr)}(${r.how})`).join(" ")
+                 :"見つからない")); 
+  }
   const has4096=L.some(x=>x.n===4096), has1024=L.some(x=>x.n===1024);
   out.push(`  （Psy-Q の標準は 1周4096段・振幅4096。`
-    +`4096段 ${has4096?"あり":"なし"}／1024段 ${has1024?"あり":"なし"}。`
-    +`合わないなら独自の表か、走査が別物を拾っている）`);
+    +`4096段 ${has4096?"あり":"なし"}／1024段 ${has1024?"あり":"なし"}）`);
   return out;
+}
+// サイン表を作っている所を含む関数を丸ごと出す。ここが行列を組む処理のはず
+function mipsSinUserLines(exe,gp,cap){
+  const L=mipsFindSinTable(exe,4);
+  const out=[];
+  for(const x of L){
+    for(const r of mipsAddrOf(exe,x.at-64,x.at+64,3,gp)){
+      const fn=mipsFuncAt(exe,r.at,cap||48);
+      if(!fn.length) continue;
+      out.push(`  サイン表 ${hexA(x.at)} を使っている ${hexA(r.at)} の関数:`);
+      out.push(...fn.slice(0,cap||40));
+      return out;                                  // 1件出せば十分
+    }
+  }
+  return out.length?out:["  サイン表を使っている関数は見つからない"];
 }
 // 表の番地を「どこかの構造体の一部」として書いている所を探す。
 //
@@ -3905,7 +3942,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.95.0";
+const VERSION="v3.96.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3923,7 +3960,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.95.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.96.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4796,7 +4833,8 @@ function updateReport(){
         }catch(err){ state.boneBrief.push("  部品の関数が読めなかった: "+err.message) }
         // 角度から行列を作っている所を、サイン表から手繰る
         try{ state.boneBrief.push("  角度から行列を作っている所を探す:",
-                                  ...mipsSinTableLines(s.exe)) }
+                                  ...mipsSinTableLines(s.exe,gp),
+                                  ...mipsSinUserLines(s.exe,gp,40)) }
         catch(err){ state.boneBrief.push("  サイン表さがしで失敗: "+err.message) }
         // 表の番地は「構造体の一部」として書かれている可能性がある。
         // 表そのものではなく、その前後まで広げて番地を作っている所を探す
