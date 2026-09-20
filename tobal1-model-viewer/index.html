@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.8.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.9.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4208,7 +4208,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.8.0";
+const VERSION="v4.9.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4916,6 +4916,22 @@ function digestLines(){
                         :"中身はどれも同じ　→ キャラごとではない"));
         }
       }
+    }
+    // 静止ポーズは独立したデータとして無く、位置の一部は形に焼き込まれ、
+    // 残りは毎フレームの角度で与えられる——その読みで進める。
+    // 探すのは骨格ファイルではなく角度の列。角度の列は
+    // 「1フレームぶんの刻みだけ離れたバイトがよく似ている」で見つかる
+    { const cand=other.filter(o=>o.full&&o.full.length>=256)
+        .sort((a,b)=>a.full.length-b.full.length).slice(0,8);
+      if(cand.length){
+        L.push("  角度の列らしいものを、繰り返す刻みで探す:");
+        for(const o of cand){
+          let r=null,err="";
+          try{ r=animStrideScan(o.full) }catch(e){ err=e.message }
+          L.push(err?`  #${o.e.no}: 測れなかった（${err}）`
+                    :animStrideLine(r,`#${o.e.no}(${o.full.length}B)`));
+        }
+      } else L.push("  角度の列を探せる大きさのファイルが無い");
     }
     // 骨格がキャラごとなら、モデル40件と同じくらいの数の小さいファイルが
     // どこかに固まっているはず。無ければ「共通1ファイル」説が濃くなる。
@@ -6118,8 +6134,10 @@ async function sieveAll(onProgress){
       other.push({e,dec:body.length,parts:parts.map(p=>p.length).join("/"),words,diag,
         retry:(diag&&diag.fail>0)?body:null,
         // 小さいファイルは展開後を丸ごと覚える。先頭24バイトでは
-        // 「数が並んでいる」までしか分からず、区切りも本数も読めなかった
-        full:body.length<=2048?body.slice():null,
+        // 「数が並んでいる」までしか分からず、区切りも本数も読めなかった。
+        // 16KB まで広げた——角度の列を探すには、1フレームぶんの刻みが
+        // 何度も繰り返されるだけの長さが要る
+        full:body.length<=16384?body.slice():null,
         head:Array.from(body.subarray(0,24),v=>v.toString(16).padStart(2,"0")).join(" ")});
     }catch(err){ broken.push({e,why:err.message}) }
   }
@@ -6344,6 +6362,69 @@ function indexTripleLines(u8,name){
   return [`  ${name}: 3つ組として ${n}組　同じ番号3つ（埋め草の面らしいもの）${same}組`
     +`　いちばん大きい番号 ${max}　先頭が増えていく組 ${rise}/${n-1}`
     +(same>=n*0.1?"　→ 面の頂点番号の列らしい":"　→ 埋め草が少ない。面の列とは言い切れない")];
+}
+
+// ============================================================
+//  アニメーションのデータを、周期から探す
+//  静止ポーズという独立したデータは無く、位置の一部は形に焼き込まれ、
+//  残りは毎フレームの角度で与えられる——という読みで進める。
+//  だとすると探すのは「骨格ファイル」ではなく「角度の列」。
+//
+//  角度の列には、形から分かる特徴がある：
+//  1フレームぶんの長さ（刻み）だけ離れたバイトは、よく似ている。
+//  隣のフレームで関節の角度が大きく変わることは無いから。
+//  そこで、刻みを変えながら「刻みだけ離れたバイトの差」を測る。
+//  いちばん小さくなった刻みが、1フレームの長さ
+// ============================================================
+function animStrideScan(u8,opt){
+  const o=opt||{}, cap=Math.min(u8.length,o.cap||4096);
+  const min=o.min||8, max=Math.min(o.max||288,(cap>>2));
+  if(cap<min*4) return null;
+  // 0だらけのところは、どの刻みでも差が0になる。中身のあるぶんだけ見る
+  let nz=0; for(let i=0;i<cap;i++) if(u8[i]) nz++;
+  if(nz<cap*0.25) return {flat:true,nz:nz/cap};
+  // ものさし。離れた所どうしの差の平均（ここまで小さければ意味がある、の基準）
+  let base=0,bn=0;
+  for(let i=0;i+1<cap;i++){ base+=Math.abs(u8[i]-u8[(i*7+13)%cap]); bn++ }
+  base=bn?base/bn:0;
+  if(base<4) return {flat:true,nz:nz/cap};       // そもそも変化が無い
+  const out=[];
+  for(let S=min;S<=max;S++){
+    let sum=0,n=0;
+    for(let i=0;i+S<cap;i++){ sum+=Math.abs(u8[i+S]-u8[i]); n++ }
+    if(n<64) continue;
+    out.push({S,score:(sum/n)/base});
+  }
+  if(!out.length) return null;
+  out.sort((a,b)=>a.score-b.score);
+  // 刻みの倍数は当然よく似る。いちばん小さい刻みを残す
+  const keep=[];
+  for(const x of out){
+    if(x.score>0.75) break;
+    if(keep.some(k=>x.S%k.S===0)) continue;
+    keep.push(x); if(keep.length>=3) break;
+  }
+  return {base,nz:nz/cap,best:keep,all:out.slice(0,3)};
+}
+function animStrideLine(r,name){
+  if(!r) return `  ${name}: 短すぎて測れない`;
+  if(r.flat) return `  ${name}: 中身がほとんど 0（${Math.round(r.nz*100)}%）。角度の列ではない`;
+  if(!r.best.length)
+    return `  ${name}: 繰り返す刻みは見つからない`
+      +`（いちばん近くて ${r.all[0].S}バイト・${r.all[0].score.toFixed(2)}）`;
+  return `  ${name}: 1フレームらしい刻み `
+    +r.best.map(x=>`${x.S}バイト(${x.score.toFixed(2)})`).join(" ")
+    +"　"+animStrideMean(r.best[0].S);
+}
+// 骨30本。角度が1バイトなら 30×3＝90、int16 なら 180
+function animStrideMean(S){
+  const n=[[90,"骨30本×角度3つ(1バイト)"],[180,"骨30本×角度3つ(int16)"],
+           [60,"骨30本×2"],[30,"骨30本×1"],[120,"骨30本×4"],
+           [96,"骨32本×3"],[192,"骨32本×3(int16)"]];
+  for(const [v,t] of n) if(S===v) return "→ "+t;
+  for(const [v,t] of n) if(S%v===0) return `→ ${t} の ${S/v}倍`;
+  if(S%3===0) return `→ 3で割ると ${S/3}（角度3つなら骨 ${S/3}本）`;
+  return "";
 }
 // ---- 骨さがし ----
 // 命令5 は「外から渡された表から次の行列を取り出す」処理だった。その行列はプレステの
