@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.13.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.14.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4401,7 +4401,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.13.0";
+const VERSION="v4.14.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5049,7 +5049,7 @@ function digestLines(){
     for(const a of (inf.t1Read&&inf.t1Read.audit)||[]) L.push(`    読めなかった部品: ${a}`);
   }
   if(state.mem&&state.mem.length){
-    L.push(""); L.push(...state.mem.filter(x=>/骨|メモリの写し|収まった|RAM|一致|読める場所/.test(x)).slice(0,16));
+    L.push(""); L.push(...state.mem.filter(x=>/骨|メモリの写し|収まった|RAM|一致|読める場所|行列|表[ABC] 0x/.test(x)).slice(0,28));
   }
   // まだ名前の付いていないキャラクターのモデル。残りを数えるため
   { const sig=((state.sieve&&state.sieve.other)||[])
@@ -7167,6 +7167,10 @@ function memBoneLines(buf,exe){
   const M=memReader(buf,base);
   const hx=(a,n)=>Array.from(M.bytes(a,n),v=>v.toString(16).padStart(2,"0")).join(" ");
   L.push(...memCpuLines(buf));
+  // ふるいにかけずに、行列の積み場所をそのまま出す。
+  // 条件で掃いて0件だったので、条件のほうを疑う
+  try{ L.push(...memStackLines(buf,base)) }
+  catch(err){ L.push("  行列の積み場所が読めませんでした: "+err.message) }
   // RAM だけでなく、写したファイル全体を掃く（スクラッチパッドもこの中にある）
   L.push(...memMatrixRunsAllLines(buf,base));
   // モデルがいくつ載っているか。0x90000000 の署名で数える
@@ -7334,6 +7338,62 @@ function memBoneHunt(buf,exe,segs){
   // 候補ごとに行列そのものも取り出しておく。どれを使うかは「当ててみて」決める
   const cands=hits.slice(0,16).map(h=>Object.assign({},h,{list:memBonesAt(buf,base,h)}));
   return {base,hits,cands,lines:L,segs:segs||0};
+}
+
+// ============================================================
+//  行列の積み場所を、ふるいにかけずにそのまま見る
+//  「int16×9 が ±4200・詰め物が0・移動が ±30000」という条件で
+//  写し全体を掃いたが、一つも出なかった。
+//  条件のほうが間違っている可能性がある——移動は数万に達するし、
+//  行列は連なって並んでいるとは限らない。
+//  0x800CC910 は行列の積みの先端なので、その値が指す所を
+//  条件なしで出せば、何が置いてあるか目で見える
+// ============================================================
+const MEM_STACK_PTR=0x800CC910;
+function memMatrixAt(M,addr){
+  const b=M.bytes(addr,32); if(b.length<32) return null;
+  const dv=new DataView(b.buffer,b.byteOffset,b.byteLength);
+  return {r:Array.from({length:9},(_,k)=>dv.getInt16(k*2,true)),
+          pad:dv.getInt16(18,true),
+          t:[dv.getInt32(20,true),dv.getInt32(24,true),dv.getInt32(28,true)]};
+}
+function memMatrixLine(m){
+  if(!m) return "読めない";
+  return `回転[${m.r.join(",")}] 詰${m.pad} 移動(${m.t.join(",")})`;
+}
+// 行列らしさを、点で言う（0〜3）。ふるいにはせず、目印として付けるだけ
+function memMatrixHint(m){
+  if(!m) return "";
+  const h=[];
+  if(m.r.every(v=>v>=-4200&&v<=4200)) h.push("回転が±4096に収まる");
+  if(m.pad===0) h.push("詰め物が0");
+  if(m.r.some(v=>v!==0)&&!m.r.every(v=>v===m.r[0])) h.push("回転がばらけている");
+  return h.length?"　← "+h.join("・"):"";
+}
+function memStackLines(buf,base,opt){
+  const o=opt||{}, M=memReader(buf,base), L=[];
+  const sp=M.u32(MEM_STACK_PTR);
+  L.push(`  行列の積みの先端 ${hex(MEM_STACK_PTR)} の中身: ${hex(sp)}`
+    +(M.ptr(sp)?"（RAM を指している）":"（RAM の番地ではない）"));
+  for(const [nm,a] of MEM_TABLES){
+    const v=M.u32(a);
+    L.push(`  ${nm} ${hex(a)} の中身: ${hex(v)}`+(M.ptr(v)?"（RAM を指している）":""));
+    // 表B はポインタの並び。その先が行列として読めるか、条件なしで出す
+    if(M.ptr(v)&&/表[AB]/.test(nm))
+      for(let k=0;k<(o.ptrs||3);k++){
+        const p=M.u32(v+k*4); if(!M.ptr(p)) break;
+        L.push(`    [${k}] → ${hex(p)}　${memMatrixLine(memMatrixAt(M,p))}`);
+      }
+  }
+  if(!M.ptr(sp)) return L;
+  // 先端の前後を、32バイトずつそのまま出す。ふるいにはかけない
+  const n=o.n||10, from=sp-n*32;
+  L.push(`  ${hex(sp)} の手前 ${n}個ぶんを、そのまま32バイトずつ:`);
+  for(let k=0;k<n;k++){
+    const a=from+k*32, m=memMatrixAt(M,a);
+    L.push(`    ${hex(a)}　${memMatrixLine(m)}${memMatrixHint(m)}`);
+  }
+  return L;
 }
 // ============================================================
 //  トバルNo.1 のテクスチャを絵にする
