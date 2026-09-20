@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.68.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.69.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2316,6 +2316,80 @@ function t1Run(d,base,limit,extra,V){
           faceBytes:xp-facePtr, cmdBytes:fp+4-(base+0x10)};
 }
 
+// まだ意味の分かっていない命令3・4・6・7の中身をそのまま集める。
+//
+// なぜこれを見るのか：部品がどれも原点に重なって団子になるのは、
+// 骨のずらし量（部品ごとの位置）が無いから。メモリからは取れなかったが、
+// ファイルの中にある可能性をまだ潰していない。
+// 命令4は16バイト＝命令の語のほかに3語ある。この3語が x,y,z なら、
+// それがそのまま骨の位置になる。命令7も12バイトで2語ある。
+//
+// 見分け方：
+//   座標らしい   小さい符号つきの値（|v| < 4096）。3語そろって小さければ有力
+//   ポインタ     0x80000000 台
+//   番号・個数   0..255 くらいの小さい正の値
+// 実行はせず、ただ読んで数えるだけなので、形が崩れることはない
+const T1_ARG_KIND=v=>{
+  const sv=v|0;
+  if((v>>>24)===0x80) return "ポインタ";
+  if(v===0) return "0";
+  if(sv>-4096&&sv<4096) return "座標らしい";
+  if(v<65536) return "番号・個数";
+  return "その他";
+};
+function t1OpArgs(d,base,limit){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const g=p=>p+4<=d.length?dv.getUint32(p,true):0;
+  const out=new Map();          // op -> {n, slots:[{kind:Map, mn, mx, vals:[]}]}
+  let fp=base+0x10, steps=0, seg=0;
+  while(fp+8<=d.length&&steps<(limit||4096)){
+    const op=dv.getUint32(fp,true);
+    if(op===0) break;
+    if(op in T1_CMD_LEN){
+      if(op===5) seg++;
+      const len=T1_CMD_LEN[op], words=len/4-1;
+      if(words>0){
+        let e=out.get(op);
+        if(!e){ e={op,n:0,seg:[],slots:[]}; for(let i=0;i<words;i++)
+                  e.slots.push({kind:new Map(),mn:1e9,mx:-1e9,vals:[]});
+                out.set(op,e) }
+        e.n++; e.seg.push(seg);
+        for(let i=0;i<words;i++){
+          const v=g(fp+4+i*4), sv=v|0, sl=e.slots[i];
+          sl.kind.set(T1_ARG_KIND(v),(sl.kind.get(T1_ARG_KIND(v))||0)+1);
+          if(sv<sl.mn)sl.mn=sv; if(sv>sl.mx)sl.mx=sv;
+          if(sl.vals.length<12) sl.vals.push(sv);
+        }
+      }
+      fp+=len;
+    }else if(T1_FACE_OP[op]){
+      const cnt=dv.getUint32(fp+4,true);
+      if(cnt>4096) break;
+      fp+=8;
+    }else break;
+    steps++;
+  }
+  return [...out.values()].sort((a,b)=>a.op-b.op);
+}
+// 集めた中身を、そのまま貼れる形にする
+function t1OpArgLines(list){
+  const L=[];
+  for(const e of list){
+    const head=`  命令${e.op}（${e.n}回・骨 ${Math.min(...e.seg)}..${Math.max(...e.seg)}）`;
+    const parts=e.slots.map((sl,i)=>{
+      const k=[...sl.kind.entries()].sort((a,b)=>b[1]-a[1])
+              .map(([n,c])=>`${n}${c}`).join("/");
+      return `語${i+1} ${sl.mn}..${sl.mx} ${k} 例[${sl.vals.join(" ")}]`;
+    });
+    L.push(head);
+    for(const p of parts) L.push("    "+p);
+    // 3語そろって小さい符号つきなら、骨の位置の可能性
+    if(e.slots.length===3&&e.slots.every(sl=>sl.mn>-4096&&sl.mx<4096))
+      L.push("    ★3語とも小さい符号つき。骨のずらし量（x,y,z）の可能性がある");
+  }
+  if(!L.length) L.push("  中身のある命令が無かった");
+  return L;
+}
 // 骨（命令5）ごとに、面が使う頂点がどのあたりに置かれているかを見る。
 // 区切りごとにこぢんまり固まっていれば、部品は別々の座標系にあって
 // 行列で運ばないといけない、ということ
@@ -3122,7 +3196,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.68.0";
+const VERSION="v3.69.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3214,6 +3288,12 @@ function buildModelInner(raw,info){
           // 大きい部品（＝本体）から順に出す。小さい部品ばかり出しても本丸が見えない
           info.t1ColorLines=cf.slice().sort((a,b)=>b.nv-a.nv).slice(0,4).map(t1ColorLine);
         } }catch(_){}
+      // まだ意味の分かっていない命令の中身。いちばん大きい部品（＝本体）で見る。
+      // 骨のずらし量がここに入っていないか探している
+      try{
+        const big=okObjs.slice().sort((a,b)=>(b.nv||0)-(a.nv||0))[0];
+        if(big) info.t1OpArgs=t1OpArgLines(t1OpArgs(r1.data,big.base));
+      }catch(_){}
       info.t1Read={run,guess,total:okObjs.length,why,audit,
                    vari:T1_VAR_FOUND?t1VarName(T1_VAR_FOUND):""}; }
     { const P=r1.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
@@ -3580,6 +3660,10 @@ function digestLines(){
     L.push(`選んでいるファイル: #${e.no} sector ${e.sector}`);
     for(const k of ["t1Parts","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
     for(const x of inf.t1ColorLines||[]) L.push("    "+x);
+    if(inf.t1OpArgs&&inf.t1OpArgs.length){
+      L.push("  まだ意味の分かっていない命令の中身（骨のずらし量を探している）:");
+      L.push(...inf.t1OpArgs);
+    }
     if(inf.t1Read&&inf.t1Read.run!=null)
       L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個／当てずっぽう ${inf.t1Read.guess}個`
         +(inf.t1Read.vari&&inf.t1Read.vari!=="既定"?`／頂点を入れる読み方: ${inf.t1Read.vari}`:""));
@@ -3859,6 +3943,10 @@ function updateReport(){
       +(inf.t1Read.guess?`／当てずっぽう ${inf.t1Read.guess}個（ここが多いと形が崩れる）`:"（全部きちんと読めています）"));
     if(inf.t1Color) L.push(inf.t1Color);
     if(inf.t1ColorLines) inf.t1ColorLines.forEach(x=>L.push("    "+x));
+    if(inf.t1OpArgs){
+      L.push("  まだ意味の分かっていない命令の中身:");
+      inf.t1OpArgs.forEach(x=>L.push(x));
+    }
     if(inf.t1Guess) L.push(inf.t1Guess);
     if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`
       +(T1_BONES?`　メモリから取った骨 ${T1_BONES.length}個 を当てています`
