@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.5.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.6.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4146,7 +4146,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.5.0";
+const VERSION="v4.6.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4164,7 +4164,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v4.5.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v4.6.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4836,9 +4836,34 @@ function digestLines(){
       for(const o of small.slice(0,3))
         if(o.head) L.push(`    #${o.e.no} の先頭: ${o.head}`);
     }
+    // 骨格がキャラごとなら、モデル40件と同じくらいの数の小さいファイルが
+    // どこかに固まっているはず。無ければ「共通1ファイル」説が濃くなる。
+    // 番号が続いていて、どれも小さいファイルのかたまりを探す
+    { const runs=[]; let cur=null;
+      for(const en of state.entries){
+        const o=other.find(x=>x.e===en);
+        const small=o&&en.size<=8192;
+        if(small){ if(cur) cur.push(en); else { cur=[en]; runs.push(cur) } }
+        else cur=null;
+      }
+      const big=runs.filter(r=>r.length>=8).sort((a,b)=>b.length-a.length);
+      L.push(big.length
+        ? "  小さいファイルが続いているかたまり: "
+          +big.slice(0,4).map(r=>`#${r[0].no}〜#${r[r.length-1].no}（${r.length}件）`).join(" ")
+          +"　→ 骨格がキャラごとに分かれているなら、この中にある"
+        : "  小さいファイルが8件以上続くかたまりは無い"
+          +"　→ 骨格はキャラごとではなく、共通の1ファイルか実行ファイルの中");
+    }
     if((sv.broken||[]).length){
-      L.push(`  読めなかったファイル ${sv.broken.length}件: `
-        +sv.broken.map(b=>`#${b.e.no}(${b.e.sector}) ${fmtSize(b.e.size)}`).join(" "));
+      L.push(`  読めなかったファイル ${sv.broken.length}件`
+        +"（骨の表は圧縮されていない固定長の並びかもしれない。"
+        +"だとすると展開できないのは当たり前なので、中身を見る）:");
+      for(const b of sv.broken.slice(0,6)){
+        L.push(`    #${b.e.no}(${b.e.sector}) ${fmtSize(b.e.size)}`
+          +(b.rawLen?`／生 ${b.rawLen}B`:"")+`　${b.why}`);
+        if(b.head) L.push(`      先頭32バイト: ${b.head}`);
+        if(b.i16)  L.push(`      int16で読むと: ${b.i16}`);
+      }
     }
   }
   if(state.galGroups&&state.galGroups.length){
@@ -5957,7 +5982,17 @@ async function sieveAll(onProgress){
         const bs=boneScanBest(out);
         if(bs&&bs.n>=8&&bs.ratio>=0.5) bones.push({e,pi,len:out.length,b:bs});
       });
-      if(!body){ broken.push({e,why:"展開できない"}); continue }
+      // 展開できないファイルは、生のバイトをそのまま覚えておく。
+      // 骨の表は圧縮されていない固定長の並びかもしれない——
+      // だとすると「展開できない」のは当たり前で、中身を見ないと分からない。
+      // 番号だけ出していたので、いちばん知りたいものが見えていなかった
+      if(!body){
+        broken.push({e,why:"展開できない",
+          head:Array.from(raw.subarray(0,32),v=>v.toString(16).padStart(2,"0")).join(" "),
+          i16:Array.from({length:12},(_,k)=>
+            k*2+2<=raw.length?((raw[k*2]|(raw[k*2+1]<<8))<<16>>16):0).join(","),
+          rawLen:raw.length});
+        continue }
       const ti=textureInfoT1(body);
       if(ti){ tex.push({e,pairs:ti.pairs,colors:ti.colors,dec:body.length}); continue }
       // VAGp = PS1 の音声。効果音やボイス
