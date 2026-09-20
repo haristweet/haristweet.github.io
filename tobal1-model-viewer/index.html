@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.80.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.81.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3443,7 +3443,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.80.0";
+const VERSION="v3.81.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3461,7 +3461,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.80.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.81.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -3921,11 +3921,18 @@ function digestLines(){
     if(t) L.push("", t.trim());
   }
   // 骨の表を触っている場所（いま追っている本丸）
-  { const src=(state.report||"").split("\n").filter(x=>/^起動時の \$gp|^  表[ABC]/.test(x));
+  // 「^  表[ABC]」で拾うと、長い報告のほうの見出し
+  //   「  表A（命令5が引く） を読んでいる 0x8001F450 のある関数:」
+  // まで混ざって、中身のない見出しだけが5行並んでいた。
+  // 読み書きの件数が出ている行だけにする
+  { const src=(state.report||"").split("\n").filter(x=>
+      /^起動時の \$gp/.test(x)||/^  表[ABC][^:]*: 読み /.test(x));
     if(src.length){ L.push(""); L.push(...src) } }
-  if(state.boneCode&&state.boneCode.length){
-    L.push(""); L.push("骨の表を作っている場所（1件が何バイトで何が入るかを読むため）:");
-    L.push(...state.boneCode);
+  // まとめには「分かったこと」だけ。逆アセンブルは長い報告のほうに置く。
+  // 短くすると言いながら足し続けて、350行まで膨らませてしまった
+  if(state.boneBrief&&state.boneBrief.length){
+    L.push(""); L.push("実行ファイルから読み取ったこと:");
+    L.push(...state.boneBrief);
   }
   const inf=state.selInfo, e=state.entries[state.sel];
   if(inf&&e){
@@ -4127,16 +4134,21 @@ function updateReport(){
       // メモリの中を「32バイトの行列らしきもの」で探すやり方は尽きた
       // （2MB に 210 か所しかなく、どれも筋が通らなかった）。
       // 表を書いている命令の前後を見れば、1件が何バイトで何が入るかが分かる
-      state.boneCode=[];
-      const seen=new Set();
+      state.boneCode=[];        // 長い報告に出すぶん（逆アセンブルを含む）
+      state.boneBrief=[];       // まとめに出すぶん（分かったことだけ）
+      // 同じ関数を何度も出さない。読む場所と書く場所が同じ関数の中にあると、
+      // まったく同じ逆アセンブルが二度並ぶ（表Aの読みと書きがそれだった）。
+      // 先頭の行で見分けると、窓の切り出し位置が違うだけで別物になってしまうので、
+      // 「その関数がどこからどこまでか」で見分ける
+      const seen=[];
       for(const [nm,a] of [["表A（命令5が引く）",0x800CBE90],["表C（部品）",0x800CBE94]]){
         for(const r of mipsRefs(s.exe,a,24,gp)){
           const fn=mipsFuncAt(s.exe,r.at,64);
           if(!fn.length) continue;
-          const head=fn[0].match(/0x([0-9a-f]+)/);
-          const key=head?head[1]:String(r.at);
-          if(seen.has(key)) continue;
-          seen.add(key);
+          const at=x=>{ const m=x.match(/0x([0-9a-f]+)/); return m?parseInt(m[1],16):0 };
+          const lo=at(fn[0]), hi=at(fn[fn.length-1]);
+          if(seen.some(x=>lo<=x.hi&&hi>=x.lo)) continue;
+          seen.push({lo,hi});
           state.boneCode.push(`  ${nm} を${r.store?"書いて":"読んで"}いる ${hex(r.at)} のある関数:`);
           state.boneCode.push(...fn.slice(0,56).map(x=>x.replace(/^ {4}/,"    ")));
           if(fn.length>56) state.boneCode.push(`    …（あと ${fn.length-56} 行）`);
@@ -4145,13 +4157,11 @@ function updateReport(){
       // 命令ごとの長さと処理の場所を、実行ファイルから直に拾う。
       // 命令5の尻尾（0x8001F4F4 の j ＋ addiu $fp,$fp,4）がそうだったので、
       // 同じ形を全部拾えばいい。これでデータからの推測が要らなくなる
-      try{ state.boneCode.push("  命令ごとの長さ（実行ファイルから直に）:",
-                               ...mipsCmdTailLines(s.exe)) }
-      catch(err){ state.boneCode.push("  命令の長さ拾いで失敗: "+err.message) }
+      // 「命令ごとの長さ（尻尾を数えただけ）」と「振り分け表18件」は、
+      // 下の「命令ごとの飛び先と長さ（振り分けから）」に取って代わられた。
+      // 同じことを three 通りに出しても長くなるだけなので消した
       // 振り分け表が読めれば、命令の番号と長さの対応が確定する
-      try{ state.boneCode.push("  命令の振り分け表（番号＝命令の番号）:",
-                               ...mipsOpTableLines(s.exe)) }
-      catch(err){ state.boneCode.push("  振り分け表さがしで失敗: "+err.message) }
+
       // 表を探し当てるより、振り分けそのものを読むほうが確か。
       // 0x8001efa8 の中に「表から引いて jr で飛ぶ」形が書いてある
       try{
@@ -4166,13 +4176,13 @@ function updateReport(){
       // ここが読めれば、こちらの決めごと（若い番号を小さいほうに）が要らなくなる
       try{
         const M=mipsCmdMap(s.exe);
-        state.boneCode.push("  命令ごとの飛び先と長さ（振り分けから）:",
+        state.boneBrief.push("  命令ごとの飛び先と長さ（振り分けから）:",
                             ...mipsCmdMapLines(s.exe));
         if(M&&M.tbl){
-          state.boneCode.push("  面の命令が面1枚あたり進むバイト数:");
-          state.boneCode.push(...mipsFaceSizeLines(s.exe,M.tbl));
+          state.boneBrief.push("  面の命令が面1枚あたり進むバイト数:");
+          state.boneBrief.push(...mipsFaceSizeLines(s.exe,M.tbl));
           const used=applyExeSizes(s.exe);
-          state.boneCode.push(used
+          state.boneBrief.push(used
             ? `  → 面の命令 ${used}個 の大きさを実行ファイルから決めた`
               +"（頂点の数と法線の持ち方は、今までどおりデータに決めさせる）"
             : "  → 実行ファイルからは決められなかった");
@@ -4183,7 +4193,7 @@ function updateReport(){
       try{
         // $gp 相対（addiu $?, $gp, N）も見る。lui＋addiu だけでは取りこぼす
         const mk=mipsAddrOf(s.exe,0x800CBE8C,0x800CBE94,16,gp);
-        state.boneCode.push(mk.length
+        state.boneBrief.push(mk.length
           ? `  表の番地を作っている場所 ${mk.length}件: `
             +mk.map(x=>`${hex(x.at)}→${hex(x.addr)}(${x.how})`).join(" ")
           : "  表の番地を作っている場所は見つからない（lui＋addiu も $gp 相対も）");
