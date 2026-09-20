@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.11.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.12.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1713,7 +1713,9 @@ function mipsCursorByAddr(exe,gp){
     v.packet=v.steps.length>=3&&v.steps.every(x=>GPU_PACKET.has(x));
     v.matrix=!v.packet&&v.steps.length===1&&v.steps[0]===32;
   }
-  return [...by.values()].sort((a,b)=>(b.matrix?1:0)-(a.matrix?1:0)||a.addr-b.addr);
+  // 1ずつ進むものは、ただの数え上げ。行列さがしには関係ないので後ろへ
+  const rank=v=>v.matrix?0:(v.steps.some(x=>x>=8)?1:2);
+  return [...by.values()].sort((a,b)=>rank(a)-rank(b)||a.addr-b.addr);
 }
 function mipsCursorMean(v){
   if(v.packet) return "→ 進め方がばらばら。GPUのパケットを積む所（行列ではない）";
@@ -1727,12 +1729,40 @@ function mipsCursorLines(exe,gp){
   if(!vs.length) return ["  読んで足して書き戻している所は見つからない"];
   const L=[`  読んで・足して・同じ所に書き戻している入れもの ${vs.length}件`
     +`（行列らしいもの ${vs.filter(v=>v.matrix).length}件）:`];
-  for(const v of vs.slice(0,8))
+  for(const v of vs.slice(0,12))
     L.push(`    ${hexA(v.addr)} を ${v.steps.join("/")} ずつ`
       +`（${v.n}か所 ${(v.ats||[]).slice(0,3).map(hexA).join(" ")}）　${mipsCursorMean(v)}`);
   return L;
 }
 function mipsCursorPick(exe,gp){ return mipsCursorByAddr(exe,gp).find(v=>v.matrix)||null }
+
+// ============================================================
+//  表に最初の値を入れている所を、まとめて読む
+//  $gp を壊していたあいだは「読み1・書き1」しか見えず、どちらも
+//  命令5の処理そのものだった。直したら書き込みが3か所ずつになった。
+//  増えたぶんは 0x8001A18C 付近に固まっている——そこが仕込みの場所
+// ============================================================
+function mipsSetupSites(exe,addrs,gp,skipFrom){
+  const sites=[];
+  for(const a of addrs)
+    for(const r of mipsRefs(exe,a,24,gp))
+      if(r.store&&!(skipFrom&&r.at>=skipFrom)) sites.push({addr:a,at:r.at});
+  sites.sort((x,y)=>x.at-y.at);
+  return sites;
+}
+// 仕込みの場所が固まっているなら、その塊を丸ごと字にする
+function mipsSetupWindow(exe,addrs,gp,opt){
+  const o=opt||{}, sites=mipsSetupSites(exe,addrs,gp,o.skipFrom);
+  if(!sites.length) return {sites,lines:["  表に値を入れている所は見つからない"]};
+  // いちばん手前の書き込みから、近いものだけを1つの塊とみなす
+  const first=sites[0].at;
+  const near=sites.filter(s=>s.at-first<=(o.span||0x80));
+  const last=near[near.length-1].at;
+  const t=exeText(exe); if(!t) return {sites,lines:["  実行ファイルが読めない"]};
+  const from=Math.max(0,first-t.base-(o.back||12)*4);
+  const to=Math.min(t.body.length,last-t.base+(o.fwd||3)*4);
+  return {sites,near,lines:mipsLines(exe,{from,to},first-t.base)};
+}
 // ============================================================
 //  アーカイブを直接さらう
 //  表の形が分からなくても、アーカイブの中を 2048 バイトごとに見て
@@ -4301,7 +4331,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.11.0";
+const VERSION="v4.12.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4992,8 +5022,11 @@ function digestLines(){
       // いちばん小さいものを1件、中身を全部出す
       const full=small.find(o=>o.full);
       if(full){
-        L.push(`  #${full.e.no}(${full.e.sector}) の中身を全部（${full.full.length}B・int16で）:`);
-        L.push(...fileI16Lines(full.full,16).map(x=>"  "+x));
+        // 全部出したが、親の番号の列は無く、正体も決まらなかった。
+        // 18行使い続ける値打ちが無いので長い報告へ。まとめには言えることだけ
+        L.push(`  #${full.e.no}(${full.e.sector}) の中身（${full.full.length}B）`
+          +`　先頭: ${Array.from(full.full.subarray(0,16),
+              v=>v.toString(16).padStart(2,"0")).join(" ")}`);
         L.push(...tableRecLines(tableRecGuess(full.full),full.full.length));
         // 同じ番号が3つ並ぶ組がいくつもある。面の頂点番号の列を
         // 固定長にするための埋め草に見えたので、数えて確かめる
@@ -5308,8 +5341,9 @@ function updateReport(){
         // こちらの数え方（命令5だけを数える）が根本から間違っていることになる
         // 命令3と命令6は読み終わった（どちらも語1を足すだけ）。
         // 残って意味が分からないのは命令1だけなので、そこだけ出す
-        try{ state.boneBrief.push("  まだ意味の分かっていない命令の処理:",
-                                  ...mipsShortCmdLines(s.exe,[1]),
+        try{ state.boneCode.push("  まだ意味の分かっていない命令の処理:",
+                                 ...mipsShortCmdLines(s.exe,[1]));
+             state.boneBrief.push(
                                   "  （命令3＝$s3 に語1を足す／命令6＝$s7 に語1を足す。"
                                   +"どちらも骨ではなく部品の中のポインタを動かすだけ：読み終わり）") }
         catch(err){ state.boneBrief.push("  短い命令が読めなかった: "+err.message) }
@@ -5354,6 +5388,16 @@ function updateReport(){
         // 呼び出し元に、0x800CC910 を 32 ずつ進めている所があった。
         // 32バイトは行列ちょうど1個ぶん。番地を決め打ちで追うのはやめて、
         // 「読んで・足して・同じ所に書き戻す」形を全部拾う
+        // $gp を直したら、表A・表B・表C の書き込みが1か所から3か所に増えた。
+        // 増えたぶんは 0x8001A18C 付近に固まっている。そこが仕込みの場所で、
+        // 骨の行列の並びの先頭を入れているのもそこのはず
+        try{
+          const W=mipsSetupWindow(s.exe,[0x800CBE8C,0x800CBE90,0x800CBE94],gp,
+                                  {skipFrom:0x8001BB00,back:14,fwd:3,span:0x80});
+          state.boneBrief.push("  表A・表B・表C に値を入れている所"
+            +`（${W.sites.length}か所 ${W.sites.map(x=>hexA(x.at)).join(" ")}）:`);
+          state.boneBrief.push(...W.lines.slice(0,40));
+        }catch(err){ state.boneBrief.push("  表の仕込みが読めなかった: "+err.message) }
         try{
           state.boneBrief.push(...mipsCursorLines(s.exe,gp));
           // 行列1個ぶんずつ進めている所は、その関数ごと読む。
@@ -6427,7 +6471,9 @@ function fileBlockLines(r){
       +(b.dec?`　圧縮されている→展開すると ${b.dec}B`:"")+`　先頭 ${b.head}`);
     // 展開できたら中身も出す。長さだけ見て「小さいから表ではない」と
     // 決めつけると、また同じ所で止まる
-    if(b.out) L.push(...fileI16Lines(b.out,12).map(x=>"    "+x));
+    // 中身は値が入っていない器だった。1行にまとめる
+    if(b.out) L.push("    "+fileI16Lines(b.out,12)[0]
+      +(b.out.every(v=>v===0||v===24||v===5)?"　（値が入っていない）":""));
   }
   if(r.blocks.length>10) L.push(`    …ほか ${r.blocks.length-10}件`);
   return L;
