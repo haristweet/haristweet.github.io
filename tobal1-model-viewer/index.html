@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.18.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.19.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4450,7 +4450,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.18.0";
+const VERSION="v4.19.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -6705,8 +6705,10 @@ function indexTripleLines(u8,name){
   }
   return [`  ${name}: 3つ組として ${n}組　同じ番号3つ ${same}組　`
     +`前の組とそっくり同じ ${rep}組　いちばん大きい番号 ${max}　先頭が増えていく組 ${rise}/${n-1}`
-    +(same+rep>=n*0.2?"　→ 埋め草の多い固定長の表らしい"
-                     :"　→ 埋め草が少ない。固定長の表とは言い切れない")];
+    +(same+rep>=n*0.2
+        ? "　→ 同じ組を何度も指す固定長の表。"
+          +"面の3頂点に何かを貼り付ける表（当たり判定など）らしい。骨の親子ではない"
+        : "　→ 埋め草が少ない。固定長の表とは言い切れない")];
 }
 
 // ============================================================
@@ -7472,12 +7474,24 @@ function memStackLines(buf,base,opt){
         L.push(`    [${k}] → ${hex(p)}　${memMatrixLine(memMatrixAt(M,p))}`);
       }
   }
+  // 表が全部 0 なら、それは「描き終わったあと」の写し。
+  // 番号だけ言われても次に何をすればいいか分からないので、取り方まで書く
+  if(MEM_TABLES.every(([,a])=>M.u32(a)===0)){
+    L.push("  表A・表B・表C が全部 0 ＝ 描き終わったあとの写しです。");
+    L.push("    描いている最中の写しなら、表Bに骨の行列の並びの番地が入っています。");
+    L.push("    取り方: DuckStation の設定 → 詳細 で「デバッガを有効」にし、");
+    L.push("    実行ブレークを 0x8001F44C（命令5の処理）か 0x8001A18C（表に入れる所）に置く。");
+    L.push("    止まったら、その止まったままセーブステートを保存してください。");
+  }
   if(!M.ptr(sp)) return L;
   // 先端の前後を、32バイトずつそのまま出す。ふるいにはかけない
   // 手前10個を見たら 0 ばかりだった。並びはもっと広い所にある。
   // まず広く見分けてから、近くを細かく出す
   try{ L.push(...memMatrixMapLines(buf,base,sp,{back:o.back||64,fwd:o.fwd||64})) }
   catch(err){ L.push("  まわりを見分けられませんでした: "+err.message) }
+  // 先端のまわりには4個しか無かった。骨は30本ある。
+  // 間隔を 32 と決めつけずに、写し全体を探す
+  L.push(...memMatrixStrideLines(buf,base,{min:4,top:6,show:4}));
   const n=o.n||6, aft=o.after||2, from=sp-n*32;
   L.push(`  ${hex(sp)} の前後を、そのまま32バイトずつ（手前${n}個・先${aft}個）:`);
   for(let k=0;k<n+aft;k++){
@@ -7541,6 +7555,82 @@ function memMatrixMapLines(buf,base,addr,opt){
       L.push(`    ${hex(a)}　${memMatrixLine(memMatrixAt(M,a))}`);
     }
   } else L.push("  行列らしいものが続く所は無い（1個ずつ散らばっている）");
+  return L;
+}
+
+// ============================================================
+//  写し全体から、行列の並びを「間隔を決めつけずに」探す
+//
+//  外からの指摘：
+//    骨1本ぶんの構造体が
+//      MATRIX m（32B）／ SVECTOR 角度（8B）／ VECTOR ずれ（12B）／ 子への印（4B）
+//    のようになっていると、行列と行列の間隔は 32 ではなく 48 や 64 になる。
+//    「32バイトきざみで連続」という探し方では、一つも引っかからない。
+//
+//  そのとおりだった。間隔を 32 と決めつけていた。
+//  間隔のほうも探す
+// ============================================================
+// 写しの位置 off にある32バイトが行列らしいか。DataView を直に見る（速さのため）
+function memLooksAt(dv,off){
+  if(off<0||off+32>dv.byteLength) return 0;
+  const r=[];
+  for(let k=0;k<9;k++){ const v=dv.getInt16(off+k*2,true); if(Math.abs(v)>20000) return 0; r.push(v) }
+  if(r.every(v=>v===0)) return 0;
+  const len=[0,1,2].map(i=>Math.hypot(r[i*3],r[i*3+1],r[i*3+2]));
+  if(len.some(v=>v<600||v>20000)) return 0;
+  const mx=Math.max(...len), mn=Math.min(...len);
+  if(mx/mn>2.5) return 0;
+  const dot=(a,b)=>r[a*3]*r[b*3]+r[a*3+1]*r[b*3+1]+r[a*3+2]*r[b*3+2];
+  const od=Math.max(Math.abs(dot(0,1)),Math.abs(dot(0,2)),Math.abs(dot(1,2)));
+  return od<mx*mx*0.35?2:1;              // 2＝行列らしい 1＝たぶん
+}
+const MEM_STRIDES=[32,36,40,44,48,52,56,64,72,80,96,112,128];
+function memMatrixStrideRuns(buf,opt){
+  const o=opt||{}, dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+  const step=4, n=Math.max(0,(buf.length-32)/step|0);
+  const ok=new Uint8Array(n+1);
+  for(let i=0;i<=n;i++) ok[i]=memLooksAt(dv,i*step);
+  const out=[];
+  for(const S of (o.strides||MEM_STRIDES)){
+    const d=S/step; if(!Number.isInteger(d)) continue;
+    const seen=new Uint8Array(n+1);
+    for(let i=0;i<=n;i++){
+      if(!ok[i]||seen[i]) continue;
+      let c=0, j=i, strong=0;
+      while(j<=n&&ok[j]){ if(ok[j]===2) strong++; seen[j]=1; c++; j+=d }
+      if(c>=(o.min||4)) out.push({at:i*step,stride:S,n:c,strong});
+    }
+  }
+  // 同じ所を別の間隔でも拾う。長いほうを残す
+  out.sort((a,b)=>b.n-a.n||b.strong-a.strong);
+  const keep=[];
+  for(const x of out){
+    if(keep.some(k=>x.at>=k.at&&x.at<k.at+k.n*k.stride&&x.n<=k.n)) continue;
+    keep.push(x); if(keep.length>=(o.top||8)) break;
+  }
+  return keep;
+}
+function memMatrixStrideLines(buf,base,opt){
+  let runs=[];
+  try{ runs=memMatrixStrideRuns(buf,opt) }
+  catch(err){ return ["  写し全体の走査で失敗: "+err.message] }
+  if(!runs.length) return ["  写しのどこにも、行列が4個以上続く所はない"];
+  const L=[`  写し全体（${buf.length}B）を 4バイトきざみ・間隔も変えて走査:`];
+  const M=base>=0?memReader(buf,base):null;
+  for(const r of runs){
+    const ram=base>=0?`（RAM ${hex(0x80000000+(r.at-base))}）`:"";
+    L.push(`    +0x${r.at.toString(16)}${ram}　間隔 ${r.stride}B で ${r.n}個続く`
+      +`（はっきり行列 ${r.strong}個）`
+      +(r.n>=20?"　→ 骨30本ぶんに近い":r.n>=10?"　→ 手足のどれかぶん？":""));
+  }
+  // いちばん長い所の中身を、そのまま数個出す
+  const b=runs[0];
+  for(let k=0;k<Math.min(b.n,opt&&opt.show||4);k++){
+    const off=b.at+k*b.stride, d=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+    const r=Array.from({length:9},(_,i)=>d.getInt16(off+i*2,true));
+    const t=[0,1,2].map(i=>d.getInt32(off+20+i*4,true));
+    L.push(`      +0x${off.toString(16)}　回転[${r.join(",")}] 移動(${t.join(",")})`);
+  }
   return L;
 }
 // ============================================================
