@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.76.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.77.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1294,7 +1294,11 @@ function mipsCmdMap(exe){
   const disp=mipsFindDispatch(exe); if(!disp) return null;
   const tails=mipsCmdTails(exe,disp).sort((a,b)=>a.at-b.at);
   const fn=mipsFuncAt(exe,disp,64);            // 逆アセンブルは使わず番地だけ要る
-  const chain=mipsDispatch(exe,{from:disp-t.base-0x20,to:disp-t.base+0x100});
+  // 振り分けの手前から読むと、関係のない ori＋beq を拾って
+  // 幽霊の行（命令2 → 0x8001efa4 など）が出る。振り分けの頭から読む
+  const raw=mipsDispatch(exe,{from:disp-t.base,to:disp-t.base+0x100});
+  const seen=new Set(), chain=[];
+  for(const c of raw){ if(seen.has(c.code)) continue; seen.add(c.code); chain.push(c) }
   const heads=chain.map(c=>c.addr).sort((a,b)=>a-b);
   const ents=chain.sort((a,b)=>a.code-b.code).map(c=>{
     const tl=tails.find(x=>x.at>=c.addr&&!heads.some(h=>h>c.addr&&h<=x.at));
@@ -2668,7 +2672,37 @@ const T1_KNOWN_SIZE={8:20,9:24,10:12,11:16};
 // 引き算で分かった命令は覚えておく。未知が1つのときしか解けないので、
 // 1つ解けるたびに「分かっているもの」が増え、次が解けるようになる（雪だるま式）
 const T1_LEARNED={};
-function t1Learn(op,k){ T1_LEARNED[op]={size:k.size,n:k.n,nrm:k.nrm} }
+// 実行ファイルから読んだ、面1枚のバイト数。処理の中の addiu $s2,$s2,N に
+// 書いてある（v3.76.0 で命令8〜15の8つとも、こちらの表と一致した）。
+// これがあるときは、データの辻褄合わせで探さずにこの数を使う。
+// 「通る読み方が2通りあるので、若い番号を小さいほうにする」という
+// こちらの決めごとは、これで要らなくなる
+let T1_EXE_SIZE=null;
+function t1SetExeSizes(m){
+  T1_EXE_SIZE=(m&&Object.keys(m).length)?m:null;
+  if(!T1_EXE_SIZE) return 0;
+  let n=0;
+  for(const op of Object.keys(T1_EXE_SIZE)){
+    const size=T1_EXE_SIZE[op]; if(!size) continue;
+    // バイト数が決まれば、頂点の数と法線の有無も決まる。
+    //   12 = 頂点3×4              16 = 頂点4×4
+    //   20 = 頂点3×4 ＋ 法線8     24 = 頂点4×4 ＋ 法線8
+    // ただし既に分かっている命令（8〜11）の持ち方は動かさない
+    const k=T1_FACE_OP[op];
+    if(k){ if(k.size!==size) n++; continue }
+    T1_LEARNED[op]={size,
+      n:(size===12||size===20)?3:4,
+      nrm:(size===20||size===24),
+      fromExe:true};
+    n++;
+  }
+  return n;
+}
+function t1Learn(op,k){
+  // 実行ファイルに書いてあるほうが強い。データの辻褄合わせで上書きしない
+  if(T1_LEARNED[op]&&T1_LEARNED[op].fromExe) return;
+  T1_LEARNED[op]={size:k.size,n:k.n,nrm:k.nrm};
+}
 function t1SizeOf(op){
   return T1_KNOWN_SIZE[op]||(T1_LEARNED[op]&&T1_LEARNED[op].size)||0;
 }
@@ -3401,7 +3435,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.76.0";
+const VERSION="v3.77.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4111,6 +4145,17 @@ function updateReport(){
         if(M&&M.tbl){
           state.boneCode.push("  面の命令が面1枚あたり進むバイト数:");
           state.boneCode.push(...mipsFaceSizeLines(s.exe,M.tbl));
+          // 読めた数をそのまま採用する。データの辻褄合わせより実行ファイルが強い
+          const sz={};
+          for(let op=8;op<=15;op++){
+            const a=mipsTableAt(s.exe,M.tbl+(op-7)*4,1)[0];
+            if(a){ const n=mipsFaceStep(s.exe,a); if(n>0) sz[op]=n }
+          }
+          const used=t1SetExeSizes(sz);
+          state.boneCode.push(Object.keys(sz).length
+            ? `  → ${Object.keys(sz).length}個の面の命令の大きさを実行ファイルから決めた`
+              +`（うち ${used}個 はデータからの割り出しが要らなくなった）`
+            : "  → 実行ファイルからは決められなかった");
         }
       }catch(err){ state.boneCode.push("  振り分けの読み取りで失敗: "+err.message) }
       // 表の置き場所を仕込んでいる所。lui＋addiu で番地を作る形は
