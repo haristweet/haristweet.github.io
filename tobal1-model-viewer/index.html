@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.70.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.71.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2371,21 +2371,35 @@ function t1OpArgs(d,base,limit){
   }
   return [...out.values()].sort((a,b)=>a.op-b.op);
 }
-// 集めた中身を、そのまま貼れる形にする
+// 集めた中身を、そのまま貼れる形にする。
+// 分かっている命令には、その語が何なのかを添える
+const T1_ARG_MEAN={
+  1:["置き場所","個数"],
+  2:["置き場所","個数","個数2"],
+  7:["置き場所","個数"],
+};
 function t1OpArgLines(list){
   const L=[];
   for(const e of list){
-    const head=`  命令${e.op}（${e.n}回・骨 ${Math.min(...e.seg)}..${Math.max(...e.seg)}）`;
-    const parts=e.slots.map((sl,i)=>{
+    const mean=T1_ARG_MEAN[e.op];
+    L.push(`  命令${e.op}（${e.n}回・骨 ${Math.min(...e.seg)}..${Math.max(...e.seg)}）`
+      +(mean?`　＝ ${mean.join(" / ")}`:"　＝ まだ意味が分かっていない"));
+    e.slots.forEach((sl,i)=>{
       const k=[...sl.kind.entries()].sort((a,b)=>b[1]-a[1])
               .map(([n,c])=>`${n}${c}`).join("/");
-      return `語${i+1} ${sl.mn}..${sl.mx} ${k} 例[${sl.vals.join(" ")}]`;
+      L.push(`    語${i+1}${mean?`(${mean[i]||"?"})`:""} ${sl.mn}..${sl.mx} ${k} 例[${sl.vals.join(" ")}]`);
     });
-    L.push(head);
-    for(const p of parts) L.push("    "+p);
-    // 3語そろって小さい符号つきなら、骨の位置の可能性
-    if(e.slots.length===3&&e.slots.every(sl=>sl.mn>-4096&&sl.mx<4096))
-      L.push("    ★3語とも小さい符号つき。骨のずらし量（x,y,z）の可能性がある");
+    // 骨のずらし量なら、必ず負の値が出る（体の左右・前後に振れるので）。
+    // 個数や番号は 0 以上にしかならない。v3.69.0 の判定はここを見ていなかったので、
+    // 命令2（置き場所と個数）を「座標らしい」と言ってしまった
+    if(!mean&&e.slots.length===3&&e.slots.every(sl=>sl.mn<0&&sl.mn>-4096&&sl.mx<4096))
+      L.push("    ★3語とも負の値を含む小さい符号つき。骨のずらし量（x,y,z）の可能性がある");
+    // 値が2種類しかなく符号違いなら、向きの切り替えや親子のたどりかもしれない
+    if(e.slots.length===1&&e.slots[0].mn===-e.slots[0].mx&&e.slots[0].mx>0){
+      const v=e.slots[0].vals, alt=v.length>3&&v.every((x,i)=>i===0||x===-v[i-1]);
+      if(alt) L.push(`    ★＋${e.slots[0].mx} と −${e.slots[0].mx} が交互。`
+        +`骨をたどる向き（下る／戻る）の指示かもしれない`);
+    }
   }
   if(!L.length) L.push("  中身のある命令が無かった");
   return L;
@@ -3196,7 +3210,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.70.0";
+const VERSION="v3.71.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3657,6 +3671,10 @@ function digestLines(){
   // 骨の表を触っている場所（いま追っている本丸）
   { const src=(state.report||"").split("\n").filter(x=>/^起動時の \$gp|^  表[ABC]/.test(x));
     if(src.length){ L.push(""); L.push(...src) } }
+  if(state.boneCode&&state.boneCode.length){
+    L.push(""); L.push("骨の表を作っている場所（1件が何バイトで何が入るかを読むため）:");
+    L.push(...state.boneCode);
+  }
   const inf=state.selInfo, e=state.entries[state.sel];
   if(inf&&e){
     L.push("");
@@ -3853,9 +3871,30 @@ function updateReport(){
         L.push(`  ${nm} ${hex(a)}: 読み ${rd}か所 / 書き ${wr}か所`
           +(r.length?`　${r.map(x=>hex(x.at)+(x.store?"書":"読")).join(" ")}`:"　見つからない"));
       }
+      // 表の中身の形を当て推量するのをやめて、表を作っている場所を読む。
+      // メモリの中を「32バイトの行列らしきもの」で探すやり方は尽きた
+      // （2MB に 210 か所しかなく、どれも筋が通らなかった）。
+      // 表を書いている命令の前後を見れば、1件が何バイトで何が入るかが分かる
+      state.boneCode=[];
+      const seen=new Set();
+      for(const [nm,a] of [["表A（命令5が引く）",0x800CBE90],["表C（部品）",0x800CBE94]]){
+        for(const r of mipsRefs(s.exe,a,24,gp)){
+          const fn=mipsFuncAt(s.exe,r.at,64);
+          if(!fn.length) continue;
+          const head=fn[0].match(/0x([0-9a-f]+)/);
+          const key=head?head[1]:String(r.at);
+          if(seen.has(key)) continue;
+          seen.add(key);
+          state.boneCode.push(`  ${nm} を${r.store?"書いて":"読んで"}いる ${hex(r.at)} のある関数:`);
+          state.boneCode.push(...fn.slice(0,56).map(x=>x.replace(/^ {4}/,"    ")));
+          if(fn.length>56) state.boneCode.push(`    …（あと ${fn.length-56} 行）`);
+        }
+      }
+      if(state.boneCode.length){ L.push("骨の表を作っている場所:"); L.push(...state.boneCode) }
       L.push("");
     }
-  }catch(err){ L.push("骨の表の参照さがしで失敗: "+err.message,"") }
+  }catch(err){ L.push("骨の表の参照さがしで失敗: "+err.message,"");
+               state.boneCode=["  読めなかった: "+err.message] }
   const kn=knownDisc(s.exeName);
   if(kn){
     L.push("");
