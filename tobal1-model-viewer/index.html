@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.82.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.83.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -208,6 +208,7 @@ canvas:active{cursor:grabbing}
       <label id="spread-opt"><input type="checkbox" id="spread"> 部品を並べる</label>
       <label id="segspread-opt"><input type="checkbox" id="segspread"> 骨の区切りごとに並べる</label>
       <label id="guessbone-opt"><input type="checkbox" id="guessbone"> 仮の骨組みで左右に開く（推測）</label>
+      <label id="chainbone-opt"><input type="checkbox" id="chainbone"> 骨の鎖をたどって積む（推測）</label>
       <label id="flatcol-opt"><input type="checkbox" id="flatcol" checked> 色を面ごとにそろえる（平面塗り）</label>
       <label id="colmode-opt">色の引き方
         <select id="colmode">
@@ -1913,13 +1914,14 @@ const T1_MAX_COORD=8000;   // これを超える座標は読み違い。カメ�
 // 見せ方の切り替え。どこがおかしいのかを切り分けるための道具
 // segOnly ＝ この区切りだけ描く。segPart ＝ その区切りがどの部品のものか。
 // 区切りの番号は部品ごとに0から振り直されるので、部品を決めないと別物が混ざる
-const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,guessBone:false,guessAmt:0.6,flatColor:true,colMode:"",up:2};
+const t1Show={all:false,only:false,segColor:false,spread:false,segSpread:false,segOnly:-1,segPart:-1,guessBone:false,guessAmt:0.6,chainBone:false,flatColor:true,colMode:"",up:2};
 try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.only=localStorage.getItem("t1only")==="1";
      t1Show.segColor=localStorage.getItem("t1segcol")==="1";
      t1Show.spread=localStorage.getItem("t1spread")==="1";
      t1Show.segSpread=localStorage.getItem("t1segspread")==="1";
      t1Show.guessBone=localStorage.getItem("t1guessbone")==="1";
+     t1Show.chainBone=localStorage.getItem("t1chainbone")==="1";
      { const f=localStorage.getItem("t1flatcol"); if(f!=null) t1Show.flatColor=f==="1" }
      t1Show.colMode=localStorage.getItem("t1colmode")||"";
      { const a=localStorage.getItem("t1guessamt"); if(a!=null) t1Show.guessAmt=+a }
@@ -3092,6 +3094,60 @@ function t1MirrorPairs(box,tol){
   return out;
 }
 // 対を左右に開く。開く量は、対にならない区切り（胴）の奥行きから決める
+// 鎖をたどって積む骨組み。
+//
+// 実物 #68 の中心を見ると、こうなっていた。
+//   17(腿)  1軸目 -133   3軸目 ±51    ← 付け根だけが左右に離れている
+//   18(脛)      +54          ±2
+//   19          +79          ±1
+//   20          +31          ±2
+//   21          +33          ±2
+// 腕も同じで、4 は ±3、8 は ±16。
+// **左右に離れているのは鎖の先頭だけ**で、その先は ±2 しか離れていない。
+//
+// これは「各部品の座標が親からの相対」ということ。
+// 脛の座標は腿の先を原点とした値なので、鎖をたどって足さないと場所が合わない。
+// 命令6 の ＋4 / −4 の交互（下る／戻る）とも噛み合う。
+//
+// ここでやるのは、続き番号の区切りをひと続きの鎖とみなして、
+// 親の中心を足していくこと。**推測であることは変わらない**ので、
+// 効き具合を変えられるようにして、切れるようにしてある
+function t1ChainBones(d,o,amt){
+  const box=t1SegBoxMap(d,o); if(!box) return null;
+  return t1ChainFromBox(box,amt);
+}
+// 箱の表だけ受け取る形にしておく。こうしないと、本物のモデルが無いと試せない
+function t1ChainFromBox(box,amt){
+  const keys=[...box.keys()].sort((a,b)=>a-b);
+  if(keys.length<3) return null;
+  const mid=k=>{ const b=box.get(k);
+    return b?[0,1,2].map(a=>(b.mn[a]+b.mx[a])/2):[0,0,0] };
+  // 続き番号がとぎれる所で鎖を切る。#68 では 16・22・28 に面が無く、
+  // そこが腕と脚の切れ目だった
+  const runs=[]; let cur=[keys[0]];
+  for(let i=1;i<keys.length;i++){
+    if(keys[i]===keys[i-1]+1) cur.push(keys[i]);
+    else { runs.push(cur); cur=[keys[i]] }
+  }
+  runs.push(cur);
+  const k1=amt==null?1:amt;
+  const max=Math.max(...keys), list=[];
+  const t=new Map();
+  for(const run of runs){
+    // 鎖の先頭はそのまま。2つ目からは、親の中心を積んでいく
+    let acc=[0,0,0];
+    for(let i=0;i<run.length;i++){
+      if(i>0){ const pm=mid(run[i-1]); acc=[acc[0]+pm[0],acc[1]+pm[1],acc[2]+pm[2]] }
+      t.set(run[i],acc.map(v=>v*k1));
+    }
+  }
+  for(let k=0;k<=max;k++){
+    const v=t.get(k)||[0,0,0];
+    list.push({m:[4096,0,0,0,4096,0,0,0,4096],t:[Math.round(v[0]),Math.round(v[1]),Math.round(v[2])],one:4096});
+  }
+  list.runs=runs.map(r=>`${r[0]}..${r[r.length-1]}`);
+  return list;
+}
 function t1GuessBones(d,o,spread){
   const box=t1SegBoxMap(d,o); if(!box) return null;
   const pairs=t1MirrorPairs(box);
@@ -3473,7 +3529,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.82.0";
+const VERSION="v3.83.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3491,7 +3547,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.82.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.83.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -3557,7 +3613,16 @@ function buildModelInner(raw,info){
     if(!okObjs.length) continue;
     state.t1Objs={d:b.out,objs:okObjs};      // 骨を当てて確かめるときに使う
     // 仮の骨組み。本物の行列が無いときに、鏡の対を左右へ開いて形を出す（推測）
-    if(t1Show.guessBone&&!T1_BONES_REAL){
+    // 鎖をたどって積む（部品の座標が親からの相対だという読みに沿った置き方）
+    if(t1Show.chainBone&&!T1_BONES_REAL){
+      t1SetBones(null); buildT1Mesh(b.out,okObjs);
+      const big=okObjs.filter(x=>x.run).sort((x,y)=>y.nv-x.nv)[0];
+      const g=big?t1ChainBones(b.out,big,t1Show.guessAmt):null;
+      t1SetBones(g);
+      info.t1Guess=g?`  鎖をたどって積んでいます（推測）: 鎖 ${g.runs.join(" ")}　効き ${t1Show.guessAmt.toFixed(2)}`
+                    :"  鎖が見つからないので、何もしていません";
+    }
+    else if(t1Show.guessBone&&!T1_BONES_REAL){
       // 先に区切りを知るため、いったん骨なしで組み立てる
       t1SetBones(null); buildT1Mesh(b.out,okObjs);
       const big=okObjs.filter(x=>x.run).sort((x,y)=>y.nv-x.nv)[0];
@@ -4922,6 +4987,7 @@ showToggle("segcol","segColor","t1segcol");
 showToggle("spread","spread","t1spread");
 showToggle("segspread","segSpread","t1segspread");
 showToggle("guessbone","guessBone","t1guessbone");
+showToggle("chainbone","chainBone","t1chainbone");
 showToggle("flatcol","flatColor","t1flatcol");
 // 色の引き方の自動判定は僅差になることがある。手で選べるようにしておく
 try{ const cm=$("colmode"); if(cm){ cm.value=t1Show.colMode||"";
