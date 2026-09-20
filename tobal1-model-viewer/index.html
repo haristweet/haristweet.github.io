@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.16.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.17.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1703,8 +1703,12 @@ const GPU_PACKET=new Set([12,16,20,24,28,32,36,40,44,48]);
 function mipsCursorByAddr(exe,gp){
   const cs=mipsCursorScan(exe,gp), by=new Map();
   for(const c of cs){
-    if(!by.has(c.addr)) by.set(c.addr,{addr:c.addr,steps:[],n:0});
+    if(!by.has(c.addr)) by.set(c.addr,{addr:c.addr,steps:[],n:0,bySt:[]});
     const v=by.get(c.addr); v.steps.push(c.step); v.n+=c.n;
+    // 進める量ごとに、何か所で動かしているかを覚えておく。
+    // 「＋32 と −32 の両方ある」だけでは、積み下ろし（push/pop）なのか、
+    // 一方向に進んで最後に1回戻すだけなのか、区別が付かない
+    v.bySt.push({step:c.step,n:c.n,ats:c.ats.slice(0,3)});
     if(!v.ats||v.ats.length<3){ v.ats=(v.ats||[]).concat(c.ats.slice(0,2)) }
   }
   for(const v of by.values()){
@@ -1716,6 +1720,20 @@ function mipsCursorByAddr(exe,gp){
   // 1ずつ進むものは、ただの数え上げ。行列さがしには関係ないので後ろへ
   const rank=v=>v.matrix?0:(v.steps.some(x=>x>=8)?1:2);
   return [...by.values()].sort((a,b)=>rank(a)-rank(b)||a.addr-b.addr);
+}
+// 積み下ろしか、一方向に進むだけか。
+// ＋と−の「か所の数」が釣り合っていれば積み下ろし。
+// 片方が1か所だけなら、それは最後の後始末で、階層のたどりではない
+function mipsCursorFlow(v){
+  if(!v||!v.bySt) return "";
+  const up=v.bySt.filter(x=>x.step>0).reduce((a,x)=>a+x.n,0);
+  const dn=v.bySt.filter(x=>x.step<0).reduce((a,x)=>a+x.n,0);
+  if(!up||!dn) return "";
+  const t=`＋が ${up}か所／−が ${dn}か所`;
+  if(dn===1&&up>=2)
+    return t+"　→ 積み下ろしではない。一方向に進んで、最後に1回だけ戻している";
+  if(Math.abs(up-dn)<=1) return t+"　→ 積み下ろし（階層をたどる形）らしい";
+  return t;
 }
 function mipsCursorMean(v){
   if(v.packet) return "→ 進め方がばらばら。GPUのパケットを積む所（行列ではない）";
@@ -1732,7 +1750,8 @@ function mipsCursorLines(exe,gp){
   // 1ずつ進むものは読み終わった。行列さがしに効くものだけ残す
   for(const v of vs.filter(v=>v.steps.some(x=>Math.abs(x)>=8)).slice(0,5))
     L.push(`    ${hexA(v.addr)} を ${v.steps.join("/")} ずつ`
-      +`（${v.n}か所 ${(v.ats||[]).slice(0,3).map(hexA).join(" ")}）　${mipsCursorMean(v)}`);
+      +`（${v.n}か所 ${(v.ats||[]).slice(0,3).map(hexA).join(" ")}）　${mipsCursorMean(v)}`
+      +(mipsCursorFlow(v)?"　"+mipsCursorFlow(v):""));
   return L;
 }
 function mipsCursorPick(exe,gp){ return mipsCursorByAddr(exe,gp).find(v=>v.matrix)||null }
@@ -4430,7 +4449,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.16.0";
+const VERSION="v4.17.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5531,10 +5550,17 @@ function updateReport(){
           const mv=mipsCursorByAddr(s.exe,gp)
             .find(v=>v.steps.includes(32)&&v.steps.includes(-32));
           if(mv){
-            state.boneBrief.push(`  ${hexA(mv.addr)} を ±32 で動かしている所:`);
-            for(const at of (mv.ats||[]).slice(0,2)){
-              state.boneBrief.push(`   ${hexA(at)} のあたり:`);
-              state.boneBrief.push(...mipsCallSiteLines(s.exe,at,4,3));
+            state.boneBrief.push(`  ${hexA(mv.addr)} を ±32 で動かしている所`
+              +(mipsCursorFlow(mv)?"（"+mipsCursorFlow(mv)+"）":"")+":");
+            // − の所をかならず見る。そこが「戻す」のか「後始末」なのかで、
+            // 階層のたどり方かどうかが決まる。
+            // ＋の所ばかり2つ出していて、− の所を一度も見ていなかった
+            const minus=(mv.bySt||[]).filter(x=>x.step<0).flatMap(x=>x.ats);
+            const plus=(mv.bySt||[]).filter(x=>x.step>0).flatMap(x=>x.ats);
+            for(const at of [...minus.slice(0,1),...plus.slice(0,2)]){
+              state.boneBrief.push(`   ${hexA(at)} のあたり`
+                +(minus.includes(at)?"（−32＝戻す側）":"（＋32＝進む側）")+":");
+              state.boneBrief.push(...mipsCallSiteLines(s.exe,at,5,4));
             }
           } else state.boneBrief.push("  行列の積みを ±32 で動かしている所は無い");
         }catch(err){ state.boneBrief.push("  外側の命令が読めなかった: "+err.message) }
