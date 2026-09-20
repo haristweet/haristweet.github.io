@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.91.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.92.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1262,6 +1262,33 @@ function mipsOpTableLines(exe){
   return L;
 }
 
+// 命令ひとつぶんの処理を、飛び先から尻尾まで丸ごと出す。
+//
+// 命令3と命令6は短い（尻尾までそれぞれ数命令）のに、まだ意味が分かっていない。
+// 命令6の中身は ±4 の交互で、4 は表がひとつ進む量そのもの
+//   0x8001f464  addiu $t0, $t0, 4     ← 命令5が表Aを4進める
+// なので、命令6は「骨をひとつ進める／ひとつ戻す」ではないか。
+// もしそうなら、骨の番号を命令5だけで数えているこちらの数え方が間違っている。
+// 推測で進めず、処理をそのまま読む
+function mipsCmdBody(exe,from,to,cap){
+  const t=exeText(exe); if(!t) return [];
+  const a=from-t.base, b=Math.min(to-t.base+8,a+(cap||32)*4);
+  if(a<0||a>=t.body.length) return [];
+  return mipsLines(exe,{from:a,to:Math.min(b,t.body.length)},-1);
+}
+function mipsShortCmdLines(exe,ops){
+  const M=mipsCmdMap(exe);
+  if(!M) return ["  振り分けが読めない"];
+  const L=[];
+  for(const e of M.ents){
+    if(ops&&ops.indexOf(e.op)<0) continue;
+    if(!e.tail) continue;
+    L.push(`  命令${e.op} の処理 ${hexA(e.addr)}〜${hexA(e.tail)}:`);
+    L.push(...mipsCmdBody(exe,e.addr,e.tail,16));
+  }
+  return L.length?L:["  短い命令の処理が読めない"];
+}
+
 // 振り分けを丸ごと読んで、命令ごとの飛び先と長さを出す。
 //
 // 0x8001EFA8 はこうなっている：
@@ -1968,10 +1995,10 @@ function t1Layout(objs,dv,up){
 // 実物 #123 の区切り8が 379×155×141 ——
 // 背丈746 のモデルで、前腕ひとつが半分の長さになるはずがない。
 // 混ざった数字の上に「親からの相対だ」と積み上げていた
-function t1VertBoxes(d,o){
+function t1VertBoxes(d,o,useBone){
   if(!o.run||!o.run.vseg) return null;
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
-  const vs=o.run.vseg, box=new Map();
+  const vs=(useBone&&o.run.vbone)||o.run.vseg, box=new Map();
   for(let i=0;i<vs.length;i++){
     const k=vs[i]; if(k==null) continue;
     const q=o.base+o.vertPtr+i*8; if(q+6>d.length) continue;
@@ -2549,12 +2576,19 @@ function t1Run(d,base,limit,extra,V){
   // 面でまとめると、前の区切りで入れた頂点が混ざる（置き場所は命令5をまたいで残る）。
   // 骨ごとの広がりを知りたいなら、入れたときの区切りでまとめないといけない
   const vseg=[];
+  // もうひとつの数え方。命令5で1進め、命令6の中身（±4）を4で割って足す。
+  // 4 は表がひとつ進む量（命令5の処理に addiu $t0,$t0,4 とある）なので、
+  // 命令6が「骨をひとつ進める／戻す」なら、こちらが本当の骨の番号になる。
+  // どちらが正しいかは、出てきた箱を見れば分かる——
+  // 正しい数え方なら、骨ごとの箱は骨らしい大きさにそろうはず
+  const vbone=[]; let bone=0;
   while(fp+8<=d.length&&steps<(limit||4096)){
     const op=dv.getUint32(fp,true);
     if(op===0) break;
     if(op in T1_CMD_LEN){
       const arg=dv.getUint32(fp+4,true);
-      if(op===5) seg++;                                   // 命令5 = 次の骨の行列を取り出す
+      if(op===5){ seg++; bone++ }                         // 命令5 = 次の骨の行列を取り出す
+      if(op===6){ const v=dv.getInt32(fp+4,true); bone+=(v/4)|0 }   // 命令6 = 骨を動かす？
       if(op===1||op===2||(V.load4&&op===4)||(V.load7&&op===7)){
         // 置き場所と個数の位置・数え方は、読み方によって変わる（t1RunBest が選ぶ）
         let at=arg, n=dv.getUint32(fp+8,true);
@@ -2562,7 +2596,7 @@ function t1Run(d,base,limit,extra,V){
         if(V.unit4) at>>=2;
         n+=V.plus||0;
         if(at<0||at+n>T1_SLOTS||n>4096) return no(`命令${op} の置き場所 ${at}／個数 ${n} が枠(${T1_SLOTS})に収まらない`,fp);
-        for(let k=0;k<n;k++){ slot[at+k]=vi; vseg[vi]=seg; vi++ }
+        for(let k=0;k<n;k++){ slot[at+k]=vi; vseg[vi]=seg; vbone[vi]=bone; vi++ }
       }
       fp+=T1_CMD_LEN[op];
     }else if(T1_FACE_OP[op]||(extra&&extra[op])){
@@ -2590,7 +2624,7 @@ function t1Run(d,base,limit,extra,V){
     steps++;
   }
   if(!faces.length) return no("面が1枚も出てこなかった",fp);
-  return {faces,verts:vi,vseg,steps,segs:seg,used:[...used.entries()].sort((a,b)=>a[0]-b[0]),
+  return {faces,verts:vi,vseg,vbone,steps,segs:seg,used:[...used.entries()].sort((a,b)=>a[0]-b[0]),
           faceBytes:xp-facePtr, cmdBytes:fp+4-(base+0x10)};
 }
 
@@ -3173,6 +3207,25 @@ function t1MirrorPairs(box,tol){
 // ここでやるのは、続き番号の区切りをひと続きの鎖とみなして、
 // 親の中心を足していくこと。**推測であることは変わらない**ので、
 // 効き具合を変えられるようにして、切れるようにしてある
+// 二つの数え方を並べて、どちらが骨らしいかを数で言う。
+// 骨ごとの箱が骨らしい大きさにそろっているほうが正しい数え方のはず。
+// 「いちばん大きい辺」と「ぺたんこな区切りの数」で比べる
+function t1BoneCountCompare(A,B){
+  const stat=V=>{
+    if(!V||!V.length) return null;
+    const big=V.map(x=>Math.max(...x.size.split("×").map(Number)));
+    return {n:V.length, max:Math.max(...big),
+      avg:Math.round(big.reduce((a,b)=>a+b,0)/big.length),
+      flat:t1FlatSegs(V).length};
+  };
+  const a=stat(A), b=stat(B);
+  if(!a||!b) return "";
+  const f=(t,x)=>`${t}: ${x.n}区切り　いちばん大きい辺 ${x.max}　平均 ${x.avg}　ぺたんこ ${x.flat}個`;
+  const better=b.max<a.max*0.9?"命令6も数えたほう"
+             :a.max<b.max*0.9?"命令5だけのほう":"どちらとも言えない";
+  return `  骨の数え方くらべ　${f("命令5だけ",a)}　／　${f("命令6も数える",b)}`
+    +`　→ 骨らしいのは ${better}`;
+}
 // 「ぺたんこな区切り」を見つける。
 //
 // #68 の頂点の箱を高さの軸で見ると、こうなっていた。
@@ -3724,7 +3777,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.91.0";
+const VERSION="v3.92.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3742,7 +3795,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.91.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.92.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -3959,6 +4012,9 @@ function buildModelInner(raw,info){
               const V=t1VertBoxes(b.out,bigO);
               if(V&&V.length){
                 info.t1VertBox=t1VertBoxLine(V);
+                // 命令6も数えた場合の箱も作って、どちらが骨らしいか比べる
+                const Vb=t1VertBoxes(b.out,bigO,true);
+                info.t1BoneCmp=t1BoneCountCompare(V,Vb);
                 const flat=t1FlatSegs(V);
                 if(flat.length) info.t1Flat=`  ぺたんこな区切り ${flat.length}個`
                   +`（厚みがほとんど無い板。点も少ない。手足の肉ではなく、`
@@ -4311,6 +4367,7 @@ function digestLines(){
       if(inf.t1Guess) L.push(inf.t1Guess);
       if(inf.t1ChainTry) L.push(inf.t1ChainTry);
       if(inf.t1SegOrigin) L.push(inf.t1SegOrigin);
+      if(inf.t1BoneCmp) L.push(inf.t1BoneCmp);
       if(inf.t1Flat) L.push(inf.t1Flat);
       if(inf.t1VertBox){
         L.push(inf.t1VertBox);
@@ -4580,6 +4637,12 @@ function updateReport(){
       try{
         // $gp 相対（addiu $?, $gp, N）も見る。lui＋addiu だけでは取りこぼす
         const mk=mipsAddrOf(s.exe,0x800CBE8C,0x800CBE94,16,gp);
+        // 命令3と命令6の処理をそのまま出す。どちらも数命令しかないのに
+        // 意味が分かっていない。命令6が骨の番号を動かしているなら、
+        // こちらの数え方（命令5だけを数える）が根本から間違っていることになる
+        try{ state.boneBrief.push("  まだ意味の分かっていない命令の処理（短いのでそのまま）:",
+                                  ...mipsShortCmdLines(s.exe,[3,6])) }
+        catch(err){ state.boneBrief.push("  短い命令が読めなかった: "+err.message) }
         state.boneBrief.push(mk.length
           ? `  表の番地を作っている場所 ${mk.length}件: `
             +mk.map(x=>`${hex(x.at)}→${hex(x.addr)}(${x.how})`).join(" ")
