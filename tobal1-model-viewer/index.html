@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.4.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.5.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3504,7 +3504,21 @@ function t1FindSkelTable(d,nb,opt){
           if(!ok) continue;
           if(nz<nb) continue;                  // ほとんど 0 の表は捨てる
           if(tree<nb*0.6) continue;            // 木の形になっていない
-          out.push({at:base,stride:st,pAt,vAt,tree,nz});
+          // ここが甘かった（v4.5.0）。親が全部 0 だと「親が自分より小さい」が
+          // 自動で成り立ってしまい、頂点データを表として拾っていた。
+          //   0←0(1,0,0) 1←0(28,0,1) 2←0(5,0,1) …   ← 親も Y も全部 0
+          // 本物の木なら、親の番号は何種類も出るし、0 以外も必ず出る。
+          // ずれも、3軸のどれかが全部 0 なら表ではない
+          const pars=new Set(), ax=[0,0,0];
+          for(let k=0;k<nb;k++){
+            const o=base+k*st;
+            pars.add(pAt===2?dv.getUint16(o,true):d[o+pAt]);
+            for(let a=0;a<3;a++) if(dv.getInt16(o+vAt+a*2,true)) ax[a]++;
+          }
+          if(pars.size<4) continue;            // 親が2〜3種類しかない＝表ではない
+          if(pars.size===1&&pars.has(0)) continue;
+          if(ax.some(c=>c===0)) continue;      // どれかの軸が全部 0
+          out.push({at:base,stride:st,pAt,vAt,tree,nz,pars:pars.size});
           if(out.length>=lim*4) break;
         }
       }
@@ -3520,7 +3534,7 @@ function t1SkelTableLines(d,nb,hits){
   const L=[`  骨の親子の表らしきもの ${hits.length}件（骨 ${nb}本ぶんで探した）:`];
   for(const h of hits.slice(0,3)){
     L.push(`    +0x${h.at.toString(16)}　1件${h.stride}バイト　親は+${h.pAt}　ずれは+${h.vAt}`
-      +`　親が自分より小さい ${h.tree}/${nb}`);
+      +`　親が自分より小さい ${h.tree}/${nb}　親の種類 ${h.pars}`);
     const row=[];
     for(let k=0;k<Math.min(nb,8);k++){
       const o=h.at+k*h.stride;
@@ -4132,7 +4146,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.4.0";
+const VERSION="v4.5.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4150,7 +4164,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v4.4.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v4.5.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4807,6 +4821,26 @@ function digestLines(){
         +`（格闘キャラは30前後。ローブ姿など脚の分かれていないキャラクターかもしれない）: `
         +few.map(o=>`#${o.e.no}(区切り${o.diag.segs})`).join(" "));
     } }
+  // 骨の表はモデルファイルの中に無いと分かった（余りが76バイトの埋め草だけ）。
+  // モデルの前後も全部モデルだった。残るのは「それ以外」150件と「読めない」4件。
+  // 小さいファイルほど表らしい（骨30本×8〜16バイト＝240〜480バイト）
+  if(state.sieve){
+    const sv=state.sieve;
+    const other=(sv.other||[]).filter(o=>!(o.words&&o.words[0]===0x90000000));
+    const small=other.slice().sort((a,b)=>a.e.size-b.e.size).slice(0,10);
+    if(small.length){
+      L.push("");
+      L.push("骨の表を探す先（モデルでもテクスチャでもないファイル、小さい順）:");
+      L.push("  "+small.map(o=>`#${o.e.no}(${o.e.sector}) ${fmtSize(o.e.size)}`
+        +(o.dec?`→${o.dec}B`:"")).join("　"));
+      for(const o of small.slice(0,3))
+        if(o.head) L.push(`    #${o.e.no} の先頭: ${o.head}`);
+    }
+    if((sv.broken||[]).length){
+      L.push(`  読めなかったファイル ${sv.broken.length}件: `
+        +sv.broken.map(b=>`#${b.e.no}(${b.e.sector}) ${fmtSize(b.e.size)}`).join(" "));
+    }
+  }
   if(state.galGroups&&state.galGroups.length){
     L.push(""); L.push("同じ形でまとめた結果:"); L.push(...state.galGroups);
   }
