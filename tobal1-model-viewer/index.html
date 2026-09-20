@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.74.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.75.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -861,6 +861,21 @@ function buildVram(part){
 // ============================================================
 //  実行ファイルのコードを読む
 // ============================================================
+function mipsOpTableLines(exe){
+  const list=mipsOpTable(exe,true);
+  if(!list||!list.length) return ["  振り分け表が見つからない"];
+  const L=[];
+  list.slice(0,3).forEach((T,i)=>{
+    L.push(`  ${i===0?"":"べつの"}表 ${hexA(T.at)}　${T.n}件`
+      +`　長さの分かった処理 ${T.known}/${T.n}`
+      +(T.dup.length?`　同じ処理を指す組 ${T.dup.join(" ")}`:""));
+    for(const e of T.ents)
+      L.push(`    ${e.op} → ${hexA(e.addr)}　`
+        +(e.len?`長さ ${e.len}バイト（尻尾 ${hexA(e.tail)}）`
+               :"長さは分からない（この処理の中に尻尾が無い）"));
+  });
+  return L;
+}
 // ============================================================
 //  MIPS(R3000) の逆アセンブラ
 //
@@ -1195,7 +1210,7 @@ function hexA(v){ return "0x"+(v>>>0).toString(16) }
 // 収まる語が並んでいる場所を探せばいい。並びの番号がそのまま命令の番号。
 // これが分かれば、命令14と15の長さを「若い番号を小さいほうに」という
 // こちらが決めた規則で選ぶ必要がなくなる
-function mipsOpTable(exe){
+function mipsOpTable(exe,all){
   const t=exeText(exe); if(!t) return null;
   const disp=mipsFindDispatch(exe); if(!disp) return null;
   const tails=mipsCmdTails(exe,disp).sort((a,b)=>a.at-b.at);
@@ -1203,23 +1218,39 @@ function mipsOpTable(exe){
   const lo=Math.min(disp,tails[0].at)-0x2000, hi=tails[tails.length-1].at+0x1000;
   const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
   const inRange=v=>v>=lo&&v<=hi&&(v&3)===0;
-  let best=null;
+  const runs=[];
   for(let p=0;p+4<=t.body.length;p+=4){
     if(!inRange(dv.getUint32(p,true))) continue;
     let q=p; while(q+4<=t.body.length&&inRange(dv.getUint32(q,true))) q+=4;
     const n=(q-p)/4;
-    if(n>=4&&(!best||n>best.n)) best={at:t.base+p,n};
+    if(n>=4) runs.push({at:t.base+p,n});
     p=q;
   }
-  if(!best) return null;
-  const ents=[];
-  for(let k=0;k<best.n;k++){
-    const a=dv.getUint32(best.at-t.base+k*4,true);
-    // その処理の尻尾＝番地が a 以上でいちばん近いもの
-    const tl=tails.find(x=>x.at>=a);
-    ents.push({op:k,addr:a,len:tl?tl.len:0,tail:tl?tl.at:0});
-  }
-  return {at:best.at,n:best.n,ents,disp};
+  if(!runs.length) return null;
+  runs.sort((a,b)=>b.n-a.n);
+  const build=r=>{
+    const addrs=[];
+    for(let k=0;k<r.n;k++) addrs.push(dv.getUint32(r.at-t.base+k*4,true));
+    const set=new Set(addrs);
+    const ents=addrs.map((a,k)=>{
+      // 尻尾がこの処理のものだと言えるのは、
+      //   ・その番地より後ろにあって
+      //   ・間に別の処理の頭が挟まっていなくて
+      //   ・そこそこ近い（0x200 以内）
+      // とき。そうでなければ「分からない」と出す。
+      // 中身を見ずに「番地以上で最初の尻尾」を当てると、
+      // 遠くにある1個へ全部が吸い寄せられて、一律の長さになってしまう
+      const tl=tails.find(x=>x.at>=a&&x.at<a+0x200
+        &&!addrs.some(b=>b>a&&b<=x.at));
+      return {op:k,addr:a,len:tl?tl.len:0,tail:tl?tl.at:0};
+    });
+    return {at:r.at,n:r.n,ents,disp,
+            known:ents.filter(e=>e.len).length,
+            // 処理の番地が重なっている組（同じ描き方をする命令）
+            dup:addrs.map((a,k)=>[a,k]).filter(([a],i)=>addrs.indexOf(a)!==i)
+                 .map(([a,k])=>`${addrs.indexOf(a)}=${k}`)};
+  };
+  return all?runs.map(build):build(runs[0]);
 }
 function mipsOpTableLines(exe){
   const T=mipsOpTable(exe);
@@ -3295,7 +3326,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.74.0";
+const VERSION="v3.75.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3986,6 +4017,16 @@ function updateReport(){
       try{ state.boneCode.push("  命令の振り分け表（番号＝命令の番号）:",
                                ...mipsOpTableLines(s.exe)) }
       catch(err){ state.boneCode.push("  振り分け表さがしで失敗: "+err.message) }
+      // 表を探し当てるより、振り分けそのものを読むほうが確か。
+      // 0x8001efa8 の中に「表から引いて jr で飛ぶ」形が書いてある
+      try{
+        const disp=mipsFindDispatch(s.exe);
+        if(disp){
+          const fn=mipsFuncAt(s.exe,disp,48);
+          state.boneCode.push(`  振り分けそのもの ${hex(disp)}:`);
+          state.boneCode.push(...fn.slice(0,40));
+        }
+      }catch(err){ state.boneCode.push("  振り分けの逆アセンブルで失敗: "+err.message) }
       // 表の置き場所を仕込んでいる所。lui＋addiu で番地を作る形は
       // 読み書きの命令として現れないので、mipsRefs では取りこぼす
       try{
