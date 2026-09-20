@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.94.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.95.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1296,11 +1296,22 @@ function mipsFindSinTable(exe,limit){
   }
   return out;
 }
+// Psy-Q の rsin/rcos は「1周＝4096、振幅＝4096」で、表は1周ぶん(4096段)か
+// 1/4周ぶん(1024段)で置かれるのが普通、と外から教わった。
+// こちらの走査は 512段 で当たっている。段数が合わないので、
+//   ・ゲーム独自の表
+//   ・こちらの走査が別のものを拾っている
+// のどちらか。決めつけずに、見つかったものを全部出す
 function mipsSinTableLines(exe){
-  const L=mipsFindSinTable(exe,6);
+  const L=mipsFindSinTable(exe,8);
   if(!L.length) return ["  サイン表は見つからない"];
-  return L.map(x=>`  サイン表 ${hexA(x.at)}　一周 ${x.n}段　1.0＝${x.one}`
+  const out=L.map(x=>`  サイン表 ${hexA(x.at)}　一周 ${x.n}段　1.0＝${x.one}`
     +`　読んでいる所: `+(mipsRefs(exe,x.at,6).map(r=>hexA(r.at)).join(" ")||"（lui＋lw では見つからない）"));
+  const has4096=L.some(x=>x.n===4096), has1024=L.some(x=>x.n===1024);
+  out.push(`  （Psy-Q の標準は 1周4096段・振幅4096。`
+    +`4096段 ${has4096?"あり":"なし"}／1024段 ${has1024?"あり":"なし"}。`
+    +`合わないなら独自の表か、走査が別物を拾っている）`);
+  return out;
 }
 // 表の番地を「どこかの構造体の一部」として書いている所を探す。
 //
@@ -2737,6 +2748,55 @@ function t1OpArgs(d,base,limit){
   }
   return [...out.values()].sort((a,b)=>a.op-b.op);
 }
+// 命令3・命令6 が合計でいくつ動かすかを数える。
+//
+// 部品を組み立てている関数 0x8001BBE0 で、正体が分かった（$gp=0x800CBCDC）。
+//   lw 0($s0) → sw 3468($gp)   面ポインタ    （部品[0]）
+//   $s0 += 8（頂点を飛ばす）
+//   lw 0($s0) → sw 3736($gp)   法線ポインタ  （部品[2]）
+//   lw 0($s0) → sw 3444($gp)   色ポインタ    （部品[3]）★
+//
+// 命令6 は `andi $t8,0x8` の旗を見てから `addu $s7,$s7,$s6`。
+// ±4 ずつ動かし、旗が立っているときは動かさない。**4は色ひとつぶん。**
+// つまり命令6は「色を1つ進める／1つ戻す」で、骨ではなく色だった。
+// 命令3（`addu $s3,$s3,$s6`）はもう一方——おそらく法線。
+//
+// 色の勘定がいつも少しずれていた（「76ずれ」など）のは、
+// これを読んでいなかったせいではないか。合計を出して突き合わせる
+function t1PtrMoves(d,base,limit){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  let fp=base+0x10, steps=0;
+  const sum={3:0,6:0}, cnt={3:0,6:0}, plus={3:0,6:0};
+  while(fp+8<=d.length&&steps<(limit||4096)){
+    const op=dv.getUint32(fp,true);
+    if(op===0) break;
+    if(op in T1_CMD_LEN){
+      if(op===3||op===6){
+        const v=dv.getInt32(fp+4,true);
+        sum[op]+=v; cnt[op]++; if(v>0) plus[op]+=v;
+      }
+      fp+=T1_CMD_LEN[op];
+    }else if(T1_FACE_OP[op]){
+      if(dv.getUint32(fp+4,true)>4096) break;
+      fp+=8;
+    }else break;
+    steps++;
+  }
+  return {sum,cnt,plus};
+}
+function t1PtrMoveLine(m,colorGap){
+  if(!m||(!m.cnt[3]&&!m.cnt[6])) return "";
+  const f=op=>`命令${op}: ${m.cnt[op]}回 合計${m.sum[op]}（＋のぶんだけなら${m.plus[op]}）`;
+  let L=`  ポインタを動かす命令　${f(3)}　${f(6)}`;
+  if(colorGap!=null){
+    // 色の勘定のずれと突き合わせる。合えば、これが原因だったことになる
+    const hit=[["合計",m.sum[6]],["＋のぶんだけ",m.plus[6]],
+               ["命令3の合計",m.sum[3]],["命令3の＋のぶんだけ",m.plus[3]]]
+      .filter(([,v])=>v===colorGap).map(([n])=>n);
+    L+=`　色のずれ ${colorGap} と`+(hit.length?`合う: ${hit.join("・")}`:"合うものは無い");
+  }
+  return L;
+}
 // 集めた中身を、そのまま貼れる形にする。
 // 分かっている命令には、その語が何なのかを添える
 const T1_ARG_MEAN={
@@ -3845,7 +3905,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.94.0";
+const VERSION="v3.95.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3863,7 +3923,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.94.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.95.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4016,6 +4076,15 @@ function buildModelInner(raw,info){
             +(loose?`　（うち ${loose}部品 はぴったりではないが、いちばん近い引き方を使っています）`:"");
           // 大きい部品（＝本体）から順に出す。小さい部品ばかり出しても本丸が見えない
           info.t1ColorLines=cf.slice().sort((a,b)=>b.nv-a.nv).slice(0,4).map(t1ColorLine);
+          // 命令3・6 が動かす量と、色の勘定のずれを突き合わせる。
+          // 色ポインタは $gp+3444（部品を組み立てている関数で確認済み）で、
+          // 命令6 が ±4（＝色ひとつ）ずつ動かしている
+          try{
+            const bigc=cf.slice().sort((a,b)=>b.nv-a.nv)[0];
+            const o=okObjs.slice().sort((a,b)=>(b.nv||0)-(a.nv||0))[0];
+            if(o) info.t1PtrMove=t1PtrMoveLine(t1PtrMoves(b.out,o.base),
+              bigc?Math.abs(bigc.cand&&bigc.cand["頂点ごと"]!=null?bigc.cand["頂点ごと"]:0):null);
+          }catch(_){}
         } }catch(_){}
       // まだ意味の分かっていない命令の中身。いちばん大きい部品（＝本体）で見る。
       // 骨のずらし量がここに入っていないか探している
@@ -4435,6 +4504,7 @@ function digestLines(){
       if(inf.t1Guess) L.push(inf.t1Guess);
       if(inf.t1ChainTry) L.push(inf.t1ChainTry);
       if(inf.t1SegOrigin) L.push(inf.t1SegOrigin);
+      if(inf.t1PtrMove) L.push(inf.t1PtrMove);
       if(inf.t1BoneCmp) L.push(inf.t1BoneCmp);
       if(inf.t1Flat) L.push(inf.t1Flat);
       if(inf.t1VertBox){
@@ -4709,7 +4779,7 @@ function updateReport(){
         // 意味が分かっていない。命令6が骨の番号を動かしているなら、
         // こちらの数え方（命令5だけを数える）が根本から間違っていることになる
         try{ state.boneBrief.push("  まだ意味の分かっていない命令の処理（短いのでそのまま）:",
-                                  ...mipsShortCmdLines(s.exe,[3,6])) }
+                                  ...mipsShortCmdLines(s.exe,[1,3,6])) }
         catch(err){ state.boneBrief.push("  短い命令が読めなかった: "+err.message) }
         // 命令3と命令6は $s3 と $s7 に語1を足すだけだった。骨ではなく、
         // 部品の中のどれかを指すポインタを前後にずらしている（$s2 は面だった）。
