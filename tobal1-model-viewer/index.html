@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.87.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.88.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2744,14 +2744,23 @@ function t1Diagnose(d){
   // 格闘キャラは腕2本×6・脚2本×5・胴・頭で30前後の区切りを持つが、
   // ローブの立ち姿ならずっと少ないはず。
   // 「使用可能な8人＋ボス」で数を合わせる考え方は、こういうキャラには通じない
-  let segs=0, tris=0;
+  // 大きさも返す。ウダン皇帝は身長152cmで小柄、という設定があるので、
+  // 背の高さを並べれば候補が絞れる。絵を見なくても分かること
+  let segs=0, tris=0, ext=0;
   { const big=objs.filter(o=>done.has(o.base)).sort((a,b)=>b.nv-a.nv)[0];
     // 読めたときの結果をそのまま使う。読み直すと、覚えた読み方の具合で
     // 取れないことがある（最初はここで読み直して 0 になっていた）
     const r=big&&got.get(big.base);
     if(r&&r.faces){ segs=r.segs||0;
-      tris=r.faces.reduce((n,f)=>n+(f.idx.length>3?2:1),0) } }
-  return {parts:objs.length,run:done.size,fail:objs.length-done.size,why,solved,vars,audit,pairs,segs,tris};
+      tris=r.faces.reduce((n,f)=>n+(f.idx.length>3?2:1),0);
+      const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+      const mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+      for(let i=0;i<r.verts;i++){ const q=big.base+big.vertPtr+i*8;
+        if(q+6>d.length) break;
+        for(let a=0;a<3;a++){ const v=dv.getInt16(q+a*2,true);
+          if(v<mn[a])mn[a]=v; if(v>mx[a])mx[a]=v } }
+      ext=Math.round(Math.max(...mn.map((v,a)=>mx[a]-v))); } }
+  return {parts:objs.length,run:done.size,fail:objs.length-done.size,why,solved,vars,audit,pairs,segs,tris,ext};
 }
 // 理由の「種類」だけを取り出す（位置や数を除いてまとめるため）
 function t1WhyKind(w){
@@ -3443,6 +3452,11 @@ const T1_NAMES={
   5624:"トリ", 5637:"トリ", 5650:"トリ", 5663:"トリ",
   5737:"ウダン？",
   9647:"ウダン？（別衣装）", 9662:"ウダン？",
+  // ↑ この札は怪しい。同じ形でまとめると #154(9662) が #132(9004＝フェイ) と
+  //   同じ組に入る（三角形1237）。ただし「同じ形」は三角形の数と部品数でしか
+  //   見ていないので、たまたま合っただけかもしれない。断定しない。
+  //   ウダン皇帝は身長152cmで小柄という設定なので、大きさの順を出すようにした。
+  //   いちばん小さいものが候補になる
   9369:"ムーフー（別衣装）", // 動画 "using Mufu's second costume" の緑と紫で確定
   9383:"ムーフー",          // ボス。腹の赤い十字と橙の体で確定
   // 使用可能な8人（すべて 8755〜9484 の並びの中にいる）
@@ -3651,7 +3665,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.87.0";
+const VERSION="v3.88.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3669,7 +3683,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.87.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.88.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -3740,8 +3754,22 @@ function buildModelInner(raw,info){
       t1SetBones(null); buildT1Mesh(b.out,okObjs);
       const big=okObjs.filter(x=>x.run).sort((x,y)=>y.nv-x.nv)[0];
       const g=big?t1ChainBones(b.out,big,t1Show.guessAmt):null;
+      // 効きを数で出す。毎回「見てください」と頼むのをやめる。
+      // 積む前と積んだあとの縦横を比べれば、伸びたのか散らばったのかが分かる
+      let eff="";
+      if(g){
+        const ext=m=>{ const P=m.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+          for(let i=0;i<P.length;i+=3) for(let a=0;a<3;a++){
+            if(P[i+a]<mn[a])mn[a]=P[i+a]; if(P[i+a]>mx[a])mx[a]=P[i+a] }
+          return mn.map((v,a)=>Math.round(mx[a]-v)) };
+        t1SetBones(null); const before=ext(buildT1Mesh(b.out,okObjs));
+        t1SetBones(g);    const after =ext(buildT1Mesh(b.out,okObjs));
+        const tall=Math.max(...after), tb=Math.max(...before);
+        eff=`　縦横 ${before.join("×")} → ${after.join("×")}`
+          +`　いちばん長い辺 ${tb}→${tall}（${tb?Math.round(tall/tb*100):0}%）`;
+      }
       t1SetBones(g);
-      info.t1Guess=g?`  鎖をたどって積んでいます（推測）: 鎖 ${g.runs.join(" ")}　効き ${t1Show.guessAmt.toFixed(2)}`
+      info.t1Guess=g?`  鎖をたどって積んでいます（推測）: 鎖 ${g.runs.join(" ")}　効き ${t1Show.guessAmt.toFixed(2)}${eff}`
                     :"  鎖が見つからないので、何もしていません";
     }
     else if(t1Show.guessBone&&!T1_BONES_REAL){
@@ -4178,6 +4206,7 @@ function digestLines(){
         +(inf.t1Read.vari&&inf.t1Read.vari!=="既定"?`／頂点を入れる読み方: ${inf.t1Read.vari}`:""));
     if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`+(T1_BONES?`／骨 ${T1_BONES.length}個 を当てている`:"／骨はまだ無い"));
     if(inf.t1SegLine&&inf.t1SegLine.length){
+      if(inf.t1Guess) L.push(inf.t1Guess);
       if(inf.t1SegOrigin) L.push(inf.t1SegOrigin);
       if(inf.t1VertBox){
         L.push(inf.t1VertBox);
@@ -4201,6 +4230,18 @@ function digestLines(){
       // ローブ姿の衛兵のような、脚の分かれていないキャラクターはずっと少ないはず
       L.push(`名前の付いていないモデル ${sig.length}件（かっこ内は sector・骨の区切り数）:`);
       L.push("  "+sig.map(o=>`#${o.e.no}(${o.e.sector}・区切り${(o.diag&&o.diag.segs)||"?"})`).join(" "));
+      // 大きさの順。ウダン皇帝は身長152cmで小柄という設定があるので、
+      // いちばん小さいものが候補になる。絵を見ないで絞るための手がかり
+      { const all=((state.sieve&&state.sieve.other)||[])
+          .filter(o=>o.diag&&o.diag.ext>0)
+          .map(o=>({no:o.e.no,sec:o.e.sector,ext:o.diag.ext,nm:t1NameOf(o.e.sector)}))
+          .sort((a,b)=>a.ext-b.ext);
+        if(all.length>=6){
+          const f=x=>`${x.nm?x.nm+" ":""}#${x.no}(${x.ext})`;
+          L.push(`  大きさの順（かっこ内はいちばん長い辺）　小さいほう: `
+            +all.slice(0,4).map(f).join(" "));
+          L.push(`  　大きいほう: `+all.slice(-4).reverse().map(f).join(" "));
+        } }
       const few=sig.filter(o=>o.diag&&o.diag.segs&&o.diag.segs<20);
       if(few.length) L.push(`  区切りが20より少ないもの ${few.length}件`
         +`（格闘キャラは30前後。ローブ姿など脚の分かれていないキャラクターかもしれない）: `
