@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.78.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.79.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3428,7 +3428,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.78.0";
+const VERSION="v3.79.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3442,6 +3442,24 @@ async function readFull(e){
   const d=e.src==="iso"?await state.src.readIso(e.iso):await state.src.readArc(e.sector,e.size);
   if(state.cache.size>24) state.cache.delete(state.cache.keys().next().value);
   state.cache.set(e.key,d); return d;
+}
+// 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
+//
+// これはモデルを読みはじめる前に呼ばないと意味がない。
+// v3.79.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
+// 消えないままだった。測ったものを、測る前に使えていなかった
+function applyExeSizes(exe){
+  try{
+    const M=mipsCmdMap(exe);
+    if(!M||!M.tbl){ t1SetExeSizes(null); return 0 }
+    const sz={};
+    for(let op=8;op<=15;op++){
+      const a=mipsTableAt(exe,M.tbl+(op-7)*4,1)[0];
+      if(a){ const n=mipsFaceStep(exe,a); if(n>0) sz[op]=n }
+    }
+    return t1SetExeSizes(sz);
+  }catch(_){ t1SetExeSizes(null); return 0 }
 }
 // 読み込んだファイルからモデルを組む。途中で分かったことは info に集める（解析の表示用）
 function buildModel(raw){
@@ -4138,13 +4156,7 @@ function updateReport(){
         if(M&&M.tbl){
           state.boneCode.push("  面の命令が面1枚あたり進むバイト数:");
           state.boneCode.push(...mipsFaceSizeLines(s.exe,M.tbl));
-          // 読めた数をそのまま採用する。データの辻褄合わせより実行ファイルが強い
-          const sz={};
-          for(let op=8;op<=15;op++){
-            const a=mipsTableAt(s.exe,M.tbl+(op-7)*4,1)[0];
-            if(a){ const n=mipsFaceStep(s.exe,a); if(n>0) sz[op]=n }
-          }
-          const used=t1SetExeSizes(sz);
+          const used=applyExeSizes(s.exe);
           state.boneCode.push(used
             ? `  → 面の命令 ${used}個 の大きさを実行ファイルから決めた`
               +"（頂点の数と法線の持ち方は、今までどおりデータに決めさせる）"
@@ -4362,6 +4374,9 @@ async function start(files){
     state.src=await openSource(files);
     state.cache.clear(); state.probe.clear(); state.head.clear(); state.scan=null; state.infer=null;
     const ex=exeInfo(state.src.exe);
+    // モデルを読む前に、面1枚のバイト数を実行ファイルから取り込んでおく。
+    // 読んだあとで取り込んでも、読み方の絞り込みには使えない
+    state.exeSizes=applyExeSizes(state.src.exe);
     state.tables=state.src.readArc&&ex.ok?findFileTables(state.src.exe,state.src.maxArcSize||state.src.arcSize):[];
     if(state.tables.length){ busy("ファイル表の候補を確かめています…"); await scoreTables(state.tables) }
     state.tableIdx=0;
