@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.7.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.8.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1594,6 +1594,51 @@ function mipsFindGp(exe){
   }
   if(!tally.size) return 0;
   return [...tally].sort((a,b)=>b[1]-a[1]||a[0]-b[0])[0][0];
+}
+
+// ============================================================
+//  命令の列を読んでいる関数を「呼んでいる側」を探す
+//  表A・表B に番地を入れている所が、読み書きの形では見つからない。
+//  handler の中でしか触っていないということは、
+//  最初の値は「別の register を土台にした書き込み」で入っている。
+//  それは呼び出し元にあるはずなので、呼び出し元を読む
+// ============================================================
+function mipsFuncRange(exe,addr){
+  const t=exeText(exe); if(!t) return null;
+  const off=addr-t.base; if(off<0||off>=t.body.length) return null;
+  const fn=mipsFunc(t.body,off,400,400);
+  return {from:t.base+fn.from,to:t.base+fn.to,off:fn};
+}
+function mipsCallersOf(exe,target,limit){
+  const t=exeText(exe); if(!t) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const out=[], tgt=target>>>0;
+  for(let p=0;p+4<=t.body.length;p+=4){
+    const w=dv.getUint32(p,true);
+    if((w>>>26)!==3) continue;                                  // jal だけ
+    const a=(((t.base&0xf0000000)>>>0)|((w&0x03ffffff)<<2))>>>0;
+    if(a===tgt){ out.push(t.base+p); if(out.length>=(limit||16)) break }
+  }
+  return out;
+}
+// 呼び出しの前後を出す。引数を作っている所が前に並んでいる
+function mipsCallSiteLines(exe,at,back,fwd){
+  const t=exeText(exe); if(!t) return [];
+  const off=at-t.base; if(off<0||off>=t.body.length) return [];
+  const from=Math.max(0,off-(back||10)*4), to=Math.min(t.body.length,off+((fwd||2)+1)*4);
+  return mipsLines(exe,{from,to},off);
+}
+function mipsCallerLines(exe,target,nCallers,back){
+  const fr=mipsFuncRange(exe,target);
+  if(!fr) return ["  呼ばれている関数の範囲が取れない"];
+  const cs=mipsCallersOf(exe,fr.from,16);
+  const L=[`  命令の列を読む関数 ${hexA(fr.from)}〜${hexA(fr.to)}`
+    +`　呼んでいる所 ${cs.length}件`+(cs.length?"： "+cs.map(hexA).join(" "):"（見つからない）")];
+  for(const c of cs.slice(0,nCallers||2)){
+    L.push(`  ${hexA(c)} の呼び出しの手前:`);
+    L.push(...mipsCallSiteLines(exe,c,back||10,1));
+  }
+  return L;
 }
 // ============================================================
 //  アーカイブを直接さらう
@@ -4163,7 +4208,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.7.0";
+const VERSION="v4.8.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4857,6 +4902,9 @@ function digestLines(){
         L.push(`  #${full.e.no}(${full.e.sector}) の中身を全部（${full.full.length}B・int16で）:`);
         L.push(...fileI16Lines(full.full,16).map(x=>"  "+x));
         L.push(...tableRecLines(tableRecGuess(full.full),full.full.length));
+        // 同じ番号が3つ並ぶ組がいくつもある。面の頂点番号の列を
+        // 固定長にするための埋め草に見えたので、数えて確かめる
+        L.push(...indexTripleLines(full.full,`#${full.e.no}`));
         // 同じ大きさのものが何件もある。中身も同じなら「キャラごと」ではない
         const same=small.filter(o=>o.full&&o.full.length===full.full.length);
         if(same.length>1){
@@ -5175,8 +5223,17 @@ function updateReport(){
         catch(err){ state.boneBrief.push("  サイン表さがしで失敗: "+err.message) }
         // 表の番地は「構造体の一部」として書かれている可能性がある。
         // 表そのものではなく、その前後まで広げて番地を作っている所を探す
-        try{ state.boneBrief.push(...mipsNearAddrLines(s.exe,0x800CB000,0x800CC800,gp)) }
-        catch(err){ state.boneBrief.push("  広げた番地さがしで失敗: "+err.message) }
+        // 24件出していたが、どれも $gp の近くを触っているだけで表とは関係なかった。
+        // 道が閉じたので長い報告へ戻す
+        try{ state.boneCode.push(...mipsNearAddrLines(s.exe,0x800CB000,0x800CC800,gp)) }
+        catch(err){ state.boneCode.push("  広げた番地さがしで失敗: "+err.message) }
+        // 表A・表B に最初の値を入れている所が、読み書きの形では出てこない。
+        // handler の中でしか触っていないなら、最初の値は
+        // 「別の register を土台にした書き込み」で入っている。
+        // それは命令の列を読む関数を呼んでいる側にあるはず
+        try{ state.boneBrief.push("  命令の列を読む関数を呼んでいる所:",
+                                  ...mipsCallerLines(s.exe,0x8001EFA8,2,12)) }
+        catch(err){ state.boneBrief.push("  呼び出し元が読めなかった: "+err.message) }
         state.boneBrief.push(mk.length
           ? `  表の番地を作っている場所 ${mk.length}件: `
             +mk.map(x=>`${hex(x.at)}→${hex(x.addr)}(${x.how})`).join(" ")
@@ -6212,6 +6269,7 @@ function fileBlockRead(raw){
       let dec=null;
       try{ if(b.length&&b[0]===0x0b) dec=decompress(b) }catch(_){}
       return {at:o,len:end-o,c0:b.length?b[0]:-1,dec:dec?dec.length:0,
+        out:dec&&dec.length<=256?dec:null,
         head:Array.from(b.subarray(0,8),v=>v.toString(16).padStart(2,"0")).join(" ")};
     });
     return {start,head:w.slice(0,start+off.length),blocks};
@@ -6221,9 +6279,13 @@ function fileBlockRead(raw){
 function fileBlockLines(r){
   if(!r) return ["  位置の並びには見えない"];
   const L=[`  先頭の語: ${r.head.join(", ")}（${r.start?"語0は個数らしい":"語0から位置"}）`];
-  for(const b of r.blocks.slice(0,10))
+  for(const b of r.blocks.slice(0,10)){
     L.push(`    位置 ${b.at} 長さ ${b.len}B`
       +(b.dec?`　圧縮されている→展開すると ${b.dec}B`:"")+`　先頭 ${b.head}`);
+    // 展開できたら中身も出す。長さだけ見て「小さいから表ではない」と
+    // 決めつけると、また同じ所で止まる
+    if(b.out) L.push(...fileI16Lines(b.out,12).map(x=>"    "+x));
+  }
   if(r.blocks.length>10) L.push(`    …ほか ${r.blocks.length-10}件`);
   return L;
 }
@@ -6264,6 +6326,24 @@ function eqBytes(a,b){
   if(!a||!b||a.length!==b.length) return false;
   for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return false;
   return true;
+}
+
+// int16 が3つ組の並び（面の頂点番号の列）に見えるか。
+// 同じ番号3つの組は「埋め草の面」で、固定長の表ではよく使われる
+function indexTripleLines(u8,name){
+  const n=(u8.length/6)|0;
+  if(n<4||u8.length%6) return [`  ${name}: 3つ組では割り切れない（${u8.length}B）`];
+  let same=0, max=-1, rise=0, prev=null;
+  for(let i=0;i<n;i++){
+    const v=[0,1,2].map(k=>{ const p=i*6+k*2; return (u8[p]|(u8[p+1]<<8))<<16>>16 });
+    if(v[0]===v[1]&&v[1]===v[2]) same++;
+    for(const x of v) if(x>max) max=x;
+    if(prev!==null&&v[0]>=prev) rise++;
+    prev=v[0];
+  }
+  return [`  ${name}: 3つ組として ${n}組　同じ番号3つ（埋め草の面らしいもの）${same}組`
+    +`　いちばん大きい番号 ${max}　先頭が増えていく組 ${rise}/${n-1}`
+    +(same>=n*0.1?"　→ 面の頂点番号の列らしい":"　→ 埋め草が少ない。面の列とは言い切れない")];
 }
 // ---- 骨さがし ----
 // 命令5 は「外から渡された表から次の行列を取り出す」処理だった。その行列はプレステの
