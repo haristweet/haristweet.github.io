@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.84.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.85.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2710,6 +2710,7 @@ function t1Diagnose(d){
   const offs=t1ObjectOffsets(d);
   const objs=offs.map(p=>readT1Object(d,p)).filter(o=>o&&o.ok);
   const done=new Set(), why=[], solved=[], vars=[], audit=[], pairs=[];
+  const got=new Map();                    // 読めた部品の結果。あとで数えるのに使う
   const budget={n:4};                     // 総当たりは1ファイルにつき4部品まで（全件にかけるので）
   const best=o=>t1RunBest(d,o,0,budget);
   // 1つ解けると「分かっているもの」が増えて次が解けるので、進まなくなるまで回す
@@ -2718,7 +2719,8 @@ function t1Diagnose(d){
     for(const o of objs){
       if(done.has(o.base)) continue;
       const r=best(o);
-      if(r&&Math.abs(r.verts-o.nv)<=2){ done.add(o.base); if(r.solved) solved.push(r.solved);
+      if(r&&Math.abs(r.verts-o.nv)<=2){ done.add(o.base); got.set(o.base,r);
+        if(r.solved) solved.push(r.solved);
         if(r.solved2) pairs.push(r.solved2);
         if(r.variant) vars.push(t1VarName(r.variant)); continue }
     }
@@ -2735,7 +2737,21 @@ function t1Diagnose(d){
     // 読めなかった部品は「数えるだけ」の調べもつけておく（理由の当たりをつけるため）
     if(audit.length<3){ try{ audit.push(t1AuditLine(t1Audit(d,o))) }catch(_){} }
   }
-  return {parts:objs.length,run:done.size,fail:objs.length-done.size,why,solved,vars,audit,pairs};
+  // いちばん大きい部品の「骨の区切り数」も返す。
+  //
+  // なぜ数えるのか：エンディングに出てくる衛兵のような、ローブ姿で
+  // 脚の分かれていないキャラクターが混じっている可能性があるため。
+  // 格闘キャラは腕2本×6・脚2本×5・胴・頭で30前後の区切りを持つが、
+  // ローブの立ち姿ならずっと少ないはず。
+  // 「使用可能な8人＋ボス」で数を合わせる考え方は、こういうキャラには通じない
+  let segs=0, tris=0;
+  { const big=objs.filter(o=>done.has(o.base)).sort((a,b)=>b.nv-a.nv)[0];
+    // 読めたときの結果をそのまま使う。読み直すと、覚えた読み方の具合で
+    // 取れないことがある（最初はここで読み直して 0 になっていた）
+    const r=big&&got.get(big.base);
+    if(r&&r.faces){ segs=r.segs||0;
+      tris=r.faces.reduce((n,f)=>n+(f.idx.length>3?2:1),0) } }
+  return {parts:objs.length,run:done.size,fail:objs.length-done.size,why,solved,vars,audit,pairs,segs,tris};
 }
 // 理由の「種類」だけを取り出す（位置や数を除いてまとめるため）
 function t1WhyKind(w){
@@ -3565,7 +3581,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.84.0";
+const VERSION="v3.85.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3583,7 +3599,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.84.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.85.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4111,8 +4127,15 @@ function digestLines(){
   { const sig=((state.sieve&&state.sieve.other)||[])
       .filter(o=>o.words&&o.words[0]===0x90000000&&o.words[1]!==0x14&&!t1NameOf(o.e.sector));
     if(sig.length){ L.push("");
-      L.push(`名前の付いていないモデル ${sig.length}件: `
-        +sig.map(o=>`#${o.e.no}(${o.e.sector})`).join(" ")) } }
+      // 骨の区切り数を添える。格闘キャラは30前後。
+      // ローブ姿の衛兵のような、脚の分かれていないキャラクターはずっと少ないはず
+      L.push(`名前の付いていないモデル ${sig.length}件（かっこ内は sector・骨の区切り数）:`);
+      L.push("  "+sig.map(o=>`#${o.e.no}(${o.e.sector}・区切り${(o.diag&&o.diag.segs)||"?"})`).join(" "));
+      const few=sig.filter(o=>o.diag&&o.diag.segs&&o.diag.segs<20);
+      if(few.length) L.push(`  区切りが20より少ないもの ${few.length}件`
+        +`（格闘キャラは30前後。ローブ姿など脚の分かれていないキャラクターかもしれない）: `
+        +few.map(o=>`#${o.e.no}(区切り${o.diag.segs})`).join(" "));
+    } }
   if(state.galGroups&&state.galGroups.length){
     L.push(""); L.push("同じ形でまとめた結果:"); L.push(...state.galGroups);
   }
