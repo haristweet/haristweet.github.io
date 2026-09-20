@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.77.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.78.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2680,29 +2680,20 @@ const T1_LEARNED={};
 let T1_EXE_SIZE=null;
 function t1SetExeSizes(m){
   T1_EXE_SIZE=(m&&Object.keys(m).length)?m:null;
-  if(!T1_EXE_SIZE) return 0;
-  let n=0;
-  for(const op of Object.keys(T1_EXE_SIZE)){
-    const size=T1_EXE_SIZE[op]; if(!size) continue;
-    // バイト数が決まれば、頂点の数と法線の有無も決まる。
-    //   12 = 頂点3×4              16 = 頂点4×4
-    //   20 = 頂点3×4 ＋ 法線8     24 = 頂点4×4 ＋ 法線8
-    // ただし既に分かっている命令（8〜11）の持ち方は動かさない
-    const k=T1_FACE_OP[op];
-    if(k){ if(k.size!==size) n++; continue }
-    T1_LEARNED[op]={size,
-      n:(size===12||size===20)?3:4,
-      nrm:(size===20||size===24),
-      fromExe:true};
-    n++;
-  }
-  return n;
+  return T1_EXE_SIZE?Object.keys(T1_EXE_SIZE).length:0;
 }
-function t1Learn(op,k){
-  // 実行ファイルに書いてあるほうが強い。データの辻褄合わせで上書きしない
-  if(T1_LEARNED[op]&&T1_LEARNED[op].fromExe) return;
-  T1_LEARNED[op]={size:k.size,n:k.n,nrm:k.nrm};
+// 実行ファイルから分かるのは「面1枚が何バイトか」だけ。
+// その中で頂点がいくつで法線をどう持つかは書いていないので、
+// そこはデータに決めさせる（面の領域のバイト数と突き合わせる、今までのやり方）。
+//
+// v3.77.0 は、24バイトなら頂点4＋法線、と勝手に決めてしまった。
+// 実際は 命令12=20B が頂点3＋法線8 なので、24B＝頂点3＋12 で、
+// 12 は頂点ごとの法線。三角形の数が変わって、それで壊れたと分かった。
+// バイト数は実行ファイル、持ち方はデータ。混ぜない
+function t1ExeSizeOK(op,size){
+  return !T1_EXE_SIZE||!T1_EXE_SIZE[op]||T1_EXE_SIZE[op]===size;
 }
+function t1Learn(op,k){ T1_LEARNED[op]={size:k.size,n:k.n,nrm:k.nrm} }
 function t1SizeOf(op){
   return T1_KNOWN_SIZE[op]||(T1_LEARNED[op]&&T1_LEARNED[op].size)||0;
 }
@@ -2737,6 +2728,7 @@ function t1SolveSize(scan){
   if(n<1||rest<=0||rest%n) return null;
   const size=rest/n;
   if(size<8||size>64||size%4) return null;
+  if(!t1ExeSizeOK(op,size)) return null;          // 実行ファイルと食い違うなら採らない
   return {op,size,count:n};
 }
 // 大きさが決まれば、中身の並べ方は数通りしかない
@@ -2912,6 +2904,7 @@ function t1SolveSize2(scan){
     if(r<=0||r%nB) continue;
     const b=r/nB;
     if(b<8||b>64||b%4) continue;
+    if(!t1ExeSizeOK(opA,a)||!t1ExeSizeOK(opB,b)) continue;   // 実行ファイルと食い違う組は捨てる
     out.push([{op:opA,size:a},{op:opB,size:b}]);
   }
   return out.length?out:null;
@@ -3435,7 +3428,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.77.0";
+const VERSION="v3.78.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4152,9 +4145,9 @@ function updateReport(){
             if(a){ const n=mipsFaceStep(s.exe,a); if(n>0) sz[op]=n }
           }
           const used=t1SetExeSizes(sz);
-          state.boneCode.push(Object.keys(sz).length
-            ? `  → ${Object.keys(sz).length}個の面の命令の大きさを実行ファイルから決めた`
-              +`（うち ${used}個 はデータからの割り出しが要らなくなった）`
+          state.boneCode.push(used
+            ? `  → 面の命令 ${used}個 の大きさを実行ファイルから決めた`
+              +"（頂点の数と法線の持ち方は、今までどおりデータに決めさせる）"
             : "  → 実行ファイルからは決められなかった");
         }
       }catch(err){ state.boneCode.push("  振り分けの読み取りで失敗: "+err.message) }
