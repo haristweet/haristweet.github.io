@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.9.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.10.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1638,6 +1638,73 @@ function mipsCallerLines(exe,target,nCallers,back){
     L.push(`  ${hexA(c)} の呼び出しの手前:`);
     L.push(...mipsCallSiteLines(exe,c,back||10,1));
   }
+  return L;
+}
+
+// ============================================================
+//  「進めている入れもの」を全部探す
+//  命令5は表A・表Bを4ずつ進めていた。呼び出し元を読んだら、
+//  0x800CC910 を 32 ずつ進めている所が出てきた——32バイトは
+//  PS1 の MATRIX ちょうど1個ぶん。
+//  番地を決め打ちで追うのはもうやめる。
+//  「読んで・足して・同じ所に書き戻す」形を全部拾えば、
+//  行列の並びも、その他の並びも、まとめて出てくる
+// ============================================================
+function mipsCursorScan(exe,gp,opt){
+  const t=exeText(exe); if(!t) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const hi=new Array(32).fill(-1);          // register が指している番地
+  const src=new Array(32).fill(-1);         // その register が「どこから読んだ値」か
+  const add=new Array(32).fill(0);          // 読んでから足した量
+  if(gp) hi[MIPS_GP]=gp>>>0;
+  const out=[], o=opt||{};
+  const clear=r=>{ if(r!==MIPS_GP){ hi[r]=-1; src[r]=-1; add[r]=0 } };
+  for(let p=0;p+4<=t.body.length;p+=4){
+    const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31;
+    const im=w&0xffff, se=im>0x7fff?im-0x10000:im;
+    if(op===0x0f){ hi[rt]=(im<<16)>>>0; src[rt]=-1; add[rt]=0; continue }    // lui
+    if(op===0x09){                                                           // addiu
+      if(src[rs]>=0&&rs!==MIPS_GP){ src[rt]=src[rs]; add[rt]=add[rs]+se;
+                                    hi[rt]=hi[rs]>=0?((hi[rs]+se)>>>0):-1; continue }
+      if(hi[rs]>=0){ hi[rt]=((hi[rs]+se)>>>0); src[rt]=-1; add[rt]=0; continue }
+      clear(rt); continue;
+    }
+    if(op===0x23){                                                           // lw
+      const a=hi[rs]>=0?((hi[rs]+se)>>>0):-1;
+      if(rt!==MIPS_GP){ hi[rt]=-1; src[rt]=a; add[rt]=0 }
+      continue;
+    }
+    if(op===0x2b){                                                           // sw
+      const a=hi[rs]>=0?((hi[rs]+se)>>>0):-1;
+      if(a>=0&&src[rt]===a&&add[rt]!==0) out.push({addr:a,step:add[rt],at:t.base+p});
+      continue;
+    }
+    if(op===0){ clear(rd) }
+    else if(op!==0x02&&op!==0x03&&op>=0x08) clear(rt);
+    if(out.length>=(o.limit||64)) break;
+  }
+  // 同じ入れものを何度も進めていることがある。番地と進める量でまとめる
+  const by=new Map();
+  for(const x of out){ const k=x.addr+"/"+x.step;
+    if(!by.has(k)) by.set(k,{...x,n:0,ats:[]});
+    const v=by.get(k); v.n++; if(v.ats.length<4) v.ats.push(x.at) }
+  return [...by.values()].sort((a,b)=>b.step-a.step||a.addr-b.addr);
+}
+// 32バイト＝行列1個、4バイト＝ポインタ1個、20バイト＝光源の行列
+function mipsCursorMean(step){
+  if(step===32) return "→ 32バイト＝行列1個ぶん。行列の並びを1つずつ進めている";
+  if(step===4)  return "→ 4バイト＝ポインタ1個ぶん";
+  if(step===20) return "→ 20バイト＝光源の行列1個ぶん";
+  if(step%32===0) return `→ 行列 ${step/32}個ぶん`;
+  return "";
+}
+function mipsCursorLines(exe,gp){
+  const cs=mipsCursorScan(exe,gp);
+  if(!cs.length) return ["  読んで足して書き戻している所は見つからない"];
+  const L=[`  読んで・足して・同じ所に書き戻している入れもの ${cs.length}件:`];
+  for(const c of cs.slice(0,10))
+    L.push(`    ${hexA(c.addr)} を ${c.step>0?"+":""}${c.step} ずつ`
+      +`（${c.n}か所 ${c.ats.map(hexA).join(" ")}）　${mipsCursorMean(c.step)}`);
   return L;
 }
 // ============================================================
@@ -4208,7 +4275,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.9.0";
+const VERSION="v4.10.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4921,8 +4988,16 @@ function digestLines(){
     // 残りは毎フレームの角度で与えられる——その読みで進める。
     // 探すのは骨格ファイルではなく角度の列。角度の列は
     // 「1フレームぶんの刻みだけ離れたバイトがよく似ている」で見つかる
-    { const cand=other.filter(o=>o.full&&o.full.length>=256)
-        .sort((a,b)=>a.full.length-b.full.length).slice(0,8);
+    // 小さい順に8件だと、564バイトのものばかり並んで何も分からなかった。
+    // 大きさをばらして選ぶ。刻みを測るには繰り返しの回数が要る
+    { const pool=other.filter(o=>o.full&&o.full.length>=256)
+        .sort((a,b)=>a.full.length-b.full.length);
+      const cand=[];
+      for(let k=0;k<8&&pool.length;k++){
+        const i=Math.min(pool.length-1,
+          k<3?k:Math.round((k-2)/6*(pool.length-1)));
+        if(pool[i]&&!cand.includes(pool[i])) cand.push(pool[i]);
+      }
       if(cand.length){
         L.push("  角度の列らしいものを、繰り返す刻みで探す:");
         for(const o of cand){
@@ -4952,10 +5027,10 @@ function digestLines(){
           +"　→ 骨格はキャラごとではなく、共通の1ファイルか実行ファイルの中");
     }
     if((sv.broken||[]).length){
-      L.push(`  読めなかったファイル ${sv.broken.length}件`
+      L.push(`  読めなかったファイル ${sv.broken.length}件（中身は同じ。1件だけ出す）`
         +"（骨の表は圧縮されていない固定長の並びかもしれない。"
         +"だとすると展開できないのは当たり前なので、中身を見る）:");
-      for(const b of sv.broken.slice(0,6)){
+      for(const b of sv.broken.slice(0,1)){
         L.push(`    #${b.e.no}(${b.e.sector}) ${fmtSize(b.e.size)}`
           +(b.rawLen?`／生 ${b.rawLen}B`:"")+`　${b.why}`);
         if(b.head) L.push(`      先頭32バイト: ${b.head}`);
@@ -5248,8 +5323,25 @@ function updateReport(){
         // 「別の register を土台にした書き込み」で入っている。
         // それは命令の列を読む関数を呼んでいる側にあるはず
         try{ state.boneBrief.push("  命令の列を読む関数を呼んでいる所:",
-                                  ...mipsCallerLines(s.exe,0x8001EFA8,2,12)) }
+                                  ...mipsCallerLines(s.exe,0x8001EFA8,1,12)) }
         catch(err){ state.boneBrief.push("  呼び出し元が読めなかった: "+err.message) }
+        // 呼び出し元に、0x800CC910 を 32 ずつ進めている所があった。
+        // 32バイトは行列ちょうど1個ぶん。番地を決め打ちで追うのはやめて、
+        // 「読んで・足して・同じ所に書き戻す」形を全部拾う
+        try{
+          state.boneBrief.push(...mipsCursorLines(s.exe,gp));
+          // 行列1個ぶんずつ進めている所は、その関数ごと読む。
+          // 部品をひとつ描くたびに行列を1つ進めているなら、
+          // その並びの先頭を入れている所が同じ関数の中にあるはず
+          const cs=mipsCursorScan(s.exe,gp), m=cs.find(c=>c.step===32);
+          if(m){
+            state.boneBrief.push(`  行列1個ぶん進めている ${hexA(m.at)} のある関数:`);
+            state.boneBrief.push(...mipsFuncAt(s.exe,m.at,40).slice(0,34));
+            const r=mipsRefs(s.exe,m.addr,12,gp);
+            state.boneBrief.push(`  ${hexA(m.addr)} を触っている所 ${r.length}件: `
+              +r.map(x=>`${hexA(x.at)}${x.store?"書":"読"}`).join(" "));
+          }
+        }catch(err){ state.boneBrief.push("  進めている入れもの探しで失敗: "+err.message) }
         state.boneBrief.push(mk.length
           ? `  表の番地を作っている場所 ${mk.length}件: `
             +mk.map(x=>`${hex(x.at)}→${hex(x.addr)}(${x.how})`).join(" ")
@@ -6351,17 +6443,21 @@ function eqBytes(a,b){
 function indexTripleLines(u8,name){
   const n=(u8.length/6)|0;
   if(n<4||u8.length%6) return [`  ${name}: 3つ組では割り切れない（${u8.length}B）`];
-  let same=0, max=-1, rise=0, prev=null;
+  let same=0, max=-1, rise=0, rep=0, prev=null, prev3=null;
   for(let i=0;i<n;i++){
     const v=[0,1,2].map(k=>{ const p=i*6+k*2; return (u8[p]|(u8[p+1]<<8))<<16>>16 });
     if(v[0]===v[1]&&v[1]===v[2]) same++;
+    // 「同じ番号が3つ」ではなく「同じ組がそのまま繰り返される」ことがある。
+    // 93 95 94 が12回続くのがそれで、前の数え方では拾えていなかった
+    if(prev3&&v[0]===prev3[0]&&v[1]===prev3[1]&&v[2]===prev3[2]) rep++;
     for(const x of v) if(x>max) max=x;
     if(prev!==null&&v[0]>=prev) rise++;
-    prev=v[0];
+    prev=v[0]; prev3=v;
   }
-  return [`  ${name}: 3つ組として ${n}組　同じ番号3つ（埋め草の面らしいもの）${same}組`
-    +`　いちばん大きい番号 ${max}　先頭が増えていく組 ${rise}/${n-1}`
-    +(same>=n*0.1?"　→ 面の頂点番号の列らしい":"　→ 埋め草が少ない。面の列とは言い切れない")];
+  return [`  ${name}: 3つ組として ${n}組　同じ番号3つ ${same}組　`
+    +`前の組とそっくり同じ ${rep}組　いちばん大きい番号 ${max}　先頭が増えていく組 ${rise}/${n-1}`
+    +(same+rep>=n*0.2?"　→ 埋め草の多い固定長の表らしい"
+                     :"　→ 埋め草が少ない。固定長の表とは言い切れない")];
 }
 
 // ============================================================
@@ -6397,6 +6493,9 @@ function animStrideScan(u8,opt){
   }
   if(!out.length) return null;
   out.sort((a,b)=>a.score-b.score);
+  // 短いものは、どの刻みでも比べる回数が足りず、たまたま小さい値が出る。
+  // 564バイトで「124バイト刻み」と言われても、4回ぶんしか見ていない
+  const short=cap<1024;
   // 刻みの倍数は当然よく似る。いちばん小さい刻みを残す
   const keep=[];
   for(const x of out){
@@ -6404,11 +6503,14 @@ function animStrideScan(u8,opt){
     if(keep.some(k=>x.S%k.S===0)) continue;
     keep.push(x); if(keep.length>=3) break;
   }
-  return {base,nz:nz/cap,best:keep,all:out.slice(0,3)};
+  return {base,nz:nz/cap,short,len:cap,best:keep,all:out.slice(0,3)};
 }
 function animStrideLine(r,name){
   if(!r) return `  ${name}: 短すぎて測れない`;
   if(r.flat) return `  ${name}: 中身がほとんど 0（${Math.round(r.nz*100)}%）。角度の列ではない`;
+  if(r.short)
+    return `  ${name}: 短すぎて当てにならない（${r.len}バイトでは繰り返しが数回しか無い）`
+      +(r.best.length?`　参考までに ${r.best[0].S}バイト(${r.best[0].score.toFixed(2)})`:"");
   if(!r.best.length)
     return `  ${name}: 繰り返す刻みは見つからない`
       +`（いちばん近くて ${r.all[0].S}バイト・${r.all[0].score.toFixed(2)}）`;
