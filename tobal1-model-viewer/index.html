@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.17.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.18.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1729,11 +1729,12 @@ function mipsCursorFlow(v){
   const up=v.bySt.filter(x=>x.step>0).reduce((a,x)=>a+x.n,0);
   const dn=v.bySt.filter(x=>x.step<0).reduce((a,x)=>a+x.n,0);
   if(!up||!dn) return "";
-  const t=`＋が ${up}か所／−が ${dn}か所`;
-  if(dn===1&&up>=2)
-    return t+"　→ 積み下ろしではない。一方向に進んで、最後に1回だけ戻している";
-  if(Math.abs(up-dn)<=1) return t+"　→ 積み下ろし（階層をたどる形）らしい";
-  return t;
+  // これはコードの「場所の数」であって、実際に何回動くかではない。
+  // 輪の中で毎回進めて、抜けるときに1回戻す形でも、場所の数は 1対1 になる。
+  // 数だけで積み下ろしかどうかを決めてはいけない——
+  // v4.17.0 でそう決めて、また間違えた。逆アセンブルを見るしかない
+  return `＋の場所 ${up}／−の場所 ${dn}`
+    +"（場所の数であって回数ではない。積み下ろしかどうかは下の逆アセンブルで見る）";
 }
 function mipsCursorMean(v){
   if(v.packet) return "→ 進め方がばらばら。GPUのパケットを積む所（行列ではない）";
@@ -4449,7 +4450,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.17.0";
+const VERSION="v4.18.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5552,6 +5553,9 @@ function updateReport(){
           if(mv){
             state.boneBrief.push(`  ${hexA(mv.addr)} を ±32 で動かしている所`
               +(mipsCursorFlow(mv)?"（"+mipsCursorFlow(mv)+"）":"")+":");
+            state.boneBrief.push("   （読み終わり: −32 の直後は lw $ra / addiu $sp ＝ 関数の出口。"
+              +"輪の先頭で毎回 ＋32 し、列が尽きたら 1回 −32 して戻す。"
+              +"進みすぎた1つぶんを戻しているだけで、積み下ろしではない）");
             // − の所をかならず見る。そこが「戻す」のか「後始末」なのかで、
             // 階層のたどり方かどうかが決まる。
             // ＋の所ばかり2つ出していて、− の所を一度も見ていなかった
@@ -7470,12 +7474,73 @@ function memStackLines(buf,base,opt){
   }
   if(!M.ptr(sp)) return L;
   // 先端の前後を、32バイトずつそのまま出す。ふるいにはかけない
-  const n=o.n||10, aft=o.after||2, from=sp-n*32;
+  // 手前10個を見たら 0 ばかりだった。並びはもっと広い所にある。
+  // まず広く見分けてから、近くを細かく出す
+  try{ L.push(...memMatrixMapLines(buf,base,sp,{back:o.back||64,fwd:o.fwd||64})) }
+  catch(err){ L.push("  まわりを見分けられませんでした: "+err.message) }
+  const n=o.n||6, aft=o.after||2, from=sp-n*32;
   L.push(`  ${hex(sp)} の前後を、そのまま32バイトずつ（手前${n}個・先${aft}個）:`);
   for(let k=0;k<n+aft;k++){
     const a=from+k*32, m=memMatrixAt(M,a);
     L.push(`    ${hex(a)}${a===sp?"←先端":"     "}　${memMatrixLine(m)}${memMatrixHint(m)}`);
   }
+  return L;
+}
+
+// ============================================================
+//  先端のまわりを広く見て、行列の並びを探す
+//  先端 0x801E7A94 とその次に、同じ行列が入っていた：
+//    回転[3276,0,0, 0,-4096,0, 0,0,-4096] 移動(0,1331,4096)
+//  対角に 3276 / -4096 / -4096。4096＝1.0 なので、これは
+//  「X を 0.8 倍、Y と Z を反転」——まともな行列。
+//  手前10個は 0 ばかりだったので、骨30本ぶんの並びは
+//  もっと広い所にある。前後を広げて、枠ごとに見分ける
+// ============================================================
+// 行列らしさ。回転の3行の長さが 4096 前後でそろっているか。
+// 拡大縮小が入っていてもいいように、行どうしの長さの比で見る
+function memMatrixLooks(m){
+  if(!m) return "";
+  const r=m.r;
+  if(r.every(v=>v===0)) return "zero";
+  if(r.some(v=>Math.abs(v)>20000)) return "no";
+  const len=[0,1,2].map(i=>Math.hypot(r[i*3],r[i*3+1],r[i*3+2]));
+  if(len.some(v=>v<600||v>20000)) return "no";
+  const mx=Math.max(...len), mn=Math.min(...len);
+  if(mx/mn>2.5) return "no";
+  // 行どうしが直交しているか（回転行列なら内積はほぼ0）
+  const dot=(a,b)=>r[a*3]*r[b*3]+r[a*3+1]*r[b*3+1]+r[a*3+2]*r[b*3+2];
+  const od=Math.max(Math.abs(dot(0,1)),Math.abs(dot(0,2)),Math.abs(dot(1,2)));
+  return od<mx*mx*0.35?"mat":"soso";
+}
+const MEM_MARK={zero:".",mat:"M",soso:"m",no:"x"};
+function memMatrixMapLines(buf,base,addr,opt){
+  const o=opt||{}, M=memReader(buf,base), L=[];
+  const back=o.back||64, fwd=o.fwd||64, from=addr-back*32, n=back+fwd;
+  const kinds=[];
+  for(let k=0;k<n;k++) kinds.push(memMatrixLooks(memMatrixAt(M,from+k*32)));
+  L.push(`  ${hex(from)} から ${n}枠（32バイトずつ）を見分けた`
+    +`　M=行列らしい ${kinds.filter(x=>x==="mat").length}　`
+    +`m=たぶん ${kinds.filter(x=>x==="soso").length}　`
+    +`.=全部0 ${kinds.filter(x=>x==="zero").length}　`
+    +`x=ちがう ${kinds.filter(x=>x==="no").length}`);
+  for(let i=0;i<n;i+=64)
+    L.push(`    ${hex(from+i*32)}: `
+      +kinds.slice(i,i+64).map(x=>MEM_MARK[x]||"?").join(""));
+  // いちばん長い「行列らしいものが続く所」を出す。骨30本ぶんならそこ
+  let best=null, cur=null;
+  for(let k=0;k<=n;k++){
+    const ok=kinds[k]==="mat"||kinds[k]==="soso";
+    if(ok){ if(!cur) cur={at:k,n:0}; cur.n++ }
+    else { if(cur&&(!best||cur.n>best.n)) best=cur; cur=null }
+  }
+  if(best&&best.n>=2){
+    L.push(`  いちばん長く続く所: ${hex(from+best.at*32)} から ${best.n}個`
+      +(best.n>=20?"　→ 骨30本ぶんに近い":""));
+    for(let k=0;k<Math.min(best.n,o.show||6);k++){
+      const a=from+(best.at+k)*32;
+      L.push(`    ${hex(a)}　${memMatrixLine(memMatrixAt(M,a))}`);
+    }
+  } else L.push("  行列らしいものが続く所は無い（1個ずつ散らばっている）");
   return L;
 }
 // ============================================================
