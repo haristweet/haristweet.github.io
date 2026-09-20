@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.89.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.90.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3173,6 +3173,32 @@ function t1MirrorPairs(box,tol){
 // ここでやるのは、続き番号の区切りをひと続きの鎖とみなして、
 // 親の中心を足していくこと。**推測であることは変わらない**ので、
 // 効き具合を変えられるようにして、切れるようにしてある
+// 積んだあと、いちばん上といちばん下に来るのがどの区切りかを出す。
+//
+// 人の形になったかどうかは、これで数になる。
+// 脚の鎖の**いちばん最後**の骨が下端にあれば、腰から脚が下に伸びている。
+// 胴や頭が下端にあるなら、積み方が逆か効きすぎ。
+// 背の高さの軸は生の1軸目（実物 #68 で -320..+231 と、いちばん広く振れていた）
+function t1ChainEnds(box,list,runs){
+  if(!box||!list) return null;
+  let lo=null, hi=null;
+  for(const [k,b] of box){
+    const t=(list[k]&&list[k].t)||[0,0,0];
+    const a=b.mn[0]+t[0], z=b.mx[0]+t[0];
+    if(!lo||a<lo.v) lo={seg:k,v:a};
+    if(!hi||z>hi.v) hi={seg:k,v:z};
+  }
+  const tail=new Set((runs||[]).map(r=>r[r.length-1]));
+  const head=new Set((runs||[]).map(r=>r[0]));
+  return {lo,hi,loIsLimbTip:tail.has(lo.seg),hiIsLimbTip:tail.has(hi.seg),
+          loIsLimbRoot:head.has(lo.seg),hiIsLimbRoot:head.has(hi.seg)};
+}
+function t1ChainEndLine(e){
+  if(!e) return "";
+  const tag=x=>x.loIsLimbTip?"手足の先":x.loIsLimbRoot?"手足の付け根":"胴・頭のほう";
+  return `　下端 区切り${e.lo.seg}（${tag(e)}）　上端 区切り${e.hi.seg}`
+    +`（${e.hiIsLimbTip?"手足の先":e.hiIsLimbRoot?"手足の付け根":"胴・頭のほう"}）`;
+}
 // 手足の鎖を、鏡の対から割り出す。
 //
 // これまでは「続き番号がとぎれた所で鎖を切る」としていたが、
@@ -3677,7 +3703,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.89.0";
+const VERSION="v3.90.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3695,7 +3721,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.89.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.90.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -3778,9 +3804,25 @@ function buildModelInner(raw,info){
         t1SetBones(g0);
         const after=ext(buildT1Mesh(b.out,okObjs));
         const tb=Math.max(...before), ta=Math.max(...after);
-        info.t1ChainTry=`  鎖で積むとどうなるか（効き ${t1Show.guessAmt.toFixed(2)}・印に関係なく測るだけ）:`
+        // 効きを何通りか試して並べる。どれが人の形に近いかを、
+        // 絵ではなく「下端に何が来るか」で決められるようにする
+        const box0=t1VertBoxMap(b.out,big0);
+        const runs0=(g0.runs||[]).map(r=>{ const [a,z]=r.split("..").map(Number);
+          const out=[]; for(let k=a;k<=z;k++) out.push(k); return out });
+        const tries=[0.5,1,1.5,2].map(amt=>{
+          const g=t1ChainBones(b.out,big0,amt);
+          if(!g) return null;
+          t1SetBones(g);
+          const e=ext(buildT1Mesh(b.out,okObjs));
+          const ends=t1ChainEnds(box0,g,runs0);
+          return `効き${amt}: ${Math.max(...e)}（${tb?Math.round(Math.max(...e)/tb*100):0}%）`
+            +(ends?`下端 ${ends.lo.seg}${ends.loIsLimbTip?"＝手足の先":""}`:"");
+        }).filter(Boolean);
+        info.t1ChainTry=`  鎖で積むとどうなるか（印に関係なく測るだけ）:`
           +`　鎖 ${g0.runs.join(" ")}　縦横 ${before.join("×")} → ${after.join("×")}`
-          +`　いちばん長い辺 ${tb}→${ta}（${tb?Math.round(ta/tb*100):0}%）`;
+          +`　いちばん長い辺 ${tb}→${ta}（${tb?Math.round(ta/tb*100):0}%）`
+          +t1ChainEndLine(t1ChainEnds(box0,g0,runs0));
+        if(tries.length) info.t1ChainTry+=`\n    効きを変えると: `+tries.join("　");
       }
       t1SetBones(null);
     }catch(err){ info.t1ChainTry="  鎖の効きが測れなかった: "+(err&&err.message||err) }
