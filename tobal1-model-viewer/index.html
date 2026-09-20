@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.3.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.4.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3411,6 +3411,56 @@ function t1BoneCountCompare(A,B){
   return `  骨の数え方くらべ　${f("命令5だけ",a)}　／　${f("命令6も数える",b)}`
     +`　→ 骨らしいのは ${better}`;
 }
+// モデルのファイルのうち、どのバイトが何に使われているかを数え上げ、
+// **説明の付かない余り**を出す。
+//
+// 外からの助言（3-2）：メッシュ（頂点・法線・面・色）の合計を差し引いた
+// 余剰領域に、30要素のベクトル配列が無いか確認せよ。
+//
+// これは一度もやっていなかった。部品の中身は読めるようになったが、
+// 「ファイル全体のどこが余っているか」は見ていなかった。
+// 骨の親子の表がこのファイルにあるなら、そこにしか置けない
+function t1FileUse(d,objs){
+  if(!d||!objs||!objs.length) return null;
+  const used=[];
+  const add=(a,b,what)=>{ if(b>a) used.push({a,b,what}) };
+  for(const o of objs){
+    if(!o||!o.ok) continue;
+    add(o.base,o.base+16,"部品の頭");
+    add(o.base+o.vertPtr,o.base+o.normPtr,"頂点");
+    add(o.base+o.normPtr,o.base+o.facePtr,"法線");
+    add(o.base+o.facePtr,o.base+o.colPtr,"面");
+    add(o.base+o.colPtr,o.base+o.colPtr+o.nv*4,"色");
+    // 命令の列は部品の頭の直後から。終わりは分からないので、頂点の手前まで
+    add(o.base+16,o.base+o.vertPtr,"命令の列");
+  }
+  used.sort((x,y)=>x.a-y.a);
+  const gaps=[]; let p=0;
+  for(const u of used){
+    if(u.a>p) gaps.push({a:p,b:u.a});
+    p=Math.max(p,u.b);
+  }
+  if(p<d.length) gaps.push({a:p,b:d.length});
+  const big=gaps.filter(g=>g.b-g.a>=64);
+  return {len:d.length, used:used.reduce((s,u)=>s+(u.b-u.a),0),
+          gaps:big.sort((x,y)=>(y.b-y.a)-(x.b-x.a))};
+}
+function t1FileUseLines(d,u,nb){
+  if(!u) return [];
+  const L=[`  ファイルの使われ方: 全 ${u.len}B　説明の付く所 ${u.used}B`
+    +`　余り（64B以上）${u.gaps.length}か所`];
+  if(!u.gaps.length){ L.push("    余りなし。骨の親子の表はこのファイルには無い"); return L }
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  for(const g of u.gaps.slice(0,4)){
+    const n=g.b-g.a;
+    const hex=[]; for(let i=0;i<Math.min(24,n);i++) hex.push(d[g.a+i].toString(16).padStart(2,"0"));
+    const per=nb?Math.floor(n/nb):0;
+    L.push(`    +0x${g.a.toString(16)}〜+0x${g.b.toString(16)}　${n}B`
+      +(nb&&per>=4?`（骨${nb}本なら1本${per}B）`:"")
+      +`　先頭 ${hex.join(" ")}`);
+  }
+  return L;
+}
 // モデルの中から「骨の親子と、親からのずれ」の表を探す。
 //
 // 測って決まった（v4.3.0）。隣り合う骨は頂点を1点も共有していない。
@@ -4082,7 +4132,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.3.0";
+const VERSION="v4.4.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4100,7 +4150,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v4.3.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v4.4.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4337,6 +4387,8 @@ function buildModelInner(raw,info){
                   if(nb>=4){
                     const hits=t1FindSkelTable(b.out,nb);
                     info.t1Skel=t1SkelTableLines(b.out,nb,hits);
+                    // ファイルのどこが余っているか。骨の表があるならそこにしか無い
+                    info.t1Skel.push(...t1FileUseLines(b.out,t1FileUse(b.out,okObjs),nb));
                   }
                 }catch(err){ info.t1Skel=["  骨の親子の表さがしで失敗: "+(err&&err.message||err)] }
                 const flat=t1FlatSegs(V);
@@ -4694,6 +4746,26 @@ function digestLines(){
       if(inf.t1PtrMove) L.push(inf.t1PtrMove);
       if(inf.t1Touch) L.push(inf.t1Touch);
       if(inf.t1Skel) L.push(...inf.t1Skel);
+      // モデルの前後のファイル。モーションが隣に置かれている、という見立ての検証。
+      // ふるいの分類（テクスチャ／それ以外）も添える
+      { const idx=state.entries.indexOf(e);
+        if(idx>=0){
+          const kind=x=>{
+            const sv=state.sieve;
+            if(!sv) return "";
+            if((sv.tex||[]).some(t=>t.e===x)) return "テクスチャ";
+            const o=(sv.other||[]).find(t=>t.e===x);
+            if(!o) return "読めない";
+            return (o.words&&o.words[0]===0x90000000)?"モデル":"それ以外";
+          };
+          const near=[];
+          for(let k=-3;k<=3;k++){
+            const x=state.entries[idx+k];
+            if(!x) continue;
+            near.push(`${k===0?"→":"  "}#${x.no}(${x.sector}) ${fmtSize(x.size)} ${kind(x)}`);
+          }
+          if(near.length){ L.push("  このモデルの前後のファイル:"); L.push("    "+near.join("　")) }
+        } }
       if(inf.t1BoneCmp) L.push(inf.t1BoneCmp);
       if(inf.t1Flat) L.push(inf.t1Flat);
       if(inf.t1VertBox){
