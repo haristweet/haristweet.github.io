@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.10.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.11.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1110,11 +1110,13 @@ function mipsRefs(exe,addr,limit,gp){
   for(let p=0;p+4<=t.body.length;p+=4){
     const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31;
     const im=w&0xffff, se=im>0x7fff?im-0x10000:im;
-    if(op===0x0f){ hi[rt]=(im<<16)>>>0; continue }               // lui
+    // $gp は動かない。データ領域の語が偶然 lui $gp に見えると、
+    // そこで $gp が壊れて、以後ずっと嘘の番地を出す（0x3c3c0b18 がそれだった）
+    if(op===0x0f){ if(!(gp&&rt===MIPS_GP)) hi[rt]=(im<<16)>>>0; continue }   // lui
     // lui のあと addiu/ori で番地を作り、その register を土台に読み書きすることがある。
     // これを追わないと、構造体ごしの書き込みを取りこぼす（0x800CBE90 がまさにそれだった）
-    if(op===0x09&&hi[rs]>=0){ hi[rt]=((hi[rs]+se)>>>0); continue }        // addiu
-    if(op===0x0d&&hi[rs]>=0){ hi[rt]=((hi[rs]|im)>>>0); continue }        // ori
+    if(op===0x09&&hi[rs]>=0){ if(!(gp&&rt===MIPS_GP)) hi[rt]=((hi[rs]+se)>>>0); continue }  // addiu
+    if(op===0x0d&&hi[rs]>=0){ if(!(gp&&rt===MIPS_GP)) hi[rt]=((hi[rs]|im)>>>0); continue }  // ori
     if(MEM(op)){
       if(hi[rs]>=0&&((hi[rs]+se)>>>0)===(addr>>>0)) out.push({at:t.base+p,store:op>=0x28,w});
       if(op>=0x20&&op<=0x27&&rt!==MIPS_GP) hi[rt]=-1;            // 読み込み先は上位が消える（$gp は別）
@@ -1138,9 +1140,9 @@ function mipsRefsRange(exe,from,to,limit,gp){
   for(let p=0;p+4<=t.body.length;p+=4){
     const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31;
     const im=w&0xffff, se=im>0x7fff?im-0x10000:im;
-    if(op===0x0f){ hi[rt]=(im<<16)>>>0; continue }
-    if(op===0x09&&hi[rs]>=0){ hi[rt]=((hi[rs]+se)>>>0); continue }
-    if(op===0x0d&&hi[rs]>=0){ hi[rt]=((hi[rs]|im)>>>0); continue }
+    if(op===0x0f){ if(!(gp&&rt===MIPS_GP)) hi[rt]=(im<<16)>>>0; continue }
+    if(op===0x09&&hi[rs]>=0){ if(!(gp&&rt===MIPS_GP)) hi[rt]=((hi[rs]+se)>>>0); continue }
+    if(op===0x0d&&hi[rs]>=0){ if(!(gp&&rt===MIPS_GP)) hi[rt]=((hi[rs]|im)>>>0); continue }
     if(MEM(op)){
       if(hi[rs]>=0){ const a=((hi[rs]+se)>>>0);
         if(a>=(from>>>0)&&a<=(to>>>0)) out.push({at:t.base+p,addr:a,store:op>=0x28,w}) }
@@ -1658,12 +1660,15 @@ function mipsCursorScan(exe,gp,opt){
   const add=new Array(32).fill(0);          // 読んでから足した量
   if(gp) hi[MIPS_GP]=gp>>>0;
   const out=[], o=opt||{};
-  const clear=r=>{ if(r!==MIPS_GP){ hi[r]=-1; src[r]=-1; add[r]=0 } };
+  const clear=r=>{ if(!(gp&&r===MIPS_GP)){ hi[r]=-1; src[r]=-1; add[r]=0 } };
   for(let p=0;p+4<=t.body.length;p+=4){
     const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31;
     const im=w&0xffff, se=im>0x7fff?im-0x10000:im;
-    if(op===0x0f){ hi[rt]=(im<<16)>>>0; src[rt]=-1; add[rt]=0; continue }    // lui
+    // $gp を上書きさせない。ここを守らないと、データ領域の 0x3c3c…（lui $gp に
+    // 見える語）ひとつで $gp が壊れ、以後の番地が全部でたらめになる
+    if(op===0x0f){ if(!(gp&&rt===MIPS_GP)){ hi[rt]=(im<<16)>>>0; src[rt]=-1; add[rt]=0 } continue }
     if(op===0x09){                                                           // addiu
+      if(gp&&rt===MIPS_GP) continue;
       if(src[rs]>=0&&rs!==MIPS_GP){ src[rt]=src[rs]; add[rt]=add[rs]+se;
                                     hi[rt]=hi[rs]>=0?((hi[rs]+se)>>>0):-1; continue }
       if(hi[rs]>=0){ hi[rt]=((hi[rs]+se)>>>0); src[rt]=-1; add[rt]=0; continue }
@@ -1671,7 +1676,7 @@ function mipsCursorScan(exe,gp,opt){
     }
     if(op===0x23){                                                           // lw
       const a=hi[rs]>=0?((hi[rs]+se)>>>0):-1;
-      if(rt!==MIPS_GP){ hi[rt]=-1; src[rt]=a; add[rt]=0 }
+      if(!(gp&&rt===MIPS_GP)){ hi[rt]=-1; src[rt]=a; add[rt]=0 }
       continue;
     }
     if(op===0x2b){                                                           // sw
@@ -1690,23 +1695,44 @@ function mipsCursorScan(exe,gp,opt){
     const v=by.get(k); v.n++; if(v.ats.length<4) v.ats.push(x.at) }
   return [...by.values()].sort((a,b)=>b.step-a.step||a.addr-b.addr);
 }
-// 32バイト＝行列1個、4バイト＝ポインタ1個、20バイト＝光源の行列
-function mipsCursorMean(step){
-  if(step===32) return "→ 32バイト＝行列1個ぶん。行列の並びを1つずつ進めている";
-  if(step===4)  return "→ 4バイト＝ポインタ1個ぶん";
-  if(step===20) return "→ 20バイト＝光源の行列1個ぶん";
-  if(step%32===0) return `→ 行列 ${step/32}個ぶん`;
+// 進め方が何を意味するか。
+// 同じ入れものを 20・24・36・40 と、いろいろな量で進めているなら、
+// それは行列の並びではなく GPU のパケットを積む所。
+// 20=POLY_F4 24=POLY_G3 28=POLY_FT3 32=POLY_G4 36=POLY_GT3 40=POLY_GT4
+const GPU_PACKET=new Set([12,16,20,24,28,32,36,40,44,48]);
+function mipsCursorByAddr(exe,gp){
+  const cs=mipsCursorScan(exe,gp), by=new Map();
+  for(const c of cs){
+    if(!by.has(c.addr)) by.set(c.addr,{addr:c.addr,steps:[],n:0});
+    const v=by.get(c.addr); v.steps.push(c.step); v.n+=c.n;
+    if(!v.ats||v.ats.length<3){ v.ats=(v.ats||[]).concat(c.ats.slice(0,2)) }
+  }
+  for(const v of by.values()){
+    v.steps=[...new Set(v.steps)].sort((a,b)=>a-b);
+    // いろいろな大きさで進めている＝パケットを積む所
+    v.packet=v.steps.length>=3&&v.steps.every(x=>GPU_PACKET.has(x));
+    v.matrix=!v.packet&&v.steps.length===1&&v.steps[0]===32;
+  }
+  return [...by.values()].sort((a,b)=>(b.matrix?1:0)-(a.matrix?1:0)||a.addr-b.addr);
+}
+function mipsCursorMean(v){
+  if(v.packet) return "→ 進め方がばらばら。GPUのパケットを積む所（行列ではない）";
+  if(v.matrix) return "→ 32バイトずつだけ。行列の並びらしい";
+  if(v.steps.length===1&&v.steps[0]===4) return "→ 4バイトずつだけ。ポインタの並び";
+  if(v.steps.length===1&&v.steps[0]===20) return "→ 20バイトずつだけ。光源の行列らしい";
   return "";
 }
 function mipsCursorLines(exe,gp){
-  const cs=mipsCursorScan(exe,gp);
-  if(!cs.length) return ["  読んで足して書き戻している所は見つからない"];
-  const L=[`  読んで・足して・同じ所に書き戻している入れもの ${cs.length}件:`];
-  for(const c of cs.slice(0,10))
-    L.push(`    ${hexA(c.addr)} を ${c.step>0?"+":""}${c.step} ずつ`
-      +`（${c.n}か所 ${c.ats.map(hexA).join(" ")}）　${mipsCursorMean(c.step)}`);
+  const vs=mipsCursorByAddr(exe,gp);
+  if(!vs.length) return ["  読んで足して書き戻している所は見つからない"];
+  const L=[`  読んで・足して・同じ所に書き戻している入れもの ${vs.length}件`
+    +`（行列らしいもの ${vs.filter(v=>v.matrix).length}件）:`];
+  for(const v of vs.slice(0,8))
+    L.push(`    ${hexA(v.addr)} を ${v.steps.join("/")} ずつ`
+      +`（${v.n}か所 ${(v.ats||[]).slice(0,3).map(hexA).join(" ")}）　${mipsCursorMean(v)}`);
   return L;
 }
+function mipsCursorPick(exe,gp){ return mipsCursorByAddr(exe,gp).find(v=>v.matrix)||null }
 // ============================================================
 //  アーカイブを直接さらう
 //  表の形が分からなくても、アーカイブの中を 2048 バイトごとに見て
@@ -4275,7 +4301,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.10.0";
+const VERSION="v4.11.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5333,13 +5359,20 @@ function updateReport(){
           // 行列1個ぶんずつ進めている所は、その関数ごと読む。
           // 部品をひとつ描くたびに行列を1つ進めているなら、
           // その並びの先頭を入れている所が同じ関数の中にあるはず
-          const cs=mipsCursorScan(s.exe,gp), m=cs.find(c=>c.step===32);
+          const m=mipsCursorPick(s.exe,gp);
           if(m){
-            state.boneBrief.push(`  行列1個ぶん進めている ${hexA(m.at)} のある関数:`);
-            state.boneBrief.push(...mipsFuncAt(s.exe,m.at,40).slice(0,34));
-            const r=mipsRefs(s.exe,m.addr,12,gp);
+            const r=mipsRefs(s.exe,m.addr,16,gp);
             state.boneBrief.push(`  ${hexA(m.addr)} を触っている所 ${r.length}件: `
               +r.map(x=>`${hexA(x.at)}${x.store?"書":"読"}`).join(" "));
+            // 進めているのではなく「入れている」所を読む。並びの先頭はそこで入る
+            const put=r.filter(x=>x.store&&!(m.ats||[]).includes(x.at));
+            for(const x of put.slice(0,2)){
+              state.boneBrief.push(`  ${hexA(m.addr)} に入れている ${hexA(x.at)} のある関数:`);
+              state.boneBrief.push(...mipsFuncAt(s.exe,x.at,40).slice(0,26));
+            }
+            if(!put.length) state.boneBrief.push(
+              `  ${hexA(m.addr)} は進めるだけで、先頭を入れている所が無い`
+              +"（別の register を土台にした書き込みで入っている）");
           }
         }catch(err){ state.boneBrief.push("  進めている入れもの探しで失敗: "+err.message) }
         state.boneBrief.push(mk.length
@@ -6499,7 +6532,10 @@ function animStrideScan(u8,opt){
   // 刻みの倍数は当然よく似る。いちばん小さい刻みを残す
   const keep=[];
   for(const x of out){
-    if(x.score>0.75) break;
+    // 0.64 や 0.71 は「隣のバイトが少し似ている」だけで、どんな並びでも出る。
+    // 1フレームぶんの繰り返しなら、はっきり小さくなる。
+    // 刻みが10バイトでは骨30本ぶんにならないので、下も切る
+    if(x.score>0.5||x.S<16) continue;
     if(keep.some(k=>x.S%k.S===0)) continue;
     keep.push(x); if(keep.length>=3) break;
   }
