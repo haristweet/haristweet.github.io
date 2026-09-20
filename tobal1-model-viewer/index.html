@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.90.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.91.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3173,6 +3173,27 @@ function t1MirrorPairs(box,tol){
 // ここでやるのは、続き番号の区切りをひと続きの鎖とみなして、
 // 親の中心を足していくこと。**推測であることは変わらない**ので、
 // 効き具合を変えられるようにして、切れるようにしてある
+// 「ぺたんこな区切り」を見つける。
+//
+// #68 の頂点の箱を高さの軸で見ると、こうなっていた。
+//   19: 6点  2×88×68     20:12点  1×94×77     21: 6点  5×65×42
+//   25: 6点  2×88×68     26:12点  1×94×77     27: 6点  5×65×42
+//    2: 8点  3×183×237
+// 高さ方向の厚みが 1〜5 しかない。**面ではなく板**で、しかも点が6〜12個。
+// 手足の肉ではありえない。関節の印か、当たり判定か、影のようなものだと思う。
+//
+// これを手足の骨と同じに扱っていたから、鎖の積み上げがおかしくなっていた。
+// まず「どれが肉で、どれが板か」を分けて出す
+function t1FlatSegs(V,ratio){
+  if(!V||!V.length) return [];
+  const r=ratio==null?0.12:ratio;
+  const big=Math.max(...V.map(x=>Math.max(...x.size.split("×").map(Number))));
+  return V.filter(x=>{
+    const d=x.size.split("×").map(Number);
+    const thin=Math.min(...d), fat=Math.max(...d);
+    return fat>0&&thin/fat<=r&&thin<big*0.05;
+  }).map(x=>`${x.seg}(${x.n}点 ${x.size})`);
+}
 // 積んだあと、いちばん上といちばん下に来るのがどの区切りかを出す。
 //
 // 人の形になったかどうかは、これで数になる。
@@ -3703,7 +3724,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.90.0";
+const VERSION="v3.91.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3721,7 +3742,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.90.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.91.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -3938,6 +3959,10 @@ function buildModelInner(raw,info){
               const V=t1VertBoxes(b.out,bigO);
               if(V&&V.length){
                 info.t1VertBox=t1VertBoxLine(V);
+                const flat=t1FlatSegs(V);
+                if(flat.length) info.t1Flat=`  ぺたんこな区切り ${flat.length}個`
+                  +`（厚みがほとんど無い板。点も少ない。手足の肉ではなく、`
+                  +`関節の印か当たり判定のようなもの）: `+flat.join(" ");
                 info.t1VertBoxLine=V.map(x=>`${x.seg}:${x.n}点 ${x.size}@${x.mid}`);
               }
             }catch(_){}
@@ -4286,6 +4311,7 @@ function digestLines(){
       if(inf.t1Guess) L.push(inf.t1Guess);
       if(inf.t1ChainTry) L.push(inf.t1ChainTry);
       if(inf.t1SegOrigin) L.push(inf.t1SegOrigin);
+      if(inf.t1Flat) L.push(inf.t1Flat);
       if(inf.t1VertBox){
         L.push(inf.t1VertBox);
         const W=inf.t1VertBoxLine||[];
