@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.6.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.7.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1477,6 +1477,23 @@ function mipsCmdMapLines(exe){
     L.push(`    命令${e.op} → ${hexA(e.addr)}　`
       +(e.len?`長さ ${e.len}バイト（尻尾 ${hexA(e.tail)}）`:"長さは分からない"));
   return L;
+}
+// 読み終わったので、まとめには1行で出す。
+// 振り分けの中身そのものは長い報告のほうにある
+function mipsCmdMapBrief(exe){
+  const M=mipsCmdMap(exe);
+  if(!M) return ["  振り分けが読めない"];
+  return [`  命令の長さ（振り分け ${hexA(M.disp)}／表 ${hexA(M.tbl)}）: `
+    +M.ents.map(e=>`${e.op}:${e.len||"?"}`).join(" ")
+    +"　命令8以上は列では8バイト"];
+}
+function mipsFaceSizeBrief(exe,tbl,ops){
+  const v=[];
+  for(const op of ops||[8,9,10,11,12,13,14,15]){
+    const a=mipsTableAt(exe,tbl+(op-7)*4,1)[0];
+    v.push(`${op}:${a?(mipsFaceStep(exe,a)||"?"):"?"}`);
+  }
+  return ["  面1枚あたりのバイト数: "+v.join(" ")];
 }
 // 面の命令（8以上）が、面1枚あたり何バイト進むか
 function mipsFaceSizeLines(exe,tbl,ops){
@@ -4146,7 +4163,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.6.0";
+const VERSION="v4.7.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4833,8 +4850,24 @@ function digestLines(){
       L.push("骨の表を探す先（モデルでもテクスチャでもないファイル、小さい順）:");
       L.push("  "+small.map(o=>`#${o.e.no}(${o.e.sector}) ${fmtSize(o.e.size)}`
         +(o.dec?`→${o.dec}B`:"")).join("　"));
-      for(const o of small.slice(0,3))
-        if(o.head) L.push(`    #${o.e.no} の先頭: ${o.head}`);
+      // 先頭24バイトでは「小さい数が並ぶ」までしか分からなかったので、
+      // いちばん小さいものを1件、中身を全部出す
+      const full=small.find(o=>o.full);
+      if(full){
+        L.push(`  #${full.e.no}(${full.e.sector}) の中身を全部（${full.full.length}B・int16で）:`);
+        L.push(...fileI16Lines(full.full,16).map(x=>"  "+x));
+        L.push(...tableRecLines(tableRecGuess(full.full),full.full.length));
+        // 同じ大きさのものが何件もある。中身も同じなら「キャラごと」ではない
+        const same=small.filter(o=>o.full&&o.full.length===full.full.length);
+        if(same.length>1){
+          const diff=same.filter(o=>o!==full&&!eqBytes(o.full,full.full));
+          L.push(`  同じ ${full.full.length}B のファイル ${same.length}件のうち、`
+            +(diff.length?`中身が違うもの ${diff.length}件`
+                          +`（${diff.slice(0,6).map(o=>"#"+o.e.no).join(" ")}）`
+                          +"　→ キャラごとに別の中身"
+                        :"中身はどれも同じ　→ キャラごとではない"));
+        }
+      }
     }
     // 骨格がキャラごとなら、モデル40件と同じくらいの数の小さいファイルが
     // どこかに固まっているはず。無ければ「共通1ファイル」説が濃くなる。
@@ -4862,7 +4895,13 @@ function digestLines(){
         L.push(`    #${b.e.no}(${b.e.sector}) ${fmtSize(b.e.size)}`
           +(b.rawLen?`／生 ${b.rawLen}B`:"")+`　${b.why}`);
         if(b.head) L.push(`      先頭32バイト: ${b.head}`);
-        if(b.i16)  L.push(`      int16で読むと: ${b.i16}`);
+      }
+      // 先頭が「増えていく位置の並び」に見えたので、その区切りでばらす。
+      // 位置の先が 0b で始まっていれば、それは圧縮された中身
+      const bf=(sv.broken||[]).find(b=>b.full);
+      if(bf){
+        L.push(`    #${bf.e.no} を「位置の並び」として読むと:`);
+        L.push(...fileBlockLines(fileBlockRead(bf.full)).map(x=>"  "+x));
       }
     }
   }
@@ -5078,11 +5117,15 @@ function updateReport(){
       // ここが読めれば、こちらの決めごと（若い番号を小さいほうに）が要らなくなる
       try{
         const M=mipsCmdMap(s.exe);
-        state.boneBrief.push("  命令ごとの飛び先と長さ（振り分けから）:",
+        // 命令の長さも面1枚の大きさも読み終わった。毎回18行＋8行出していたが、
+        // 中身は変わらないので1行ずつにして、長い報告のほうに戻す
+        state.boneBrief.push(...mipsCmdMapBrief(s.exe));
+        state.boneCode.push("  命令ごとの飛び先と長さ（振り分けから）:",
                             ...mipsCmdMapLines(s.exe));
         if(M&&M.tbl){
-          state.boneBrief.push("  面の命令が面1枚あたり進むバイト数:");
-          state.boneBrief.push(...mipsFaceSizeLines(s.exe,M.tbl));
+          state.boneBrief.push(...mipsFaceSizeBrief(s.exe,M.tbl));
+          state.boneCode.push("  面の命令が面1枚あたり進むバイト数:");
+          state.boneCode.push(...mipsFaceSizeLines(s.exe,M.tbl));
           const used=applyExeSizes(s.exe);
           state.boneBrief.push(used
             ? `  → 面の命令 ${used}個 の大きさを実行ファイルから決めた`
@@ -5098,8 +5141,12 @@ function updateReport(){
         // 命令3と命令6の処理をそのまま出す。どちらも数命令しかないのに
         // 意味が分かっていない。命令6が骨の番号を動かしているなら、
         // こちらの数え方（命令5だけを数える）が根本から間違っていることになる
-        try{ state.boneBrief.push("  まだ意味の分かっていない命令の処理（短いのでそのまま）:",
-                                  ...mipsShortCmdLines(s.exe,[1,3,6])) }
+        // 命令3と命令6は読み終わった（どちらも語1を足すだけ）。
+        // 残って意味が分からないのは命令1だけなので、そこだけ出す
+        try{ state.boneBrief.push("  まだ意味の分かっていない命令の処理:",
+                                  ...mipsShortCmdLines(s.exe,[1]),
+                                  "  （命令3＝$s3 に語1を足す／命令6＝$s7 に語1を足す。"
+                                  +"どちらも骨ではなく部品の中のポインタを動かすだけ：読み終わり）") }
         catch(err){ state.boneBrief.push("  短い命令が読めなかった: "+err.message) }
         // 命令3と命令6は $s3 と $s7 に語1を足すだけだった。骨ではなく、
         // 部品の中のどれかを指すポインタを前後にずらしている（$s2 は面だった）。
@@ -5117,11 +5164,14 @@ function updateReport(){
           }
         }catch(err){ state.boneBrief.push("  部品の関数が読めなかった: "+err.message) }
         // 角度から行列を作っている所を、サイン表から手繰る
-        try{ state.boneBrief.push("  角度から行列を作っている所を探す:",
-                                  ...mipsSinTableLines(s.exe,gp),
-                                  // 0x8004AD9C は GPU のパケットを組む所だった
-                                  // （+7 に 0x3A ＝ グーロー四角）。そこは飛ばす
-                                  ...mipsSinUserLines(s.exe,gp,80,[0x8004AD9C])) }
+        // この道は閉じた。サイン表を使っている所は4か所とも演出とGPUパケットで、
+        // 骨の行列を作っている所ではなかった。出し続けても同じ行が並ぶだけなので、
+        // 「見つかった表の場所」1行だけ残して、中身は長い報告へ
+        try{ const sl=mipsSinTableLines(s.exe,gp);
+             state.boneBrief.push("  角度の表: "+(sl[0]||"").replace(/^\s+/,"")
+               +"（使っている所は演出とGPUパケットだけ。骨の行列を作っている所ではない）");
+             state.boneCode.push("  角度から行列を作っている所を探す:",...sl,
+                                 ...mipsSinUserLines(s.exe,gp,80,[0x8004AD9C])) }
         catch(err){ state.boneBrief.push("  サイン表さがしで失敗: "+err.message) }
         // 表の番地は「構造体の一部」として書かれている可能性がある。
         // 表そのものではなく、その前後まで広げて番地を作っている所を探す
@@ -5991,6 +6041,8 @@ async function sieveAll(onProgress){
           head:Array.from(raw.subarray(0,32),v=>v.toString(16).padStart(2,"0")).join(" "),
           i16:Array.from({length:12},(_,k)=>
             k*2+2<=raw.length?((raw[k*2]|(raw[k*2+1]<<8))<<16>>16):0).join(","),
+          // 先頭32バイトだけでは表かどうか決まらない。小さいものは丸ごと覚える
+          full:raw.length<=4096?raw.slice():null,
           rawLen:raw.length});
         continue }
       const ti=textureInfoT1(body);
@@ -6008,6 +6060,9 @@ async function sieveAll(onProgress){
       // ほかのモデルで覚えた命令が増えているので、読めるようになることがある）
       other.push({e,dec:body.length,parts:parts.map(p=>p.length).join("/"),words,diag,
         retry:(diag&&diag.fail>0)?body:null,
+        // 小さいファイルは展開後を丸ごと覚える。先頭24バイトでは
+        // 「数が並んでいる」までしか分からず、区切りも本数も読めなかった
+        full:body.length<=2048?body.slice():null,
         head:Array.from(body.subarray(0,24),v=>v.toString(16).padStart(2,"0")).join(" ")});
     }catch(err){ broken.push({e,why:err.message}) }
   }
@@ -6107,6 +6162,108 @@ function sieveLines(s){
   if(s.other.length>40) L.push(`  …ほか ${s.other.length-40} 件`);
   if(s.broken.length) L.push("  読めなかったもの: "+s.broken.slice(0,10).map(b=>`#${b.e.no}(${b.why})`).join(" "));
   return L;
+}
+
+// ============================================================
+//  小さいファイルの中身をそのまま読む
+//  先頭24バイトだけ出していたので「小さい数が並んでいる」までしか
+//  分からなかった。区切りも本数も、全部見ないと決まらない
+// ============================================================
+// int16 で並べて出す。値が小さいものばかりなので16進より読みやすい
+function fileI16Lines(u8,per){
+  per=per||16;
+  const L=[], n=u8.length>>1;
+  for(let i=0;i<n;i+=per){
+    const v=[];
+    for(let k=i;k<Math.min(i+per,n);k++) v.push(((u8[k*2]|(u8[k*2+1]<<8))<<16>>16));
+    L.push(String(i*2).padStart(4," ")+": "+v.map(x=>String(x).padStart(5," ")).join(""));
+  }
+  return L;
+}
+function fileHexLines(u8,from,to,per){
+  per=per||32; const L=[];
+  for(let i=from;i<Math.min(to,u8.length);i+=per)
+    L.push(String(i).padStart(4," ")+": "
+      +Array.from(u8.subarray(i,Math.min(i+per,to,u8.length)),
+        v=>v.toString(16).padStart(2,"0")).join(" "));
+  return L;
+}
+// 先頭が「増えていく位置の並び」なら、その区切りでばらして中身を見る。
+// #71 の先頭 4,24,40,56,64,80 がそれに見えた
+function fileBlockRead(raw){
+  if(!raw||raw.length<16) return null;
+  const dv=new DataView(raw.buffer,raw.byteOffset,raw.byteLength);
+  const w=[]; for(let k=0;k<Math.min(16,raw.length>>2);k++) w.push(dv.getUint32(k*4,true));
+  // 位置の並びは何語目から始まるか。w[0] が語数のこともあれば位置のこともある
+  for(const start of [0,1]){
+    const off=[];
+    for(let k=start;k<w.length;k++){
+      const v=w[k];
+      if(v<=(off.length?off[off.length-1]:0)) break;
+      if(v>=raw.length||v>=0x10000) break;
+      off.push(v);
+    }
+    if(off.length<3) continue;
+    // 位置の並びの直後から中身が始まっているはず
+    if(off[0]<(start+off.length)*4) { off.shift(); if(off.length<3) continue }
+    const blocks=off.map((o,i)=>{
+      const end=i+1<off.length?off[i+1]:raw.length;
+      const b=raw.subarray(o,end);
+      let dec=null;
+      try{ if(b.length&&b[0]===0x0b) dec=decompress(b) }catch(_){}
+      return {at:o,len:end-o,c0:b.length?b[0]:-1,dec:dec?dec.length:0,
+        head:Array.from(b.subarray(0,8),v=>v.toString(16).padStart(2,"0")).join(" ")};
+    });
+    return {start,head:w.slice(0,start+off.length),blocks};
+  }
+  return null;
+}
+function fileBlockLines(r){
+  if(!r) return ["  位置の並びには見えない"];
+  const L=[`  先頭の語: ${r.head.join(", ")}（${r.start?"語0は個数らしい":"語0から位置"}）`];
+  for(const b of r.blocks.slice(0,10))
+    L.push(`    位置 ${b.at} 長さ ${b.len}B`
+      +(b.dec?`　圧縮されている→展開すると ${b.dec}B`:"")+`　先頭 ${b.head}`);
+  if(r.blocks.length>10) L.push(`    …ほか ${r.blocks.length-10}件`);
+  return L;
+}
+// 「1行いくつバイトの表か」を中身から当てる。
+// 骨の表なら、どこかの列に「親の番号（自分より小さい／最初は-1か0）」が並ぶ
+function tableRecGuess(u8){
+  const out=[];
+  for(const R of [4,6,8,10,12,16,20,24,28,32,36,40]){
+    const n=(u8.length/R)|0;
+    if(n<8||n>128) continue;
+    if(u8.length%R) continue;                 // 端数が出る区切りは見ない
+    for(const wid of [1,2]) for(let c=0;c+wid<=R;c+=wid){
+      let ok=0, less=0, zero=0, max=-999;
+      for(let i=0;i<n;i++){
+        const p=i*R+c;
+        const v=wid===1?(u8[p]<<24>>24):((u8[p]|(u8[p+1]<<8))<<16>>16);
+        if(v>max) max=v;
+        if(v>=-1&&v<n) ok++;
+        if(v<i) less++;
+        if(v===0) zero++;
+      }
+      if(ok===n&&less>=n-1&&zero<n*0.8&&max>=3)
+        out.push({R,n,c,wid,zero,max});
+    }
+  }
+  out.sort((a,b)=>b.max-a.max||a.R-b.R);
+  return out;
+}
+function tableRecLines(g,len){
+  if(!g.length) return [`  ${len}B。「親の番号らしい列」は見つからない`];
+  const L=[`  ${len}B。親の番号らしい列の候補:`];
+  for(const x of g.slice(0,4))
+    L.push(`    1行 ${x.R}B×${x.n}行 の ${x.c}バイト目`
+      +`（${x.wid===1?"1バイト":"int16"}・最大 ${x.max}・0が ${x.zero}個）`);
+  return L;
+}
+function eqBytes(a,b){
+  if(!a||!b||a.length!==b.length) return false;
+  for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return false;
+  return true;
 }
 // ---- 骨さがし ----
 // 命令5 は「外から渡された表から次の行列を取り出す」処理だった。その行列はプレステの
