@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.12.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.13.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1762,6 +1762,76 @@ function mipsSetupWindow(exe,addrs,gp,opt){
   const from=Math.max(0,first-t.base-(o.back||12)*4);
   const to=Math.min(t.body.length,last-t.base+(o.fwd||3)*4);
   return {sites,near,lines:mipsLines(exe,{from,to},first-t.base)};
+}
+
+// ============================================================
+//  外側の命令列（場面の組み立て）
+//  0x8001A184 で分かった：表A・表B・表C に入る値は、$s0 が歩いている
+//  「外側の命令列」から読んだ語そのもの。つまり骨の行列の並びは
+//  ディスクにも実行ファイルにも無く、この列で渡されている。
+//  この列には 24 個の命令がある（sltiu $a0, 24）。
+//  0x800CC910 は +32 と -32 の両方で動いている＝行列の積み上げ／取り出し。
+//  階層はこの列の積み上げ／取り出しで表されている
+// ============================================================
+// 飛び先の並びを、番地の範囲から探す（振り分けの形に頼らない）
+function mipsJumpTable(exe,lo,hi,n){
+  const t=exeText(exe); if(!t) return null;
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const ok=v=>v>=lo&&v<hi&&(v&3)===0;
+  let best=null;
+  for(let p=0;p+4<=t.body.length;p+=4){
+    if(!ok(dv.getUint32(p,true))) continue;
+    let q=p; while(q+4<=t.body.length&&ok(dv.getUint32(q,true))) q+=4;
+    const cnt=(q-p)/4;
+    if(cnt>=n&&(!best||cnt>best.n)) best={at:t.base+p,n:cnt};
+    p=q;
+  }
+  if(!best) return null;
+  const addrs=[];
+  for(let k=0;k<Math.min(best.n,n);k++)
+    addrs.push(dv.getUint32(best.at-t.base+k*4,true));
+  return {at:best.at,n:best.n,addrs};
+}
+// それぞれの命令が何をしているか、要点だけ見る。
+// 全部を字にすると長すぎるので、「どの入れものを触ったか」で言い当てる
+function mipsOpGist(exe,addr,gp,marks,cap){
+  const t=exeText(exe); if(!t) return "";
+  const off=addr-t.base; if(off<0||off>=t.body.length) return "";
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const hi=new Array(32).fill(-1); if(gp) hi[MIPS_GP]=gp>>>0;
+  const hit=new Set(); let jal=0, words=0, step=0;
+  for(let k=0;k<(cap||24);k++){
+    const p=off+k*4; if(p+4>t.body.length) break;
+    const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31;
+    const im=w&0xffff, se=im>0x7fff?im-0x10000:im;
+    if(op===0x0f){ if(!(gp&&rt===MIPS_GP)) hi[rt]=(im<<16)>>>0; continue }
+    if(op===0x09){ if(hi[rs]>=0&&!(gp&&rt===MIPS_GP)) hi[rt]=((hi[rs]+se)>>>0);
+                   if(rs===16&&rt===16) words+=se/4;         // $s0 を進める＝語を食う
+                   if(se===32||se===-32) step=se;
+                   continue }
+    if(op===0x03){ jal++; continue }
+    if(op===0x02) break;                                      // j ＝ 次の命令へ戻る
+    if((op>=0x20&&op<=0x2e)&&hi[rs]>=0){
+      const a=((hi[rs]+se)>>>0), nm=marks&&marks[a];
+      if(nm) hit.add((op>=0x28?"→":"←")+nm);
+    }
+  }
+  const s=[...hit].join(" ");
+  return (words?`語${words}個 `:"")+(step?`行列${step>0?"積む":"戻す"} `:"")
+    +s+(jal&&!s?`呼び出し${jal}`:"");
+}
+function mipsSceneOpLines(exe,gp,opt){
+  const o=opt||{}, lo=o.lo||0x80019000, hi=o.hi||0x8001C000;
+  const T=mipsJumpTable(exe,lo,hi,o.n||24);
+  if(!T) return ["  外側の命令の飛び先表は見つからない"];
+  const marks=o.marks||{};
+  const L=[`  外側の命令の飛び先表 ${hexA(T.at)}　${Math.min(T.n,o.n||24)}件`
+    +`（${T.n>(o.n||24)?`つながり ${T.n}件のうち先頭から`:"ちょうど"}）:`];
+  T.addrs.forEach((a,k)=>{
+    const g=mipsOpGist(exe,a,gp,marks);
+    L.push(`    命令${String(k).padStart(2)} → ${hexA(a)}${g?"　"+g:""}`);
+  });
+  return L;
 }
 // ============================================================
 //  アーカイブを直接さらう
@@ -4331,7 +4401,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.12.0";
+const VERSION="v4.13.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5057,6 +5127,17 @@ function digestLines(){
           k<3?k:Math.round((k-2)/6*(pool.length-1)));
         if(pool[i]&&!cand.includes(pool[i])) cand.push(pool[i]);
       }
+      // 外側の命令列らしいファイルも、同じ候補で見る。
+      // 骨の階層は、その列の「行列を積む／戻す」で表されている
+      { const sc=other.filter(o=>o.full&&o.full.length>=64)
+          .map(o=>({o,r:scriptShape(o.full)})).filter(x=>x.r&&x.r.ratio>=0.4
+            &&x.r.big<x.r.n*0.2).sort((a,b)=>b.r.ratio-a.r.ratio);
+        L.push(sc.length
+          ? "  外側の命令列らしいファイル "+sc.length+"件: "
+            +sc.slice(0,6).map(x=>`#${x.o.e.no}(${x.o.full.length}B)`).join(" ")
+          : "  外側の命令列らしいファイルは無い（列は実行時に組み立てられている）");
+        for(const x of sc.slice(0,2)) L.push(scriptShapeLine(x.r,`#${x.o.e.no}`));
+      }
       if(cand.length){
         L.push("  角度の列らしいものを、繰り返す刻みで探す:");
         for(const o of cand){
@@ -5382,8 +5463,9 @@ function updateReport(){
         // handler の中でしか触っていないなら、最初の値は
         // 「別の register を土台にした書き込み」で入っている。
         // それは命令の列を読む関数を呼んでいる側にあるはず
-        try{ state.boneBrief.push("  命令の列を読む関数を呼んでいる所:",
-                                  ...mipsCallerLines(s.exe,0x8001EFA8,1,12)) }
+        try{ const cl=mipsCallerLines(s.exe,0x8001EFA8,1,12);
+             state.boneBrief.push("  "+(cl[0]||"").replace(/^\s+/,""));
+             state.boneCode.push("  命令の列を読む関数を呼んでいる所:",...cl) }
         catch(err){ state.boneBrief.push("  呼び出し元が読めなかった: "+err.message) }
         // 呼び出し元に、0x800CC910 を 32 ずつ進めている所があった。
         // 32バイトは行列ちょうど1個ぶん。番地を決め打ちで追うのはやめて、
@@ -5391,13 +5473,26 @@ function updateReport(){
         // $gp を直したら、表A・表B・表C の書き込みが1か所から3か所に増えた。
         // 増えたぶんは 0x8001A18C 付近に固まっている。そこが仕込みの場所で、
         // 骨の行列の並びの先頭を入れているのもそこのはず
+        // 読み終わった。0x8001A184 からの3組はどれも
+        //   lw $v0,0($s0) / addiu $s0,$s0,4 / sw $v0, N($gp)
+        // で、表に入る値は「外側の命令列から読んだ語そのもの」。
+        // 骨の行列の並びはディスクにも実行ファイルにも無く、ここで渡される
         try{
           const W=mipsSetupWindow(s.exe,[0x800CBE8C,0x800CBE90,0x800CBE94],gp,
                                   {skipFrom:0x8001BB00,back:14,fwd:3,span:0x80});
           state.boneBrief.push("  表A・表B・表C に値を入れている所"
-            +`（${W.sites.length}か所 ${W.sites.map(x=>hexA(x.at)).join(" ")}）:`);
-          state.boneBrief.push(...W.lines.slice(0,40));
+            +`（${W.sites.length}か所 ${W.sites.map(x=>hexA(x.at)).join(" ")}）`
+            +"　＝外側の命令列から読んだ語をそのまま入れている（読み終わり）");
+          state.boneCode.push("  表A・表B・表C に値を入れている所:",...W.lines.slice(0,40));
         }catch(err){ state.boneBrief.push("  表の仕込みが読めなかった: "+err.message) }
+        // では、その外側の命令列には何があるのか。24個の命令がある
+        // （sltiu $a0, 24）。0x800CC910 が +32 と -32 の両方で動いているので、
+        // 行列の積み上げと取り出し＝階層は、この列で表されている
+        try{
+          const marks={0x800CBE8C:"表B",0x800CBE90:"表A",0x800CBE94:"表C",
+                       0x800CC910:"行列の積み",0x800CC7F4:"GPUのパケット"};
+          state.boneBrief.push(...mipsSceneOpLines(s.exe,gp,{marks}));
+        }catch(err){ state.boneBrief.push("  外側の命令が読めなかった: "+err.message) }
         try{
           state.boneBrief.push(...mipsCursorLines(s.exe,gp));
           // 行列1個ぶんずつ進めている所は、その関数ごと読む。
@@ -6609,6 +6704,34 @@ function animStrideMean(S){
   for(const [v,t] of n) if(S%v===0) return `→ ${t} の ${S/v}倍`;
   if(S%3===0) return `→ 3で割ると ${S/3}（角度3つなら骨 ${S/3}本）`;
   return "";
+}
+
+// ============================================================
+//  外側の命令列らしいファイルを探す
+//  外側の命令列は u32 の並びで、24より小さい値が命令、
+//  それ以外は番地や個数。だから「小さい値がたくさん混じる u32 の並び」
+//  という形をしている。ただし表に入る値は実行時の番地なので、
+//  ファイルのままでは番地は入っていないはず（そこも見る）
+// ============================================================
+function scriptShape(u8){
+  const n=u8.length>>2; if(n<16) return null;
+  const dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
+  let small=0, ram=0, zero=0, big=0;
+  for(let k=0;k<n;k++){
+    const v=dv.getUint32(k*4,true);
+    if(v===0) zero++;
+    else if(v<24) small++;
+    else if(v>=0x80000000&&v<0x80800000) ram++;
+    else if(v>=0x01000000) big++;
+  }
+  return {n,small,ram,zero,big,
+          ratio:(small+zero)/n};
+}
+function scriptShapeLine(r,name){
+  if(!r) return `  ${name}: 短すぎて見られない`;
+  return `  ${name}: u32 ${r.n}個中　24より小さい ${r.small}個／0 ${r.zero}個`
+    +`／RAMの番地らしい ${r.ram}個／大きい値 ${r.big}個`
+    +(r.ratio>=0.4&&r.big<r.n*0.2?"　→ 外側の命令列らしい":"");
 }
 // ---- 骨さがし ----
 // 命令5 は「外から渡された表から次の行列を取り出す」処理だった。その行列はプレステの
