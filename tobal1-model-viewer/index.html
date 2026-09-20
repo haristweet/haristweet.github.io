@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.85.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.86.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3417,6 +3417,18 @@ const T1_NAMES={
 // 使用可能な8人のうち名前が付いていないのも エポン と イール・ゴガ の2人。
 // なので、この2組がその2人だとほぼ言える——ただし
 // 「どちらがどちらか」は並びからは決まらないので ？ を付けてある。
+// ただし「残りは格闘キャラの誰か」という数え方は、たぶん成り立たない。
+// エンディングの玉座の間に、青いローブに尖った帽子の衛兵が立っている。
+// 選手でないキャラクターのモデルが混じっているなら、
+// 「使用可能な8人＋ボス」で数を合わせる理屈は、その分には当てはまらない。
+//
+// 骨の区切り数で測ったら、はっきり割れた（v3.86.0）。
+//   #54(5817) #66(5912)   区切り12・437三角形  ← 脚が分かれていない。衛兵側
+//   #60 #68 #69           区切り29             ← 格闘キャラ並み
+//   #156(9728) #157(9742) 区切り40             ← 格闘キャラ（30〜35）より多い。
+//                                                杖や外套のような余分な部品つき
+// 名前を当てる前に、まず選手かどうかを分ける。
+//
 // エポンは18歳の娘、イール・ゴガは竜人のような姿なので、
 // 画面で見れば一目で分かるはず。そこで確かめてから ？ を外す。
 //
@@ -3581,7 +3593,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.85.0";
+const VERSION="v3.86.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3599,7 +3611,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.85.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.86.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4751,9 +4763,14 @@ $("mdlgal").onclick=async()=>{
       const fig=document.createElement("figure"), cap=document.createElement("figcaption");
       const r=info.t1Read;
       const nm=t1NameOf(e.sector);
+      // 骨の区切り数も出す。格闘キャラは30前後で、ローブ姿の衛兵のような
+      // 脚の分かれていないキャラクターは少ない（実物で #54/#66 が12だった）。
+      // 名前を当てる前に、選手かどうかを絵と数の両方で見られるようにする
+      const sg=info.t1Segs||0;
       cap.textContent=(nm?`${nm}\n`:"")+`#${e.no}　sector ${e.sector}`
-        +`\n三角形 ${info.tris}`
+        +`\n三角形 ${info.tris}`+(sg?`　区切り${sg}`:"")
         +(r?`　命令${r.run}`+(r.guess?`／推測${r.guess}`:""):"");
+      if(sg&&sg<20) cap.textContent+="\n選手ではないかも";
       cap.style.whiteSpace="pre-line";
       if(r&&r.guess) cap.style.color="#c2683f";   // 当てずっぽうが混じるものは目立たせる
       cv.style.cursor="pointer";
