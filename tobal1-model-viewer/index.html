@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.75.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.76.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1258,6 +1258,81 @@ function mipsOpTableLines(exe){
   const L=[`  振り分け表 ${hexA(T.at)}　${T.n}件（戻り先 ${hexA(T.disp)}）`];
   for(const e of T.ents)
     L.push(`    命令${e.op} → ${hexA(e.addr)}　長さ ${e.len||"?"}バイト`);
+  return L;
+}
+
+// 振り分けを丸ごと読んで、命令ごとの飛び先と長さを出す。
+//
+// 0x8001EFA8 はこうなっている：
+//   lw    $v1, 0($fp)        命令の番号
+//   lw    $s6, 4($fp)        語1（面の命令ではその枚数）
+//   addiu $v0, $v1, -7
+//   blez  $v0, <beqの並びへ>   7以下は ori＋beq で振り分ける
+//   lw    $t0, 1020($s0)     表の先頭（0x80021FEC）
+//   addu  $t0, $t0, $v0      表[命令-7]
+//   addiu $fp, $fp, 8        ← 表を使う命令（8以上）はどれも8バイト
+//   jr    $v1
+// なので「8以上＝面の命令＝命令の列では8バイト」は、コードに書いてある。
+// 面1枚が何バイトかは別の話で、それは処理の中の addiu $s2,$s2,N にある
+const MIPS_S2=18;
+function mipsFaceStep(exe,addr,cap){
+  const t=exeText(exe); if(!t) return 0;
+  const off=addr-t.base; if(off<0||off>=t.body.length) return 0;
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  for(let k=0,p=off;k<(cap||160)&&p+4<=t.body.length;k++,p+=4){
+    const w=dv.getUint32(p,true);
+    if((w>>>26)===9&&((w>>>21)&31)===MIPS_S2&&((w>>>16)&31)===MIPS_S2){
+      const im=w&0xffff; return im>0x7fff?im-0x10000:im;      // addiu $s2,$s2,N
+    }
+  }
+  return 0;
+}
+// 命令ごとに「飛び先・尻尾・長さ」をまとめる。
+// 長さは、その飛び先の後ろにあって間に別の飛び先が挟まらない尻尾から取る
+function mipsCmdMap(exe){
+  const t=exeText(exe); if(!t) return null;
+  const disp=mipsFindDispatch(exe); if(!disp) return null;
+  const tails=mipsCmdTails(exe,disp).sort((a,b)=>a.at-b.at);
+  const fn=mipsFuncAt(exe,disp,64);            // 逆アセンブルは使わず番地だけ要る
+  const chain=mipsDispatch(exe,{from:disp-t.base-0x20,to:disp-t.base+0x100});
+  const heads=chain.map(c=>c.addr).sort((a,b)=>a-b);
+  const ents=chain.sort((a,b)=>a.code-b.code).map(c=>{
+    const tl=tails.find(x=>x.at>=c.addr&&!heads.some(h=>h>c.addr&&h<=x.at));
+    return {op:c.code,addr:c.addr,len:tl?tl.len:0,tail:tl?tl.at:0};
+  });
+  // 表を使う側（8以上）。表の先頭は lui＋addiu で作って $s0 に控えている
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  let tbl=0;
+  for(let p=Math.max(0,disp-t.base-0x40);p<disp-t.base;p+=4){
+    const w=dv.getUint32(p,true);
+    if((w>>>26)!==0x0f) continue;                                  // lui
+    const nx=dv.getUint32(p+4,true);
+    if((nx>>>26)!==9) continue;                                    // addiu
+    const im=nx&0xffff, se=im>0x7fff?im-0x10000:im;
+    tbl=(((w&0xffff)<<16)+se)>>>0;
+  }
+  return {disp,tbl,ents,tails:tails.length,
+          used:ents.filter(e=>e.len).length};
+}
+function mipsCmdMapLines(exe){
+  const M=mipsCmdMap(exe);
+  if(!M) return ["  振り分けが読めない"];
+  const L=[`  振り分け ${hexA(M.disp)}　表の先頭 ${hexA(M.tbl)}（命令8以上は 表[命令-7]、命令の列では8バイト）`,
+           `  命令7以下（ori＋beq で振り分け）${M.used}/${M.ents.length}件で長さが取れた:`];
+  for(const e of M.ents)
+    L.push(`    命令${e.op} → ${hexA(e.addr)}　`
+      +(e.len?`長さ ${e.len}バイト（尻尾 ${hexA(e.tail)}）`:"長さは分からない"));
+  return L;
+}
+// 面の命令（8以上）が、面1枚あたり何バイト進むか
+function mipsFaceSizeLines(exe,tbl,ops){
+  const L=[];
+  for(const op of ops||[8,9,10,11,12,13,14,15]){
+    const a=mipsTableAt(exe,tbl+(op-7)*4,1)[0];
+    if(!a){ L.push(`    命令${op} → 飛び先が読めない`); continue }
+    const n=mipsFaceStep(exe,a);
+    L.push(`    命令${op} → ${hexA(a)}　面1枚 ${n?n+"バイト":"分からない"}`);
+  }
   return L;
 }
 
@@ -3326,7 +3401,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.75.0";
+const VERSION="v3.76.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4027,6 +4102,17 @@ function updateReport(){
           state.boneCode.push(...fn.slice(0,40));
         }
       }catch(err){ state.boneCode.push("  振り分けの逆アセンブルで失敗: "+err.message) }
+      // 振り分けを丸ごと読んで、命令ごとの飛び先・長さ・面1枚の大きさを出す。
+      // ここが読めれば、こちらの決めごと（若い番号を小さいほうに）が要らなくなる
+      try{
+        const M=mipsCmdMap(s.exe);
+        state.boneCode.push("  命令ごとの飛び先と長さ（振り分けから）:",
+                            ...mipsCmdMapLines(s.exe));
+        if(M&&M.tbl){
+          state.boneCode.push("  面の命令が面1枚あたり進むバイト数:");
+          state.boneCode.push(...mipsFaceSizeLines(s.exe,M.tbl));
+        }
+      }catch(err){ state.boneCode.push("  振り分けの読み取りで失敗: "+err.message) }
       // 表の置き場所を仕込んでいる所。lui＋addiu で番地を作る形は
       // 読み書きの命令として現れないので、mipsRefs では取りこぼす
       try{
