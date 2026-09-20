@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.15.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.16.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4430,7 +4430,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.15.0";
+const VERSION="v4.16.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5078,7 +5078,11 @@ function digestLines(){
     for(const a of (inf.t1Read&&inf.t1Read.audit)||[]) L.push(`    読めなかった部品: ${a}`);
   }
   if(state.mem&&state.mem.length){
-    L.push(""); L.push(...state.mem.filter(x=>/骨|メモリの写し|収まった|RAM|一致|読める場所|行列|表[ABC] 0x/.test(x)).slice(0,28));
+    L.push("");
+    L.push(...state.mem.filter(x=>/骨|メモリの写し|収まった|RAM|一致|読める場所/.test(x)).slice(0,14));
+    // 行列の積み場所の生ダンプは、言葉で拾わずにそのまま渡す。
+    // ふるいを通していたので、足した行が全部落ちていた
+    if(state.memStack&&state.memStack.length) L.push(...state.memStack);
   }
   // まだ名前の付いていないキャラクターのモデル。残りを数えるため
   { const sig=((state.sieve&&state.sieve.other)||[])
@@ -7216,8 +7220,14 @@ function memBoneLines(buf,exe){
   L.push(...memCpuLines(buf));
   // ふるいにかけずに、行列の積み場所をそのまま出す。
   // 条件で掃いて0件だったので、条件のほうを疑う
-  try{ L.push(...memStackLines(buf,base)) }
-  catch(err){ L.push("  行列の積み場所が読めませんでした: "+err.message) }
+  // まとめへは、ふるい（正規表現）を通さずにそのまま渡す。
+  // 言葉で拾う仕掛けにしていたので、生ダンプの行が全部落ちていた（5度目）
+  try{ const sl=memStackLines(buf,base);
+       if(typeof state==="object"&&state) state.memStack=sl;
+       L.push(...sl) }
+  catch(err){ const e=["  行列の積み場所が読めませんでした: "+err.message];
+              if(typeof state==="object"&&state) state.memStack=e;
+              L.push(...e) }
   // RAM だけでなく、写したファイル全体を掃く（スクラッチパッドもこの中にある）
   L.push(...memMatrixRunsAllLines(buf,base));
   // モデルがいくつ載っているか。0x90000000 の署名で数える
@@ -7434,11 +7444,11 @@ function memStackLines(buf,base,opt){
   }
   if(!M.ptr(sp)) return L;
   // 先端の前後を、32バイトずつそのまま出す。ふるいにはかけない
-  const n=o.n||10, from=sp-n*32;
-  L.push(`  ${hex(sp)} の手前 ${n}個ぶんを、そのまま32バイトずつ:`);
-  for(let k=0;k<n;k++){
+  const n=o.n||10, aft=o.after||2, from=sp-n*32;
+  L.push(`  ${hex(sp)} の前後を、そのまま32バイトずつ（手前${n}個・先${aft}個）:`);
+  for(let k=0;k<n+aft;k++){
     const a=from+k*32, m=memMatrixAt(M,a);
-    L.push(`    ${hex(a)}　${memMatrixLine(m)}${memMatrixHint(m)}`);
+    L.push(`    ${hex(a)}${a===sp?"←先端":"     "}　${memMatrixLine(m)}${memMatrixHint(m)}`);
   }
   return L;
 }
