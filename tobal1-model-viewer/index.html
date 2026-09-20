@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.71.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.72.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3210,7 +3210,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.71.0";
+const VERSION="v3.72.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3662,8 +3662,9 @@ function digestLines(){
   L.push(`トバルNo.1 モデルビューア ${VERSION} ・ まとめ`);
   if(s) L.push(`読み込み元: ${s.kind} / ${s.discName}`);
   if(state.sieve){
+    // 骨さがしの結果も必ず入れる。作っていたのに、ふるいが落としていた（四度目）
     const keep=sieveLines(state.sieve).filter(x=>
-      /キャラクターのモデル|割り出した|覚えた|当たった読み方|組で割り出した|件: |例: |数え上げ|部品\d+個中|^ {6}#/.test(x));
+      /キャラクターのモデル|割り出した|覚えた|当たった読み方|組で割り出した|件: |例: |数え上げ|部品\d+個中|^ {6}#|骨さがし|行列\d+個|回転 |見つかりませんでした/.test(x));
     if(keep.length){ L.push(""); L.push(...keep.map(x=>x.replace(/^ {2}/,""))) }
     const t=sieveLines(state.sieve).find(x=>/全 \d+件 →/.test(x));
     if(t) L.push("", t.trim());
@@ -4847,8 +4848,19 @@ function sieveLines(s){
 // 29個ぶん。骨の表ならこの形をしているはずなので、それを確かめる
 const MAT_SIZE=32, MAT_ONE=4096;
 // 行列の持ち方は1つとは限らない。ありそうな形を3つ試す
+// 1番目の形は、実行ファイルを読んで確かめた（推測ではない）。
+// 命令5の処理 0x8001F444 が、表Bの指す先からこう読んで GTE に入れている：
+//   lw 0,4,8,12,16($t6) → ctc2 $0..$4   ＝ 回転3×3（int16×9＋詰め2バイト）
+//   lw 20,24,28($t6)    → ctc2 $5,$6,$7 ＝ 移動 TRX,TRY,TRZ（int32×3）
+// 合わせて32バイト。PS1 の MATRIX そのもの。
+// 表Aの指す先は 0,4,8,12,16 の5語だけで ctc2 $8..$12（光源の行列）＝20バイト。
+//
+// 外していたのは形ではなく前提のほうだった。
+// 表A・表B・表Cは「行列の並び」ではなく「行列へのポインタの並び」で、
+// 命令5 が来るたびに 4 ずつ進む（0x8001F464 addiu $t0,$t0,4）。
+// だからメモリを32バイト刻みで掃いても、並んでいる場所が無い
 const MAT_FORMS=[
-  {size:32,tAt:20,tBits:32,name:"回転int16×9＋詰め物＋移動int32×3"},
+  {size:32,tAt:20,tBits:32,name:"回転int16×9＋詰め物＋移動int32×3（実行ファイルで確認済み）"},
   {size:24,tAt:18,tBits:16,name:"回転int16×9＋移動int16×3"},
   {size:20,tAt:-1,tBits:0, name:"回転int16×9だけ"},
 ];
