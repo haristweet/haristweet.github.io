@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.2.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.3.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3411,6 +3411,77 @@ function t1BoneCountCompare(A,B){
   return `  骨の数え方くらべ　${f("命令5だけ",a)}　／　${f("命令6も数える",b)}`
     +`　→ 骨らしいのは ${better}`;
 }
+// モデルの中から「骨の親子と、親からのずれ」の表を探す。
+//
+// 測って決まった（v4.3.0）。隣り合う骨は頂点を1点も共有していない。
+//   骨の境目で重なる頂点: 4組（うち番号が隣どうし 0組）
+//     18-24:22点   ← 左右の脛。鏡の対が同じ空間にいるので一致する
+//     3-16 / 3-22 / 3-28: 各6点  ← 胴と、脚の付け根
+// **鎖の先頭だけが親の空間にあり、その先は自分の空間。**
+// だから行列がいる。これははっきりした。
+//
+// 残る道は、行列そのものではなく「角度＋親からのずれ」の表を
+// モデルの中から見つけること。外からの助言（アプローチA）。
+//   親の番号（1〜2バイト）＋ 親からのずれ (dx,dy,dz)
+//   骨30本 × 8〜16バイト ＝ 240〜480バイトくらい
+//
+// 探し方：刻みを決め打ちせず 8/12/16 を試す。
+// 親の番号は「自分より小さい」のが木の形。全部がそうでなくてもよいが、
+// 半分以上がそうなら木らしい。ずれは ±2000 に収まるはず
+function t1FindSkelTable(d,nb,opt){
+  if(!d||!nb||nb<4) return [];
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const out=[];
+  const lim=opt&&opt.limit||8;
+  for(const st of [8,12,16]){
+    for(const pAt of [0,1,2]){                 // 親の番号がどこにあるか
+      for(const vAt of [2,4,6,8]){             // ずれの3つがどこから始まるか
+        if(vAt+6>st) continue;
+        for(let base=0;base+nb*st<=d.length;base+=2){
+          let tree=0, nz=0, ok=true;
+          for(let k=0;k<nb;k++){
+            const o=base+k*st;
+            const par=pAt===2?dv.getUint16(o,true):d[o+pAt];
+            if(par>=nb&&par!==0xff){ ok=false; break }
+            if(par<k) tree++;
+            for(let a=0;a<3;a++){
+              const v=dv.getInt16(o+vAt+a*2,true);
+              if(Math.abs(v)>2000){ ok=false; break }
+              if(v) nz++;
+            }
+            if(!ok) break;
+          }
+          if(!ok) continue;
+          if(nz<nb) continue;                  // ほとんど 0 の表は捨てる
+          if(tree<nb*0.6) continue;            // 木の形になっていない
+          out.push({at:base,stride:st,pAt,vAt,tree,nz});
+          if(out.length>=lim*4) break;
+        }
+      }
+    }
+  }
+  // 木らしさの強い順
+  out.sort((a,b)=>b.tree-a.tree||b.nz-a.nz);
+  return out.slice(0,lim);
+}
+function t1SkelTableLines(d,nb,hits){
+  if(!hits||!hits.length) return [`  骨の親子の表は見つからない（骨 ${nb}本ぶんで探した）`];
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const L=[`  骨の親子の表らしきもの ${hits.length}件（骨 ${nb}本ぶんで探した）:`];
+  for(const h of hits.slice(0,3)){
+    L.push(`    +0x${h.at.toString(16)}　1件${h.stride}バイト　親は+${h.pAt}　ずれは+${h.vAt}`
+      +`　親が自分より小さい ${h.tree}/${nb}`);
+    const row=[];
+    for(let k=0;k<Math.min(nb,8);k++){
+      const o=h.at+k*h.stride;
+      const par=h.pAt===2?dv.getUint16(o,true):d[o+h.pAt];
+      const v=[0,1,2].map(a=>dv.getInt16(o+h.vAt+a*2,true));
+      row.push(`${k}←${par}(${v.join(",")})`);
+    }
+    L.push("      "+row.join(" "));
+  }
+  return L;
+}
 // 隣り合う骨の境目で、頂点が同じ座標を共有しているかを数える。
 //
 // これを一度も測っていなかった。ここで話が決まる。
@@ -4011,7 +4082,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.2.0";
+const VERSION="v4.3.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4029,7 +4100,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v4.2.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v4.3.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4260,6 +4331,14 @@ function buildModelInner(raw,info){
                 info.t1BoneCmp=t1BoneCountCompare(V,Vb);
                 // 骨の境目で頂点が共有されているか。ここで話が決まる
                 try{ info.t1Touch=t1SegTouchLine(t1SegTouch(b.out,bigO)) }catch(_){}
+                // 骨の親子の表をモデルの中から探す（行列ではなく、角度＋ずれ）
+                try{
+                  const nb=info.t1Segs||0;
+                  if(nb>=4){
+                    const hits=t1FindSkelTable(b.out,nb);
+                    info.t1Skel=t1SkelTableLines(b.out,nb,hits);
+                  }
+                }catch(err){ info.t1Skel=["  骨の親子の表さがしで失敗: "+(err&&err.message||err)] }
                 const flat=t1FlatSegs(V);
                 if(flat.length) info.t1Flat=`  ぺたんこな区切り ${flat.length}個`
                   +`（厚みがほとんど無い板。点も少ない。手足の肉ではなく、`
@@ -4614,6 +4693,7 @@ function digestLines(){
       if(inf.t1SegOrigin) L.push(inf.t1SegOrigin);
       if(inf.t1PtrMove) L.push(inf.t1PtrMove);
       if(inf.t1Touch) L.push(inf.t1Touch);
+      if(inf.t1Skel) L.push(...inf.t1Skel);
       if(inf.t1BoneCmp) L.push(inf.t1BoneCmp);
       if(inf.t1Flat) L.push(inf.t1Flat);
       if(inf.t1VertBox){
