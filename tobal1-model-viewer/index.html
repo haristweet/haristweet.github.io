@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.14.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.15.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1729,7 +1729,8 @@ function mipsCursorLines(exe,gp){
   if(!vs.length) return ["  読んで足して書き戻している所は見つからない"];
   const L=[`  読んで・足して・同じ所に書き戻している入れもの ${vs.length}件`
     +`（行列らしいもの ${vs.filter(v=>v.matrix).length}件）:`];
-  for(const v of vs.slice(0,12))
+  // 1ずつ進むものは読み終わった。行列さがしに効くものだけ残す
+  for(const v of vs.filter(v=>v.steps.some(x=>Math.abs(x)>=8)).slice(0,5))
     L.push(`    ${hexA(v.addr)} を ${v.steps.join("/")} ずつ`
       +`（${v.n}か所 ${(v.ats||[]).slice(0,3).map(hexA).join(" ")}）　${mipsCursorMean(v)}`);
   return L;
@@ -1794,7 +1795,29 @@ function mipsJumpTable(exe,lo,hi,n){
 }
 // それぞれの命令が何をしているか、要点だけ見る。
 // 全部を字にすると長すぎるので、「どの入れものを触ったか」で言い当てる
-function mipsOpGist(exe,addr,gp,marks,cap){
+// 命令の処理はどれも同じ所へ j で戻る。その戻り先まで読んでしまうと、
+// 戻り先の仕事（行列を積む・進める）が全部の命令に混ざって見える。
+// 命令20 が「語8個・行列積む」に見えたのはこれだった
+function mipsCommonTail(exe,addrs){
+  const t=exeText(exe); if(!t) return 0;
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const cnt=new Map();
+  for(const a of addrs){
+    const off=a-t.base; if(off<0||off>=t.body.length) continue;
+    for(let k=0;k<32;k++){
+      const p=off+k*4; if(p+4>t.body.length) break;
+      const w=dv.getUint32(p,true);
+      if((w>>>26)===0x02){
+        const d=(((t.base&0xf0000000)>>>0)|((w&0x03ffffff)<<2))>>>0;
+        cnt.set(d,(cnt.get(d)||0)+1); break;
+      }
+    }
+  }
+  let best=0,bn=0;
+  for(const [d,n] of cnt) if(n>bn){ bn=n; best=d }
+  return bn>=3?best:0;
+}
+function mipsOpGist(exe,addr,gp,marks,cap,stopAt){
   const t=exeText(exe); if(!t) return "";
   const off=addr-t.base; if(off<0||off>=t.body.length) return "";
   const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
@@ -1802,6 +1825,9 @@ function mipsOpGist(exe,addr,gp,marks,cap){
   const hit=new Set(); let jal=0, words=0, step=0;
   for(let k=0;k<(cap||24);k++){
     const p=off+k*4; if(p+4>t.body.length) break;
+    // 共通の戻り先に入ったら、そこから先は数えない。
+    // 命令の中身を見る前に止めないと、戻り先の仕事が混ざる
+    if(stopAt&&t.base+p===(stopAt>>>0)) break;
     const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31;
     const im=w&0xffff, se=im>0x7fff?im-0x10000:im;
     if(op===0x0f){ if(!(gp&&rt===MIPS_GP)) hi[rt]=(im<<16)>>>0; continue }
@@ -1827,8 +1853,11 @@ function mipsSceneOpLines(exe,gp,opt){
   const marks=o.marks||{};
   const L=[`  外側の命令の飛び先表 ${hexA(T.at)}　${Math.min(T.n,o.n||24)}件`
     +`（${T.n>(o.n||24)?`つながり ${T.n}件のうち先頭から`:"ちょうど"}）:`];
+  const tail=mipsCommonTail(exe,T.addrs);
+  if(tail) L[0]+=`　共通の戻り先 ${hexA(tail)}（そこから先は数えない）`;
   T.addrs.forEach((a,k)=>{
-    const g=mipsOpGist(exe,a,gp,marks);
+    const g=a===tail?"（共通の戻り先そのもの＝何もしない命令）"
+                    :mipsOpGist(exe,a,gp,marks,24,tail);
     L.push(`    命令${String(k).padStart(2)} → ${hexA(a)}${g?"　"+g:""}`);
   });
   return L;
@@ -4401,7 +4430,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.14.0";
+const VERSION="v4.15.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5130,8 +5159,9 @@ function digestLines(){
       // 外側の命令列らしいファイルも、同じ候補で見る。
       // 骨の階層は、その列の「行列を積む／戻す」で表されている
       { const sc=other.filter(o=>o.full&&o.full.length>=64)
-          .map(o=>({o,r:scriptShape(o.full)})).filter(x=>x.r&&x.r.ratio>=0.4
-            &&x.r.big<x.r.n*0.2).sort((a,b)=>b.r.ratio-a.r.ratio);
+          .map(o=>({o,r:scriptShape(o.full)}))
+          .filter(x=>x.r&&x.r.small>=8&&x.r.ratio>=0.3&&x.r.big<x.r.n*0.2)
+          .sort((a,b)=>b.r.ratio-a.r.ratio);
         L.push(sc.length
           ? "  外側の命令列らしいファイル "+sc.length+"件: "
             +sc.slice(0,6).map(x=>`#${x.o.e.no}(${x.o.full.length}B)`).join(" ")
@@ -5492,6 +5522,17 @@ function updateReport(){
           const marks={0x800CBE8C:"表B",0x800CBE90:"表A",0x800CBE94:"表C",
                        0x800CC910:"行列の積み",0x800CC7F4:"GPUのパケット"};
           state.boneBrief.push(...mipsSceneOpLines(s.exe,gp,{marks}));
+          // 行列の積みを ±32 で動かしている所を、そのまま字にする。
+          // 積む所と戻す所が分かれば、階層のたどり方がそのまま読める
+          const mv=mipsCursorByAddr(s.exe,gp)
+            .find(v=>v.steps.includes(32)&&v.steps.includes(-32));
+          if(mv){
+            state.boneBrief.push(`  ${hexA(mv.addr)} を ±32 で動かしている所:`);
+            for(const at of (mv.ats||[]).slice(0,2)){
+              state.boneBrief.push(`   ${hexA(at)} のあたり:`);
+              state.boneBrief.push(...mipsCallSiteLines(s.exe,at,4,3));
+            }
+          } else state.boneBrief.push("  行列の積みを ±32 で動かしている所は無い");
         }catch(err){ state.boneBrief.push("  外側の命令が読めなかった: "+err.message) }
         try{
           state.boneBrief.push(...mipsCursorLines(s.exe,gp));
@@ -6724,14 +6765,20 @@ function scriptShape(u8){
     else if(v>=0x80000000&&v<0x80800000) ram++;
     else if(v>=0x01000000) big++;
   }
-  return {n,small,ram,zero,big,
-          ratio:(small+zero)/n};
+  // 0 を「小さい値」に数えていたので、0が並ぶだけのファイルが
+  // 「外側の命令列らしい」になってしまった（#105 がそれ）。
+  // 命令そのもの（1〜23）がどれだけあるかで見る
+  const live=n-zero;
+  return {n,small,ram,zero,big,live,
+          ratio:live?small/live:0};
 }
 function scriptShapeLine(r,name){
   if(!r) return `  ${name}: 短すぎて見られない`;
   return `  ${name}: u32 ${r.n}個中　24より小さい ${r.small}個／0 ${r.zero}個`
     +`／RAMの番地らしい ${r.ram}個／大きい値 ${r.big}個`
-    +(r.ratio>=0.4&&r.big<r.n*0.2?"　→ 外側の命令列らしい":"");
+    +(r.small>=8&&r.ratio>=0.3&&r.big<r.n*0.2
+        ?"　→ 外側の命令列らしい"
+        :r.small===0?"　→ 命令らしい小さい値が一つも無い。外側の命令列ではない":"");
 }
 // ---- 骨さがし ----
 // 命令5 は「外から渡された表から次の行列を取り出す」処理だった。その行列はプレステの
