@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.79.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.80.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1342,19 +1342,34 @@ function mipsFaceSizeLines(exe,tbl,ops){
 
 // 「その番地を register に作っている場所」を探す。lui＋addiu で番地を組み立てて
 // 関数に渡す形は、読み書きの命令として現れないので、これを見ないと取りこぼす
-function mipsAddrOf(exe,from,to,limit){
+// gp を渡すと「addiu $?, $gp, N」で番地を作る形も拾う。
+// このゲームはグローバルを $gp 相対で触るので、
+//   addiu $a0, $gp, 432     ← 表の番地を作って関数に渡す
+// という形になりうる。lui＋addiu しか見ていないと丸ごと取りこぼす。
+// mipsRefs で同じ取りこぼしを一度やっている（v3.36.0）ので、こちらも直す
+function mipsAddrOf(exe,from,to,limit,gp){
   const t=exeText(exe); if(!t) return [];
   const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
   const hi=new Array(32).fill(-1), out=[];
+  const hit=(p,a,rt,how)=>{
+    if(a<(from>>>0)||a>(to>>>0)) return false;
+    out.push({at:t.base+p,addr:a,reg:rt,how});
+    return out.length>=(limit||16);
+  };
   for(let p=0;p+4<=t.body.length;p+=4){
     const w=dv.getUint32(p,true), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31;
     const im=w&0xffff, se=im>0x7fff?im-0x10000:im;
+    if(gp&&op===0x09&&rs===MIPS_GP&&rt!==MIPS_GP){
+      const a=((gp>>>0)+se)>>>0;
+      hi[rt]=a;
+      if(hit(p,a,rt,"$gp＋ずれ")) break;
+      continue;
+    }
     if(op===0x0f){ hi[rt]=(im<<16)>>>0; continue }
     if((op===0x09||op===0x0d)&&hi[rs]>=0){
       const a=op===0x09?((hi[rs]+se)>>>0):((hi[rs]|im)>>>0);
       hi[rt]=a;
-      if(a>=(from>>>0)&&a<=(to>>>0)){ out.push({at:t.base+p,addr:a,reg:rt});
-        if(out.length>=(limit||16)) break }
+      if(hit(p,a,rt,"lui＋addiu")) break;
       continue;
     }
     if(op===0){ if(rd!==MIPS_GP) hi[rd]=-1 }
@@ -3428,7 +3443,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.79.0";
+const VERSION="v3.80.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3446,7 +3461,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.79.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.80.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4166,11 +4181,20 @@ function updateReport(){
       // 表の置き場所を仕込んでいる所。lui＋addiu で番地を作る形は
       // 読み書きの命令として現れないので、mipsRefs では取りこぼす
       try{
-        const mk=mipsAddrOf(s.exe,0x800CBE8C,0x800CBE94,16);
+        // $gp 相対（addiu $?, $gp, N）も見る。lui＋addiu だけでは取りこぼす
+        const mk=mipsAddrOf(s.exe,0x800CBE8C,0x800CBE94,16,gp);
         state.boneCode.push(mk.length
           ? `  表の番地を作っている場所 ${mk.length}件: `
-            +mk.map(x=>`${hex(x.at)}→${hex(x.addr)}`).join(" ")
-          : "  表の番地を lui＋addiu で作っている場所は見つからない");
+            +mk.map(x=>`${hex(x.at)}→${hex(x.addr)}(${x.how})`).join(" ")
+          : "  表の番地を作っている場所は見つからない（lui＋addiu も $gp 相対も）");
+        // 見つかったら、そこを含む関数も出す。表に何を入れているかはその中にある
+        for(const x of mk.slice(0,2)){
+          const fn=mipsFuncAt(s.exe,x.at,48);
+          if(fn.length){
+            state.boneCode.push(`  ${hex(x.addr)} を作っている ${hex(x.at)} のある関数:`);
+            state.boneCode.push(...fn.slice(0,40));
+          }
+        }
       }catch(err){ state.boneCode.push("  表の番地さがしで失敗: "+err.message) }
       if(state.boneCode.length){ L.push("骨の表を作っている場所:"); L.push(...state.boneCode) }
       L.push("");
