@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.98.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.99.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3962,7 +3962,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.98.0";
+const VERSION="v3.99.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3980,7 +3980,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.98.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.99.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -6057,6 +6057,57 @@ function memReader(buf,base){
     ptr:a=>{ const v=a>>>0; return (v>=0x80010000&&v<0x80200000)||(v>=0x00010000&&v<0x00200000) },
   };
 }
+// 表のポインタから**後ろ向きに**たどる。
+//
+// ここが穴だった。表A・表Bのポインタは、命令5が来るたびに
+//   0x8001f464  addiu $t0, $t0, 4
+//   0x8001f478  sw    $t0, -16752($at)
+// と +4 して書き戻される。1フレーム描き終わった時点のメモリを見ると、
+// ポインタは**表の終端**を指している。前向きに読んでも、そこにはもう何も無い。
+// 直前に使われた骨は、ポインタの**手前**に並んでいる。
+//
+// 32バイトの行列を探してメモリを掃いていたときは、そもそも
+// 「表はポインタの配列」だと気づいていなかった。いまは番地が分かっているので、
+// 探索は要らない。読んで、後ろ向きにたどるだけ
+function memBonesBack(buf,base,addr,n){
+  const R=memReader(buf,base);
+  const cur=R.u32(addr);
+  if(!R.ptr(cur)) return {cur,ok:false,list:[]};
+  const list=[];
+  for(let k=1;k<=(n||64);k++){
+    const at=(cur-k*4)>>>0;
+    const p=R.u32(at);
+    if(p===0){ list.push({at,p,why:"空"}); continue }
+    if(!R.ptr(p)) break;                       // ポインタでなくなったら表の外
+    const b=R.bytes(p,32);
+    if(b.length<32) break;
+    const dv=new DataView(b.buffer,b.byteOffset,b.byteLength);
+    const m=[]; for(let i=0;i<9;i++) m.push(dv.getInt16(i*2,true));
+    const t=[dv.getInt32(20,true),dv.getInt32(24,true),dv.getInt32(28,true)];
+    list.push({at,p,m,t,ok:matrixOK({m,t})});
+  }
+  // 表の先頭より手前は 0 なので、そこまで遡ったぶんは落とす。
+  // 逆順にすると、この 0 が先頭に並んでしまう（並べ替えの後ろが端になる）。
+  // 表の途中の 0 は「骨なし」として意味があるので、端だけ落とす
+  while(list.length&&list[list.length-1].why) list.pop();
+  return {cur,ok:true,list:list.reverse()};
+}
+function memBonesBackLines(buf,base){
+  const L=[];
+  for(const [nm,a] of [["表B",0x800CBE8C],["表A",0x800CBE90]]){
+    const r=memBonesBack(buf,base,a,48);
+    if(!r.ok){ L.push(`  ${nm} ${hex(a)}: 中身 ${hex(r.cur)} はポインタに見えない`); continue }
+    const good=r.list.filter(x=>x.ok).length;
+    L.push(`  ${nm} ${hex(a)}: いまの位置 ${hex(r.cur)}　手前に ${r.list.length}件`
+      +`（回転として筋が通るもの ${good}件）`);
+    for(const x of r.list.slice(0,6)){
+      if(x.why){ L.push(`    ${hex(x.at)} → 空`); continue }
+      L.push(`    ${hex(x.at)} → ${hex(x.p)} ${x.ok?"○":"×"}`
+        +`　回転 ${x.m.join(",")}　移動 ${x.t.join(",")}`);
+    }
+  }
+  return L.length?L:["  後ろ向きにたどれませんでした"];
+}
 const MEM_TABLES=[["表B",0x800CBE8C],["表A（命令5が引く）",0x800CBE90],["表C（部品）",0x800CBE94]];
 // 表の中身を並べ、その先が行列として読めるかまで確かめる
 function memBoneLines(buf,exe){
@@ -6087,6 +6138,11 @@ function memBoneLines(buf,exe){
   L.push(`メモリの写しを読みました（RAM の先頭は ファイルの +0x${base.toString(16)}）`);
   const M=memReader(buf,base);
   const hx=(a,n)=>Array.from(M.bytes(a,n),v=>v.toString(16).padStart(2,"0")).join(" ");
+  // 表のポインタは命令5のたびに +4 されて書き戻されるので、
+  // 描き終わったあとの写しでは**終端**を指している。
+  // 直前に使われた骨は手前に並んでいるので、後ろ向きにたどる
+  L.push("  表のポインタから後ろ向きにたどった結果:");
+  L.push(...memBonesBackLines(buf,base));
   L.push(`  旗 0x800CBE88 = ${M.u8(0x800CBE88)}`);
   L.push("  0x800CBE80 のあたり: "+hx(0x800CBE80,32));
   for(const [name,addr] of MEM_TABLES){
