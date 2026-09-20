@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.99.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.0.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3962,7 +3962,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.99.0";
+const VERSION="v4.0.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3980,7 +3980,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.99.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v4.0.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -6057,6 +6057,62 @@ function memReader(buf,base){
     ptr:a=>{ const v=a>>>0; return (v>=0x80010000&&v<0x80200000)||(v>=0x00010000&&v<0x00200000) },
   };
 }
+// メモリの写しの中で RAM の先頭を見つける、もう一つのやり方。
+//
+// 実行ファイルと突き合わせる方法は、実行ファイルが要る。
+// だが命令5の処理のバイト列は分かっているので、それを探せばいい。
+// 実物のセーブステートでは 0x31B93（4の倍数ですらない）だった。
+// 決め打ちの刻みで探すと見落とす
+const MEM_CODE_ANCHOR={addr:0x8001F44C,
+  words:[0x3c08800d,0x8d08be90,0x3c09800d,0x8d29be8c]};
+function memFindBaseByCode(buf){
+  const A=MEM_CODE_ANCHOR;
+  const pat=new Uint8Array(A.words.length*4), pv=new DataView(pat.buffer);
+  A.words.forEach((w,i)=>pv.setUint32(i*4,w>>>0,true));
+  for(let i=0;i+pat.length<=buf.length;i++){
+    if(buf[i]!==pat[0]) continue;
+    let ok=true;
+    for(let k=1;k<pat.length;k++) if(buf[i+k]!==pat[k]){ ok=false; break }
+    if(ok) return i-((A.addr-0x80000000)&0x1fffff);
+  }
+  return -1;
+}
+// DuckStation のセーブステートから CPU のレジスタを読む。
+// "CPU" の印の少し先に 32本が並んでいる。並びが正しいかは
+// 0番が 0、28番($gp)がまともなポインタ、で確かめる
+const MEM_REG=["zero","at","v0","v1","a0","a1","a2","a3","t0","t1","t2","t3",
+  "t4","t5","t6","t7","s0","s1","s2","s3","s4","s5","s6","s7","t8","t9",
+  "k0","k1","gp","sp","fp","ra"];
+function memCpuRegs(buf){
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+  const tag=[0x43,0x50,0x55];                    // "CPU"
+  for(let i=0;i+3<buf.length;i++){
+    if(buf[i]!==tag[0]||buf[i+1]!==tag[1]||buf[i+2]!==tag[2]) continue;
+    for(const skip of [16,20,24,12,8]){
+      const at=i+3+skip;
+      if(at+32*4>buf.length) continue;
+      const r=[]; for(let k=0;k<32;k++) r.push(dv.getUint32(at+k*4,true));
+      // $sp は実物で 0x807FFF60 だった。2MB決め打ちの範囲では外れる
+      // （プレステの RAM は上のほうに鏡像があり、$sp はそちらを指すことがある）
+      const ptr=v=>(v>>>0)>=0x80000000&&(v>>>0)<0x80800000;
+      if(r[0]===0&&ptr(r[28])&&ptr(r[29])) return {at,r};
+    }
+  }
+  return null;
+}
+function memCpuLines(buf){
+  const c=memCpuRegs(buf);
+  if(!c) return ["  CPU のレジスタは読めなかった"];
+  const L=[`  CPU のレジスタ（写した瞬間の値）:`];
+  const show=["gp","sp","ra","s0","s1","s2","s3","s4","s5","s6","s7","fp"];
+  L.push("    "+show.map(n=>`$${n}=${hex(c.r[MEM_REG.indexOf(n)])}`).join(" "));
+  const live=["s0","s1","s2","s3","s4","s5","s6","s7"]
+    .filter(n=>c.r[MEM_REG.indexOf(n)]!==0).length;
+  L.push(live>=4
+    ? `    → $s0〜$s7 のうち ${live}本が生きている。モデルを描いている最中の写しかもしれない`
+    : `    → $s0〜$s7 がほとんど 0。モデルを描いている最中ではない`);
+  return L;
+}
 // 表のポインタから**後ろ向きに**たどる。
 //
 // ここが穴だった。表A・表Bのポインタは、命令5が来るたびに
@@ -6112,7 +6168,11 @@ const MEM_TABLES=[["表B",0x800CBE8C],["表A（命令5が引く）",0x800CBE90],
 // 表の中身を並べ、その先が行列として読めるかまで確かめる
 function memBoneLines(buf,exe){
   const L=[];
-  const base=findPsxRam(buf,exe);
+  // まず実行ファイルと突き合わせる。だめなら命令5の処理のバイト列から探す。
+  // 実物のセーブステートでは先頭が 0x31B93（4の倍数ですらない）だった
+  let base=findPsxRam(buf,exe);
+  if(base<0){ const b2=memFindBaseByCode(buf);
+    if(b2>=0){ base=b2; L.push(`RAM の先頭を、命令5の処理のバイト列から見つけました（+0x${b2.toString(16)}）`) } }
   if(base<0){
     L.push("メモリの写しの中に実行ファイルが見つかりませんでした。");
     L.push(`  ファイルの大きさ: ${buf.length} B（プレステの RAM は 2,097,152 B）`);
@@ -6138,6 +6198,18 @@ function memBoneLines(buf,exe){
   L.push(`メモリの写しを読みました（RAM の先頭は ファイルの +0x${base.toString(16)}）`);
   const M=memReader(buf,base);
   const hx=(a,n)=>Array.from(M.bytes(a,n),v=>v.toString(16).padStart(2,"0")).join(" ");
+  L.push(...memCpuLines(buf));
+  // モデルがいくつ載っているか。0x90000000 の署名で数える
+  { const hits=[];
+    for(let o=0;o+4<=Math.min(buf.length-base,0x200000);o+=4){
+      if(buf[base+o]===0&&buf[base+o+1]===0&&buf[base+o+2]===0&&buf[base+o+3]===0x90)
+        hits.push(0x80000000+o);
+      if(hits.length>=16) break;
+    }
+    L.push(hits.length
+      ? `  メモリに載っているモデル ${hits.length}件: `+hits.map(hex).join(" ")
+      : "  メモリにモデルの署名（0x90000000）は無い");
+  }
   // 表のポインタは命令5のたびに +4 されて書き戻されるので、
   // 描き終わったあとの写しでは**終端**を指している。
   // 直前に使われた骨は手前に並んでいるので、後ろ向きにたどる
