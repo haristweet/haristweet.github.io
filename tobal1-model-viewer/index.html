@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.72.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.73.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1144,6 +1144,52 @@ function mipsFuncAt(exe,addr,cap){
   const fn=mipsFunc(t.body,off,4,cap||200);
   return mipsLines(exe,fn,fn.from);
 }
+
+// 命令の処理はどれも同じ形で終わっている：
+//   j <振り分けへ戻る>
+//   addiu $fp, $fp, <その命令の長さ>     ← 遅延スロット
+// 0x8001F444 の命令5がまさにそれで、addiu $fp,$fp,4 は命令5の長さ4と一致した。
+// この形を実行ファイル全体から拾えば、命令ごとの長さと処理の場所が
+// データから推測しなくても分かる。$fp は 30 番
+const MIPS_FP=30;
+function mipsCmdTails(exe,disp){
+  const t=exeText(exe); if(!t) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const out=[];
+  for(let p=0;p+8<=t.body.length;p+=4){
+    const w=dv.getUint32(p,true);
+    if((w>>>26)!==2) continue;                                  // j
+    const tgt=((((t.base+p)&0xf0000000)>>>0)|((w&0x3ffffff)<<2))>>>0;
+    if(disp!=null&&tgt!==(disp>>>0)) continue;
+    const d=dv.getUint32(p+4,true);                             // 遅延スロット
+    if((d>>>26)!==9) continue;                                  // addiu
+    if(((d>>>21)&31)!==MIPS_FP||((d>>>16)&31)!==MIPS_FP) continue;
+    const im=d&0xffff;
+    out.push({at:t.base+p,to:tgt,len:im>0x7fff?im-0x10000:im});
+  }
+  return out;
+}
+// 振り分けの番地は決め打ちにしない。上の形でいちばん多く戻っている先がそれ
+function mipsFindDispatch(exe){
+  const all=mipsCmdTails(exe,null);
+  if(!all.length) return 0;
+  const by=new Map();
+  for(const x of all) by.set(x.to,(by.get(x.to)||0)+1);
+  return [...by.entries()].sort((a,b)=>b[1]-a[1])[0][0];
+}
+// 拾った尻尾を、長さごとにまとめて貼れる形にする
+function mipsCmdTailLines(exe){
+  const disp=mipsFindDispatch(exe);
+  if(!disp) return ["  命令の処理の尻尾が見つからない"];
+  const tails=mipsCmdTails(exe,disp);
+  const L=[`  振り分けの戻り先 ${hexA(disp)}　命令の処理 ${tails.length}個`];
+  const by=new Map();
+  for(const x of tails){ if(!by.has(x.len)) by.set(x.len,[]); by.get(x.len).push(x.at) }
+  for(const [len,ats] of [...by.entries()].sort((a,b)=>a[0]-b[0]))
+    L.push(`    長さ ${len}バイト: ${ats.length}個　${ats.map(hexA).join(" ")}`);
+  return L;
+}
+function hexA(v){ return "0x"+(v>>>0).toString(16) }
 
 // 「その番地を register に作っている場所」を探す。lui＋addiu で番地を組み立てて
 // 関数に渡す形は、読み書きの命令として現れないので、これを見ないと取りこぼす
@@ -3210,7 +3256,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.72.0";
+const VERSION="v3.73.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3891,6 +3937,21 @@ function updateReport(){
           if(fn.length>56) state.boneCode.push(`    …（あと ${fn.length-56} 行）`);
         }
       }
+      // 命令ごとの長さと処理の場所を、実行ファイルから直に拾う。
+      // 命令5の尻尾（0x8001F4F4 の j ＋ addiu $fp,$fp,4）がそうだったので、
+      // 同じ形を全部拾えばいい。これでデータからの推測が要らなくなる
+      try{ state.boneCode.push("  命令ごとの長さ（実行ファイルから直に）:",
+                               ...mipsCmdTailLines(s.exe)) }
+      catch(err){ state.boneCode.push("  命令の長さ拾いで失敗: "+err.message) }
+      // 表の置き場所を仕込んでいる所。lui＋addiu で番地を作る形は
+      // 読み書きの命令として現れないので、mipsRefs では取りこぼす
+      try{
+        const mk=mipsAddrOf(s.exe,0x800CBE8C,0x800CBE94,16);
+        state.boneCode.push(mk.length
+          ? `  表の番地を作っている場所 ${mk.length}件: `
+            +mk.map(x=>`${hex(x.at)}→${hex(x.addr)}`).join(" ")
+          : "  表の番地を lui＋addiu で作っている場所は見つからない");
+      }catch(err){ state.boneCode.push("  表の番地さがしで失敗: "+err.message) }
       if(state.boneCode.length){ L.push("骨の表を作っている場所:"); L.push(...state.boneCode) }
       L.push("");
     }
