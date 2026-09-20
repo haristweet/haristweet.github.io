@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.96.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.97.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1276,32 +1276,34 @@ function mipsOpTableLines(exe){
 function mipsFindSinTable(exe,limit){
   const t=exeText(exe); if(!t) return [];
   const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
-  const out=[];
-  for(const n of [256,512,1024,4096]){
-    const step=2;
-    for(let p=0;p+n*2<=t.body.length;p+=step*8){
-      // まず4点だけ見て、見込みが無ければ捨てる（全部見ると遅い）
-      const a0=dv.getInt16(p,true), q=dv.getInt16(p+(n>>2)*2,true);
-      if(Math.abs(a0)>64) continue;                 // 先頭はほぼ0
-      if(Math.abs(Math.abs(q)-4096)>96) continue;   // 1/4 周で山
-      let bad=0, one=Math.abs(q);
+  const out=[], seen=new Set();
+  // 実物は int32 だった（先頭 00 00 00 00 / 64 00 00 00 / c8 00 00 00 …
+  // ＝ 0, 100, 200 ＝ 4096×sin(2πi/256)）。
+  // int16 としてだけ見ていたので「512段」と出していたが、正しくは
+  // **1周256段・4バイト刻み**。角度は1バイト（0〜255）で持てる。
+  // 幅を決め打ちにしていたのが間違いだったので、2バイトと4バイトの両方を見る
+  for(const w of [4,2]) for(const n of [256,512,1024,4096]){
+    for(let p=0;p+n*w<=t.body.length;p+=16){
+      const rd=i=>w===4?dv.getInt32(p+i*4,true):dv.getInt16(p+i*2,true);
+      const a0=rd(0), q=rd(n>>2);
+      if(Math.abs(a0)>64) continue;
+      if(Math.abs(Math.abs(q)-4096)>96) continue;
+      let bad=0; const one=Math.abs(q);
       for(let i=0;i<n;i+=Math.max(1,n>>6)){
-        const v=dv.getInt16(p+i*2,true);
-        const w=Math.round(one*Math.sin(2*Math.PI*i/n));
-        if(Math.abs(v-w)>one*0.03){ bad++; if(bad>1) break }
+        const v=rd(i), e=Math.round(one*Math.sin(2*Math.PI*i/n));
+        if(Math.abs(v-e)>one*0.03){ bad++; if(bad>1) break }
       }
-      if(bad<=1){ out.push({at:t.base+p,n,one});
-        if(out.length>=(limit||8)) return out }
+      if(bad<=1){
+        const at=t.base+p;
+        if(seen.has(at)) continue;                 // 同じ場所を幅違いで二度出さない
+        seen.add(at);
+        out.push({at,n,one,w});
+        if(out.length>=(limit||8)) return out;
+      }
     }
   }
   return out;
 }
-// Psy-Q の rsin/rcos は「1周＝4096、振幅＝4096」で、表は1周ぶん(4096段)か
-// 1/4周ぶん(1024段)で置かれるのが普通、と外から教わった。
-// こちらの走査は 512段 で当たっている。段数が合わないので、
-//   ・ゲーム独自の表
-//   ・こちらの走査が別のものを拾っている
-// のどちらか。決めつけずに、見つかったものを全部出す
 // 見つけたサイン表を、外からもらった照合用のバイト列と突き合わせる。
 //   512段・振幅4096:  00 00 32 00 64 00 97 00 C9 00 FB 00 2D 01 5E 01
 //   4096段・振幅4096: 00 00 06 00 0D 00 13 00 19 00 1F 00 26 00 2C 00
@@ -1323,7 +1325,8 @@ function mipsSinTableLines(exe,gp){
       const b=[]; for(let i=0;i<16;i++) b.push(t.body[off+i].toString(16).padStart(2,"0"));
       head=`　先頭16バイト ${b.join(" ")}`;
     }
-    out.push(`  サイン表 ${hexA(x.at)}　一周 ${x.n}段　1.0＝${x.one}${head}`);
+    out.push(`  サイン表 ${hexA(x.at)}　一周 ${x.n}段　${x.w}バイト刻み　1.0＝${x.one}`
+      +`（角度は${x.n<=256?"1バイト":x.n<=512?"9ビット":"それ以上"}で持てる）${head}`);
     // 表の番地を作っている所＝行列を組んでいる関数の入口
     const mk=mipsAddrOf(exe,x.at-64,x.at+64,12,gp);
     out.push(`    番地を作っている所: `
@@ -1336,16 +1339,21 @@ function mipsSinTableLines(exe,gp){
   return out;
 }
 // サイン表を作っている所を含む関数を丸ごと出す。ここが行列を組む処理のはず
-function mipsSinUserLines(exe,gp,cap){
+function mipsSinUserLines(exe,gp,cap,skip){
   const L=mipsFindSinTable(exe,4);
-  const out=[];
+  const out=[], done=[];
   for(const x of L){
-    for(const r of mipsAddrOf(exe,x.at-64,x.at+64,3,gp)){
-      const fn=mipsFuncAt(exe,r.at,cap||48);
+    for(const r of mipsAddrOf(exe,x.at-64,x.at+64,8,gp)){
+      const fn=mipsFuncAt(exe,r.at,cap||40);
       if(!fn.length) continue;
+      const head=(fn[0].match(/0x([0-9a-f]+)/)||[])[1];
+      if(head&&done.indexOf(head)>=0) continue;
+      if(head) done.push(head);
+      // 見たくないものを飛ばせるように（GPU のパケットを組む所など）
+      if(skip&&skip.some(a=>Math.abs(r.at-a)<0x200)) continue;
       out.push(`  サイン表 ${hexA(x.at)} を使っている ${hexA(r.at)} の関数:`);
-      out.push(...fn.slice(0,cap||40));
-      return out;                                  // 1件出せば十分
+      out.push(...fn.slice(0,cap||28));
+      if(done.length>=3) return out;
     }
   }
   return out.length?out:["  サイン表を使っている関数は見つからない"];
@@ -3942,7 +3950,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.96.0";
+const VERSION="v3.97.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3960,7 +3968,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.96.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.97.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4834,7 +4842,9 @@ function updateReport(){
         // 角度から行列を作っている所を、サイン表から手繰る
         try{ state.boneBrief.push("  角度から行列を作っている所を探す:",
                                   ...mipsSinTableLines(s.exe,gp),
-                                  ...mipsSinUserLines(s.exe,gp,40)) }
+                                  // 0x8004AD9C は GPU のパケットを組む所だった
+                                  // （+7 に 0x3A ＝ グーロー四角）。そこは飛ばす
+                                  ...mipsSinUserLines(s.exe,gp,26,[0x8004AD9C])) }
         catch(err){ state.boneBrief.push("  サイン表さがしで失敗: "+err.message) }
         // 表の番地は「構造体の一部」として書かれている可能性がある。
         // 表そのものではなく、その前後まで広げて番地を作っている所を探す
