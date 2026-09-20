@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.92.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.94.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1260,6 +1260,60 @@ function mipsOpTableLines(exe){
   for(const e of T.ents)
     L.push(`    命令${e.op} → ${hexA(e.addr)}　長さ ${e.len||"?"}バイト`);
   return L;
+}
+
+// 角度から行列を作っている所を、サイン表から手繰る。
+//
+// 外からの助言：ディスクに32バイトの行列が無いのは当たり前で、
+// PS1 の初期3Dでは姿勢を「関節ごとの角度＋親からのずれ」で持ち、
+// 毎フレーム FK（順運動学）で行列に組み立てて RAM に展開する。
+// つまり探すべきは行列ではなく、**角度から行列を作っている処理**のほう。
+//
+// 角度から回転行列を作るには必ずサイン表が要る。
+// サイン表は「int16 が一周ぶん並び、山と谷が 4096 前後」という、
+// でたらめなバイト列ではまず起きない形をしている。
+// 見つければ、それを読んでいる関数が行列を作っている所
+function mipsFindSinTable(exe,limit){
+  const t=exeText(exe); if(!t) return [];
+  const dv=new DataView(t.body.buffer,t.body.byteOffset,t.body.byteLength);
+  const out=[];
+  for(const n of [256,512,1024,4096]){
+    const step=2;
+    for(let p=0;p+n*2<=t.body.length;p+=step*8){
+      // まず4点だけ見て、見込みが無ければ捨てる（全部見ると遅い）
+      const a0=dv.getInt16(p,true), q=dv.getInt16(p+(n>>2)*2,true);
+      if(Math.abs(a0)>64) continue;                 // 先頭はほぼ0
+      if(Math.abs(Math.abs(q)-4096)>96) continue;   // 1/4 周で山
+      let bad=0, one=Math.abs(q);
+      for(let i=0;i<n;i+=Math.max(1,n>>6)){
+        const v=dv.getInt16(p+i*2,true);
+        const w=Math.round(one*Math.sin(2*Math.PI*i/n));
+        if(Math.abs(v-w)>one*0.03){ bad++; if(bad>1) break }
+      }
+      if(bad<=1){ out.push({at:t.base+p,n,one});
+        if(out.length>=(limit||8)) return out }
+    }
+  }
+  return out;
+}
+function mipsSinTableLines(exe){
+  const L=mipsFindSinTable(exe,6);
+  if(!L.length) return ["  サイン表は見つからない"];
+  return L.map(x=>`  サイン表 ${hexA(x.at)}　一周 ${x.n}段　1.0＝${x.one}`
+    +`　読んでいる所: `+(mipsRefs(exe,x.at,6).map(r=>hexA(r.at)).join(" ")||"（lui＋lw では見つからない）"));
+}
+// 表の番地を「どこかの構造体の一部」として書いている所を探す。
+//
+// 外からの助言：固定番地に直接書くのではなく、
+//   sw $reg, offset($base)
+// の形で、$base に構造体の先頭が入っている実装が普通。
+// だから表そのものの番地を作る場所を探しても出てこない。
+// 表の少し手前・少し後ろまで広げて、番地を作っている所を全部出す
+function mipsNearAddrLines(exe,lo,hi,gp){
+  const hits=mipsAddrOf(exe,lo,hi,24,gp);
+  if(!hits.length) return [`  ${hexA(lo)}〜${hexA(hi)} の番地を作っている所は見つからない`];
+  return [`  ${hexA(lo)}〜${hexA(hi)} の番地を作っている所 ${hits.length}件:`]
+    .concat(hits.map(x=>`    ${hexA(x.at)} → ${hexA(x.addr)}（${x.how}・$${x.reg}）`));
 }
 
 // 命令ひとつぶんの処理を、飛び先から尻尾まで丸ごと出す。
@@ -3210,6 +3264,20 @@ function t1MirrorPairs(box,tol){
 // 二つの数え方を並べて、どちらが骨らしいかを数で言う。
 // 骨ごとの箱が骨らしい大きさにそろっているほうが正しい数え方のはず。
 // 「いちばん大きい辺」と「ぺたんこな区切りの数」で比べる
+// 追記（v3.93.0）。命令6は骨を動かしていなかった。処理を読んだら
+//   0x8001f434  andi $v0, $t8, 0x8     ← 描画の旗を見て
+//   0x8001f438  bne  $v0, $zero, …     ←   立っていたら何もしない
+//   0x8001f440  addu $s7, $s7, $s6     ← $s7 に語1を足すだけ
+// 命令3も同じで `addu $s3, $s3, $s6`。どちらも骨には触っていない。
+// $s2 が面のデータを指していた（lw $t4,0($s2) / addiu $s2,$s2,N）ので、
+// $s3 と $s7 も部品の中のどれかを指すポインタで、
+// 命令3・6 は**それを前後にずらす命令**。
+// 命令6が ±4 で描画の旗で切り替わるのは、色ひとつが4バイトだから——
+// 色の引き方のずれ（「76ずれ」など）の出どころがこれかもしれない。
+//
+// 下の比べは、読む前に「データに答えさせる」つもりで書いたもの。
+// 結果は「どちらとも言えない」で、読んだ答えと食い違わなかった。
+// 残しておくが、決め手になったのは逆アセンブルのほう
 function t1BoneCountCompare(A,B){
   const stat=V=>{
     if(!V||!V.length) return null;
@@ -3777,7 +3845,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.92.0";
+const VERSION="v3.94.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3795,7 +3863,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.92.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.94.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4643,6 +4711,27 @@ function updateReport(){
         try{ state.boneBrief.push("  まだ意味の分かっていない命令の処理（短いのでそのまま）:",
                                   ...mipsShortCmdLines(s.exe,[3,6])) }
         catch(err){ state.boneBrief.push("  短い命令が読めなかった: "+err.message) }
+        // 命令3と命令6は $s3 と $s7 に語1を足すだけだった。骨ではなく、
+        // 部品の中のどれかを指すポインタを前後にずらしている（$s2 は面だった）。
+        // どのレジスタが何かは、部品を組み立てている関数に書いてある。
+        // 部品の繰り返し 0x8001BB5C の lw $a0,0($v1) → jal がその入口
+        try{
+          const call=mipsJalIn(s.exe,0x8001BB44,16);
+          if(call){
+            // ここは今いちばん知りたい所なので、まとめのほうに出す
+            state.boneBrief.push(`  部品を組み立てている関数 ${hex(call)}`
+              +"（$s0〜$s7 が部品の中の何を指すかが分かる）:");
+            state.boneBrief.push(...mipsFuncAt(s.exe,call,40).slice(0,36));
+          }
+        }catch(err){ state.boneBrief.push("  部品の関数が読めなかった: "+err.message) }
+        // 角度から行列を作っている所を、サイン表から手繰る
+        try{ state.boneBrief.push("  角度から行列を作っている所を探す:",
+                                  ...mipsSinTableLines(s.exe)) }
+        catch(err){ state.boneBrief.push("  サイン表さがしで失敗: "+err.message) }
+        // 表の番地は「構造体の一部」として書かれている可能性がある。
+        // 表そのものではなく、その前後まで広げて番地を作っている所を探す
+        try{ state.boneBrief.push(...mipsNearAddrLines(s.exe,0x800CB000,0x800CC800,gp)) }
+        catch(err){ state.boneBrief.push("  広げた番地さがしで失敗: "+err.message) }
         state.boneBrief.push(mk.length
           ? `  表の番地を作っている場所 ${mk.length}件: `
             +mk.map(x=>`${hex(x.at)}→${hex(x.addr)}(${x.how})`).join(" ")
