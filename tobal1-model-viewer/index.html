@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.81.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.82.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1958,6 +1958,36 @@ function t1Layout(objs,dv,up){
 // 骨の区切り（命令5）ごとに横へ並べる。
 // 「どの区切りが腕で、どれが脚で、どれが胴なのか」は、重なったままでは分からない。
 // 一度ばらして見れば、形から骨を組むための土台になる
+// 区切り（骨）ごとの中心が、原点のまわりに固まっているかを見る。
+//
+// なぜ見るのか：「みんなお腹のところに顔がある」から。
+// 頭の部品が腹の高さに出るのは、骨の行列が無くて全部の部品が原点に重なり、
+// モデルの原点が腰のあたりにあるため。団子の正体がこれ。
+// だが「どれも原点」なのか「位置を持っている部品もある」のかは、
+// 中心を並べてみないと分からない。ずっと大きさだけ出して中心は捨てていた。
+//
+// 位置を持っている部品があるなら、行列が無くてもそこだけは正しく置ける
+function t1SegOrigin(S,extent){
+  if(!S||!S.length) return null;
+  const mid=x=>String(x.mid).split(",").map(Number);
+  const len=v=>Math.hypot(v[0],v[1],v[2]);
+  const scale=extent||Math.max(...S.map(x=>x.span))||1;
+  const far=S.filter(x=>len(mid(x))>scale*0.15);
+  const all=S.map(x=>len(mid(x)));
+  return {n:S.length, far:far.length, scale,
+    max:Math.round(Math.max(...all)), avg:Math.round(all.reduce((a,b)=>a+b,0)/all.length),
+    list:far.slice(0,6).map(x=>`${x.seg}(${x.mid})`)};
+}
+function t1SegOriginLine(o){
+  if(!o) return "";
+  if(!o.far) return `  骨ごとの中心: ${o.n}区切りとも原点のまわり`
+    +`（いちばん離れて ${o.max}、平均 ${o.avg}、モデルの大きさ ${Math.round(o.scale)}）`
+    +"　→ 位置は頂点に入っていない。行列でしか運べない";
+  return `  骨ごとの中心: ${o.n}区切り中 ${o.far}個 が原点から離れている`
+    +`（いちばん離れて ${o.max}、平均 ${o.avg}、モデルの大きさ ${Math.round(o.scale)}）`
+    +`　離れているもの: ${o.list.join(" ")}`
+    +"　→ その部品は位置を持っている。行列が無くてもそこは正しく置ける";
+}
 function t1SegLayout(d,objs,up){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const box=new Map(), gap=50;
@@ -3443,7 +3473,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.81.0";
+const VERSION="v3.82.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3461,7 +3491,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.81.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.82.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -3605,8 +3635,11 @@ function buildModelInner(raw,info){
             // 絵を見なくても読めるように、まとめにも出す
             info.t1SegLine=S.map(x=>{
               const w=x.box.split(" ").map(r=>{ const [a,b]=r.split(".."); return Math.round(b-a) });
-              return `${x.seg}:${x.n}枚 ${w.join("×")}`;
+              return `${x.seg}:${x.n}枚 ${w.join("×")}@${x.mid}`;
             });
+            // 「みんなお腹のところに顔がある」＝全部の部品が原点に重なっている、
+            // という見立てが本当かを一行で出す。中心はずっと捨てていた
+            info.t1SegOrigin=t1SegOriginLine(t1SegOrigin(S,info.t1Extent));
             info.t1Seg=[`  骨ごとの置き場所（部品 +${hex(bigO.base,4)}、命令5で区切る、${S.length}区切り）:`,
               `    区切りが小さくまとまっていれば、部品は別々の座標系にあり行列で運ぶ必要がある`];
             S.slice(0,24).forEach(x=>info.t1Seg.push(
@@ -3949,7 +3982,8 @@ function digestLines(){
         +(inf.t1Read.vari&&inf.t1Read.vari!=="既定"?`／頂点を入れる読み方: ${inf.t1Read.vari}`:""));
     if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`+(T1_BONES?`／骨 ${T1_BONES.length}個 を当てている`:"／骨はまだ無い"));
     if(inf.t1SegLine&&inf.t1SegLine.length){
-      L.push("  区切りごとの大きさ（番号:面数 幅×高×奥）:");
+      if(inf.t1SegOrigin) L.push(inf.t1SegOrigin);
+      L.push("  区切りごとの大きさ（番号:面数 幅×高×奥@中心）:");
       for(let i=0;i<inf.t1SegLine.length;i+=4) L.push("    "+inf.t1SegLine.slice(i,i+4).join("　"));
     }
     for(const w of (inf.t1Read&&inf.t1Read.why)||[]) L.push(`    読めない理由: ${w}`);
