@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.0.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.1.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3962,7 +3962,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.0.0";
+const VERSION="v4.1.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3980,7 +3980,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v4.0.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v4.1.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -6057,6 +6057,76 @@ function memReader(buf,base){
     ptr:a=>{ const v=a>>>0; return (v>=0x80010000&&v<0x80200000)||(v>=0x00010000&&v<0x00200000) },
   };
 }
+// 写したファイル**全体**を、32バイトの行列の並びで掃く。
+//
+// RAM だけを見ていたが、スクラッチパッド（PS1 内蔵の高速1KB）に
+// 置かれている可能性を外から指摘された。30骨×32バイト＝960バイトで、
+// 1KB にちょうど収まる。だが RAM の中だけ探していては見つからない。
+//
+// さらに、こちらの判定そのものも疑う必要があった。
+// 「直交して長さ4096」で探していたので、拡大縮小が混ざった行列は
+// 全部落としていた。形だけ（int16×9 が ±4200・詰め物が0・
+// 移動が ±30000）でも探す。
+//
+// 実物のセーブステート（4,013,806バイト）では、どちらの探し方でも
+// 並びが見つからなかった。数学で0件、形だけで拾ったものは
+// 255 や 511 が並ぶ埋め草だけだった
+function memMatrixRunsAll(buf,opt){
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+  const loose=opt&&opt.loose;
+  const fit=o=>{
+    if(o+32>buf.length) return false;
+    const m=[]; for(let i=0;i<9;i++) m.push(dv.getInt16(o+i*2,true));
+    if(loose){
+      let mx=0; for(const v of m) mx=Math.max(mx,Math.abs(v));
+      if(mx>4200||mx<100) return false;
+      if(dv.getInt16(o+18,true)!==0) return false;
+      for(let k=0;k<3;k++) if(Math.abs(dv.getInt32(o+20+k*4,true))>30000) return false;
+      return true;
+    }
+    const rows=[m.slice(0,3),m.slice(3,6),m.slice(6,9)];
+    const ns=rows.map(r=>r[0]*r[0]+r[1]*r[1]+r[2]*r[2]);
+    const mn=Math.min(...ns), mx=Math.max(...ns);
+    if(mn<2500*2500||mx>5800*5800) return false;
+    if(mx-mn>mn*0.10) return false;
+    for(let i=0;i<3;i++) for(let j=i+1;j<3;j++){
+      let dot=0; for(let k=0;k<3;k++) dot+=rows[i][k]*rows[j][k];
+      if(Math.abs(dot)>mn*0.10) return false;
+    }
+    return true;
+  };
+  const runs=[];
+  for(let o=0;o+32<=buf.length;){
+    if(!fit(o)){ o+=4; continue }
+    const s=o; let n=0;
+    while(o+32<=buf.length&&fit(o)){ n++; o+=32 }
+    if(n>=(opt&&opt.min||4)) runs.push({at:s,n});
+    o=s+4;
+  }
+  // 途中から始まる並びも拾うために 4バイトずつ戻して探すので、
+  // 長い並びの中に短い並びが入れ子で出てくる。包まれているものは落とす
+  runs.sort((a,b)=>b.n-a.n);
+  const keep=[];
+  for(const r of runs){
+    const e=r.at+r.n*32;
+    if(keep.some(k=>r.at>=k.at&&e<=k.at+k.n*32)) continue;
+    keep.push(r);
+  }
+  return keep;
+}
+function memMatrixRunsAllLines(buf,base){
+  const L=[];
+  for(const [nm,opt] of [["きちんとした回転として",{}],["形だけで",{loose:true}]]){
+    const r=memMatrixRunsAll(buf,opt);
+    if(!r.length){ L.push(`  写し全体を ${nm}掃いた: 32バイトの並びは 0件`); continue }
+    L.push(`  写し全体を ${nm}掃いた: ${r.length}件　いちばん長いもの:`);
+    for(const x of r.slice(0,3)){
+      const inRam=base>=0&&x.at>=base&&x.at<base+0x200000;
+      L.push(`    ${inRam?"RAM "+hex(0x80000000+x.at-base):"ファイル +0x"+x.at.toString(16)}　${x.n}個`);
+    }
+  }
+  return L;
+}
 // メモリの写しの中で RAM の先頭を見つける、もう一つのやり方。
 //
 // 実行ファイルと突き合わせる方法は、実行ファイルが要る。
@@ -6199,6 +6269,8 @@ function memBoneLines(buf,exe){
   const M=memReader(buf,base);
   const hx=(a,n)=>Array.from(M.bytes(a,n),v=>v.toString(16).padStart(2,"0")).join(" ");
   L.push(...memCpuLines(buf));
+  // RAM だけでなく、写したファイル全体を掃く（スクラッチパッドもこの中にある）
+  L.push(...memMatrixRunsAllLines(buf,base));
   // モデルがいくつ載っているか。0x90000000 の署名で数える
   { const hits=[];
     for(let o=0;o+4<=Math.min(buf.length-base,0x200000);o+=4){
