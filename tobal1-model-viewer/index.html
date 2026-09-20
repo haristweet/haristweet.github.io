@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.69.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.70.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3196,7 +3196,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.69.0";
+const VERSION="v3.70.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3290,10 +3290,13 @@ function buildModelInner(raw,info){
         } }catch(_){}
       // まだ意味の分かっていない命令の中身。いちばん大きい部品（＝本体）で見る。
       // 骨のずらし量がここに入っていないか探している
+      // 黙って握りつぶさない。失敗したらその理由をそのまま報告に出す。
+      // 届かない診断は、足していないのと同じ
       try{
         const big=okObjs.slice().sort((a,b)=>(b.nv||0)-(a.nv||0))[0];
-        if(big) info.t1OpArgs=t1OpArgLines(t1OpArgs(r1.data,big.base));
-      }catch(_){}
+        info.t1OpArgs=big ? t1OpArgLines(t1OpArgs(b.out,big.base))
+                          : ["  部品が1つも無いので見られなかった"];
+      }catch(err){ info.t1OpArgs=["  読めなかった: "+(err&&err.message||err)] }
       info.t1Read={run,guess,total:okObjs.length,why,audit,
                    vari:T1_VAR_FOUND?t1VarName(T1_VAR_FOUND):""}; }
     { const P=r1.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
