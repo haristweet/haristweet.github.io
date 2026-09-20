@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.86.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.87.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -3164,9 +3164,62 @@ function t1MirrorPairs(box,tol){
 // ここでやるのは、続き番号の区切りをひと続きの鎖とみなして、
 // 親の中心を足していくこと。**推測であることは変わらない**ので、
 // 効き具合を変えられるようにして、切れるようにしてある
+// 手足の鎖を、鏡の対から割り出す。
+//
+// これまでは「続き番号がとぎれた所で鎖を切る」としていたが、
+// とぎれ目は**面の**区切りで見ていた。#68 では 16・22・28 に面が無いので
+// そこで切っていたが、頂点でまとめ直したら 16 と 22 こそが鎖の先頭だった。
+//   16:24点 100×115×28@-254,-3,-127  ↔ 22:@-254,-4,+126   ← 腰。左右 ±127
+//   17: 6点  87×112×33@  -6,-4,  22  ↔ 23:@  -6,-3, -21
+//   18:44点 188×108×86@  64, 0,  -2  ↔ 24:@  64, 0,   2
+// 面が無い区切りを切れ目とみなしていたせいで、いちばん大事な所を捨てていた。
+//
+// 正しい切り方は、鏡の対のほうにある。#68 では 4..15 と 16..27 が対になっていて、
+// 4↔10、16↔22 のように「ずれ幅」が一定。そのずれ幅が手足の長さになる
+function t1LimbRuns(box){
+  const pairs=t1MirrorPairs(box);
+  if(!pairs.size) return [];
+  const keys=[...box.keys()].sort((a,b)=>a-b);
+  const runs=[]; let cur=null;
+  for(const k of keys){
+    const j=pairs.get(k);
+    const d=(j!=null&&j>k)?j-k:0;            // 先に来るほうだけ見る
+    if(!d){ cur=null; continue }
+    if(cur&&cur.d===d&&k===cur.to+1){ cur.to=k; continue }
+    cur={from:k,to:k,d}; runs.push(cur);
+  }
+  // ずれ幅と長さが合っているものだけを手足とみなす（4..9 と 10..15 で d=6）
+  const out=[];
+  for(const r of runs){
+    const len=r.to-r.from+1;
+    if(len<2||r.d!==len) continue;
+    out.push([r.from,r.to]);                  // こちら側
+    out.push([r.from+r.d,r.to+r.d]);          // 鏡の側
+  }
+  return out.sort((a,b)=>a[0]-b[0]);
+}
 function t1ChainBones(d,o,amt){
-  const box=t1SegBoxMap(d,o); if(!box) return null;
+  // 頂点の箱を使う。面の箱には、面を持たない区切り（#68 の 16・22・28）が
+  // 入っていない。そこが鎖の先頭だったので、面の箱では取りこぼす
+  const box=t1VertBoxMap(d,o)||t1SegBoxMap(d,o);
+  if(!box) return null;
   return t1ChainFromBox(box,amt);
+}
+// t1VertBoxes と同じものを、Map の形で返す（鏡の対さがしがこの形を取る）
+function t1VertBoxMap(d,o){
+  if(!o||!o.run||!o.run.vseg) return null;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const vs=o.run.vseg, box=new Map();
+  for(let i=0;i<vs.length;i++){
+    const k=vs[i]; if(k==null) continue;
+    const q=o.base+o.vertPtr+i*8; if(q+6>d.length) continue;
+    let b=box.get(k);
+    if(!b){ b={n:0,mn:[1e9,1e9,1e9],mx:[-1e9,-1e9,-1e9]}; box.set(k,b) }
+    b.n++;
+    for(let a=0;a<3;a++){ const v=dv.getInt16(q+a*2,true);
+      if(v<b.mn[a])b.mn[a]=v; if(v>b.mx[a])b.mx[a]=v }
+  }
+  return box.size?box:null;
 }
 // 箱の表だけ受け取る形にしておく。こうしないと、本物のモデルが無いと試せない
 function t1ChainFromBox(box,amt){
@@ -3174,14 +3227,19 @@ function t1ChainFromBox(box,amt){
   if(keys.length<3) return null;
   const mid=k=>{ const b=box.get(k);
     return b?[0,1,2].map(a=>(b.mn[a]+b.mx[a])/2):[0,0,0] };
-  // 続き番号がとぎれる所で鎖を切る。#68 では 16・22・28 に面が無く、
-  // そこが腕と脚の切れ目だった
-  const runs=[]; let cur=[keys[0]];
-  for(let i=1;i<keys.length;i++){
-    if(keys[i]===keys[i-1]+1) cur.push(keys[i]);
-    else { runs.push(cur); cur=[keys[i]] }
+  // 鎖の切り方は、まず鏡の対から割り出す（手足はかならず左右一対になる）。
+  // 対が見つからないときだけ、続き番号のとぎれで切る昔のやり方に落ちる
+  let runs=t1LimbRuns(box).map(([a,b])=>{
+    const r=[]; for(let k=a;k<=b;k++) if(box.has(k)) r.push(k); return r;
+  }).filter(r=>r.length>1);
+  if(!runs.length){
+    runs=[]; let cur=[keys[0]];
+    for(let i=1;i<keys.length;i++){
+      if(keys[i]===keys[i-1]+1) cur.push(keys[i]);
+      else { runs.push(cur); cur=[keys[i]] }
+    }
+    runs.push(cur);
   }
-  runs.push(cur);
   const k1=amt==null?1:amt;
   const max=Math.max(...keys), list=[];
   const t=new Map();
@@ -3593,7 +3651,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.86.0";
+const VERSION="v3.87.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3611,7 +3669,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.86.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.87.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
