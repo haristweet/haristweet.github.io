@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.97.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v3.98.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -1339,24 +1339,36 @@ function mipsSinTableLines(exe,gp){
   return out;
 }
 // サイン表を作っている所を含む関数を丸ごと出す。ここが行列を組む処理のはず
+// サイン表を引いている所を、**まとめて一つの範囲で**出す。
+//
+// 実物では参照が 0x8005A580 / 0x8005A6D8 / 0x8005A738 と 0x1B8 の中に
+// 固まっていた。関数の頭から数十行だけ出すやり方では、3つとも見えない。
+// 外からの見立てでは「3か所＝X軸・Y軸・Z軸の回転」。
+// それを確かめるには、3つを含む範囲を丸ごと見る必要がある
 function mipsSinUserLines(exe,gp,cap,skip){
   const L=mipsFindSinTable(exe,4);
-  const out=[], done=[];
+  const out=[];
   for(const x of L){
-    for(const r of mipsAddrOf(exe,x.at-64,x.at+64,8,gp)){
-      const fn=mipsFuncAt(exe,r.at,cap||40);
-      if(!fn.length) continue;
-      const head=(fn[0].match(/0x([0-9a-f]+)/)||[])[1];
-      if(head&&done.indexOf(head)>=0) continue;
-      if(head) done.push(head);
-      // 見たくないものを飛ばせるように（GPU のパケットを組む所など）
-      if(skip&&skip.some(a=>Math.abs(r.at-a)<0x200)) continue;
-      out.push(`  サイン表 ${hexA(x.at)} を使っている ${hexA(r.at)} の関数:`);
-      out.push(...fn.slice(0,cap||28));
-      if(done.length>=3) return out;
+    let refs=mipsAddrOf(exe,x.at-64,x.at+64,12,gp).map(r=>r.at);
+    if(skip) refs=refs.filter(a=>!skip.some(b=>Math.abs(a-b)<0x200));
+    if(!refs.length) continue;
+    // 近いものどうしを一group にまとめる（0x400 以内なら同じかたまり）
+    refs.sort((a,b)=>a-b);
+    const groups=[[refs[0]]];
+    for(let i=1;i<refs.length;i++){
+      const g=groups[groups.length-1];
+      if(refs[i]-g[g.length-1]<=0x400) g.push(refs[i]); else groups.push([refs[i]]);
     }
+    for(const g of groups.slice(0,2)){
+      const from=g[0]-0x40, to=g[g.length-1]+0x60;
+      out.push(`  サイン表 ${hexA(x.at)} を引いている所 ${g.length}か所`
+        +`（${g.map(hexA).join(" ")}）のまわり:`);
+      out.push(...mipsCmdBody(exe,from,to,cap||72));
+      if(out.length>90) return out;
+    }
+    if(out.length) return out;
   }
-  return out.length?out:["  サイン表を使っている関数は見つからない"];
+  return ["  サイン表を使っている関数は見つからない"];
 }
 // 表の番地を「どこかの構造体の一部」として書いている所を探す。
 //
@@ -3950,7 +3962,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v3.97.0";
+const VERSION="v3.98.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -3968,7 +3980,7 @@ async function readFull(e){
 // 面1枚のバイト数を実行ファイルから読んで、読み方の絞り込みに使う。
 //
 // これはモデルを読みはじめる前に呼ばないと意味がない。
-// v3.97.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
+// v3.98.0 は報告を組み立てるときに呼んでいたので、読み終わったあとになり、
 // 「通る読み方が2通り。若い番号を小さいほうにする決まりで選んだ」が
 // 消えないままだった。測ったものを、測る前に使えていなかった
 function applyExeSizes(exe){
@@ -4833,10 +4845,12 @@ function updateReport(){
         try{
           const call=mipsJalIn(s.exe,0x8001BB44,16);
           if(call){
-            // ここは今いちばん知りたい所なので、まとめのほうに出す
+            // ここはもう読み終わった（面=$gp+3468 / 法線=$gp+3736 / 色=$gp+3444）。
+            // 場所だけまとめに残して、中身は長い報告のほうへ戻す
             state.boneBrief.push(`  部品を組み立てている関数 ${hex(call)}`
-              +"（$s0〜$s7 が部品の中の何を指すかが分かる）:");
-            state.boneBrief.push(...mipsFuncAt(s.exe,call,40).slice(0,36));
+              +"（読み終わり: 面=$gp+3468 法線=$gp+3736 色=$gp+3444）");
+            state.boneCode.push(`  部品を組み立てている関数 ${hex(call)}:`);
+            state.boneCode.push(...mipsFuncAt(s.exe,call,40).slice(0,36));
           }
         }catch(err){ state.boneBrief.push("  部品の関数が読めなかった: "+err.message) }
         // 角度から行列を作っている所を、サイン表から手繰る
@@ -4844,7 +4858,7 @@ function updateReport(){
                                   ...mipsSinTableLines(s.exe,gp),
                                   // 0x8004AD9C は GPU のパケットを組む所だった
                                   // （+7 に 0x3A ＝ グーロー四角）。そこは飛ばす
-                                  ...mipsSinUserLines(s.exe,gp,26,[0x8004AD9C])) }
+                                  ...mipsSinUserLines(s.exe,gp,80,[0x8004AD9C])) }
         catch(err){ state.boneBrief.push("  サイン表さがしで失敗: "+err.message) }
         // 表の番地は「構造体の一部」として書かれている可能性がある。
         // 表そのものではなく、その前後まで広げて番地を作っている所を探す
