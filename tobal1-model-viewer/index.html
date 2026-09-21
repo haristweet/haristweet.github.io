@@ -2728,7 +2728,10 @@ function buildT1Mesh(d,objs){
           //   1語        … べた塗り
           //   テクスチャ  … 語0（白）だけ
           //   角の数ぴったり … 角ごと
-          const pc=pf?(j=>(pf.w===1||pf.tex)?pf.at
+          // 色を持たない面（命令10・11）は、頂点ごとの色を引く
+          const vAt=plan&&plan.vcolAt;
+          const pc=pf?(j=>pf.w===0?(vAt&&vAt[a[j]]!=null?vAt[a[j]]:0)
+                        :(pf.w===1||pf.tex)?pf.at
                         :pf.w===pf.corners?pf.at+j
                         :pf.at+1+j):null;
           const tx=(T1_VRAM&&pf&&pf.tex)?t1FaceTex(d,o,pf,a.length):null;
@@ -3174,6 +3177,13 @@ function t1ColWords(op,corners){
 }
 function t1ColorPlan(run){
   if(!run||!run.faces) return null;
+  // t1Run が命令の列を歩きながら数えた位置があれば、それを使う。
+  // 面だけを見て数えると、命令2 が使う頂点ごとの色を取りこぼす
+  if(run.colWords!=null&&run.faces.every(f=>f.cW!=null)){
+    const at=run.faces.map(f=>({at:f.cAt,w:f.cW,corners:f.idx.length,
+                               tex:!!T1_COL_TEX[f.op],vert:f.cW===0}));
+    return {at,words:run.colWords,vcolAt:run.vcolAt};
+  }
   const at=new Array(run.faces.length); let p=0;
   for(let i=0;i<run.faces.length;i++){
     const f=run.faces[i], w=t1ColWords(f.op,f.idx.length);
@@ -3247,6 +3257,13 @@ function t1Run(d,base,limit,extra,V){
   // どちらが正しいかは、出てきた箱を見れば分かる——
   // 正しい数え方なら、骨ごとの箱は骨らしい大きさにそろうはず
   const vbone=[]; let bone=0;
+  // 色の語の位置を、命令の列を歩きながら数える。
+  //   命令8・9      … 1語（べた塗り）
+  //   命令12・13    … 4語（色＋u,v）
+  //   命令10・11    … 0語。頂点ごとの色を使う
+  //   命令2         … 入れた頂点1つにつき1語（頂点ごとの色）
+  // 実測（dump3・2P 本体）: 152+337+10×4+294 = 823語 で、色の 3292B にぴったり
+  let cw=0; const vcolAt=[];
   while(fp+8<=d.length&&steps<(limit||4096)){
     const op=dv.getUint32(fp,true);
     if(op===0) break;
@@ -3261,7 +3278,9 @@ function t1Run(d,base,limit,extra,V){
         if(V.unit4) at>>=2;
         n+=V.plus||0;
         if(at<0||at+n>T1_SLOTS||n>4096) return no(`命令${op} の置き場所 ${at}／個数 ${n} が枠(${T1_SLOTS})に収まらない`,fp);
-        for(let k=0;k<n;k++){ slot[at+k]=vi; vseg[vi]=seg; vbone[vi]=bone; vi++ }
+        for(let k=0;k<n;k++){ slot[at+k]=vi; vseg[vi]=seg; vbone[vi]=bone;
+          if(op===2) vcolAt[vi]=cw++;            // 命令2 は頂点ごとに色を1語使う
+          vi++ }
       }
       fp+=T1_CMD_LEN[op];
     }else if(T1_FACE_OP[op]||(extra&&extra[op])){
@@ -3281,7 +3300,11 @@ function t1Run(d,base,limit,extra,V){
         // 法線の持ち方は3通り: 面に1つ / 頂点ごとに番号 / 頂点ごとにそのもの。
         // 絵にするときは面に1つあれば足りるので、先頭の1つだけ取る
         if(k.nrm) nr=[dv.getInt16(xp+k.n*4,true),dv.getInt16(xp+k.n*4+2,true),dv.getInt16(xp+k.n*4+4,true)];
-        faces.push({idx,n:nr,seg,op}); used.set(op,(used.get(op)||0)+1);
+        // この面が使う色の語
+        let cAt=-1, cW=0;
+        if(op===8||op===9){ cAt=cw; cW=1; cw+=1 }
+        else if(op===12||op===13){ cAt=cw; cW=4; cw+=4 }
+        faces.push({idx,n:nr,seg,op,cAt,cW}); used.set(op,(used.get(op)||0)+1);
         xp+=k.size;
       }
       fp+=8;
@@ -3289,7 +3312,7 @@ function t1Run(d,base,limit,extra,V){
     steps++;
   }
   if(!faces.length) return no("面が1枚も出てこなかった",fp);
-  return {faces,verts:vi,vseg,vbone,steps,segs:seg,used:[...used.entries()].sort((a,b)=>a[0]-b[0]),
+  return {faces,verts:vi,vseg,vbone,vcolAt,colWords:cw,steps,segs:seg,used:[...used.entries()].sort((a,b)=>a[0]-b[0]),
           faceBytes:xp-facePtr, cmdBytes:fp+4-(base+0x10)};
 }
 
@@ -4689,7 +4712,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.35.0";
+const VERSION="v4.36.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
