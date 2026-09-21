@@ -160,7 +160,8 @@ canvas:active{cursor:grabbing}
       <div id="texgrid" class="texgrid"></div>
     </div>
     <div data-tab="file"><p class="label">メモリの写し（本物の骨）</p>
-      <label class="pick" style="display:inline-block">RAM ダンプかセーブステートを選ぶ<input id="memfile" type="file" hidden></label>
+      <label class="pick" style="display:inline-block">RAM ダンプ・VRAM ダンプを選ぶ<input id="memfile" type="file" hidden></label>
+      <p class="note"><b>VRAM ダンプ（1,048,576バイト）</b>も、ここに入れてください。キャラクターの模様（胸の紋章、ブーツの三角など）はテクスチャで、その絵は VRAM にあります。RAM ダンプには入っていません。両方入れると模様まで出ます。</p>
       <div id="ramchar-box" hidden style="margin-top:8px">
         <p class="label">写しの中にいた人</p>
         <select id="ramchar" aria-label="写しの中にいた人"></select>
@@ -300,6 +301,7 @@ const state={
   galWhy:null,     // 一覧で読めなかったモデルの理由   // モデルを並べている最中か
   t1Part:-1,          // ファイルの中のどのモデルを出すか（-1＝いちばん大きいもの）
   t1Slot:-1,          // 差し替えの組から何番目を出すか（-1＝出さない＝本体だけ）
+  vram:null,          // VRAM の写し（テクスチャ）
   ramChars:null,      // メモリの写しの中にいた登場人物（1P・2P…）
   ramSel:-1,          // そのうち、いま出している人
   entries:[],        // 表示中の一覧（アーカイブ or ディスクのファイル）
@@ -2582,6 +2584,12 @@ function t1SegLayout(d,objs,up){
   return out;
 }
 function buildT1Mesh(d,objs){
+  // 色の範囲の終わりは「次の部品の頭まで」で決める。ここは**絞る前の全部品**で
+  // 見ないといけない。本体だけ描くようにしてから、部品が1つしか渡らなくなり、
+  // 終わりがファイルの末尾になって、命令ごとの色の並びが一度も使われていなかった
+  // 呼ぶ側がすでに「本体だけ」に絞っていることがあるので、
+  // 部品の頭はモデルそのものから読み直す
+  const partBases=(()=>{ try{ return t1ObjectOffsets(d).slice().sort((a,b)=>a-b) }catch(_){ return [] } })();
   // 法線つきで読める部品が1つでもあれば、それがキャラクターの見た目。
   // 読めない部品は当たり判定か影なので、ふだんは出さない
   for(const o of objs){ if(!o.ok) continue;
@@ -2628,7 +2636,7 @@ function buildT1Mesh(d,objs){
   // 骨の区切りごとに並べる（どの区切りが何なのかを見るため）
   const segLay=t1Show.segSpread?t1SegLayout(d,objs,(T1_UP[t1Show.up]||T1_UP[0]).f):null;
   const pos=[],col=[],t0=[],t1=[],sm=[],nrm=[];
-  let used=0, tris=0, dropped=0;
+  let used=0, tris=0, dropped=0, texTris=0;
   for(const o of objs){
     if(!o.ok) continue;
     used++;
@@ -2680,7 +2688,7 @@ function buildT1Mesh(d,objs){
     // 命令ごとの色の並びが、色のバイト数とぴったり合うなら、そちらを使う
     const plan=(()=>{ if(!t1Show.colMode&&o.run){
         const pl=t1ColorPlan(o.run);
-        const ends=objs.map(x=>x.base).filter(x=>x>0).sort((x,y)=>x-y);
+        const ends=partBases.length?partBases:objs.map(x=>x.base).filter(x=>x>0).sort((x,y)=>x-y);
         const st=o.base+o.colPtr; let en=d.length;
         for(const b of ends) if(b>st&&b<en) en=b;
         if(pl&&pl.words*4===en-st) return pl;
@@ -2723,11 +2731,14 @@ function buildT1Mesh(d,objs){
           const pc=pf?(j=>(pf.w===1||pf.tex)?pf.at
                         :pf.w===pf.corners?pf.at+j
                         :pf.at+1+j):null;
+          const tx=(T1_VRAM&&pf&&pf.tex)?t1FaceTex(d,o,pf,a.length):null;
           const flat=t1Show.flatColor
             ?C0(pf?pc(t[0]):byFace?cface:byCorner?cbase:a[t[0]]):null;
           for(const j of t){ pos.push(...V0(a[j],f.seg));
             col.push(...(sc||flat||C0(pf?pc(j):byFace?cface:byCorner?cbase+j:a[j])));
-            t0.push(0,0,0); t1.push(0,0,0,0) }
+            if(tx&&tx.uv[j]){ t0.push(tx.uv[j][0],tx.uv[j][1],tx.tp[0]);
+                              t1.push(tx.tp[1],tx.tp[2],tx.tp[3],tx.tp[4]); texTris++ }
+            else { t0.push(0,0,0); t1.push(0,0,0,0) } }
           if(f.n) nrm.push(...up(f.n[0],f.n[1],f.n[2])); else nrm.push(0,0,0);
           sm.push(1); tris++;
         }
@@ -2803,7 +2814,7 @@ function buildT1Mesh(d,objs){
       o.tris=tris-trisBefore;
     }
   }
-  return {mesh:{pos:new Float32Array(pos),col:new Float32Array(col),t0:new Float32Array(t0),
+  return {texTris,vram:T1_VRAM,mesh:{vram:T1_VRAM,pos:new Float32Array(pos),col:new Float32Array(col),t0:new Float32Array(t0),
                 t1:new Float32Array(t1),sm:new Uint8Array(sm),
                 nrm:nrm.some(v=>v)?new Float32Array(nrm):null}, used, tris, dropped};
 }
@@ -3131,6 +3142,32 @@ let T1_BONES_REAL=false;         // メモリから取れた本物か（本物�
 // つまりこの2つの命令では、角の色は**引いてはいけない**（UV を色として塗ってしまう）
 const T1_COL_WORDS={8:1,9:1,12:4,13:4};
 const T1_COL_TEX={12:true,13:true};        // 語1以降が色ではなく u,v
+// テクスチャ付きの面の、貼り先を読む。並びはプレステの描画命令そのもの:
+//   語0: 色（テクスチャをそのまま出すので 255,255,255）
+//   語1: u0,v0 ＋ 上半分に CLUT
+//   語2: u1,v1 ＋ 上半分にテクスチャページ
+//   語3: u2,v2 ＋ 上半分に u3,v3（四角のときだけ。三角では 0）
+function t1FaceTex(d,o,pf,corners){
+  if(!pf||!pf.tex) return null;
+  const cp=o.base+o.colPtr, q=i=>cp+(pf.at+i)*4;
+  if(q(3)+4>d.length) return null;
+  const clut=d[q(1)+2]|(d[q(1)+3]<<8);
+  const page=d[q(2)+2]|(d[q(2)+3]<<8);
+  const uv=[[d[q(1)],d[q(1)+1]],[d[q(2)],d[q(2)+1]],[d[q(3)],d[q(3)+1]]];
+  if(corners===4) uv.push([d[q(3)+2],d[q(3)+3]]);
+  return {uv,clut,page,
+    tp:[[4,8,16,16][(page>>7)&3],(page&15)*64,((page>>4)&1)*256,(clut&63)*16,clut>>6]};
+}
+// VRAM の写し（1024×512×2バイト）を、絵に貼れる形にする。
+// シェーダは r + g*256 で16ビットの語を読む
+function t1VramRGBA(buf){
+  if(!buf||buf.length<1024*512*2) return null;
+  const out=new Uint8Array(1024*512*4);
+  for(let i=0;i<1024*512;i++){ out[i*4]=buf[i*2]; out[i*4+1]=buf[i*2+1]; out[i*4+2]=0; out[i*4+3]=255 }
+  return out;
+}
+let T1_VRAM=null;
+function t1SetVram(rgba){ T1_VRAM=rgba||null; return !!T1_VRAM }
 function t1ColWords(op,corners){
   const w=T1_COL_WORDS[op];
   return w==null?corners+1:w;   // 分かっていない命令は 角+1 を当てにいく
@@ -4652,7 +4689,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.34.0";
+const VERSION="v4.35.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4826,6 +4863,13 @@ function buildModelInner(raw,info){
                     :"  仮の骨組み: 鏡の対が見つからないので、何もしていません";
     }
     const r1=buildT1Mesh(b.out,okObjs);
+    // テクスチャの貼れる面を数える。buildT1Mesh のあとでないと o.run が無い
+    { let tex=0;
+      for(const o of okObjs){ if(!o.run) continue;
+        for(const f of o.run.faces) if(T1_COL_TEX[f.op]) tex++ }
+      if(tex) info.t1Tex=`  テクスチャの貼られる面 ${tex}枚`
+        +(state.vram?`（VRAM を読み込み済み。三角 ${r1.texTris||0}枚に貼っています）`
+                    :"（VRAM の写し 1,048,576バイトを読み込むと貼れます）"); }
     // どの部品が「命令の列として実行できた」かを数える。読み方を決めるのは
     // buildT1Mesh なので、必ずそのあとで数えること（前だと全部0になる）
     { let run=0, guess=0; const why=[], audit=[];
@@ -5277,7 +5321,7 @@ function digestLines(){
   if(inf&&e){
     L.push("");
     L.push(`選んでいるファイル: #${e.no} sector ${e.sector}`);
-    for(const k of ["ramChar","t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
+    for(const k of ["ramChar","t1Tex","t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
     for(const x of inf.t1ColorLines||[]) L.push("    "+x);
     if(inf.t1OpArgs&&inf.t1OpArgs.length){
       L.push("  まだ意味の分かっていない命令の中身（骨のずらし量を探している）:");
@@ -6396,6 +6440,16 @@ $("memfile").onchange=async e=>{
   st.textContent=`${f.name}（${fmtSize(f.size)}）を読んでいます…`;
   try{
     let buf=new Uint8Array(await f.arrayBuffer());
+    // VRAM の写し（1024×512×2＝1,048,576バイト）なら、テクスチャとして受け取る。
+    // 貼り先（UV・CLUT・ページ）はモデルの中に入っているが、絵そのものは
+    // VRAM にあって RAM ダンプには入っていない
+    if(buf.length===1024*512*2){
+      const rgba=t1VramRGBA(buf);
+      state.vram=rgba; t1SetVram(rgba);
+      st.textContent=`${f.name}: VRAM を受け取りました（1024×512）。テクスチャを貼ります`;
+      redrawCurrent(); updateReport(); openTab("info");
+      return;
+    }
     const exe=state.src&&state.src.exe;
     const prep=await memPrepare(buf,exe);
     // いま選んでいるモデルの区切りの数に合う骨の表を探して、そのまま使う
@@ -6480,6 +6534,7 @@ async function selectRamChar(k){
     state.ramBones=bb;
     t1SetBones(bb&&bb.list&&bb.list.length?bb.list:null,!!(bb&&bb.list&&bb.list.length));
     const {mesh,info}=buildModel(c.model.bytes);
+    if(state.vram&&typeof t1SetVram==="function") t1SetVram(state.vram);
     info.ramChar=`  写しの中の ${c.who}: モデル ${hex(c.model.at)}（${c.model.len} B）`
       +`　骨 ${c.bones.list.length}本　本体の命令5 ${c.cmd5}回`
       +(c.cmd5&&c.bones.list.length===c.cmd5?"（一致）":"（合っていない）")
