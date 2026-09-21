@@ -2677,6 +2677,14 @@ function buildT1Mesh(d,objs){
     //   頂点ごと     … 頂点番号で引く
     //   面の頂点ごと … 面を描きながら、頂点1つにつき1つ進める
     //   面に1色     … 面1枚につき1色。3つの角とも同じ色になる（べた塗り）
+    // 命令ごとの色の並びが、色のバイト数とぴったり合うなら、そちらを使う
+    const plan=(()=>{ if(!t1Show.colMode&&o.run){
+        const pl=t1ColorPlan(o.run);
+        const ends=objs.map(x=>x.base).filter(x=>x>0).sort((x,y)=>x-y);
+        const st=o.base+o.colPtr; let en=d.length;
+        for(const b of ends) if(b>st&&b<en) en=b;
+        if(pl&&pl.words*4===en-st) return pl;
+      } return null })();
     const cmode=cfit.get(o.base)||"頂点ごと";
     const byCorner=cmode==="面の頂点ごと";
     const byFace=cmode==="面に1色"||cmode==="面に1色（四角は2枚ぶん）";
@@ -2688,6 +2696,7 @@ function buildT1Mesh(d,objs){
     const R=o.run;
     if(R){
       const before=tris;
+      let fidx=0;
       const skipPart=t1Show.segOnly>=0&&t1Show.segPart>=0&&o.base!==t1Show.segPart;
       for(const f of R.faces){
         // 区切りを1つだけ描く（どの区切りが何なのかを見分けるため）。
@@ -2697,15 +2706,22 @@ function buildT1Mesh(d,objs){
         const a=f.idx;
         const cbase=ci; ci+=a.length;          // 面の頂点ごとに色が並んでいるときの引き位置
         const cface=fi; fi+=faceSplit&&a.length===4?2:1;   // 面に1色のときの引き位置
+        const pf=plan?plan.at[fidx]:null; fidx++;
         if(a.some(i=>far(i,f.seg))){ dropped++; continue }
         const strip=a.length===4?[[0,1,2],[0,2,3]]:[[0,1,2]];
         for(const t of strip){
           const sc=t1Show.segColor?T1_SEG_COL[(f.seg||0)%T1_SEG_COL.length]:null;
           // 色を面ごとにそろえる（平面塗り）。プレステのポリゴンは1枚1色のものが多い。
           // 頂点ごとに色が置かれていても、三角形の中で混ぜずに1色で塗る作りがある
-          const flat=t1Show.flatColor?C0(byFace?cface:byCorner?cbase:a[t[0]]):null;
+          // 命令ごとの並びが解けていれば、それで引く。
+          //   1語  … べた塗り（面に1色）
+          //   角+1 … 基準1語のあと、角ごとに1語
+          const pc=pf?(j=>pf.w===1?pf.at:pf.at+1+j):null;
+          const flat=t1Show.flatColor
+            ?C0(pf?pc(t[0]):byFace?cface:byCorner?cbase:a[t[0]]):null;
           for(const j of t){ pos.push(...V0(a[j],f.seg));
-            col.push(...(sc||flat||C0(byFace?cface:byCorner?cbase+j:a[j]))); t0.push(0,0,0); t1.push(0,0,0,0) }
+            col.push(...(sc||flat||C0(pf?pc(j):byFace?cface:byCorner?cbase+j:a[j])));
+            t0.push(0,0,0); t1.push(0,0,0,0) }
           if(f.n) nrm.push(...up(f.n[0],f.n[1],f.n[2])); else nrm.push(0,0,0);
           sm.push(1); tris++;
         }
@@ -3080,6 +3096,34 @@ const T1_SLOTS=256;
 let T1_BONES=null;
 let T1_BONES_REAL=false;         // メモリから取れた本物か（本物があれば推測は使わない）
 // ============================================================
+//  色は「面の命令ごと」に並び方が違う
+//
+//  部品ごとに1つの引き方（頂点ごと／面に1色…）を決めて全部の面に当てていたが、
+//  1つの部品の中で面の命令が混ざっている。命令ごとに1枚あたりの語数が違うので、
+//  1つの引き方で通すと、違う命令の面に当たった所から先が全部ずれる。
+//  画面がところどころ塊で別の色になっていたのはこれ。
+//
+//  実測（dump3・合計が色のバイト数にぴったり合う組み合わせを総当たりで解いた）:
+//    小さい部品8個: 命令9 が 27枚で 108B → 命令9 = 1語/枚（一意）
+//    1P 本体 3076B: 命令8=1 命令9=1 命令12=4 命令13=4（一意）
+//    ×2 の部品 256B: 命令12=4 命令13=4（一意）
+//  命令12・13 は3角の面なので、4語 ＝ 基準1語 ＋ 角ごとに1語
+// ============================================================
+const T1_COL_WORDS={8:1,9:1,12:4,13:4};
+function t1ColWords(op,corners){
+  const w=T1_COL_WORDS[op];
+  return w==null?corners+1:w;   // 分かっていない命令は 角+1 を当てにいく
+}
+function t1ColorPlan(run){
+  if(!run||!run.faces) return null;
+  const at=new Array(run.faces.length); let p=0;
+  for(let i=0;i<run.faces.length;i++){
+    const f=run.faces[i], w=t1ColWords(f.op,f.idx.length);
+    at[i]={at:p,w,corners:f.idx.length}; p+=w;
+  }
+  return {at,words:p};
+}
+// ============================================================
 //  区切りごとの「回転中心 B」
 //
 //  頂点はバインドポーズの共有空間に入っているので、R をそのまま掛けると
@@ -3179,7 +3223,7 @@ function t1Run(d,base,limit,extra,V){
         // 法線の持ち方は3通り: 面に1つ / 頂点ごとに番号 / 頂点ごとにそのもの。
         // 絵にするときは面に1つあれば足りるので、先頭の1つだけ取る
         if(k.nrm) nr=[dv.getInt16(xp+k.n*4,true),dv.getInt16(xp+k.n*4+2,true),dv.getInt16(xp+k.n*4+4,true)];
-        faces.push({idx,n:nr,seg}); used.set(op,(used.get(op)||0)+1);
+        faces.push({idx,n:nr,seg,op}); used.set(op,(used.get(op)||0)+1);
         xp+=k.size;
       }
       fp+=8;
@@ -4587,7 +4631,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.32.1";
+const VERSION="v4.33.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
