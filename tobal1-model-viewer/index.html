@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.26.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.27.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4459,7 +4459,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.26.0";
+const VERSION="v4.27.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -6205,7 +6205,16 @@ $("memfile").onchange=async e=>{
     state.mem=[`メモリの写し: ${f.name}（${fmtSize(f.size)}）${prep.note}`,
                ...hunt.lines,...memBoneLines(prep.buf,exe)];
     st.textContent=`${f.name}: ${note}`;
-    if(state.sel>=0) selectEntry(state.sel);            // 骨をかけて組み立て直す
+    // 描かれていたモデルが1件に決まったら、そちらへ切り替える。
+    // 骨と区切りの数が合うのはそのモデルだけなので、人に選び直させない
+    let jump=-1;
+    try{ const m=memDrawnMatch(state.drawnModel,state.sieve);
+         if(m) jump=state.entries.indexOf(m.e) }catch(_){}
+    if(jump>=0&&jump!==state.sel){
+      st.textContent=`${f.name}: ${note}　描かれていたモデル #${state.entries[jump].no} に切り替えました`;
+      selectEntry(jump);
+    }
+    else if(state.sel>=0) selectEntry(state.sel);       // 骨をかけて組み立て直す
   }catch(err){ console.error(err); state.mem=["メモリの写しを読めませんでした: "+err.message];
     st.textContent="読めませんでした: "+err.message }
   updateReport(); openTab("info");
@@ -7853,11 +7862,17 @@ function memBonePoseScore(list){
 function memBestBones(buf,base,opt){
   const o=opt||{}, L=memBoneIndexList(buf,base,o);
   if(!L.idx.length) return {why:L.why,list:null};
-  // 当てる先の候補：表Bが指している並び本体と、その前後に並んでいる同じ形の並び
-  const cands=[];
+  // 当てる先の候補。
+  // いちばん確かなのは「表Bの最小 − 0xF60」。実測で、1Pも2Pも
+  //   0x801F0A84 − 0x801EFB24 = 0xF60
+  //   0x801F28CC − 0x801F196C = 0xF60
+  // と、カメラを掛ける前と後の並びがこの間隔で並行していた。
+  // 走査が拾う「並びの先頭」は1本ずれることがある（実測で 0x801EFB24 と
+  // 0x801EFB44 が32バイト違った）ので、そちらは前後もずらして入れる
+  const cands=[L.viewBase-(o.gap||0xF60), L.viewBase];
   const runs=(()=>{ try{ return memMatrixStrideRuns(buf,{min:8,top:16,strides:[32]}) }catch(_){ return [] } })();
-  for(const r of runs) cands.push(0x80000000+(r.at-base));
-  cands.push(L.viewBase);
+  for(const r of runs){ const a=0x80000000+(r.at-base);
+    for(const d of [0,32,-32,64]) cands.push(a+d) }
   const seen=new Set(), out=[];
   for(const at of cands){
     if(seen.has(at)) continue; seen.add(at);
@@ -7866,7 +7881,13 @@ function memBestBones(buf,base,opt){
     const sc=memBonePoseScore(list);
     out.push({at,list,sc,view:at===L.viewBase});
   }
+  // 点数で選ぶと、もう一人（2P）の並びが勝つことがある。実測でそうなった。
+  // どちらも人の形をしているので、形では見分けられない。
+  // 同じキャラの入れものの中を選ぶのが筋なので、
+  // 「表Bの最小 − 0xF60」が人の形をしていれば、それを使う
   out.sort((a,b)=>b.sc.score-a.sc.score||a.sc.zw-b.sc.zw);
+  const home=out.find(x=>x.at===L.viewBase-(o.gap||0xF60)&&x.sc.ok);
+  if(home){ out.splice(out.indexOf(home),1); out.unshift(home); home.home=true }
   const best=out[0];
   return {idx:L.idx,viewBase:L.viewBase,start:L.start,cands:out,
           list:best?best.list:null,at:best?best.at:0,sc:best?best.sc:null};
@@ -7878,6 +7899,7 @@ function memBestBoneLines(r){
   for(const c of r.cands.slice(0,3))
     L.push(`    ${hex(c.at)} に当てると 背の高さ ${c.sc.tall}　左右の対 ${c.sc.pairs}組`
       +`　左右の開き ${c.sc.zw}`+(c===r.cands[0]?"　← これを使う":"")
+      +(c.home?"（表Bの最小 − 0xF60。同じキャラの入れものの中）":"")
       +(c.view?"（表Bが指している並び。カメラを掛けたあと）":""));
   return L;
 }
@@ -7910,6 +7932,13 @@ function memDrawnModel(buf,base,opt){
     return {tableC:tc,part0:p0,at:a,off0,words};
   }
   return {why:"表Cの手前に、つじつまの合う 0x90000000 が無い",tableC:tc,part0:p0};
+}
+// 突き合わせた結果を1件に決めて返す（画面がその番号を選べるように）
+function memDrawnMatch(r,sieve){
+  if(!r||!r.at||!sieve||!sieve.other) return null;
+  const c=sieve.other.filter(e=>e.words&&e.words.length>=8
+    &&e.words.every((v,k)=>v===r.words[k]));
+  return c.length===1?c[0]:null;
 }
 function memDrawnModelLines(r,sieve){
   if(!r||!r.at) return ["  描かれているモデルは決められない"+(r&&r.why?"（"+r.why+"）":"")];
