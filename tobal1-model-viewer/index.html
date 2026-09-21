@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.22.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.23.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4459,7 +4459,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.22.0";
+const VERSION="v4.23.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4582,6 +4582,29 @@ function buildModelInner(raw,info){
       }
       t1SetBones(null);
     }catch(err){ info.t1ChainTry="  鎖の効きが測れなかった: "+(err&&err.message||err) }
+    // 本物の骨は、その場面で描かれていたキャラクターぶん全部が並んでいる。
+    // モデルの区切りより多いので、どこから使うかで形が変わる。
+    // 「人は縦に長くて細い」を目当てに、始まりをずらして当てはめる
+    if(T1_BONES_REAL&&state.realBones&&state.realBones.list.length>2) try{
+      const all=state.realBones.list;
+      const ext=m=>{ const P=m.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+        for(let i=0;i<P.length;i+=3) for(let a=0;a<3;a++){
+          if(P[i+a]<mn[a])mn[a]=P[i+a]; if(P[i+a]>mx[a])mx[a]=P[i+a] }
+        return mn.map((v,a)=>Math.round(mx[a]-v)) };
+      let best=null;
+      for(let st=0;st<all.length;st++){
+        t1SetBones(all.slice(st).concat(all.slice(0,st)),true);
+        const e=ext(buildT1Mesh(b.out,okObjs));
+        const q=[...e].sort((x,y)=>y-x);
+        // 縦に長くて細いほど良い。人は 背1500 × 幅500 くらい
+        const score=q[0]/(q[1]+1);
+        if(!best||score>best.score) best={st,score,e};
+      }
+      t1SetBones(all.slice(best.st).concat(all.slice(0,best.st)),true);
+      info.t1RealBone=`  本物の骨 ${all.length}本／${best.st}番目から当てています`
+        +`（縦横 ${best.e.join("×")}　縦横比 ${best.score.toFixed(2)}）`
+        +(best.score>=2?"　→ 縦に長くて細い。人の形":"　→ まだ丸い。当てはめ直しが要る");
+    }catch(err){ info.t1RealBone="  本物の骨の当てはめで失敗: "+(err&&err.message||err) }
     // 鎖をたどって積む（部品の座標が親からの相対だという読みに沿った置き方）
     if(t1Show.chainBone&&!T1_BONES_REAL){
       t1SetBones(null); buildT1Mesh(b.out,okObjs);
@@ -5056,7 +5079,7 @@ function digestLines(){
   if(inf&&e){
     L.push("");
     L.push(`選んでいるファイル: #${e.no} sector ${e.sector}`);
-    for(const k of ["t1Parts","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
+    for(const k of ["t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
     for(const x of inf.t1ColorLines||[]) L.push("    "+x);
     if(inf.t1OpArgs&&inf.t1OpArgs.length){
       L.push("  まだ意味の分かっていない命令の中身（骨のずらし量を探している）:");
