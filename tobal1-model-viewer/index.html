@@ -166,6 +166,11 @@ canvas:active{cursor:grabbing}
         <select id="ramchar" aria-label="写しの中にいた人"></select>
         <p class="note">ディスクのファイルではなく、<b>写しに載っているモデルそのもの</b>を出しています。骨もモデルも同じ1つの写しの中にあるので、突き合わせが要りません。別の場面で取った2つの写しを比べたところ、ポーズは変わってもモデルは1バイトも変わりませんでした。</p>
       </div>
+      <div id="boneshift-box" hidden style="margin-top:8px">
+        <p class="label">骨のずらし量</p>
+        <select id="boneshift" aria-label="骨のずらし量"></select>
+        <p class="note">区切り番号から骨の番号へ、いくつずらして引くか。読み取りの区切りは最初の命令5 で 1 になり、表Bの骨は 0 から並ぶので <b>-1</b> が筋の通る値です。人の形にならないときは、ここを変えて見比べてください。</p>
+      </div>
       <div id="bonepick-box" hidden style="margin-top:8px">
         <p class="label">使う骨の表（当ててみた結果の良い順）</p>
         <select id="bonepick" aria-label="使う骨の表"></select>
@@ -2636,7 +2641,10 @@ function buildT1Mesh(d,objs){
     const V0=(i,seg)=>{ const q=o.base+o.vertPtr+i*8;
                   let x=dv.getInt16(q,true), y=dv.getInt16(q+2,true), z=dv.getInt16(q+4,true);
                   const vs=(VSEG&&VSEG[i]!=null)?VSEG[i]:seg;
-                  const M=BM&&BM[(vs|0)%BM.length];
+                  // t1Run の区切り番号は、最初の命令5 で 1 になる（0 から始まらない）。
+                  // 表Bの骨は 0 から並ぶので、そのまま引くと全部が1つ隣の関節に付く
+                  const bi=BM?(((vs|0)+T1_BONE_SHIFT)%BM.length+BM.length)%BM.length:0;
+                  const M=BM&&BM[bi];
                   if(M){ const k=M.one||4096;
                     const X=(M.m[0]*x+M.m[1]*y+M.m[2]*z)/k+M.t[0];
                     const Y=(M.m[3]*x+M.m[4]*y+M.m[5]*z)/k+M.t[1];
@@ -3054,6 +3062,10 @@ const T1_SLOTS=256;
 // メモリから取れた骨の行列。区切り（命令5）の番号で引く。null なら骨なしで描く
 let T1_BONES=null;
 let T1_BONES_REAL=false;         // メモリから取れた本物か（本物があれば推測は使わない）
+// 区切り番号から骨の番号へのずらし量。既定は -1。
+// t1Run は最初の命令5 で区切りを 1 にするが、表Bの骨は 0 から並ぶ
+let T1_BONE_SHIFT=-1;
+function t1SetBoneShift(v){ T1_BONE_SHIFT=v|0 }
 function t1SetBones(list,real){ T1_BONES=(list&&list.length)?list:null; if(real!=null) T1_BONES_REAL=!!real }
 // 頂点を置き場所に入れる命令の「読み方」。既定は「1と2だけが入れる／語1が置き場所／語2が個数」。
 // これで読めない部品があるので、別の読み方も用意して、合うものを探して覚える
@@ -4521,7 +4533,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.29.0";
+const VERSION="v4.30.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -6361,7 +6373,18 @@ async function selectRamChar(k){
   busy(""); updateStatus(); updateReport(); updateHud();
   fillT1Part(state.selInfo); fillT1Slot(state.selInfo);
 }
+$("boneshift").onchange=e=>{ t1SetBoneShift(+e.target.value); redrawCurrent() };
+function fillBoneShift(){
+  const box=$("boneshift-box"), sel=$("boneshift");
+  if(!box||!sel) return;
+  if(!state.ramChars||!state.ramChars.length){ box.hidden=true; return }
+  box.hidden=false;
+  if(!sel.options.length)
+    sel.innerHTML=[-3,-2,-1,0,1,2].map(v=>`<option value="${v}">${v>0?"+":""}${v}${v===-1?"（既定・筋の通る値）":""}</option>`).join("");
+  sel.value=String(T1_BONE_SHIFT);
+}
 function fillRamChar(){
+  fillBoneShift();
   const box=$("ramchar-box"), sel=$("ramchar");
   const c=state.ramChars||[];
   if(!box||!sel) return;
