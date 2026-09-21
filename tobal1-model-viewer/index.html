@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.25.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.26.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4459,7 +4459,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.25.0";
+const VERSION="v4.26.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5118,12 +5118,27 @@ function digestLines(){
   }
   if(state.mem&&state.mem.length){
     L.push("");
+    // 区画ごとに枠を決めて、その中で切る。
+    // 1本の流れを「先頭N行」で切っていたので、あとから足したものが
+    // 先に出るものに押し出されて消えていた（6回やった）
+    const P=state.memParts;
+    if(P){
+      const sec=(k,cap)=>{ const a=P[k]||[]; if(a.length) L.push(...a.slice(0,cap)) };
+      sec("head",1);            // RAM の先頭が見つかったか
+      sec("drawn",4);           // いま描かれているモデルはどれか
+      sec("bones",4);           // 表Bから取れた骨
+      sec("best",4);            // どの並びに当てたか
+      sec("jump",8);            // 番号の列と、遠くの枝
+      sec("gap",10);            // 2つの並びのあいだに何があるか
+      sec("stack",8);           // 行列の積み場所の生ダンプ
+    } else
     L.push(...state.mem.filter(x=>/骨|メモリの写し|収まった|RAM|一致|読める場所/.test(x)).slice(0,14));
     // 行列の積み場所の生ダンプは、言葉で拾わずにそのまま渡す。
     // ふるいを通していたので、足した行が全部落ちていた
-    if(state.memStack&&state.memStack.length) L.push(...state.memStack);
-    // 本物の骨が取れたかどうかは、まとめのいちばん目立つ所に出す
-    if(state.realBones) L.push(...memRealBoneLines(state.realBones));
+    if(!state.memParts){
+      if(state.memStack&&state.memStack.length) L.push(...state.memStack);
+      if(state.realBones) L.push(...memRealBoneLines(state.realBones));
+    }
   }
   // まだ名前の付いていないキャラクターのモデル。残りを数えるため
   { const sig=((state.sieve&&state.sieve.other)||[])
@@ -7268,32 +7283,37 @@ function memBoneLines(buf,exe){
     return L;
   }
   L.push(`メモリの写しを読みました（RAM の先頭は ファイルの +0x${base.toString(16)}）`);
+  // 区画ごとに分けて持つ。1本の流れにして「先頭N行だけ」で切ると、
+  // 先に出るものが枠を使い切って、あとから足したものが落ちる（6回やった）
+  const P={head:[`メモリの写しを読みました（RAM の先頭は ファイルの +0x${base.toString(16)}）`]};
+  if(typeof state==="object"&&state) state.memParts=P;
+  const put=(k,lines)=>{ P[k]=(P[k]||[]).concat(lines); L.push(...lines) };
   const M=memReader(buf,base);
   const hx=(a,n)=>Array.from(M.bytes(a,n),v=>v.toString(16).padStart(2,"0")).join(" ");
-  L.push(...memCpuLines(buf));
+  put("cpu",memCpuLines(buf));
   // ふるいにかけずに、行列の積み場所をそのまま出す。
   // 条件で掃いて0件だったので、条件のほうを疑う
   // 表Bをたどって、本物の骨を取り出す。取れたらそれを使う（推測はもう要らない）
   try{
     const rb=memRealBones(buf,base);
     if(typeof state==="object"&&state) state.realBones=rb;
-    L.push(...memRealBoneLines(rb));
+    put("bones",memRealBoneLines(rb));
     // 表Bが指す行列はカメラを掛けたあとの姿（横に0.8倍の歪みが入っている）。
     // 番号の列に直して、掛ける前の並びに当てる
     const bb=memBestBones(buf,base);
     if(typeof state==="object"&&state) state.bestBones=bb;
-    L.push(...memBestBoneLines(bb));
+    put("best",memBestBoneLines(bb));
     // いま描かれているモデルが、ディスクのどのファイルかを決める。
     // 骨の本数と区切りの数が合わないのは、別のキャラを見ていたからかもしれない。
     // 推測でそう言うのをやめて、突き合わせて決める
     try{
       const dm=memDrawnModel(buf,base);
       if(typeof state==="object"&&state) state.drawnModel=dm;
-      L.push(...memDrawnModelLines(dm,typeof state==="object"&&state?state.sieve:null));
+      put("drawn",memDrawnModelLines(dm,typeof state==="object"&&state?state.sieve:null));
     }catch(err){ L.push("  描かれているモデルが決められませんでした: "+err.message) }
     // 番号が大きく飛んでいる所（別の枝）と、2つの配列のあいだを、そのまま出す
-    try{ L.push(...memBoneJumpLines(buf,base)) }catch(err){ L.push("  番号の列が出せない: "+err.message) }
-    try{ L.push(...memGapLines(buf,base)) }catch(err){ L.push("  あいだが出せない: "+err.message) }
+    try{ put("jump",memBoneJumpLines(buf,base)) }catch(err){ put("jump",["  番号の列が出せない: "+err.message]) }
+    try{ put("gap",memGapLines(buf,base)) }catch(err){ put("gap",["  あいだが出せない: "+err.message]) }
     const use=(bb&&bb.list)||rb.list;
     if(use&&use.length&&typeof t1SetBones==="function") t1SetBones(use,true);
   }catch(err){ L.push("  本物の骨が取れませんでした: "+err.message) }
@@ -7301,7 +7321,7 @@ function memBoneLines(buf,exe){
   // 言葉で拾う仕掛けにしていたので、生ダンプの行が全部落ちていた（5度目）
   try{ const sl=memStackLines(buf,base);
        if(typeof state==="object"&&state) state.memStack=sl;
-       L.push(...sl) }
+       put("stack",sl) }
   catch(err){ const e=["  行列の積み場所が読めませんでした: "+err.message];
               if(typeof state==="object"&&state) state.memStack=e;
               L.push(...e) }
