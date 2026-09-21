@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.23.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.24.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4459,7 +4459,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.23.0";
+const VERSION="v4.24.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4582,29 +4582,16 @@ function buildModelInner(raw,info){
       }
       t1SetBones(null);
     }catch(err){ info.t1ChainTry="  鎖の効きが測れなかった: "+(err&&err.message||err) }
-    // 本物の骨は、その場面で描かれていたキャラクターぶん全部が並んでいる。
-    // モデルの区切りより多いので、どこから使うかで形が変わる。
-    // 「人は縦に長くて細い」を目当てに、始まりをずらして当てはめる
-    if(T1_BONES_REAL&&state.realBones&&state.realBones.list.length>2) try{
-      const all=state.realBones.list;
-      const ext=m=>{ const P=m.mesh.pos, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
-        for(let i=0;i<P.length;i+=3) for(let a=0;a<3;a++){
-          if(P[i+a]<mn[a])mn[a]=P[i+a]; if(P[i+a]>mx[a])mx[a]=P[i+a] }
-        return mn.map((v,a)=>Math.round(mx[a]-v)) };
-      let best=null;
-      for(let st=0;st<all.length;st++){
-        t1SetBones(all.slice(st).concat(all.slice(0,st)),true);
-        const e=ext(buildT1Mesh(b.out,okObjs));
-        const q=[...e].sort((x,y)=>y-x);
-        // 縦に長くて細いほど良い。人は 背1500 × 幅500 くらい
-        const score=q[0]/(q[1]+1);
-        if(!best||score>best.score) best={st,score,e};
-      }
-      t1SetBones(all.slice(best.st).concat(all.slice(0,best.st)),true);
-      info.t1RealBone=`  本物の骨 ${all.length}本／${best.st}番目から当てています`
-        +`（縦横 ${best.e.join("×")}　縦横比 ${best.score.toFixed(2)}）`
-        +(best.score>=2?"　→ 縦に長くて細い。人の形":"　→ まだ丸い。当てはめ直しが要る");
-    }catch(err){ info.t1RealBone="  本物の骨の当てはめで失敗: "+(err&&err.message||err) }
+    // v4.23.0 で「縦横比がいちばん大きいものを選ぶ」当てはめを入れたが、
+    // あれは間違いだった。骨がずれて部品が散らばると、いちばん長い辺は伸びる。
+    // つまり散らばったほうを高く評価していた。目で見たほうが正しかった。
+    // 番号の列に直す道ができたので、ずらす当てはめはやめる
+    if(T1_BONES_REAL&&state.bestBones&&state.bestBones.list)
+      info.t1RealBone=`  本物の骨 ${state.bestBones.list.length}本`
+        +`（表Bの順そのまま／${hex(state.bestBones.at)} の並びから）`
+        +(state.bestBones.sc?`　背の高さ ${state.bestBones.sc.tall}　左右の対 ${state.bestBones.sc.pairs}組`:"");
+    else if(T1_BONES_REAL&&state.realBones&&state.realBones.list.length)
+      info.t1RealBone=`  本物の骨 ${state.realBones.list.length}本（表Bの順そのまま）`;
     // 鎖をたどって積む（部品の座標が親からの相対だという読みに沿った置き方）
     if(t1Show.chainBone&&!T1_BONES_REAL){
       t1SetBones(null); buildT1Mesh(b.out,okObjs);
@@ -7291,7 +7278,13 @@ function memBoneLines(buf,exe){
     const rb=memRealBones(buf,base);
     if(typeof state==="object"&&state) state.realBones=rb;
     L.push(...memRealBoneLines(rb));
-    if(rb.list.length&&typeof t1SetBones==="function") t1SetBones(rb.list,true);
+    // 表Bが指す行列はカメラを掛けたあとの姿（横に0.8倍の歪みが入っている）。
+    // 番号の列に直して、掛ける前の並びに当てる
+    const bb=memBestBones(buf,base);
+    if(typeof state==="object"&&state) state.bestBones=bb;
+    L.push(...memBestBoneLines(bb));
+    const use=(bb&&bb.list)||rb.list;
+    if(use&&use.length&&typeof t1SetBones==="function") t1SetBones(use,true);
   }catch(err){ L.push("  本物の骨が取れませんでした: "+err.message) }
   // まとめへは、ふるい（正規表現）を通さずにそのまま渡す。
   // 言葉で拾う仕掛けにしていたので、生ダンプの行が全部落ちていた（5度目）
@@ -7767,6 +7760,94 @@ function memRealBoneLines(r){
     +`　背の高さ ${R(A(1))[1]-R(A(1))[0]}`);
   for(const [p,c] of r.roots)
     L.push(`    ${hex(p)} が ${c}回出てくる（枝の付け根に戻る動き）`);
+  return L;
+}
+
+// ============================================================
+//  表Bの並びを「番号の列」に直して、歪みのない姿に置き換える
+//
+//  表Bが指す行列は、カメラから見た空間に入っている（Z が 3500〜4600、
+//  1行目が 3276＝0.8倍。画面の横比の補正がカメラ行列に入っているため）。
+//  同じ並びが、カメラを掛ける前の空間にもある。
+//
+//  実測（実物のダンプ）:
+//    表Bの40個のポインタは、すべて 0x801F0A84 からの 32バイト刻みに乗る
+//    番号にすると 1〜60（別々に34個）。付け根が2つ（1番と18番）
+//    その番号をそのまま 0x801EFB24 に当てると、34個すべてが行列で、
+//      X -1954〜-488　Y 28〜1529　Z -492〜573　背の高さ 1501
+//    という、立っている人の姿になる
+//
+//  つまり、2つの並びは同じ番号で並行している。
+//  表Bは「どの番号を、どの順で使うか」を教える列だった
+// ============================================================
+function memBoneIndexList(buf,base,opt){
+  const o=opt||{}, M=memReader(buf,base);
+  const r=memRealBones(buf,base,o);
+  if(!r.list.length) return {why:r.why||"表Bがたどれない",idx:[]};
+  const ptrs=r.ptrs;
+  const viewBase=Math.min(...ptrs);
+  // 全部が同じ刻みに乗っているか。乗らなければ、並行した並びという読みが外れる
+  const idx=ptrs.map(p=>(p-viewBase)/32);
+  if(idx.some(v=>!Number.isInteger(v)||v<0))
+    return {why:"ポインタが32バイト刻みに乗らない",idx:[],viewBase};
+  return {idx,viewBase,ptrs,start:r.start,used:r.used};
+}
+// 番号の列を、別の並びに当てる
+function memBonesByIndex(buf,base,idx,at){
+  const M=memReader(buf,base), list=[];
+  for(const i of idx){
+    const bm=memBoneMatrix(M,at+i*32);
+    if(!bm) return null;
+    list.push(bm);
+  }
+  return list;
+}
+// どの並びに当てると「立っている人」になるかを、測って選ぶ。
+// 散らばりを高く評価してしまう「縦横比」ではなく、
+// 背の高さと左右の対で見る（v4.23.0 でここを間違えた）
+function memBonePoseScore(list){
+  if(!list||!list.length) return null;
+  const T=list.map(b=>b.t), A=i=>T.map(t=>t[i]), R=a=>[Math.min(...a),Math.max(...a)];
+  const y=R(A(1)), z=R(A(2));
+  let pairs=0;
+  for(let i=0;i<T.length;i++) for(let j=i+1;j<T.length;j++){
+    const a=T[i],b=T[j];
+    if(Math.abs(a[2]+b[2])<60&&Math.abs(a[2])>60
+       &&Math.abs(a[0]-b[0])<320&&Math.abs(a[1]-b[1])<320) pairs++; }
+  const tall=y[1]-y[0], zw=z[1]-z[0];
+  // 立っている人は「背が 800〜3000」「左右に開きすぎない」「左右の対がある」
+  const okTall=tall>800&&tall<3000;
+  return {tall,pairs,zw,ok:okTall&&pairs>=4,score:(okTall?1:0)*pairs};
+}
+function memBestBones(buf,base,opt){
+  const o=opt||{}, L=memBoneIndexList(buf,base,o);
+  if(!L.idx.length) return {why:L.why,list:null};
+  // 当てる先の候補：表Bが指している並び本体と、その前後に並んでいる同じ形の並び
+  const cands=[];
+  const runs=(()=>{ try{ return memMatrixStrideRuns(buf,{min:8,top:16,strides:[32]}) }catch(_){ return [] } })();
+  for(const r of runs) cands.push(0x80000000+(r.at-base));
+  cands.push(L.viewBase);
+  const seen=new Set(), out=[];
+  for(const at of cands){
+    if(seen.has(at)) continue; seen.add(at);
+    const list=memBonesByIndex(buf,base,L.idx,at);
+    if(!list) continue;
+    const sc=memBonePoseScore(list);
+    out.push({at,list,sc,view:at===L.viewBase});
+  }
+  out.sort((a,b)=>b.sc.score-a.sc.score||a.sc.zw-b.sc.zw);
+  const best=out[0];
+  return {idx:L.idx,viewBase:L.viewBase,start:L.start,cands:out,
+          list:best?best.list:null,at:best?best.at:0,sc:best?best.sc:null};
+}
+function memBestBoneLines(r){
+  if(!r||!r.list) return ["  番号の列に直せない"+(r&&r.why?"（"+r.why+"）":"")];
+  const L=[`  表Bを番号の列に直しました: ${r.idx.length}個`
+    +`（別々に ${new Set(r.idx).size}個・番号は 0〜${Math.max(...r.idx)}）`];
+  for(const c of r.cands.slice(0,3))
+    L.push(`    ${hex(c.at)} に当てると 背の高さ ${c.sc.tall}　左右の対 ${c.sc.pairs}組`
+      +`　左右の開き ${c.sc.zw}`+(c===r.cands[0]?"　← これを使う":"")
+      +(c.view?"（表Bが指している並び。カメラを掛けたあと）":""));
   return L;
 }
 // ============================================================
