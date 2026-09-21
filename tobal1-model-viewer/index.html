@@ -2716,7 +2716,13 @@ function buildT1Mesh(d,objs){
           // 命令ごとの並びが解けていれば、それで引く。
           //   1語  … べた塗り（面に1色）
           //   角+1 … 基準1語のあと、角ごとに1語
-          const pc=pf?(j=>pf.w===1?pf.at:pf.at+1+j):null;
+          // テクスチャ付きの面は、語1以降が u,v なので色として引かない。
+          //   1語        … べた塗り
+          //   テクスチャ  … 語0（白）だけ
+          //   角の数ぴったり … 角ごと
+          const pc=pf?(j=>(pf.w===1||pf.tex)?pf.at
+                        :pf.w===pf.corners?pf.at+j
+                        :pf.at+1+j):null;
           const flat=t1Show.flatColor
             ?C0(pf?pc(t[0]):byFace?cface:byCorner?cbase:a[t[0]]):null;
           for(const j of t){ pos.push(...V0(a[j],f.seg));
@@ -3090,7 +3096,15 @@ function t1CutDump(d,o,W,n){
 // ============================================================
 const T1_CMD_LEN={0:0,1:12,2:16,3:8,4:16,5:4,6:8,7:12};
 const T1_FACE_OP={8:{size:20,n:3,nrm:true},9:{size:24,n:4,nrm:true},
-                  10:{size:12,n:3,nrm:false},11:{size:16,n:4,nrm:false}};
+                  10:{size:12,n:3,nrm:false},11:{size:16,n:4,nrm:false},
+// 命令12・13 は、総当たりの解き方だと「12=三角+法線／13=三角+12バイト」という
+// 通ってしまう別解を選んでいた。生のバイト列で確かめたら違った。
+//   命令13 の記録 24B の 4つ目の語は、**4の倍数で頂点数の内側** に収まる。
+//   dump3 の両キャラ・全部品を合わせて 51枚中51枚。つまり4つ目の頂点番号。
+//   最後の8バイトは ±4300 に収まり詰め物が0 → 法線。51枚中51枚。
+//   命令12 の4つ目の語は 8枚中0枚しか通らない → こちらは三角のまま。
+// 三角として読んでいたので、19枚ぶんの面が欠け、色の割り当てもそこでずれていた
+                  12:{size:20,n:3,nrm:true},13:{size:24,n:4,nrm:true}};
 const T1_SLOTS=256;
 // メモリから取れた骨の行列。区切り（命令5）の番号で引く。null なら骨なしで描く
 let T1_BONES=null;
@@ -3109,7 +3123,14 @@ let T1_BONES_REAL=false;         // メモリから取れた本物か（本物�
 //    ×2 の部品 256B: 命令12=4 命令13=4（一意）
 //  命令12・13 は3角の面なので、4語 ＝ 基準1語 ＋ 角ごとに1語
 // ============================================================
+// 命令12・13 は**テクスチャ付き**の面だった。色の語は
+//   語0 = 色（テクスチャをそのまま出すので 255,255,255）
+//   語1〜 = 角ごとの u,v（上半分に CLUT とテクスチャページ）
+// 実測（dump3）: 1P 本体の21枚すべてで語0が白、u,v は 63/63 が 0〜255 に収まる。
+// ページは 1P が 0x1e、2P が 0x1f。CLUT は 0x7800〜0x7a83。
+// つまりこの2つの命令では、角の色は**引いてはいけない**（UV を色として塗ってしまう）
 const T1_COL_WORDS={8:1,9:1,12:4,13:4};
+const T1_COL_TEX={12:true,13:true};        // 語1以降が色ではなく u,v
 function t1ColWords(op,corners){
   const w=T1_COL_WORDS[op];
   return w==null?corners+1:w;   // 分かっていない命令は 角+1 を当てにいく
@@ -3119,7 +3140,7 @@ function t1ColorPlan(run){
   const at=new Array(run.faces.length); let p=0;
   for(let i=0;i<run.faces.length;i++){
     const f=run.faces[i], w=t1ColWords(f.op,f.idx.length);
-    at[i]={at:p,w,corners:f.idx.length}; p+=w;
+    at[i]={at:p,w,corners:f.idx.length,tex:!!T1_COL_TEX[f.op]}; p+=w;
   }
   return {at,words:p};
 }
@@ -4631,7 +4652,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.33.0";
+const VERSION="v4.34.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
