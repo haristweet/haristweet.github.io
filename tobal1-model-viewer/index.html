@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.19.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.20.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4450,7 +4450,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.19.0";
+const VERSION="v4.20.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -7480,7 +7480,10 @@ function memStackLines(buf,base,opt){
     L.push("  表A・表B・表C が全部 0 ＝ 描き終わったあとの写しです。");
     L.push("    描いている最中の写しなら、表Bに骨の行列の並びの番地が入っています。");
     L.push("    取り方: DuckStation の設定 → 詳細 で「デバッガを有効」にし、");
-    L.push("    実行ブレークを 0x8001F44C（命令5の処理）か 0x8001A18C（表に入れる所）に置く。");
+    L.push("    実行ブレークは 0x8001F464 に置いてください。");
+    L.push("    （0x8001F44C は表が 0 でも通ります。0x8001F45C の beq で");
+    L.push("      「表Aが0なら何もせず飛ぶ」ので、その先の 0x8001F464 で止めれば、");
+    L.push("      表A・表B にかならず本物の番地が入っています）");
     L.push("    止まったら、その止まったままセーブステートを保存してください。");
   }
   if(!M.ptr(sp)) return L;
@@ -7595,10 +7598,12 @@ function memMatrixStrideRuns(buf,opt){
     const d=S/step; if(!Number.isInteger(d)) continue;
     const seen=new Uint8Array(n+1);
     for(let i=0;i<=n;i++){
-      if(!ok[i]||seen[i]) continue;
-      let c=0, j=i, strong=0;
-      while(j<=n&&ok[j]){ if(ok[j]===2) strong++; seen[j]=1; c++; j+=d }
-      if(c>=(o.min||4)) out.push({at:i*step,stride:S,n:c,strong});
+      // 「たぶん」でつなぐと、350,351,352… と滑らかに増えるだけの数値表が
+      // 550個の並びとして先頭に出てしまう。はっきり行列のものだけでつなぐ
+      if(ok[i]!==2||seen[i]) continue;
+      let c=0, j=i;
+      while(j<=n&&ok[j]===2){ seen[j]=1; c++; j+=d }
+      if(c>=(o.min||4)) out.push({at:i*step,stride:S,n:c,strong:c});
     }
   }
   // 同じ所を別の間隔でも拾う。長いほうを残す
@@ -7624,6 +7629,11 @@ function memMatrixStrideLines(buf,base,opt){
       +(r.n>=20?"　→ 骨30本ぶんに近い":r.n>=10?"　→ 手足のどれかぶん？":""));
   }
   // いちばん長い所の中身を、そのまま数個出す
+  // いちばん長い所が人の形をしているか、移動の値で確かめる
+  for(const r of runs.slice(0,3)){
+    const sh=memPoseShape(buf,base,r.at,r.stride,r.n);
+    if(sh) L.push(`    +0x${r.at.toString(16)} の`+memPoseLine(sh).replace(/^ {2}/,""));
+  }
   const b=runs[0];
   for(let k=0;k<Math.min(b.n,opt&&opt.show||4);k++){
     const off=b.at+k*b.stride, d=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
@@ -7632,6 +7642,40 @@ function memMatrixStrideLines(buf,base,opt){
     L.push(`      +0x${off.toString(16)}　回転[${r.join(",")}] 移動(${t.join(",")})`);
   }
   return L;
+}
+
+// ============================================================
+//  見つかった並びが、人の形をしているか
+//  実物では、24個の塊が4つ出た。移動の値を並べると
+//    Y 28〜1511（足が地面、頭が上）／ Z が ± に分かれる（左右の手足）
+//  という、立っている人そのものの形をしていた
+// ============================================================
+function memPoseShape(buf,base,at,stride,n){
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+  const T=[];
+  for(let k=0;k<n;k++){ const o=at+k*stride;
+    if(o+32>buf.length) break;
+    T.push([0,1,2].map(i=>dv.getInt32(o+20+i*4,true))); }
+  if(T.length<4) return null;
+  const ax=i=>T.map(t=>t[i]), mn=a=>Math.min(...a), mx=a=>Math.max(...a);
+  // 左右の対：Z の符号が逆で、X と Y が近いもの
+  let pairs=0;
+  for(let i=0;i<T.length;i++) for(let j=i+1;j<T.length;j++){
+    const a=T[i], b=T[j];
+    if(Math.abs(a[2]+b[2])<60&&Math.abs(a[2])>60
+       &&Math.abs(a[0]-b[0])<320&&Math.abs(a[1]-b[1])<320) pairs++; }
+  const tall=mx(ax(1))-mn(ax(1));
+  return {n:T.length,
+    x:[mn(ax(0)),mx(ax(0))], y:[mn(ax(1)),mx(ax(1))], z:[mn(ax(2)),mx(ax(2))],
+    tall, pairs, spots:new Set(T.map(t=>t.join(","))).size};
+}
+function memPoseLine(sh){
+  if(!sh) return "  形が読めない";
+  return `  移動の値: X ${sh.x.join("〜")}　Y ${sh.y.join("〜")}　Z ${sh.z.join("〜")}`
+    +`　背の高さ ${sh.tall}　左右の対 ${sh.pairs}組　別々の位置 ${sh.spots}個`
+    +(sh.tall>800&&sh.pairs>=4
+      ? "　→ 立っている人の形。これが骨の並び"
+      : sh.tall>800?"　→ 縦に長いが、左右の対が無い（横から見た別の空間かも）":"");
 }
 // ============================================================
 //  トバルNo.1 のテクスチャを絵にする
