@@ -197,9 +197,9 @@ canvas:active{cursor:grabbing}
       セーブステートでも読めますが、描き終わったあとの瞬間だと表が空になっています。圧縮は <b>Deflate</b> か <b>なし</b> にしてください（既定の zstd はブラウザがほどけません）。</p>
       <div class="note" id="mem-status"></div>
     </div>
-    <div data-tab="file" id="t1slot-box" hidden><p class="label">差し替えの部品（手など）</p>
+    <div data-tab="file" id="t1slot-box" hidden><p class="label">差し替えの部品（手・顔）</p>
       <select id="t1slot" aria-label="差し替えの部品"></select>
-      <p class="note">モデルには<b>差し替え用の枠</b>が入っています。8個は<b>右手4種・左手4種</b>で、対になるものは Z だけが符号ごと裏返り（左右の鏡像）、片側の4種は外へ届く長さが順に伸びます（握り拳→開いた手）。<b>同時に出すものではない</b>ので、既定では本体だけを描きます。ゲームの部品の表に入っていたのも本体1個だけでした。</p>
+      <p class="note">モデルには<b>差し替え用の枠</b>が入っています。8個は<b>右手4種・左手4種</b>で、対になるものは Z だけが符号ごと裏返り（左右の鏡像）、片側の4種は外へ届く長さが順に伸びます（握り拳→開いた手）。<b>同時に出すものではない</b>ので、組から1つずつだけ出します。残りの1組は<b>顔</b>で、面が全部テクスチャ、同じ形でパレットだけ違うものが2つ（表情違い）あります。付ける骨は「箱の中心がいちばん近い本体の区切り」で決めています。</p>
     </div>
     <div data-tab="file" id="t1part-box" hidden><p class="label">ファイルの中のモデル</p>
       <select id="t1part"></select>
@@ -300,7 +300,9 @@ const state={
   galling:false,
   galWhy:null,     // 一覧で読めなかったモデルの理由   // モデルを並べている最中か
   t1Part:-1,          // ファイルの中のどのモデルを出すか（-1＝いちばん大きいもの）
-  t1Slot:-1,          // 差し替えの組から何番目を出すか（-1＝出さない＝本体だけ）
+  t1Slot:0,           // 差し替えの組から何番目を出すか（0＝各組の1つ目＝顔と手が付く）
+                      // 付ける骨が決まったので、既定で出す。
+                      // ゲームは別の回に描くが、ビューアでは1体として見たい
   vram:null,          // VRAM の写し（テクスチャ）
   ramChars:null,      // メモリの写しの中にいた登場人物（1P・2P…）
   ramSel:-1,          // そのうち、いま出している人
@@ -2590,6 +2592,7 @@ function buildT1Mesh(d,objs){
   // 呼ぶ側がすでに「本体だけ」に絞っていることがあるので、
   // 部品の頭はモデルそのものから読み直す
   const partBases=(()=>{ try{ return t1ObjectOffsets(d).slice().sort((a,b)=>a-b) }catch(_){ return [] } })();
+  let slotAttach=null;                  // 差し替えの部品を、どの区切りの骨に付けるか
   // 法線つきで読める部品が1つでもあれば、それがキャラクターの見た目。
   // 読めない部品は当たり判定か影なので、ふだんは出さない
   for(const o of objs){ if(!o.ok) continue;
@@ -2615,6 +2618,7 @@ function buildT1Mesh(d,objs){
   }
   // 「本体だけ」…いちばん頂点の多い部品（キャラクターの胴体）だけにする
   if(t1Show.only){ const big=objs.slice().sort((a,b)=>b.nv-a.nv)[0]; if(big) objs=[big] }
+  try{ slotAttach=t1SlotAttach(d,objs) }catch(_){ slotAttach=null }
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   // 色の引き方を部品ごとに測っておく（頂点ごと／面の頂点ごと／面に1色）
   const cfit=new Map();
@@ -2657,9 +2661,11 @@ function buildT1Mesh(d,objs){
     // 継ぎ目の面は「前の区切りで入れた頂点」を混ぜて指す。
     // 面の区切りで引くと、そこがねじれて全体が散らばる（実物でそうなった）
     const VSEG=o.run&&o.run.vseg;
+    // 差し替えの部品は、本体の区切りのうち箱の中心がいちばん近いものに付ける
+    const fixSeg=(o.group&&slotAttach)?slotAttach.get(o.base):undefined;
     const V0=(i,seg)=>{ const q=o.base+o.vertPtr+i*8;
                   let x=dv.getInt16(q,true), y=dv.getInt16(q+2,true), z=dv.getInt16(q+4,true);
-                  const vs=(VSEG&&VSEG[i]!=null)?VSEG[i]:seg;
+                  const vs=fixSeg!=null?fixSeg:((VSEG&&VSEG[i]!=null)?VSEG[i]:seg);
                   // 頂点は「その骨のローカル座標」ではなく、組み上がった姿勢の
                   // 共有空間に入っている（尻尾の輪が 11 ずつ離れて一列に並ぶ）。
                   // そのまま R を掛けると、区切りごとにモデル全体の原点を中心に
@@ -3150,6 +3156,50 @@ let T1_BONES_REAL=false;         // メモリから取れた本物か（本物�
 // 実測（dump3）: 1P 本体の21枚すべてで語0が白、u,v は 63/63 が 0〜255 に収まる。
 // ページは 1P が 0x1e、2P が 0x1f。CLUT は 0x7800〜0x7a83。
 // つまりこの2つの命令では、角の色は**引いてはいけない**（UV を色として塗ってしまう）
+// ============================================================
+//  差し替えの部品（手・顔）を、どの骨に付けるか
+//
+//  差し替えの部品は命令5 が1回しかない。ゲームは別の回に、その部品専用の
+//  表を立てて描いているので、どの骨に付くかは部品の中に書かれていない。
+//  そのままだと全部が骨0（腰の付け根）に付いてしまう。
+//
+//  頂点は本体と同じ空間に入っているので、**箱の中心がいちばん近い
+//  本体の区切り**を選べば決まる。実測（dump3）:
+//    1P 顔 → 区切り40（骨39）　2P 顔 → 区切り34（骨33）
+//  これは別の測り方（40本の骨を1本ずつ当てて、体のいちばん上に
+//  いちばん近づくものを探す）と同じ答えだった。
+//    1P 骨39 で頭の中心から163（骨0 なら546）／2P 骨33 で121（骨0 なら480）
+//  手も左右の対になる（1P 骨33 と 骨27、2P 骨27 と 骨21）
+// ============================================================
+function t1SlotAttach(d,objs){
+  const body=objs.find(o=>!o.group&&o.run&&o.run.vseg);
+  if(!body) return null;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const V=(o,i)=>{ const q=o.base+o.vertPtr+i*8;
+    return q+6<=d.length?[dv.getInt16(q,true),dv.getInt16(q+2,true),dv.getInt16(q+4,true)]:null };
+  const bx=new Map(), vs=body.run.vseg;
+  for(let i=0;i<vs.length;i++){ const sg=vs[i]; if(sg==null) continue; const v=V(body,i); if(!v) continue;
+    let b=bx.get(sg); if(!b){ b={mn:[1e9,1e9,1e9],mx:[-1e9,-1e9,-1e9]}; bx.set(sg,b) }
+    for(let k=0;k<3;k++){ if(v[k]<b.mn[k])b.mn[k]=v[k]; if(v[k]>b.mx[k])b.mx[k]=v[k] } }
+  if(!bx.size) return null;
+  const out=new Map();
+  for(const o of objs){
+    if(!o.group||!o.run) continue;
+    const mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+    for(let i=0;i<o.nv;i++){ const v=V(o,i); if(!v) continue;
+      for(let k=0;k<3;k++){ if(v[k]<mn[k])mn[k]=v[k]; if(v[k]>mx[k])mx[k]=v[k] } }
+    if(mn[0]>mx[0]) continue;
+    const mid=mn.map((v,k)=>(v+mx[k])/2);
+    let best=null;
+    for(const [sg,b] of bx){
+      const m=b.mn.map((v,k)=>(v+b.mx[k])/2);
+      const dd=Math.hypot(m[0]-mid[0],m[1]-mid[1],m[2]-mid[2]);
+      if(!best||dd<best.d) best={seg:sg,d:dd};
+    }
+    if(best) out.set(o.base,best.seg);
+  }
+  return out.size?out:null;
+}
 const T1_COL_WORDS={8:1,9:1,12:4,13:4};
 const T1_COL_TEX={12:true,13:true};        // 語1以降が色ではなく u,v
 // テクスチャ付きの面の、貼り先を読む。並びはプレステの描画命令そのもの:
@@ -4735,7 +4785,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.39.0";
+const VERSION="v4.40.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4814,7 +4864,7 @@ function buildModelInner(raw,info){
       for(const o of allObjs){ if(!o.group) continue; by.set(o.group,(by.get(o.group)||0)+1) }
       info.t1SlotMax=by.size?Math.max(...by.values()):0; }
     info.t1Parts=`${allObjs.length}/${objs.length} 部品`
-      +(okObjs.length<allObjs.length?`（描いているのは ${okObjs.length}個。組は差し替えなので、既定では本体だけ）`:"")
+      +(okObjs.length<allObjs.length?`（描いているのは ${okObjs.length}個。組は差し替えなので、各組から1つずつ）`:"")
       +(objs.empty?`（ほかに 枠だけで中身の無い部品 ${objs.empty}個。手の差し替え用らしい枠が 0x420 刻みで並んでいる）`:"");
     // テクスチャを貼れるかどうかを、面のバイトの内訳から判定して出す
     { const big=okObjs.slice().sort((a,b)=>b.nv-a.nv)[0];
@@ -6641,8 +6691,8 @@ function fillT1Slot(inf){
   const n=inf&&inf.t1SlotMax||0;
   if(n<1){ box.hidden=true; return }
   box.hidden=false;
-  sel.innerHTML='<option value="-1">出さない（本体だけ・ゲームと同じ）</option>'
-    +Array.from({length:n},(_,i)=>`<option value="${i}">組の ${i+1} 番目を出す</option>`).join("");
+  sel.innerHTML=Array.from({length:n},(_,i)=>`<option value="${i}">組の ${i+1} 番目を出す${i?"":"（既定）"}</option>`).join("")
+    +'<option value="-1">出さない（本体だけ・ゲームの1回ぶんと同じ）</option>';
   sel.value=String(state.t1Slot);
 }
 // 骨の表を選び直せるようにする。自動で選んだものが気に入らないときのため
