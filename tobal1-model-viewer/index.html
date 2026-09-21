@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.20.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.21.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4450,7 +4450,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.20.0";
+const VERSION="v4.21.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5103,6 +5103,8 @@ function digestLines(){
     // 行列の積み場所の生ダンプは、言葉で拾わずにそのまま渡す。
     // ふるいを通していたので、足した行が全部落ちていた
     if(state.memStack&&state.memStack.length) L.push(...state.memStack);
+    // 本物の骨が取れたかどうかは、まとめのいちばん目立つ所に出す
+    if(state.realBones) L.push(...memRealBoneLines(state.realBones));
   }
   // まだ名前の付いていないキャラクターのモデル。残りを数えるため
   { const sig=((state.sieve&&state.sieve.other)||[])
@@ -7252,6 +7254,13 @@ function memBoneLines(buf,exe){
   L.push(...memCpuLines(buf));
   // ふるいにかけずに、行列の積み場所をそのまま出す。
   // 条件で掃いて0件だったので、条件のほうを疑う
+  // 表Bをたどって、本物の骨を取り出す。取れたらそれを使う（推測はもう要らない）
+  try{
+    const rb=memRealBones(buf,base);
+    if(typeof state==="object"&&state) state.realBones=rb;
+    L.push(...memRealBoneLines(rb));
+    if(rb.list.length&&typeof t1SetBones==="function") t1SetBones(rb.list,true);
+  }catch(err){ L.push("  本物の骨が取れませんでした: "+err.message) }
   // まとめへは、ふるい（正規表現）を通さずにそのまま渡す。
   // 言葉で拾う仕掛けにしていたので、生ダンプの行が全部落ちていた（5度目）
   try{ const sl=memStackLines(buf,base);
@@ -7676,6 +7685,57 @@ function memPoseLine(sh){
     +(sh.tall>800&&sh.pairs>=4
       ? "　→ 立っている人の形。これが骨の並び"
       : sh.tall>800?"　→ 縦に長いが、左右の対が無い（横から見た別の空間かも）":"");
+}
+
+// ============================================================
+//  表Bをたどって、本物の骨を取り出す
+//  0x8001F464 で止めた RAM では、表B に本物の番地が入っていた。
+//  その先は「MATRIX へのポインタの並び」で、実物では
+//    先頭 0x801F0484 から 40個、最後は 0 で終端
+//    別々の行列は34個、うち2つが4回ずつ出てくる（枝の付け根に戻る動き）
+//  だった。命令5 が1回進むごとに1つ引くので、
+//  並びの順番は、モデルの区切りの順番とそのまま対応する
+// ============================================================
+function memBoneMatrix(M,addr){
+  const m=memMatrixAt(M,addr); if(!m) return null;
+  const len=[0,1,2].map(i=>Math.hypot(m.r[i*3],m.r[i*3+1],m.r[i*3+2]));
+  // 実物は1行目が 3276（＝4096×0.8）だった。拡大縮小が入っていても骨は骨
+  if(len.some(v=>v<3000||v>4400)) return null;
+  return {m:m.r.slice(),t:m.t.slice(),one:4096};
+}
+function memRealBones(buf,base,opt){
+  const o=opt||{}, M=memReader(buf,base);
+  const cur=M.u32(o.tableB||0x800CBE8C);
+  if(!M.ptr(cur)) return {why:"表Bが RAM を指していない（描き終わったあとの写し）",list:[]};
+  // 命令5 が進めたぶんだけ先へ行っている。行列をたどれる所まで戻る
+  let start=cur;
+  for(let k=1;k<=(o.back||64);k++){
+    const p=M.u32(cur-k*4);
+    if(!M.ptr(p)||!memBoneMatrix(M,p)) break;
+    start=cur-k*4;
+  }
+  const list=[], ptrs=[];
+  for(let k=0;k<(o.max||256);k++){
+    const p=M.u32(start+k*4);
+    if(!M.ptr(p)) break;
+    const bm=memBoneMatrix(M,p); if(!bm) break;
+    ptrs.push(p); list.push(bm);
+  }
+  const cnt=new Map(); for(const p of ptrs) cnt.set(p,(cnt.get(p)||0)+1);
+  return {start,cur,used:(cur-start)/4,list,ptrs,
+          uniq:cnt.size,
+          roots:[...cnt].filter(x=>x[1]>1).sort((a,b)=>b[1]-a[1]).slice(0,4)};
+}
+function memRealBoneLines(r){
+  if(!r||!r.list.length) return ["  本物の骨は取れない"+(r&&r.why?"（"+r.why+"）":"")];
+  const T=r.list.map(b=>b.t), A=i=>T.map(t=>t[i]), R=a=>[Math.min(...a),Math.max(...a)];
+  const L=[`  本物の骨が取れました: 表B ${hex(r.start)} から ${r.list.length}個`
+    +`（別々の行列 ${r.uniq}個・命令5が使った分 ${r.used}個）`];
+  L.push(`    移動の範囲 X ${R(A(0)).join("〜")}　Y ${R(A(1)).join("〜")}　Z ${R(A(2)).join("〜")}`
+    +`　背の高さ ${R(A(1))[1]-R(A(1))[0]}`);
+  for(const [p,c] of r.roots)
+    L.push(`    ${hex(p)} が ${c}回出てくる（枝の付け根に戻る動き）`);
+  return L;
 }
 // ============================================================
 //  トバルNo.1 のテクスチャを絵にする
