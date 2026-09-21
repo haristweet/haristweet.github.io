@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.24.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.25.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4459,7 +4459,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.24.0";
+const VERSION="v4.25.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -7283,6 +7283,17 @@ function memBoneLines(buf,exe){
     const bb=memBestBones(buf,base);
     if(typeof state==="object"&&state) state.bestBones=bb;
     L.push(...memBestBoneLines(bb));
+    // いま描かれているモデルが、ディスクのどのファイルかを決める。
+    // 骨の本数と区切りの数が合わないのは、別のキャラを見ていたからかもしれない。
+    // 推測でそう言うのをやめて、突き合わせて決める
+    try{
+      const dm=memDrawnModel(buf,base);
+      if(typeof state==="object"&&state) state.drawnModel=dm;
+      L.push(...memDrawnModelLines(dm,typeof state==="object"&&state?state.sieve:null));
+    }catch(err){ L.push("  描かれているモデルが決められませんでした: "+err.message) }
+    // 番号が大きく飛んでいる所（別の枝）と、2つの配列のあいだを、そのまま出す
+    try{ L.push(...memBoneJumpLines(buf,base)) }catch(err){ L.push("  番号の列が出せない: "+err.message) }
+    try{ L.push(...memGapLines(buf,base)) }catch(err){ L.push("  あいだが出せない: "+err.message) }
     const use=(bb&&bb.list)||rb.list;
     if(use&&use.length&&typeof t1SetBones==="function") t1SetBones(use,true);
   }catch(err){ L.push("  本物の骨が取れませんでした: "+err.message) }
@@ -7848,6 +7859,118 @@ function memBestBoneLines(r){
     L.push(`    ${hex(c.at)} に当てると 背の高さ ${c.sc.tall}　左右の対 ${c.sc.pairs}組`
       +`　左右の開き ${c.sc.zw}`+(c===r.cands[0]?"　← これを使う":"")
       +(c.view?"（表Bが指している並び。カメラを掛けたあと）":""));
+  return L;
+}
+
+// ============================================================
+//  いま描かれているモデルが、ディスクのどのファイルかを決める
+//
+//  表C（0x800CBE94）は部品の表。その先の1つ目は、モデルの先頭 +offset0 を
+//  指している。だから手前へ 0x90000000 を探して、
+//  「先頭＋語1（offset0）＝表Cの1つ目」が成り立つ所を選べば、
+//  当てずっぽうではなく、確かめたうえでモデルの先頭が決まる。
+//
+//  実測（実物のダンプ）:
+//    表C = 0x801F0684　その[0] = 0x801078C8
+//    手前へ探すと 0x8010788C に 0x90000000、語1 = 0x3C
+//    0x8010788C + 0x3C = 0x801078C8　← 合う
+// ============================================================
+function memDrawnModel(buf,base,opt){
+  const o=opt||{}, M=memReader(buf,base);
+  const tc=M.u32(o.tableC||0x800CBE94);
+  if(!M.ptr(tc)) return {why:"表Cが RAM を指していない"};
+  const p0=M.u32(tc);
+  if(!M.ptr(p0)) return {why:"表Cの1つ目が RAM を指していない",tableC:tc};
+  // 手前へ署名を探す。見つけただけでは決めず、offset0 が合うかまで見る
+  for(let a=p0;a>0x80010000&&p0-a<(o.back||0x800);a-=4){
+    if(M.u32(a)!==0x90000000) continue;
+    const off0=M.u32(a+4);
+    if(a+off0!==p0) continue;                       // ここで確かめる
+    const words=Array.from({length:8},(_,k)=>M.u32(a+k*4));
+    return {tableC:tc,part0:p0,at:a,off0,words};
+  }
+  return {why:"表Cの手前に、つじつまの合う 0x90000000 が無い",tableC:tc,part0:p0};
+}
+function memDrawnModelLines(r,sieve){
+  if(!r||!r.at) return ["  描かれているモデルは決められない"+(r&&r.why?"（"+r.why+"）":"")];
+  const L=[`  描かれているモデル: RAM ${hex(r.at)}（表C ${hex(r.tableC)} の1つ目 ${hex(r.part0)} ＝ 先頭＋0x${r.off0.toString(16)}：合っている）`];
+  L.push("    先頭8語: "+r.words.map(v=>hex(v)).join(" "));
+  // ディスクのモデルと、先頭8語で突き合わせる
+  const cand=[];
+  for(const e of ((sieve&&sieve.other)||[]))
+    if(e.words&&e.words.length>=8&&e.words.every((v,k)=>v===r.words[k])) cand.push(e);
+  L.push(cand.length===1
+    ? `    ディスクのファイルと一致: #${cand[0].e.no}(sector ${cand[0].e.sector})`
+      +(cand[0].diag&&cand[0].diag.segs?`　区切り ${cand[0].diag.segs}個`:"")
+    : cand.length?`    一致したファイルが ${cand.length}件: `+cand.map(c=>"#"+c.e.no).join(" ")
+                 :"    先頭8語が一致するファイルは無い（先に「まとめて調べる」を押してください）");
+  return L;
+}
+// 表Bのどの位置が、どの番号を引いているか。飛んでいる所の中身をそのまま出す
+function memBoneJumpLines(buf,base,opt){
+  const o=opt||{}, M=memReader(buf,base), L=[];
+  const r=memRealBones(buf,base,o);
+  if(!r.list.length) return ["  表Bがたどれない"];
+  const viewBase=Math.min(...r.ptrs);
+  const idx=r.ptrs.map(p=>(p-viewBase)/32);
+  L.push(`  番号の列: ${idx.join(" ")}`);
+  // 1ずつ増えて続く所＝ひと続きの枝。低い番号と離れたものが、別にぶら下がった枝
+  const runs=[]; let cur=null;
+  for(let k=0;k<idx.length;k++){
+    if(cur&&idx[k]===idx[k-1]+1) cur.n++;
+    else { if(cur&&cur.n>=3) runs.push(cur); cur={at:k,n:1} }
+  }
+  if(cur&&cur.n>=3) runs.push(cur);
+  L.push(runs.length
+    ? "  1ずつ続く枝: "+runs.map(x=>`列の${x.at}番目から ${x.n}本（番号 ${idx[x.at]}〜${idx[x.at+x.n-1]}）`).join("　")
+    : "  1ずつ続く枝は無い");
+  // いちばん番号の大きい枝の中身を、そのまま出す
+  const far=runs.slice().sort((a,b)=>idx[b.at]-idx[a.at])[0];
+  if(far){
+    L.push(`  いちばん遠い枝（番号 ${idx[far.at]}〜${idx[far.at+far.n-1]}）の中身:`);
+    for(let j=far.at;j<far.at+far.n;j++)
+      L.push(`    番号${idx[j]} ${hex(r.ptrs[j])}　${memMatrixLine(memMatrixAt(M,r.ptrs[j]))}`);
+  }
+  return L;
+}
+// ワールド側の配列の終わりから、カメラ側の始まりまでを、そのまま出す。
+// 0xF60 が構造体の決まった間隔なのかどうかは、ここを見れば分かる
+function memGapLines(buf,base,opt){
+  const o=opt||{}, M=memReader(buf,base), L=[];
+  const r=memRealBones(buf,base,o);
+  if(!r.list.length) return ["  表Bがたどれない"];
+  const viewBase=Math.min(...r.ptrs), gap=o.gap||0xF60;
+  const worldBase=viewBase-gap;
+  const nmax=Math.max(...r.ptrs.map(p=>(p-viewBase)/32))+1;
+  const from=worldBase+nmax*32;
+  L.push(`  ワールド側 ${hex(worldBase)}（＝表Bの最小 − 0x${gap.toString(16)}）`
+    +`　番号は ${nmax}個ぶん使うので、その終わりは ${hex(from)}`);
+  L.push(`  そこから ${hex(viewBase)} までの ${viewBase-from}バイトを、そのまま:`);
+  for(let i=0;i<Math.min(6,Math.ceil((viewBase-from)/32));i++){
+    const a=from+i*32;
+    L.push(`    ${hex(a)}: `+Array.from(M.bytes(a,32),v=>v.toString(16).padStart(2,"0")).join(" "));
+  }
+  // ここに何があるのか、話で埋めずに数える。
+  // 「2行目だけ 0」「縦の値がどれも同じ」なら、それは地面に潰す影の行列
+  { let n=0, flat=0; const ty=new Map();
+    for(let a=from;a+32<=viewBase;a+=32){
+      const m=memMatrixAt(M,a); if(!m) continue;
+      const r0=m.r.slice(0,3).some(v=>v!==0), r1=m.r.slice(3,6).every(v=>v===0),
+            r2=m.r.slice(6,9).some(v=>v!==0);
+      if(!r0&&!r2) continue;
+      n++; if(r0&&r1&&r2){ flat++; ty.set(m.t[1],(ty.get(m.t[1])||0)+1) }
+    }
+    const top=[...ty].sort((a,b)=>b[1]-a[1])[0];
+    L.push(`    中身のある枠 ${n}個　そのうち「2行目だけ 0」が ${flat}個`
+      +(top?`　縦の値は ${top[0]} が ${top[1]}個で最多`:""));
+    if(flat>=3&&top&&top[1]>=flat*0.8)
+      L.push(`    → そのうち ${flat}個は「回転は残って 2行目だけ 0・縦の値が ${top[0]}」。`
+        +`地面に潰す影の行列です（${top[0]} が地面の高さ）。`
+        +"ただし、この範囲はそれだけではありません（表A・表B・表Cの並び自体もここにあります）");
+    else L.push("    → 影の行列らしいものは、まとまっては無い");
+  }
+  const as=M.u32(0x800CBE90);
+  if(M.ptr(as)) L.push(`    （表A ${hex(as)} はこの範囲${as>=from&&as<viewBase?"の中":"の外"}）`);
   return L;
 }
 // ============================================================
