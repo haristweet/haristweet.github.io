@@ -143,7 +143,7 @@ canvas:active{cursor:grabbing}
     </div>
     <div data-tab="file"><p class="label">向き</p>
       <div class="seg" id="up-seg"><button data-up="0" aria-pressed="false">そのまま</button><button data-up="1" aria-pressed="false">X を上に</button><button data-up="2" aria-pressed="true">X を上（逆）</button><button data-up="3" aria-pressed="false">Z を上に</button><button data-up="4" aria-pressed="false">Y を上（逆）</button></div>
-      <p class="note">モデルの「背の高さ」がどの軸かはファイルに書かれていません。実物は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）でした。そのうえで上下をひっくり返した「X を上（逆）」が既定です。人の形にならないときはここを変えてみてください。<br><b>メモリの写しから出しているときは「Y を上（逆）」</b>です。ワールドの行列は Y が背の高さで、プレステの画面座標は Y が下向きだからです（地面に潰した影の行列の縦の値が 1331、頭のほうが 28 でした）。写しを読み込むと自動でこちらに変わります。</p>
+      <p class="note">モデルの「背の高さ」がどの軸かはファイルに書かれていません。実物は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）でした。そのうえで上下をひっくり返した「X を上（逆）」が既定です。人の形にならないときはここを変えてみてください。<br><b>メモリの写しから出しているときは「そのまま」</b>です。本物の骨を当てたあとは、ワールドの Y がそのまま背の高さになります。写しを読み込むと自動でこちらに変わります。</p>
     </div>
     <div data-tab="file"><p class="label">キャラクターを見分ける</p>
       <button class="btn wide" id="mdlgal">モデルを並べて見る</button>
@@ -169,11 +169,11 @@ canvas:active{cursor:grabbing}
       <div id="borigin-box" hidden style="margin-top:8px">
         <p class="label">回転の中心</p>
         <select id="borigin" aria-label="回転の中心">
-          <option value="box">区切りの箱の中心（既定）</option>
+          <option value="none">引かない（既定）</option>
+          <option value="box">区切りの箱の中心</option>
           <option value="cent">区切りの重心</option>
-          <option value="none">引かない（モデルの原点で回す）</option>
         </select>
-        <p class="note">頂点は「その骨のローカル座標」ではなく、<b>組み上がった姿勢の共有空間</b>に入っています（尻尾の輪が 11 ずつ離れて一列に並んでいました）。そのまま回転を掛けると、区切りごとにモデル全体の原点を中心に振り回されます。区切りの中心を引いてから掛けると、継ぎ目の伸びが半分になります（1P 129→74、2P 95→52）。ただし<b>これで人の形になったわけではありません</b>。</p>
+        <p class="note">区切りごとの中心を引いてから回す、という試みです。継ぎ目の伸びという数だけ見ると半分になります（1P 129→74、2P 95→52）が、<b>絵にすると姿は崩れます</b>（頭が消える）。数がよくなっても見た目が悪くなる例なので、既定は「引かない」です。</p>
       </div>
       <div id="boneshift-box" hidden style="margin-top:8px">
         <p class="label">骨のずらし量</p>
@@ -2462,12 +2462,13 @@ const T1_UP=[
   {name:"X を上に",      f:(x,y,z)=>[-y,x,z]},
   {name:"X を上に（逆）", f:(x,y,z)=>[y,-x,z]},
   {name:"Z を上に",      f:(x,y,z)=>[x,z,-y]},
-  // 写しから取った本物の骨を使うときは、これ。ワールドの行列は Y が高さで、
-  // プレステの画面座標は Y が下向きなので、Y を裏返すと人が立つ。
-  // 実測: 地面に潰した影の行列の縦の値が 1331 で、頭のほうが Y 28 だった
   {name:"Y を上（逆）",   f:(x,y,z)=>[x,-y,z]},
 ];
-const T1_UP_WORLD=4;                            // 本物の骨のときの向き
+// 写しから取った本物の骨を当てたあとは、ワールドの Y がそのまま背の高さになる。
+// v4.29.0 で「Y を裏返す」にしたが、**逆だった**（ビューアで頭が下になっていた）。
+// 画面で向きを変えれば人が立つ、と外から指摘されて分かった。
+// 確かめ方: 写しを読み込んで、そのまま立っているか見る
+const T1_UP_WORLD=0;                            // 本物の骨のときの向き＝そのまま
 // 骨ごとに色を変えるときの色。棘がどの骨から出ているかを目で追うため
 const T1_SEG_COL=[[.95,.35,.35],[.35,.85,.45],[.40,.55,.95],[.95,.80,.30],
                   [.85,.45,.90],[.30,.85,.85],[.95,.60,.35],[.60,.60,.95],
@@ -3086,9 +3087,13 @@ let T1_BONES_REAL=false;         // メモリから取れた本物か（本物�
 //  実測（dump3・継ぎ目の辺が変換でどれだけ伸びるか、小さいほど良い）:
 //    1P  B なし 129 → 重心 79 → 箱の中心 74
 //    2P  B なし  95 → 重心 51 → 箱の中心 52
-//  半分になる。ただしこれで人の形になったわけではない（まだ解けていない）
+//  半分になる。**それでも既定は "none"**。
+//  向きを直して絵を並べたら、B を引いたほうが姿は崩れていた（頭が消える）。
+//  継ぎ目の伸びという数は下がるのに、見た目は悪くなる。
+//  v4.23.0 の「縦横比で選んで外した」のと同じ形の失敗なので、
+//  数だけで決めず、既定は引かないことにした。画面から試せる
 // ============================================================
-let T1_BONE_ORIGIN="box";              // "none" / "cent" / "box"
+let T1_BONE_ORIGIN="none";             // "none" / "cent" / "box"
 function t1SetBoneOrigin(v){ T1_BONE_ORIGIN=v||"none" }
 function t1BoneOrigins(d,o,mode){
   if(!mode||mode==="none"||!o.run||!o.run.vseg) return null;
@@ -4582,7 +4587,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.31.0";
+const VERSION="v4.32.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
