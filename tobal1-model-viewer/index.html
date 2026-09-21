@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.21.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.22.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -159,13 +159,22 @@ canvas:active{cursor:grabbing}
       <button class="btn wide" id="texsave" style="margin-top:6px">この一覧を画像で保存</button>
       <div id="texgrid" class="texgrid"></div>
     </div>
-    <div data-tab="file"><p class="label">メモリの写し（骨さがし）</p>
-      <label class="pick" style="display:inline-block">セーブステートを選ぶ<input id="memfile" type="file" hidden></label>
+    <div data-tab="file"><p class="label">メモリの写し（本物の骨）</p>
+      <label class="pick" style="display:inline-block">RAM ダンプかセーブステートを選ぶ<input id="memfile" type="file" hidden></label>
       <div id="bonepick-box" hidden style="margin-top:8px">
         <p class="label">使う骨の表（当ててみた結果の良い順）</p>
         <select id="bonepick" aria-label="使う骨の表"></select>
       </div>
-      <p class="note">DuckStation でゲームを動かし、キャラクターが立っている場面でセーブステートを作ってください。そのファイルをここで選ぶと、<b>メモリの中身はこのページが読みます</b>。骨の表は実行中にしか存在しないので、これが一番の近道です。DuckStation の設定 →詳細 の「セーブステートの圧縮」を <b>Deflate</b> か <b>なし</b> にしてから作ってください。既定の zstd はブラウザがほどけません。</p>
+      <p class="note"><b>骨の行列は、ディスクにも実行ファイルにも入っていません。</b>描く直前にゲームが渡すもので、動いている最中にしか存在しません。だから、動かして止めて、その瞬間のメモリを取ります。<br>
+      <b>取り方（DuckStation）</b><br>
+      1. 設定 → 高度な設定 で「デバッグメニューを表示」をオンにする<br>
+      2. ゲームを起動し、メニューバーの <b>デバッグ → CPU デバッガ</b> を開く<br>
+      3. ツールバーの「＋」で、アドレス <b>8001F464</b>・種類「実行」のブレークポイントを追加する<br>
+      4. 再開して、<b>キャラクターが画面に出ている場面</b>まで進める。そこで止まります<br>
+      5. 止まったまま、<b>デバッグ → RAM ダンプ…</b>（2,097,152 バイトのファイルができます）<br>
+      6. そのファイルをここで選ぶ<br>
+      止める番地は <b>8001F464</b> にしてください。0x8001F44C だと、その手前の分岐で「骨が無いときは素通り」するので、表が空のまま止まります。<br>
+      セーブステートでも読めますが、描き終わったあとの瞬間だと表が空になっています。圧縮は <b>Deflate</b> か <b>なし</b> にしてください（既定の zstd はブラウザがほどけません）。</p>
       <div class="note" id="mem-status"></div>
     </div>
     <div data-tab="file" id="t1part-box" hidden><p class="label">ファイルの中のモデル</p>
@@ -4450,7 +4459,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.21.0";
+const VERSION="v4.22.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
