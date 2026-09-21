@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.27.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.28.0 ・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -2287,16 +2287,28 @@ function modelInfoT1(d){
 // ============================================================
 function t1ObjectOffsets(d){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
-  const out=[], grp=[]; let o=8, g=0;
+  const out=[], grp=[]; let o=8, g=0, empty=0;
+  // 部品の頭は「面／頂点／法線／色」の4つの位置で始まる。
+  // そこが全部 0 なら、枠だけあって中身が入っていない（未格納）。
+  // 実物の #157 は、0x420 刻みで並ぶ枠が9つあって、どれも 0 だった。
+  // 無理に読むと「面はあるのに頂点が無い区切り」が大量に出る
+  const filled=p=>{
+    if(p+16>d.length) return false;
+    for(let k=0;k<4;k++) if(dv.getUint32(p+k*4,true)!==0) return true;
+    return false;
+  };
   for(let guard=0;guard<16&&o+4<=d.length;guard++){
     const n=dv.getUint32(o,true); o+=4;
     if(n<1||n>64) break;
     g++;
     for(let k=0;k<n&&o+4<=d.length;k++,o+=4){
       const p=dv.getUint32(o,true);
-      if(p>=16&&p+56<=d.length){ out.push(p); grp.push(g) }
+      if(p<16||p+56>d.length) continue;
+      if(!filled(p)){ empty++; continue }
+      out.push(p); grp.push(g);
     }
   }
+  out.empty=empty;                              // 枠だけで中身が入っていない数
   const tableAt=dv.getUint32(4,true);           // 本体そのものの部品
   if(tableAt>=16&&tableAt+56<=d.length){ out.push(tableAt); grp.push(0) }
   out.group=grp;                                // どの組から出てきたか（0＝本体）
@@ -4459,7 +4471,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.27.0";
+const VERSION="v4.28.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4531,7 +4543,8 @@ function buildModelInner(raw,info){
     const offs=t1ObjectOffsets(b.out);
     const objs=offs.map((p,i)=>{ const o=readT1Object(b.out,p); if(o) o.group=offs.group?offs.group[i]:0; return o }).filter(Boolean);
     const okObjs=objs.filter(o=>o.ok);
-    info.t1Parts=`${okObjs.length}/${objs.length} 部品`;
+    info.t1Parts=`${okObjs.length}/${objs.length} 部品`
+      +(objs.empty?`（ほかに 枠だけで中身の無い部品 ${objs.empty}個。手の差し替え用らしい枠が 0x420 刻みで並んでいる）`:"");
     // テクスチャを貼れるかどうかを、面のバイトの内訳から判定して出す
     { const big=okObjs.slice().sort((a,b)=>b.nv-a.nv)[0];
       const R=big&&t1Run(b.out,big.base);
