@@ -197,9 +197,9 @@ canvas:active{cursor:grabbing}
       セーブステートでも読めますが、描き終わったあとの瞬間だと表が空になっています。圧縮は <b>Deflate</b> か <b>なし</b> にしてください（既定の zstd はブラウザがほどけません）。</p>
       <div class="note" id="mem-status"></div>
     </div>
-    <div data-tab="file" id="t1slot-box" hidden><p class="label">差し替えの部品（手・顔）</p>
+    <div data-tab="file" id="t1slot-box" hidden><p class="label">顔の貼りもの・手の差し替え</p>
       <select id="t1slot" aria-label="差し替えの部品"></select>
-      <p class="note">モデルには<b>差し替え用の枠</b>が入っています。8個は<b>右手4種・左手4種</b>で、対になるものは Z だけが符号ごと裏返り（左右の鏡像）、片側の4種は外へ届く長さが順に伸びます（握り拳→開いた手）。<b>同時に出すものではない</b>ので、組から1つずつだけ出します。残りの1組は<b>顔</b>で、面が全部テクスチャ、同じ形でパレットだけ違うものが2つ（表情違い）あります。付ける骨は「箱の中心がいちばん近い本体の区切り」で決めています。</p>
+      <p class="note">モデルには<b>差し替え用の枠</b>が入っています。8個は<b>右手4種・左手4種</b>で、対になるものは Z だけが符号ごと裏返り（左右の鏡像）、片側の4種は外へ届く長さが順に伸びます（握り拳→開いた手）。<b>同時に出すものではない</b>ので、組から1つずつだけ出します。残りの1組は<b>顔の貼りもの</b>で、面が全部テクスチャ、同じ形でパレットだけ違うものが2つ（表情違い）あります。<b>目・眉・傷・絆創膏</b>がここに入っています。頭の面とほぼ同じ所にあるので、少しだけ外へ押し出して描いています。<br>手の組は<b>本体にも同じ手が入っている</b>ので、足すと二重になります。既定では出しません。</p>
     </div>
     <div data-tab="file" id="t1part-box" hidden><p class="label">ファイルの中のモデル</p>
       <select id="t1part"></select>
@@ -2358,16 +2358,43 @@ function t1ObjectOffsets(d){
 //  部品の表（表C）に入っていたのは本体1個だけで、あとは全部 0 だった。
 //  本体の命令5の回数（1P 40・2P 34）が、骨の表の長さとぴったり一致する
 // ============================================================
-function t1PickParts(objs,slot){
+// その部品が「貼りもの」か（面の命令が全部テクスチャ＝顔の目・眉・傷）。
+// 組み立てる前に決めたいので、o.run ではなく命令の列を直接歩く。
+// 手の組は本体にも同じ手が入っているので、足すと二重になる
+function t1PartIsDecal(d,o){
+  if(o.run&&o.run.faces&&o.run.faces.length)
+    return o.run.faces.every(f=>T1_COL_TEX[f.op]);
+  if(!d||o.base==null) return false;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const g=p=>p+4<=d.length?dv.getUint32(p,true):0;
+  const LEN=(typeof T1_CMD_LEN==="object"&&T1_CMD_LEN)||{0:0,1:12,2:16,3:8,4:16,5:4,6:8,7:12};
+  let fp=o.base+0x10, n=0;
+  for(let st=0;st<4096&&fp+8<=d.length;st++){
+    const op=g(fp); if(op===0) break;
+    if(op in LEN){ fp+=LEN[op]; continue }
+    if(op>15) return false;
+    if(!T1_COL_TEX[op]) return false;
+    n++; fp+=8;
+  }
+  return n>0;
+}
+function t1GroupIsDecal(list,d){
+  return list.length>0&&list.every(o=>t1PartIsDecal(d,o));
+}
+function t1PickParts(objs,slot,d){
   const body=objs.filter(o=>!o.group);
   if(!body.length) return objs;                 // 組が付いていなければ、そのまま
-  if(slot==null||slot<0) return body;           // 既定は本体だけ
+  if(slot==null||slot<0) return body;           // 「出さない」なら本体だけ
   const by=new Map();
   for(const o of objs){ if(!o.group) continue;
     const a=by.get(o.group)||[]; a.push(o); by.set(o.group,a) }
   const out=body.slice();
-  for(const [,a] of [...by].sort((x,y)=>x[0]-y[0]))
-    out.push(a[Math.min(slot,a.length-1)]);     // 組ごとに1つだけ
+  const all=slot>=100;                          // 100以上なら、貼りもの以外の組も出す
+  const pick=all?slot-100:slot;
+  for(const [,a] of [...by].sort((x,y)=>x[0]-y[0])){
+    if(!all&&!t1GroupIsDecal(a,d)) continue;    // 既定は貼りものだけ（手は二重になる）
+    out.push(a[Math.min(pick,a.length-1)]);     // 組ごとに1つだけ
+  }
   return out;
 }
 // 頂点や法線の「数」はヘッダの決まった場所にあるとは限らない（実物で、頂点51/法線51 の
@@ -2663,8 +2690,11 @@ function buildT1Mesh(d,objs){
     const VSEG=o.run&&o.run.vseg;
     // 差し替えの部品は、本体の区切りのうち箱の中心がいちばん近いものに付ける
     const fixSeg=(o.group&&slotAttach)?slotAttach.get(o.base):undefined;
-    const V0=(i,seg)=>{ const q=o.base+o.vertPtr+i*8;
+    const V0=(i,seg,off)=>{ const q=o.base+o.vertPtr+i*8;
                   let x=dv.getInt16(q,true), y=dv.getInt16(q+2,true), z=dv.getInt16(q+4,true);
+                  // 貼りもの（顔の目・眉・傷）は頭の面とほぼ同じ所にあるので、
+                  // そのままだと内側に埋まって見えない。法線の向きへ少し押し出す
+                  if(off){ x+=off[0]; y+=off[1]; z+=off[2] }
                   const vs=fixSeg!=null?fixSeg:((VSEG&&VSEG[i]!=null)?VSEG[i]:seg);
                   // 頂点は「その骨のローカル座標」ではなく、組み上がった姿勢の
                   // 共有空間に入っている（尻尾の輪が 11 ずつ離れて一列に並ぶ）。
@@ -2750,7 +2780,11 @@ function buildT1Mesh(d,objs){
           const tx=(T1_VRAM&&pf&&pf.tex)?t1FaceTex(d,o,pf,a.length):null;
           const flat=t1Show.flatColor
             ?C0(pf?pc(t[0]):byFace?cface:byCorner?cbase:a[t[0]]):null;
-          for(const j of t){ pos.push(...V0(a[j],f.seg));
+          // 貼りものは法線の向きへ押し出す。押す量は骨の大きさに対して十分小さい
+          let push=null;
+          if(tx&&f.n&&T1_DECAL_PUSH){ const L=Math.hypot(f.n[0],f.n[1],f.n[2]);
+            if(L>1) push=[f.n[0]/L*T1_DECAL_PUSH,f.n[1]/L*T1_DECAL_PUSH,f.n[2]/L*T1_DECAL_PUSH] }
+          for(const j of t){ pos.push(...V0(a[j],f.seg,push));
             col.push(...(sc||flat||C0(pf?pc(j):byFace?cface:byCorner?cbase+j:a[j])));
             if(tx&&tx.uv[j]){ t0.push(tx.uv[j][0],tx.uv[j][1],tx.tp[0]);
                               t1.push(tx.tp[1],tx.tp[2],tx.tp[3],tx.tp[4]); texTris++ }
@@ -3202,6 +3236,11 @@ function t1SlotAttach(d,objs){
 }
 const T1_COL_WORDS={8:1,9:1,12:4,13:4};
 const T1_COL_TEX={12:true,13:true};        // 語1以降が色ではなく u,v
+// 貼りもの（顔の目・眉・傷）を、頭の面から外へ押し出す量。
+// 同じ所にあると内側に埋まって見えない。モデルの大きさは背が800前後なので、
+// 6 は目で見て分からない程度
+let T1_DECAL_PUSH=6;
+function t1SetDecalPush(v){ T1_DECAL_PUSH=+v||0 }
 // テクスチャ付きの面の、貼り先を読む。並びはプレステの描画命令そのもの:
 //   語0: 色（テクスチャをそのまま出すので 255,255,255）
 //   語1: u0,v0 ＋ 上半分に CLUT
@@ -4785,7 +4824,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.40.0";
+const VERSION="v4.41.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4859,7 +4898,7 @@ function buildModelInner(raw,info){
     const allObjs=objs.filter(o=>o.ok);
     // 描くのは本体だけ。組（差し替えの枠）を全部描くと、手が片側に4つ重なる。
     // ゲーム自身の部品の表（表C）に入っていたのも本体1個だけだった
-    const okObjs=t1PickParts(allObjs,state.t1Slot);
+    const okObjs=t1PickParts(allObjs,state.t1Slot,b.out);
     { const by=new Map();
       for(const o of allObjs){ if(!o.group) continue; by.set(o.group,(by.get(o.group)||0)+1) }
       info.t1SlotMax=by.size?Math.max(...by.values()):0; }
@@ -6691,7 +6730,8 @@ function fillT1Slot(inf){
   const n=inf&&inf.t1SlotMax||0;
   if(n<1){ box.hidden=true; return }
   box.hidden=false;
-  sel.innerHTML=Array.from({length:n},(_,i)=>`<option value="${i}">組の ${i+1} 番目を出す${i?"":"（既定）"}</option>`).join("")
+  sel.innerHTML=Array.from({length:n},(_,i)=>`<option value="${i}">顔の貼りもの ${i+1} 番目${i?"":"（既定）"}</option>`).join("")
+    +Array.from({length:n},(_,i)=>`<option value="${100+i}">手も出す（${i+1} 番目・本体の手と二重になります）</option>`).join("")
     +'<option value="-1">出さない（本体だけ・ゲームの1回ぶんと同じ）</option>';
   sel.value=String(state.t1Slot);
 }
