@@ -2451,7 +2451,7 @@ try{ t1Show.all=localStorage.getItem("t1all")==="1";
      t1Show.guessBone=localStorage.getItem("t1guessbone")==="1";
      t1Show.chainBone=localStorage.getItem("t1chainbone")==="1";
      { const f=localStorage.getItem("t1flatcol"); if(f!=null) t1Show.flatColor=f==="1" }
-     t1Show.colMode=localStorage.getItem("t1colmode")||"";
+     t1Show.colMode=localStorage.getItem("t1colmode2")||"";
      { const a=localStorage.getItem("t1guessamt"); if(a!=null) t1Show.guessAmt=+a }
      // 向きの記憶は v3.5.0 で作り直した（前の既定値が上下逆だったので、古い記憶は捨てる）
      const u=localStorage.getItem("t1up2"); if(u!=null) t1Show.up=+u }catch(_){}
@@ -2686,13 +2686,20 @@ function buildT1Mesh(d,objs){
     //   面の頂点ごと … 面を描きながら、頂点1つにつき1つ進める
     //   面に1色     … 面1枚につき1色。3つの角とも同じ色になる（べた塗り）
     // 命令ごとの色の並びが、色のバイト数とぴったり合うなら、そちらを使う
-    const plan=(()=>{ if(!t1Show.colMode&&o.run){
+    // 命令ごとの並びが色のバイト数と**ぴったり合った**ときは、それが答え。
+    // 手で選んだ引き方より優先する。
+    // 以前は colMode が入っていると並びを使わない作りで、しかも colMode は
+    // localStorage に覚えていた。一度「面に1色」を選んだ人は、v4.36.0 で
+    // 解いた並びが黙って無効になったままになる罠だった。
+    // 手で選ぶほうは「ぴったり合わない部品」にだけ効く
+    const plan=(()=>{ if(o.run){
         const pl=t1ColorPlan(o.run);
         const ends=partBases.length?partBases:objs.map(x=>x.base).filter(x=>x>0).sort((x,y)=>x-y);
         const st=o.base+o.colPtr; let en=d.length;
         for(const b of ends) if(b>st&&b<en) en=b;
         if(pl&&pl.words*4===en-st) return pl;
       } return null })();
+    o.colPlan=!!plan;                 // どの引き方を使ったかを、あとで報告に出す
     const cmode=cfit.get(o.base)||"頂点ごと";
     const byCorner=cmode==="面の頂点ごと";
     const byFace=cmode==="面に1色"||cmode==="面に1色（四角は2枚ぶん）";
@@ -4524,6 +4531,11 @@ const T1_NAMES={
   9223:"？（イール・ゴガとしていたが、9742 のほうだった）",
   9237:"？（イール・ゴガとしていたが、9742 のほうだった）",
   9742:"イール・ゴガ",   // #157。実機の画面と直に突き合わせて確定
+  // #156(9728) は #157 と同じ組E（同じ形でまとめたときの相方）で、
+  // 区切りもどちらも41。絵にすると角・尻尾・青いブーツまで同じで、
+  // 色だけが違う（赤茶の体に黄色い帯）。ほかのキャラクターも全員2着ずつなので、
+  // #157 が確定した以上、その相方がイール・ゴガの別衣装になる
+  9728:"イール・ゴガ（別衣装）",
   9274:"マリー（別衣装）",9289:"マリー",       // マリー・イボンスカヤ
   9470:"ホム（別衣装）",   9484:"ホム",
 };
@@ -4723,7 +4735,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.37.0";
+const VERSION="v4.38.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4897,6 +4909,13 @@ function buildModelInner(raw,info){
                     :"  仮の骨組み: 鏡の対が見つからないので、何もしていません";
     }
     const r1=buildT1Mesh(b.out,okObjs);
+    // 色をどう引いたかを出す。手で選んだ引き方が効いているのかどうかが
+    // 画面から分からず、古い選択が残ったまま「色がおかしい」ことがあった
+    { let byPlan=0;
+      for(const o of okObjs){ if(o.colPlan) byPlan++ }
+      if(okObjs.length) info.t1ColHow=`  色の引き方: ${byPlan}/${okObjs.length} 部品で`
+        +`「命令ごとの並び」（色のバイト数とぴったり合ったもの）`
+        +(byPlan<okObjs.length?`　残りは ${t1Show.colMode||"自動で決める"}`:""); }
     // テクスチャの貼れる面を数える。buildT1Mesh のあとでないと o.run が無い
     { let tex=0;
       for(const o of okObjs){ if(!o.run) continue;
@@ -5355,7 +5374,7 @@ function digestLines(){
   if(inf&&e){
     L.push("");
     L.push(`選んでいるファイル: #${e.no} sector ${e.sector}`);
-    for(const k of ["ramChar","t1Tex","t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
+    for(const k of ["ramChar","t1ColHow","t1Tex","t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
     for(const x of inf.t1ColorLines||[]) L.push("    "+x);
     if(inf.t1OpArgs&&inf.t1OpArgs.length){
       L.push("  まだ意味の分かっていない命令の中身（骨のずらし量を探している）:");
@@ -6743,10 +6762,12 @@ showToggle("guessbone","guessBone","t1guessbone");
 showToggle("chainbone","chainBone","t1chainbone");
 showToggle("flatcol","flatColor","t1flatcol");
 // 色の引き方の自動判定は僅差になることがある。手で選べるようにしておく
+// 覚える鍵を変える。古い「t1colmode」に入っていた選択は捨てる。
+// v4.36.0 より前に手で選んだ人が、解けた並びを使えないままになるため
 try{ const cm=$("colmode"); if(cm){ cm.value=t1Show.colMode||"";
   cm.onchange=()=>{ t1Show.colMode=cm.value;
-    try{ localStorage.setItem("t1colmode",cm.value) }catch(_){}
-    if(state.sel>=0) selectEntry(state.sel) } } }catch(_){}
+    try{ localStorage.setItem("t1colmode2",cm.value) }catch(_){}
+    redrawCurrent() } } }catch(_){}
 try{ const h=$("hudon"); if(h){ try{ h.checked=localStorage.getItem("t1hud")!=="0" }catch(_){}
   h.onchange=()=>{ try{ localStorage.setItem("t1hud",h.checked?"1":"0") }catch(_){} updateHud() };
   updateHud() } }catch(_){}
