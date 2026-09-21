@@ -166,6 +166,15 @@ canvas:active{cursor:grabbing}
         <select id="ramchar" aria-label="写しの中にいた人"></select>
         <p class="note">ディスクのファイルではなく、<b>写しに載っているモデルそのもの</b>を出しています。骨もモデルも同じ1つの写しの中にあるので、突き合わせが要りません。別の場面で取った2つの写しを比べたところ、ポーズは変わってもモデルは1バイトも変わりませんでした。</p>
       </div>
+      <div id="borigin-box" hidden style="margin-top:8px">
+        <p class="label">回転の中心</p>
+        <select id="borigin" aria-label="回転の中心">
+          <option value="box">区切りの箱の中心（既定）</option>
+          <option value="cent">区切りの重心</option>
+          <option value="none">引かない（モデルの原点で回す）</option>
+        </select>
+        <p class="note">頂点は「その骨のローカル座標」ではなく、<b>組み上がった姿勢の共有空間</b>に入っています（尻尾の輪が 11 ずつ離れて一列に並んでいました）。そのまま回転を掛けると、区切りごとにモデル全体の原点を中心に振り回されます。区切りの中心を引いてから掛けると、継ぎ目の伸びが半分になります（1P 129→74、2P 95→52）。ただし<b>これで人の形になったわけではありません</b>。</p>
+      </div>
       <div id="boneshift-box" hidden style="margin-top:8px">
         <p class="label">骨のずらし量</p>
         <select id="boneshift" aria-label="骨のずらし量"></select>
@@ -2632,6 +2641,7 @@ function buildT1Mesh(d,objs){
     // 頂点は「その骨のローカル座標」で入っている。骨の行列が分かっていれば
     // ここでかける。無ければそのまま（手足が胴に畳み込まれた形になる）
     const BM=T1_BONES;
+    const BOFF=BM?t1BoneOrigins(d,o,T1_BONE_ORIGIN):null;
     // どの骨をかけるかは、**その頂点が入れられたとき**の区切りで決まる。
     // ゲームは 命令5 で行列を差し替え、命令1/2 でそのときの行列をかけてから
     // 置き場所に入れる。面は入れ終わった置き場所を番号で引くだけなので、
@@ -2641,6 +2651,12 @@ function buildT1Mesh(d,objs){
     const V0=(i,seg)=>{ const q=o.base+o.vertPtr+i*8;
                   let x=dv.getInt16(q,true), y=dv.getInt16(q+2,true), z=dv.getInt16(q+4,true);
                   const vs=(VSEG&&VSEG[i]!=null)?VSEG[i]:seg;
+                  // 頂点は「その骨のローカル座標」ではなく、組み上がった姿勢の
+                  // 共有空間に入っている（尻尾の輪が 11 ずつ離れて一列に並ぶ）。
+                  // そのまま R を掛けると、区切りごとにモデル全体の原点を中心に
+                  // 振り回される。区切りの回転中心 B を引いてから掛ける
+                  if(BOFF){ const B=BOFF.get(vs|0);
+                    if(B){ x-=B[0]; y-=B[1]; z-=B[2] } }
                   // t1Run の区切り番号は、最初の命令5 で 1 になる（0 から始まらない）。
                   // 表Bの骨は 0 から並ぶので、そのまま引くと全部が1つ隣の関節に付く
                   const bi=BM?(((vs|0)+T1_BONE_SHIFT)%BM.length+BM.length)%BM.length:0;
@@ -3062,6 +3078,39 @@ const T1_SLOTS=256;
 // メモリから取れた骨の行列。区切り（命令5）の番号で引く。null なら骨なしで描く
 let T1_BONES=null;
 let T1_BONES_REAL=false;         // メモリから取れた本物か（本物があれば推測は使わない）
+// ============================================================
+//  区切りごとの「回転中心 B」
+//
+//  頂点はバインドポーズの共有空間に入っているので、R をそのまま掛けると
+//  モデル全体の原点を中心に振り回される。区切りごとの中心を引いてから掛ける。
+//  実測（dump3・継ぎ目の辺が変換でどれだけ伸びるか、小さいほど良い）:
+//    1P  B なし 129 → 重心 79 → 箱の中心 74
+//    2P  B なし  95 → 重心 51 → 箱の中心 52
+//  半分になる。ただしこれで人の形になったわけではない（まだ解けていない）
+// ============================================================
+let T1_BONE_ORIGIN="box";              // "none" / "cent" / "box"
+function t1SetBoneOrigin(v){ T1_BONE_ORIGIN=v||"none" }
+function t1BoneOrigins(d,o,mode){
+  if(!mode||mode==="none"||!o.run||!o.run.vseg) return null;
+  if(o._boff&&o._boffMode===mode) return o._boff;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const vs=o.run.vseg, acc=new Map();
+  for(let i=0;i<vs.length;i++){
+    const s=vs[i]; if(s==null) continue;
+    const q=o.base+o.vertPtr+i*8; if(q+6>d.length) continue;
+    const v=[dv.getInt16(q,true),dv.getInt16(q+2,true),dv.getInt16(q+4,true)];
+    let a=acc.get(s);
+    if(!a){ a={n:0,s:[0,0,0],mn:[1e9,1e9,1e9],mx:[-1e9,-1e9,-1e9]}; acc.set(s,a) }
+    a.n++;
+    for(let k=0;k<3;k++){ a.s[k]+=v[k];
+      if(v[k]<a.mn[k])a.mn[k]=v[k]; if(v[k]>a.mx[k])a.mx[k]=v[k] }
+  }
+  const out=new Map();
+  for(const [s,a] of acc)
+    out.set(s, mode==="cent"?a.s.map(v=>v/a.n):a.mn.map((v,k)=>(v+a.mx[k])/2));
+  o._boff=out; o._boffMode=mode;
+  return out;
+}
 // 区切り番号から骨の番号へのずらし量。既定は -1。
 // t1Run は最初の命令5 で区切りを 1 にするが、表Bの骨は 0 から並ぶ
 let T1_BONE_SHIFT=-1;
@@ -4533,7 +4582,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.30.0";
+const VERSION="v4.31.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -6374,7 +6423,10 @@ async function selectRamChar(k){
   fillT1Part(state.selInfo); fillT1Slot(state.selInfo);
 }
 $("boneshift").onchange=e=>{ t1SetBoneShift(+e.target.value); redrawCurrent() };
+$("borigin").onchange=e=>{ t1SetBoneOrigin(e.target.value); redrawCurrent() };
 function fillBoneShift(){
+  const ob=$("borigin-box"), os=$("borigin");
+  if(ob&&os){ ob.hidden=!(state.ramChars&&state.ramChars.length); os.value=T1_BONE_ORIGIN }
   const box=$("boneshift-box"), sel=$("boneshift");
   if(!box||!sel) return;
   if(!state.ramChars||!state.ramChars.length){ box.hidden=true; return }
