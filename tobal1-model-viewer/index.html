@@ -4735,7 +4735,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.38.0";
+const VERSION="v4.39.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5123,11 +5123,17 @@ function finishT1(r1,info,parts,b){
   new DataView(blk.buffer).setUint32(0,b.out.length+8,true);
   collectDump(blk,info);
   const tex=findVram(parts); info.texIndex=tex.index;
-  r1.mesh.vram=tex.index>=0?tex.vram:new Uint8Array(1024*512*4);
-  if(tex.index<0){
-    const ch=findVramChainT1(b.out);
-    if(ch&&ch.list.length){ info.texChain=ch.list.length; r1.mesh.vram=buildVramT1(b.out,ch.list) }
-  }
+  // 読み込んだ VRAM の写しがあれば、それを使う。
+  // ここで「ディスクの中のテクスチャ、無ければ真っ白な1MB」で上書きしていたので、
+  // せっかく読み込んだ VRAM が毎回捨てられ、テクスチャが出なかった
+  const loaded=r1.mesh.vram;
+  if(!loaded){
+    r1.mesh.vram=tex.index>=0?tex.vram:new Uint8Array(1024*512*4);
+    if(tex.index<0){
+      const ch=findVramChainT1(b.out);
+      if(ch&&ch.list.length){ info.texChain=ch.list.length; r1.mesh.vram=buildVramT1(b.out,ch.list) }
+    }
+  }else info.texFrom="  テクスチャ: 読み込んだ VRAM の写しを使っています";
   return {mesh:r1.mesh,info};
 }
 // 展開した中身1つをモデルとして組んでみる。まずトバル2 の並び、だめなら自分で合わせる
@@ -5250,6 +5256,7 @@ function renderFiles(){
 async function selectEntry(i){
   const e=state.entries[i]; if(!e) return;
   state.sel=i; state.ramSel=-1; state.selInfo=null; state.selErr="";
+  if(typeof t1SetVram==="function") t1SetVram(state.vram);   // 写しの VRAM はディスクのモデルにも使う
   for(const b of $("files").children) if(b.dataset) b.setAttribute("aria-pressed",String(b.dataset.key===e.key));
   busy("読み込み中…");
   try{
@@ -5374,7 +5381,7 @@ function digestLines(){
   if(inf&&e){
     L.push("");
     L.push(`選んでいるファイル: #${e.no} sector ${e.sector}`);
-    for(const k of ["ramChar","t1ColHow","t1Tex","t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
+    for(const k of ["ramChar","t1ColHow","t1Tex","texFrom","t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
     for(const x of inf.t1ColorLines||[]) L.push("    "+x);
     if(inf.t1OpArgs&&inf.t1OpArgs.length){
       L.push("  まだ意味の分かっていない命令の中身（骨のずらし量を探している）:");
