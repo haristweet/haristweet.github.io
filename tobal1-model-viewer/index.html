@@ -142,8 +142,8 @@ canvas:active{cursor:grabbing}
       <button class="btn wide" id="bones" style="margin-top:8px">骨さがし（32バイトの行列を探す）</button>
     </div>
     <div data-tab="file"><p class="label">向き</p>
-      <div class="seg" id="up-seg"><button data-up="0" aria-pressed="false">そのまま</button><button data-up="1" aria-pressed="false">X を上に</button><button data-up="2" aria-pressed="true">X を上（逆）</button><button data-up="3" aria-pressed="false">Z を上に</button></div>
-      <p class="note">モデルの「背の高さ」がどの軸かはファイルに書かれていません。実物は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）でした。そのうえで上下をひっくり返した「X を上（逆）」が既定です。人の形にならないときはここを変えてみてください。</p>
+      <div class="seg" id="up-seg"><button data-up="0" aria-pressed="false">そのまま</button><button data-up="1" aria-pressed="false">X を上に</button><button data-up="2" aria-pressed="true">X を上（逆）</button><button data-up="3" aria-pressed="false">Z を上に</button><button data-up="4" aria-pressed="false">Y を上（逆）</button></div>
+      <p class="note">モデルの「背の高さ」がどの軸かはファイルに書かれていません。実物は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）でした。そのうえで上下をひっくり返した「X を上（逆）」が既定です。人の形にならないときはここを変えてみてください。<br><b>メモリの写しから出しているときは「Y を上（逆）」</b>です。ワールドの行列は Y が背の高さで、プレステの画面座標は Y が下向きだからです（地面に潰した影の行列の縦の値が 1331、頭のほうが 28 でした）。写しを読み込むと自動でこちらに変わります。</p>
     </div>
     <div data-tab="file"><p class="label">キャラクターを見分ける</p>
       <button class="btn wide" id="mdlgal">モデルを並べて見る</button>
@@ -161,6 +161,11 @@ canvas:active{cursor:grabbing}
     </div>
     <div data-tab="file"><p class="label">メモリの写し（本物の骨）</p>
       <label class="pick" style="display:inline-block">RAM ダンプかセーブステートを選ぶ<input id="memfile" type="file" hidden></label>
+      <div id="ramchar-box" hidden style="margin-top:8px">
+        <p class="label">写しの中にいた人</p>
+        <select id="ramchar" aria-label="写しの中にいた人"></select>
+        <p class="note">ディスクのファイルではなく、<b>写しに載っているモデルそのもの</b>を出しています。骨もモデルも同じ1つの写しの中にあるので、突き合わせが要りません。別の場面で取った2つの写しを比べたところ、ポーズは変わってもモデルは1バイトも変わりませんでした。</p>
+      </div>
       <div id="bonepick-box" hidden style="margin-top:8px">
         <p class="label">使う骨の表（当ててみた結果の良い順）</p>
         <select id="bonepick" aria-label="使う骨の表"></select>
@@ -176,6 +181,10 @@ canvas:active{cursor:grabbing}
       止める番地は <b>8001F464</b> にしてください。0x8001F44C だと、その手前の分岐で「骨が無いときは素通り」するので、表が空のまま止まります。<br>
       セーブステートでも読めますが、描き終わったあとの瞬間だと表が空になっています。圧縮は <b>Deflate</b> か <b>なし</b> にしてください（既定の zstd はブラウザがほどけません）。</p>
       <div class="note" id="mem-status"></div>
+    </div>
+    <div data-tab="file" id="t1slot-box" hidden><p class="label">差し替えの部品（手など）</p>
+      <select id="t1slot" aria-label="差し替えの部品"></select>
+      <p class="note">モデルには<b>差し替え用の枠</b>が入っています。8個は<b>右手4種・左手4種</b>で、対になるものは Z だけが符号ごと裏返り（左右の鏡像）、片側の4種は外へ届く長さが順に伸びます（握り拳→開いた手）。<b>同時に出すものではない</b>ので、既定では本体だけを描きます。ゲームの部品の表に入っていたのも本体1個だけでした。</p>
     </div>
     <div data-tab="file" id="t1part-box" hidden><p class="label">ファイルの中のモデル</p>
       <select id="t1part"></select>
@@ -276,6 +285,9 @@ const state={
   galling:false,
   galWhy:null,     // 一覧で読めなかったモデルの理由   // モデルを並べている最中か
   t1Part:-1,          // ファイルの中のどのモデルを出すか（-1＝いちばん大きいもの）
+  t1Slot:-1,          // 差し替えの組から何番目を出すか（-1＝出さない＝本体だけ）
+  ramChars:null,      // メモリの写しの中にいた登場人物（1P・2P…）
+  ramSel:-1,          // そのうち、いま出している人
   entries:[],        // 表示中の一覧（アーカイブ or ディスクのファイル）
   scan:null,         // アーカイブを直接さらった結果
   survey:null,       // モデル候補をまとめて調べた結果
@@ -2314,6 +2326,32 @@ function t1ObjectOffsets(d){
   out.group=grp;                                // どの組から出てきたか（0＝本体）
   return out;
 }
+// ============================================================
+//  描く部品を選ぶ
+//
+//  部品の組（0以外）は「差し替えの枠」。実測（dump3）で、8個の組は
+//  4個ずつ2かたまりに分かれ、対になるものどうしは X と Y の広がりが同じで
+//  **Z だけが符号ごと裏返って**いた（-30〜125 と -125〜30 など、4組すべて）。
+//  左右の手で、片側4種は外へ届く長さが 211→229→288→307 と伸びる。
+//  握り拳から開いた手までの差し替えである。
+//
+//  だから全部いっぺんに描いてはいけない（手が片側に4つ重なる）。
+//  そしてゲーム自身が「本体だけ」と言っていた:
+//  部品の表（表C）に入っていたのは本体1個だけで、あとは全部 0 だった。
+//  本体の命令5の回数（1P 40・2P 34）が、骨の表の長さとぴったり一致する
+// ============================================================
+function t1PickParts(objs,slot){
+  const body=objs.filter(o=>!o.group);
+  if(!body.length) return objs;                 // 組が付いていなければ、そのまま
+  if(slot==null||slot<0) return body;           // 既定は本体だけ
+  const by=new Map();
+  for(const o of objs){ if(!o.group) continue;
+    const a=by.get(o.group)||[]; a.push(o); by.set(o.group,a) }
+  const out=body.slice();
+  for(const [,a] of [...by].sort((x,y)=>x[0]-y[0]))
+    out.push(a[Math.min(slot,a.length-1)]);     // 組ごとに1つだけ
+  return out;
+}
 // 頂点や法線の「数」はヘッダの決まった場所にあるとは限らない（実物で、頂点51/法線51 の
 // 部品と 頂点47/法線45 の部品が混ざっていた）。位置の差から割り出すほうが確実。
 // 面の数4種だけはヘッダから拾うが、これも場所を決め打ちせず
@@ -2410,7 +2448,12 @@ const T1_UP=[
   {name:"X を上に",      f:(x,y,z)=>[-y,x,z]},
   {name:"X を上に（逆）", f:(x,y,z)=>[y,-x,z]},
   {name:"Z を上に",      f:(x,y,z)=>[x,z,-y]},
+  // 写しから取った本物の骨を使うときは、これ。ワールドの行列は Y が高さで、
+  // プレステの画面座標は Y が下向きなので、Y を裏返すと人が立つ。
+  // 実測: 地面に潰した影の行列の縦の値が 1331 で、頭のほうが Y 28 だった
+  {name:"Y を上（逆）",   f:(x,y,z)=>[x,-y,z]},
 ];
+const T1_UP_WORLD=4;                            // 本物の骨のときの向き
 // 骨ごとに色を変えるときの色。棘がどの骨から出ているかを目で追うため
 const T1_SEG_COL=[[.95,.35,.35],[.35,.85,.45],[.40,.55,.95],[.95,.80,.30],
                   [.85,.45,.90],[.30,.85,.85],[.95,.60,.35],[.60,.60,.95],
@@ -2584,9 +2627,16 @@ function buildT1Mesh(d,objs){
     // 頂点は「その骨のローカル座標」で入っている。骨の行列が分かっていれば
     // ここでかける。無ければそのまま（手足が胴に畳み込まれた形になる）
     const BM=T1_BONES;
+    // どの骨をかけるかは、**その頂点が入れられたとき**の区切りで決まる。
+    // ゲームは 命令5 で行列を差し替え、命令1/2 でそのときの行列をかけてから
+    // 置き場所に入れる。面は入れ終わった置き場所を番号で引くだけなので、
+    // 継ぎ目の面は「前の区切りで入れた頂点」を混ぜて指す。
+    // 面の区切りで引くと、そこがねじれて全体が散らばる（実物でそうなった）
+    const VSEG=o.run&&o.run.vseg;
     const V0=(i,seg)=>{ const q=o.base+o.vertPtr+i*8;
                   let x=dv.getInt16(q,true), y=dv.getInt16(q+2,true), z=dv.getInt16(q+4,true);
-                  const M=BM&&BM[(seg|0)%BM.length];
+                  const vs=(VSEG&&VSEG[i]!=null)?VSEG[i]:seg;
+                  const M=BM&&BM[(vs|0)%BM.length];
                   if(M){ const k=M.one||4096;
                     const X=(M.m[0]*x+M.m[1]*y+M.m[2]*z)/k+M.t[0];
                     const Y=(M.m[3]*x+M.m[4]*y+M.m[5]*z)/k+M.t[1];
@@ -4471,7 +4521,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.28.0";
+const VERSION="v4.29.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4542,8 +4592,15 @@ function buildModelInner(raw,info){
     if(!modelInfoT1(b.out)) continue;
     const offs=t1ObjectOffsets(b.out);
     const objs=offs.map((p,i)=>{ const o=readT1Object(b.out,p); if(o) o.group=offs.group?offs.group[i]:0; return o }).filter(Boolean);
-    const okObjs=objs.filter(o=>o.ok);
-    info.t1Parts=`${okObjs.length}/${objs.length} 部品`
+    const allObjs=objs.filter(o=>o.ok);
+    // 描くのは本体だけ。組（差し替えの枠）を全部描くと、手が片側に4つ重なる。
+    // ゲーム自身の部品の表（表C）に入っていたのも本体1個だけだった
+    const okObjs=t1PickParts(allObjs,state.t1Slot);
+    { const by=new Map();
+      for(const o of allObjs){ if(!o.group) continue; by.set(o.group,(by.get(o.group)||0)+1) }
+      info.t1SlotMax=by.size?Math.max(...by.values()):0; }
+    info.t1Parts=`${allObjs.length}/${objs.length} 部品`
+      +(okObjs.length<allObjs.length?`（描いているのは ${okObjs.length}個。組は差し替えなので、既定では本体だけ）`:"")
       +(objs.empty?`（ほかに 枠だけで中身の無い部品 ${objs.empty}個。手の差し替え用らしい枠が 0x420 刻みで並んでいる）`:"");
     // テクスチャを貼れるかどうかを、面のバイトの内訳から判定して出す
     { const big=okObjs.slice().sort((a,b)=>b.nv-a.nv)[0];
@@ -4964,7 +5021,7 @@ function renderFiles(){
 // ---- 表示 ----
 async function selectEntry(i){
   const e=state.entries[i]; if(!e) return;
-  state.sel=i; state.selInfo=null; state.selErr="";
+  state.sel=i; state.ramSel=-1; state.selInfo=null; state.selErr="";
   for(const b of $("files").children) if(b.dataset) b.setAttribute("aria-pressed",String(b.dataset.key===e.key));
   busy("読み込み中…");
   try{
@@ -4977,7 +5034,8 @@ async function selectEntry(i){
     state.selErr=err.message; state.selInfo=err.info||null; console.error(err);
     clearMesh(); draw();
   }
-  busy(""); updateStatus(); updateReport(); updateHud(); fillT1Part(state.selInfo);
+  busy(""); updateStatus(); updateReport(); updateHud();
+  fillT1Part(state.selInfo); fillT1Slot(state.selInfo);
 }
 // モデル候補を順に開いて、最初に三角形が出たものを表示する
 async function selectFirstModel(limit=16){
@@ -5012,6 +5070,15 @@ function entryLabel(e){
 }
 function updateStatus(){
   const e=state.entries[state.sel];
+  // 写しの中の人を出しているときは、ディスクの一覧に相手がいない
+  if(!e&&state.ramSel>=0&&state.ramChars&&state.ramChars[state.ramSel]){
+    const c=state.ramChars[state.ramSel], inf=state.selInfo;
+    $("status").textContent=state.selErr?`写しの ${c.who}　— ${state.selErr}`
+      :`写しの ${c.who}　${hex(c.model.at)}　${fmtSize(c.model.len)}　三角形 ${inf?inf.tris.toLocaleString():0}`
+       +(inf&&inf.extent?`　広がり ${inf.extent}`:"")+`　骨 ${c.bones.list.length}本`
+       +(inf&&inf.t1Parts?`　${inf.t1Parts}`:"");
+    return;
+  }
   if(!e){ $("status").textContent="左の一覧からファイルを選んでください"; return }
   const inf=state.selInfo;
   $("status").textContent=state.selErr?`${entryLabel(e)}　— ${state.selErr}`
@@ -5079,7 +5146,7 @@ function digestLines(){
   if(inf&&e){
     L.push("");
     L.push(`選んでいるファイル: #${e.no} sector ${e.sector}`);
-    for(const k of ["t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
+    for(const k of ["ramChar","t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
     for(const x of inf.t1ColorLines||[]) L.push("    "+x);
     if(inf.t1OpArgs&&inf.t1OpArgs.length){
       L.push("  まだ意味の分かっていない命令の中身（骨のずらし量を探している）:");
@@ -5138,6 +5205,7 @@ function digestLines(){
     if(P){
       const sec=(k,cap)=>{ const a=P[k]||[]; if(a.length) L.push(...a.slice(0,cap)) };
       sec("head",1);            // RAM の先頭が見つかったか
+      sec("chars",6);           // 写しの中にいた人（1P・2P…）
       sec("drawn",4);           // いま描かれているモデルはどれか
       sec("bones",4);           // 表Bから取れた骨
       sec("best",4);            // どの並びに当てたか
@@ -6218,6 +6286,26 @@ $("memfile").onchange=async e=>{
     state.mem=[`メモリの写し: ${f.name}（${fmtSize(f.size)}）${prep.note}`,
                ...hunt.lines,...memBoneLines(prep.buf,exe)];
     st.textContent=`${f.name}: ${note}`;
+    // ディスクと突き合わせずに、写しの中のモデルをそのまま出す。
+    // 骨もモデルも同じ写しの中にあり、そちらは欠けずに読めた
+    try{
+      const pick=memPickBase(prep.buf,exe);
+      const b2=pick.base;
+      const cs=b2>=0?memCharacters(prep.buf,b2):[];
+      state.ramBuf=prep.buf; state.ramBase=b2;
+      state.ramChars=cs.length?cs:null;
+      const cl=memCharLines(cs);
+      if(state.memParts) state.memParts.chars=cl;
+      state.mem.push("",...cl);            // 長いほうの報告にも出す
+      fillRamChar();
+      if(cs.length){
+        st.textContent=`${f.name}: 写しの中の ${cs.map(c=>c.who).join("・")} を取り出しました`;
+        await selectRamChar(0);
+        busy(""); updateReport(); openTab("info");
+        return;
+      }
+    }catch(err){ console.error(err);
+      state.mem.push("  写しからモデルを取り出せませんでした: "+err.message) }
     // 描かれていたモデルが1件に決まったら、そちらへ切り替える。
     // 骨と区切りの数が合うのはそのモデルだけなので、人に選び直させない
     let jump=-1;
@@ -6232,6 +6320,67 @@ $("memfile").onchange=async e=>{
     st.textContent="読めませんでした: "+err.message }
   updateReport(); openTab("info");
 };
+// ============================================================
+//  写しの中の人を出す
+//
+//  ディスクのファイルと突き合わせるのをやめた。骨（表B）もモデル（表C）も
+//  同じ1つの写しの中に揃っていて、写しから読んだほうが欠けずに読める。
+//  実測（dump3）: 1P 11/11部品 区切り40 三角1065／2P 11/11部品 区切り34 三角1128。
+//  骨の本数は、本体の命令5の回数（40・34）とぴったり一致した
+// ============================================================
+async function selectRamChar(k){
+  const c=(state.ramChars||[])[k]; if(!c) return;
+  state.ramSel=k; state.sel=-1; state.selInfo=null; state.selErr="";
+  for(const b of $("files").children) if(b.dataset) b.setAttribute("aria-pressed","false");
+  busy("写しからモデルを組み立てています…");
+  try{
+    // 本物の骨はワールド空間にあるので、向きは Y を裏返したものにする
+    if(typeof T1_UP_WORLD==="number"&&t1Show.up!==T1_UP_WORLD){
+      t1Show.up=T1_UP_WORLD;
+      for(const x of $("up-seg").children) x.setAttribute("aria-pressed",String(+x.dataset.up===t1Show.up));
+      try{ localStorage.setItem("t1up2",String(t1Show.up)) }catch(_){}
+    }
+    // 骨は、カメラを掛ける前の並びに置き換えたものを使う
+    const bb=memCharBones(state.ramBuf,state.ramBase,c);
+    state.ramBones=bb;
+    t1SetBones(bb&&bb.list&&bb.list.length?bb.list:null,!!(bb&&bb.list&&bb.list.length));
+    const {mesh,info}=buildModel(c.model.bytes);
+    info.ramChar=`  写しの中の ${c.who}: モデル ${hex(c.model.at)}（${c.model.len} B）`
+      +`　骨 ${c.bones.list.length}本　本体の命令5 ${c.cmd5}回`
+      +(c.cmd5&&c.bones.list.length===c.cmd5?"（一致）":"（合っていない）")
+      +(bb?`　骨を当てた並び ${hex(bb.at)}${bb.sc?`　背の高さ ${bb.sc.tall}　左右の対 ${bb.sc.pairs}組`:"（カメラを掛けたまま）"}`:"");
+    state.selInfo=info;
+    if(info.error){ state.selErr=info.error; clearMesh() } else upload(mesh);
+    // 向きを正面に戻す。写しの骨を当てると縦に伸びるので、寄りすぎて見切れる
+    if(typeof resetView==="function"){ resetView(); view.dist=1.5 }
+    draw();
+  }catch(err){
+    state.selErr=err.message; state.selInfo=err.info||null; console.error(err);
+    clearMesh(); draw();
+  }
+  busy(""); updateStatus(); updateReport(); updateHud();
+  fillT1Part(state.selInfo); fillT1Slot(state.selInfo);
+}
+function fillRamChar(){
+  const box=$("ramchar-box"), sel=$("ramchar");
+  const c=state.ramChars||[];
+  if(!box||!sel) return;
+  if(!c.length){ box.hidden=true; return }
+  box.hidden=false;
+  sel.innerHTML=c.map((x,i)=>`<option value="${i}">${x.who}　モデル ${hex(x.model.at)}　骨 ${x.bones.list.length}本</option>`).join("");
+  sel.value=String(state.ramSel<0?0:state.ramSel);
+}
+// 差し替えの組から何番目を出すか。既定は「出さない（本体だけ）」
+function fillT1Slot(inf){
+  const box=$("t1slot-box"), sel=$("t1slot");
+  if(!box||!sel) return;
+  const n=inf&&inf.t1SlotMax||0;
+  if(n<1){ box.hidden=true; return }
+  box.hidden=false;
+  sel.innerHTML='<option value="-1">出さない（本体だけ・ゲームと同じ）</option>'
+    +Array.from({length:n},(_,i)=>`<option value="${i}">組の ${i+1} 番目を出す</option>`).join("");
+  sel.value=String(state.t1Slot);
+}
 // 骨の表を選び直せるようにする。自動で選んだものが気に入らないときのため
 function fillBonePick(){
   const box=$("bonepick-box"), sel=$("bonepick");
@@ -6248,10 +6397,16 @@ $("bonepick").onchange=e=>{
   const i=+e.target.value; state.boneSel=i;
   const c=(state.boneCands||[])[i];
   t1SetBones(c?c.list:null);
-  if(state.sel>=0) selectEntry(state.sel);
+  redrawCurrent();
 };
-$("t1part").onchange=e=>{ state.t1Part=+e.target.value;
-  if(state.sel>=0) selectEntry(state.sel) };
+$("t1part").onchange=e=>{ state.t1Part=+e.target.value; redrawCurrent() };
+$("t1slot").onchange=e=>{ state.t1Slot=+e.target.value; redrawCurrent() };
+$("ramchar").onchange=e=>{ selectRamChar(+e.target.value) };
+// いま出しているものを組み立て直す（写しの中の人か、ディスクのファイルか）
+function redrawCurrent(){
+  if(state.ramSel>=0&&state.ramChars) return selectRamChar(state.ramSel);
+  if(state.sel>=0) return selectEntry(state.sel);
+}
 function fillT1Part(inf){
   const box=$("t1part-box"), sel=$("t1part"), list=inf&&inf.modelParts||[];
   if(list.length<2){ box.hidden=true; return }
@@ -7279,9 +7434,11 @@ function memBoneLines(buf,exe){
   const L=[];
   // まず実行ファイルと突き合わせる。だめなら命令5の処理のバイト列から探す。
   // 実物のセーブステートでは先頭が 0x31B93（4の倍数ですらない）だった
-  let base=findPsxRam(buf,exe);
-  if(base<0){ const b2=memFindBaseByCode(buf);
-    if(b2>=0){ base=b2; L.push(`RAM の先頭を、命令5の処理のバイト列から見つけました（+0x${b2.toString(16)}）`) } }
+  // 候補を並べて、表B・表Cの先まで確かめてから決める
+  const pick=memPickBase(buf,exe);
+  let base=pick.base;
+  if(base>=0&&pick.tried.length>1)
+    L.push(`RAM の先頭を +0x${base.toString(16)} に決めました（${pick.why}）`);
   if(base<0){
     L.push("メモリの写しの中に実行ファイルが見つかりませんでした。");
     L.push(`  ファイルの大きさ: ${buf.length} B（プレステの RAM は 2,097,152 B）`);
@@ -8034,6 +8191,163 @@ function memGapLines(buf,base,opt){
   const as=M.u32(0x800CBE90);
   if(M.ptr(as)) L.push(`    （表A ${hex(as)} はこの範囲${as>=from&&as<viewBase?"の中":"の外"}）`);
   return L;
+}
+
+// ============================================================
+//  メモリの写しから、モデルそのものを切り出す
+//
+//  ディスクのファイルと突き合わせるのをやめる。
+//  骨（表B）もモデル（表C）も、**同じ1つの写しの中に揃っている**うえ、
+//  写しから読んだほうが欠けずに読めた。実測（dump3）:
+//    1P 0x8010788C（34376 B）11部品すべて読めた　区切り40　三角1065
+//    2P 0x800B2548（38136 B）11部品すべて読めた　区切り34　三角1128
+//
+//  書き換えの心配も測って潰した。別の場面・別のポーズで取った2つの写しの、
+//  同じ番地の 34376 バイトが**1バイトも違わなかった**（そのときワールド行列の
+//  並びのほうは 752 バイト違っていた＝ポーズは別物）。
+//  モデルは実行中に書き換えられていない
+// ============================================================
+// 長さは「次の 0x90000000 まで」。1P では 0x8648 で、ディスクのファイルの
+// 大きさとぴったり同じだった。ただし当てずっぽうにしないため、
+// 部品がその中に収まっているかを確かめてから返す
+function memModelAt(buf,base,part0,opt){
+  const o=opt||{}, M=memReader(buf,base);
+  if(!M.ptr(part0)) return null;
+  for(let a=part0;a>0x80010000&&part0-a<(o.back||0x800);a-=4){
+    if(M.u32(a)!==0x90000000) continue;
+    const off0=M.u32(a+4);
+    if(a+off0!==part0) continue;                    // 先頭だと確かめる
+    // 次の署名まで。見つからなければ上限まで
+    const cap=o.cap||0x40000;
+    let end=0;
+    for(let p=a+4;p<a+cap;p+=4) if(M.u32(p)===0x90000000){ end=p; break }
+    const len=(end?end:a+cap)-a;
+    const bytes=M.bytes(a,len);
+    if(bytes.length<len) return {at:a,off0,why:"写しの終わりに届いた"};
+    return {at:a,off0,len,bytes,ended:!!end};
+  }
+  return null;
+}
+// 本体の命令5の回数。骨の表の終わりを決めるのに使う。
+// 表Bを前から順にたどるだけだと終わりが分からず、実測で6個行き過ぎていた
+function memCmd5Count(d,partOff){
+  if(!d||partOff+0x10>d.length) return 0;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const g=p=>p+4<=d.length?dv.getUint32(p,true):0;
+  const LEN=(typeof T1_CMD_LEN==="object"&&T1_CMD_LEN)||{0:0,1:12,2:16,3:8,4:16,5:4,6:8,7:12};
+  let fp=partOff+0x10, n=0;
+  for(let steps=0;steps<8192&&fp+8<=d.length;steps++){
+    const op=g(fp);
+    if(op===0) break;
+    if(op===5) n++;
+    if(op in LEN) fp+=LEN[op];
+    else if(op<=15) fp+=8;
+    else break;
+  }
+  return n;
+}
+// 表Bの先頭（カーソルではなく並びの頭）から、骨を n 本ぶん取る
+function memBonesFrom(buf,base,cur,opt){
+  const o=opt||{}, M=memReader(buf,base);
+  if(!M.ptr(cur)) return {why:"表Bが RAM を指していない（描き終わったあとの写し）",list:[],ptrs:[]};
+  let start=cur;
+  for(let k=1;k<=(o.back||64);k++){
+    const p=M.u32(cur-k*4);
+    if(!M.ptr(p)||!memBoneMatrix(M,p)) break;
+    start=cur-k*4;
+  }
+  const list=[], ptrs=[], max=o.want||o.max||256;
+  for(let k=0;k<max;k++){
+    const p=M.u32(start+k*4);
+    if(!M.ptr(p)) break;
+    const bm=memBoneMatrix(M,p); if(!bm) break;
+    ptrs.push(p); list.push(bm);
+  }
+  const cnt=new Map(); for(const p of ptrs) cnt.set(p,(cnt.get(p)||0)+1);
+  return {start,cur,used:(cur-start)/4,list,ptrs,uniq:cnt.size,
+          roots:[...cnt].filter(x=>x[1]>1).sort((a,b)=>b[1]-a[1]).slice(0,4)};
+}
+// ============================================================
+//  写しの中の登場人物を、ぜんぶ並べる
+//
+//  キャラクター1体ぶんの入れものは 0x1E48 バイト間隔で並んでいた（実測）。
+//  1P の表A/B/C にこの間隔を足すと、そのまま 2P の表A/B/C になる。
+//  確かめ方は「表Cの1つ目 ＝ モデルの先頭 + 0x3C」で、両方で成り立った
+// ============================================================
+const MEM_CHAR_STRIDE=0x1E48;
+function memCharacters(buf,base,opt){
+  const o=opt||{}, M=memReader(buf,base);
+  const b0=M.u32(o.tableB||0x800CBE8C), c0=M.u32(o.tableC||0x800CBE94);
+  const out=[];
+  if(!M.ptr(b0)||!M.ptr(c0)) return out;
+  const stride=o.stride||MEM_CHAR_STRIDE;
+  for(let k=0;k<(o.max||4);k++){
+    const d=k*stride, tb=b0+d, tc=c0+d;
+    if(!M.ptr(tb)||!M.ptr(tc)) break;
+    const p0=M.u32(tc);
+    if(!M.ptr(p0)) break;                       // ここで登場人物は終わり
+    const md=memModelAt(buf,base,p0,o);
+    if(!md||!md.bytes) break;
+    // 本体の命令5の回数＝骨の本数。これで表Bの終わりを決める
+    const want=memCmd5Count(md.bytes,md.off0);
+    const rb=memBonesFrom(buf,base,tb,Object.assign({},o,{want:want||undefined}));
+    out.push({k,who:k===0?"1P":k===1?"2P":`${k+1}体目`,
+              tableB:tb,tableC:tc,part0:p0,model:md,cmd5:want,bones:rb});
+  }
+  return out;
+}
+// 表Bの並びを、歪みのない（カメラを掛ける前の）並びに置き換える
+function memCharBones(buf,base,c,opt){
+  const o=opt||{};
+  if(!c||!c.bones||!c.bones.ptrs.length) return null;
+  const viewBase=Math.min(...c.bones.ptrs);
+  const idx=c.bones.ptrs.map(p=>(p-viewBase)/32);
+  if(idx.some(v=>!Number.isInteger(v)||v<0)) return {list:c.bones.list,at:viewBase,idx,view:true};
+  const cands=[viewBase-(o.gap||0xF60),viewBase];
+  for(const at of cands){
+    const list=memBonesByIndex(buf,base,idx,at);
+    if(!list) continue;
+    const sc=memBonePoseScore(list);
+    if(at===viewBase||sc.ok) return {list,at,idx,sc,view:at===viewBase};
+  }
+  return {list:c.bones.list,at:viewBase,idx,view:true};
+}
+function memCharLines(list){
+  if(!list||!list.length) return ["  写しの中に登場人物が見つからない（表B・表Cが RAM を指していない）"];
+  const L=[`  写しの中の登場人物 ${list.length}人（入れものは 0x${MEM_CHAR_STRIDE.toString(16).toUpperCase()} バイト間隔）`];
+  for(const c of list)
+    L.push(`    ${c.who}: モデル ${hex(c.model.at)}（${c.model.len} B${c.model.ended?"":"・次の署名が無いので上限まで"}）`
+      +`　本体の命令5 ${c.cmd5}回　表B ${hex(c.tableB)} から骨 ${c.bones.list.length}本`
+      +(c.cmd5&&c.bones.list.length===c.cmd5?"（命令5の回数と一致）":c.cmd5?`（命令5は ${c.cmd5}回）`:""));
+  return L;
+}
+
+// ============================================================
+//  RAM の先頭を、当てずっぽうではなく確かめて決める
+//
+//  実行ファイルと突き合わせる findPsxRam は、**違う実行ファイル**を
+//  読み込んでいると、まちがった位置で一致してしまう（試験用の小さな
+//  実行ファイルで 572904 という出まかせが返った）。
+//  そこで候補を並べ、「表Bと表Cがちゃんと RAM を指し、
+//  表Cの先にモデルの署名がある」ものを選ぶ。
+//  どれも通らなければ（描き終わったあとの写しなど）先頭の候補に戻す
+// ============================================================
+function memPickBase(buf,exe){
+  const seen=new Set(), real=[];
+  const add=(v,a)=>{ if(v>=0&&!seen.has(v)){ seen.add(v); a.push(v) } };
+  // 中身から見つけた位置。確かめが通らなくても、最後はここへ戻す
+  try{ add(findPsxRam(buf,exe),real) }catch(_){}
+  try{ add(memFindBaseByCode(buf),real) }catch(_){}
+  // 生の RAM ダンプは先頭がそのまま RAM の 0 番地。ただし
+  // 「中身が空でも 0 なら通る」ことになってはいけないので、
+  // これは**確かめに通ったときだけ**使う
+  const probe=real.slice(); add(0,probe);
+  for(const base of probe){
+    let n=0; try{ n=memCharacters(buf,base).length }catch(_){}
+    if(n>0) return {base,ok:true,tried:probe,why:`表Bと表Cの先が筋の通る位置（登場人物 ${n}人）`};
+  }
+  return {base:real.length?real[0]:-1,ok:false,tried:probe,
+          why:"確かめられなかったので、突き合わせで出た位置をそのまま使う"};
 }
 // ============================================================
 //  トバルNo.1 のテクスチャを絵にする
