@@ -123,7 +123,7 @@ canvas:active{cursor:grabbing}
 </style>
 </head>
 <body>
-<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev">v4.28.0 ・ 非公式</span></header>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev" id="rev">・ 非公式</span></header>
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
@@ -4587,7 +4587,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.32.0";
+const VERSION="v4.32.1";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -6321,6 +6321,10 @@ $("texpick").onchange=async e=>{
 };
 
 // メモリの写しを読む。読むのはこのページの仕事で、あなたはゲームを動かすだけでいい
+// ヘッダーの版は VERSION から書く。
+// head.html に直書きしていたので、v4.29〜v4.32 のあいだ「v4.28.0」と
+// 出たままだった。新しい版を上げたのに古いと見える、いちばん困る間違い方
+{ const r=$("rev"); if(r) r.textContent=VERSION+" ・ 非公式" }
 $("memfile").onchange=async e=>{
   const f=e.target.files&&e.target.files[0]; if(!f) return;
   const st=$("mem-status");
