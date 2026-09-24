@@ -198,6 +198,15 @@ canvas:active{cursor:grabbing}
       <p class="note">トバル2から持ってきた骨のつなぎ方で組みます。部品がばらける・重なるときは「関節を使わない」にすると、モデルの中の座標をそのまま出します。</p>
     </div>
     <div data-tab="look" id="look-bg"><p class="label">背景</p></div>
+    <div data-tab="look" id="grid-box"><p class="label">格子（ワイヤーフレーム）</p>
+      <label style="display:block"><input type="checkbox" id="grid-floor"> 床（X と Z の面）</label>
+      <label style="display:block"><input type="checkbox" id="grid-wall"> 縦の面（X と Y の面。体の奥に立てる）</label>
+      <div class="bgm-row" style="margin-top:6px">
+        <label>マスの大きさ <select id="grid-step"><option value="50">50</option><option value="100">100</option><option value="200">200</option><option value="400">400</option><option value="800">800</option></select></label>
+        <label>色 <input type="color" id="grid-color" value="#7d828c"></label>
+      </div>
+      <p class="note">座標の軸にそろえて引いています。原点を通る線だけ色が付きます（X 赤・Y 緑・Z 青）。キャラクターの背はおよそ 1200〜1600 です。</p>
+    </div>
     <div id="bgm-box" data-tab="look" hidden><p class="label">BGM</p>
       <div class="bgm-row"><select id="bgm"><option value="-1">なし</option></select>
       <input id="bgm-vol" type="range" min="0" max="1" step="0.05" value="0.6" aria-label="音量"></div>

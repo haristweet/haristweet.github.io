@@ -198,6 +198,15 @@ canvas:active{cursor:grabbing}
       <p class="note">トバル2から持ってきた骨のつなぎ方で組みます。部品がばらける・重なるときは「関節を使わない」にすると、モデルの中の座標をそのまま出します。</p>
     </div>
     <div data-tab="look" id="look-bg"><p class="label">背景</p></div>
+    <div data-tab="look" id="grid-box"><p class="label">格子（ワイヤーフレーム）</p>
+      <label style="display:block"><input type="checkbox" id="grid-floor"> 床（X と Z の面）</label>
+      <label style="display:block"><input type="checkbox" id="grid-wall"> 縦の面（X と Y の面。体の奥に立てる）</label>
+      <div class="bgm-row" style="margin-top:6px">
+        <label>マスの大きさ <select id="grid-step"><option value="50">50</option><option value="100">100</option><option value="200">200</option><option value="400">400</option><option value="800">800</option></select></label>
+        <label>色 <input type="color" id="grid-color" value="#7d828c"></label>
+      </div>
+      <p class="note">座標の軸にそろえて引いています。原点を通る線だけ色が付きます（X 赤・Y 緑・Z 青）。キャラクターの背はおよそ 1200〜1600 です。</p>
+    </div>
     <div id="bgm-box" data-tab="look" hidden><p class="label">BGM</p>
       <div class="bgm-row"><select id="bgm"><option value="-1">なし</option></select>
       <input id="bgm-vol" type="range" min="0" max="1" step="0.05" value="0.6" aria-label="音量"></div>
@@ -3994,10 +4003,57 @@ function upload(mesh,fit=true,li=0){
   if(fit) fitView(P);
   if(mesh.vram&&L.vram!==mesh.vram){ gl.bindTexture(gl.TEXTURE_2D,L.tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1024,512,0,gl.RGBA,gl.UNSIGNED_BYTE,mesh.vram); L.vram=mesh.vram }
   for(const [k,data] of [["p",P],["n",N],["c",mesh.col],["t0",mesh.t0],["t1",mesh.t1]]){gl.bindBuffer(gl.ARRAY_BUFFER,L.bufs[k]);gl.bufferData(gl.ARRAY_BUFFER,data,gl.DYNAMIC_DRAW)}
-  L.count=P.length/3; if(li===0) triCount=L.count;
+  L.count=P.length/3; L.mn=mn; L.mx=mx; if(li===0) triCount=L.count;
 }
 function persp(f,a,n,fa){const t=1/Math.tan(f/2);return[t/a,0,0,0, 0,t,0,0, 0,0,(fa+n)/(n-fa),-1, 0,0,2*fa*n/(n-fa),0]}
 function mul4(a,b){const r=new Array(16).fill(0);for(let i=0;i<4;i++)for(let j=0;j<4;j++)for(let k=0;k<4;k++)r[j*4+i]+=a[k*4+i]*b[j*4+k];return r}
+// ---- 格子（床・縦の面のワイヤーフレーム）----
+// 座標の軸にそろえて、マスの大きさの倍数の所に線を引く。原点を通る線だけ軸の色にする
+// （X 赤・Y 緑・Z 青）。キャラクターと同じ立体の中に描くので、回すと一緒に動き、手前の体に隠れる
+const LVS=`attribute vec3 p;attribute vec3 c;uniform mat4 mvp;varying vec3 vc;void main(){gl_Position=mvp*vec4(p,1.);vc=c;}`;
+const LFS=`precision mediump float;varying vec3 vc;void main(){gl_FragColor=vec4(vc,1.);}`;
+const lineProg=gl.createProgram(); gl.attachShader(lineProg,sh(gl.VERTEX_SHADER,LVS)); gl.attachShader(lineProg,sh(gl.FRAGMENT_SHADER,LFS)); gl.linkProgram(lineProg);
+const gridBuf={p:gl.createBuffer(),c:gl.createBuffer(),n:0};
+const grid={floor:false,wall:false,step:200,color:"#7d828c"};
+try{ Object.assign(grid,JSON.parse(localStorage.getItem("t1grid")||"{}")) }catch(_){}
+function gridSave(){ try{ localStorage.setItem("t1grid",JSON.stringify(grid)) }catch(_){} }
+function gridLines(){
+  const on=layers.filter(L=>L.count&&L.mn);
+  if(!(grid.floor||grid.wall)||!on.length) return {pos:[],col:[]};
+  const mn=[0,1,2].map(a=>Math.min(...on.map(L=>L.mn[a]))), mx=[0,1,2].map(a=>Math.max(...on.map(L=>L.mx[a])));
+  const st=Math.max(1,+grid.step||200), ext=Math.max(mx[0]-mn[0],mx[2]-mn[2],mx[1]-mn[1]);
+  const half=Math.max(st*5,Math.ceil(ext*0.9/st)*st);
+  const cx=Math.round((mn[0]+mx[0])/2/st)*st, cz=Math.round((mn[2]+mx[2])/2/st)*st;
+  const x0=cx-half, x1=cx+half, z0=cz-half, z1=cz+half, y0=mn[1];
+  const h=/^#?([0-9a-f]{6})$/i.exec(grid.color||""), base=h?[0,2,4].map(i=>parseInt(h[1].slice(i,i+2),16)/255):[.5,.5,.5];
+  const RED=[.85,.25,.25], GRN=[.3,.75,.35], BLU=[.3,.5,.95];
+  const pos=[], col=[], line=(a,b,c)=>{ pos.push(...a,...b); col.push(...c,...c) };
+  if(grid.floor){
+    for(let x=x0;x<=x1;x+=st) line([x,y0,z0],[x,y0,z1],x===0?BLU:base);   // x=0 の線は Z 軸に沿う
+    for(let z=z0;z<=z1;z+=st) line([x0,y0,z],[x1,y0,z],z===0?RED:base);   // z=0 の線は X 軸に沿う
+  }
+  if(grid.wall){
+    // 縦の面（X と Y の面）は、体の奥（Z のいちばん小さい所）に立てる
+    const zw=Math.floor(mn[2]/st)*st, top=y0+Math.ceil((mx[1]-y0)*1.15/st)*st;
+    for(let x=x0;x<=x1;x+=st) line([x,y0,zw],[x,top,zw],x===0?GRN:base);
+    const ys=Math.ceil(y0/st)*st;
+    if(ys!==y0) line([x0,y0,zw],[x1,y0,zw],base);
+    for(let y=ys;y<=top;y+=st) line([x0,y,zw],[x1,y,zw],y===0?RED:base);
+  }
+  return {pos,col};
+}
+function drawGrid(mvp){
+  const g=gridLines(); if(!g.pos.length) return;
+  for(let i=0;i<8;i++) gl.disableVertexAttribArray(i);   // 体を描いたときの並びが残っていると、数が足りないと言われる
+  gl.useProgram(lineProg);
+  gl.uniformMatrix4fv(gl.getUniformLocation(lineProg,"mvp"),false,mvp);
+  for(const [k,data] of [["p",g.pos],["c",g.col]]){ const loc=gl.getAttribLocation(lineProg,k);
+    gl.bindBuffer(gl.ARRAY_BUFFER,gridBuf[k]); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,3,gl.FLOAT,false,0,0) }
+  gl.drawArrays(gl.LINES,0,g.pos.length/3);
+  gl.disableVertexAttribArray(gl.getAttribLocation(lineProg,"p")); gl.disableVertexAttribArray(gl.getAttribLocation(lineProg,"c"));
+  gl.useProgram(prog);
+}
 function draw(){
   const dpr=Math.min(devicePixelRatio,2), w=canvas.clientWidth*dpr|0, h=canvas.clientHeight*dpr|0;
   if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h}
@@ -4011,7 +4067,8 @@ function draw(){
   const V=[s[0],u[0],-f[0],0, s[1],u[1],-f[1],0, s[2],u[2],-f[2],0, -(s[0]*eye[0]+s[1]*eye[1]+s[2]*eye[2]),-(u[0]*eye[0]+u[1]*eye[1]+u[2]*eye[2]),(f[0]*eye[0]+f[1]*eye[1]+f[2]*eye[2]),1];
   cam.s=s; cam.u=u; cam.half=d*Math.tan(0.31); cam.aspect=w/h;
   const P=persp(0.62,w/h,radius*0.02,radius*20);
-  gl.uniformMatrix4fv(gl.getUniformLocation(prog,"mvp"),false,mul4(P,V));
+  const MVP=mul4(P,V);
+  gl.uniformMatrix4fv(gl.getUniformLocation(prog,"mvp"),false,MVP);
   gl.uniformMatrix4fv(gl.getUniformLocation(prog,"model"),false,[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
   for(const L of layers){
     if(!L.count) continue;
@@ -4019,6 +4076,7 @@ function draw(){
     for(const [k,size] of [["p",3],["n",3],["c",3],["t0",3],["t1",4]]){const loc=gl.getAttribLocation(prog,k); gl.bindBuffer(gl.ARRAY_BUFFER,L.bufs[k]); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,size,gl.FLOAT,false,0,0)}
     gl.drawArrays(gl.TRIANGLES,0,L.count);
   }
+  drawGrid(MVP);
 }
 // 操作: 左ドラッグ=回転、右ドラッグ／Shift＋ドラッグ／中ボタン=移動、ホイール=カーソル位置へ拡大、2本指=移動と拡大
 const pointers=new Map(); let dragMode=null;
@@ -4072,7 +4130,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.51.0";
+const VERSION="v4.52.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5483,6 +5541,11 @@ function fillT1Slot(inf){
 $("t1part").onchange=e=>{ state.t1Part=+e.target.value; redrawCurrent() };
 $("t1slot").onchange=e=>{ state.t1Slot=+e.target.value; redrawCurrent() };
 $("ramchar").onchange=e=>{ selectRamChar(+e.target.value) };
+// 格子の切り替え。選んだものはブラウザに覚えておく
+{ const f=$("grid-floor"), w=$("grid-wall"), st=$("grid-step"), co=$("grid-color");
+  f.checked=!!grid.floor; w.checked=!!grid.wall; st.value=String(grid.step); co.value=grid.color;
+  const upd=()=>{ grid.floor=f.checked; grid.wall=w.checked; grid.step=+st.value||200; grid.color=co.value; gridSave(); draw() };
+  for(const x of [f,w,st]) x.onchange=upd; co.oninput=upd; }
 $("ramboth").onchange=e=>{ state.ramBoth=e.target.checked; if(state.ramSel>=0) selectRamChar(state.ramSel) };
 
 // ============================================================

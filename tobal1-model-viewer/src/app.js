@@ -1,4 +1,4 @@
-const VERSION="v4.51.0";
+const VERSION="v4.52.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -1409,6 +1409,11 @@ function fillT1Slot(inf){
 $("t1part").onchange=e=>{ state.t1Part=+e.target.value; redrawCurrent() };
 $("t1slot").onchange=e=>{ state.t1Slot=+e.target.value; redrawCurrent() };
 $("ramchar").onchange=e=>{ selectRamChar(+e.target.value) };
+// 格子の切り替え。選んだものはブラウザに覚えておく
+{ const f=$("grid-floor"), w=$("grid-wall"), st=$("grid-step"), co=$("grid-color");
+  f.checked=!!grid.floor; w.checked=!!grid.wall; st.value=String(grid.step); co.value=grid.color;
+  const upd=()=>{ grid.floor=f.checked; grid.wall=w.checked; grid.step=+st.value||200; grid.color=co.value; gridSave(); draw() };
+  for(const x of [f,w,st]) x.onchange=upd; co.oninput=upd; }
 $("ramboth").onchange=e=>{ state.ramBoth=e.target.checked; if(state.ramSel>=0) selectRamChar(state.ramSel) };
 
 // ============================================================

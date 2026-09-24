@@ -358,6 +358,14 @@ if(fs.existsSync("dump3.bin")){
     console.log(`--- 2人とも出す ---\n選んだ人 ${on.l0/3}枚・もう1人 ${on.l1/3}枚／切ると ${off}`);
     if(!(on.l0>0&&on.l1>0)) errs.push("2人とも出すで、もう1人が描かれていない");
     if(off!==0) errs.push("2人とも出すを切っても、もう1人が残る"); }
+  // 格子：床と縦の面を出すと描かれる画素が増え、切ると戻る
+  { const px=()=>pg3.evaluate(()=>{ draw(); const c=document.getElementById("gl"),g=c.getContext("webgl"),b=new Uint8Array(c.width*c.height*4);
+      g.readPixels(0,0,c.width,c.height,g.RGBA,g.UNSIGNED_BYTE,b); let n=0; for(let i=3;i<b.length;i+=4) if(b[i]>8) n++; return n });
+    const set=v=>pg3.evaluate(v=>{ for(const id of ["grid-floor","grid-wall"]){ const e=document.getElementById(id); e.checked=v; e.dispatchEvent(new Event("change")) } },v);
+    const a0=await px(); await set(true); const a1=await px(); await set(false); const a2=await px();
+    console.log(`--- 格子 ---\n画素 ${a0} → 出すと ${a1} → 切ると ${a2}`);
+    if(!(a1>a0)) errs.push("格子を出しても何も描かれない");
+    if(a2!==a0) errs.push("格子を切っても元に戻らない"); }
   // 差し替えの部品を1つ出す
   await pg3.selectOption("#t1slot","0");
   await pg3.waitForTimeout(800);
