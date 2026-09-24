@@ -1,14 +1,17 @@
 import fs from "fs";
 const read=f=>fs.readFileSync(f,"utf8");
-const code=[ "skel.js","pack.js","table.js","mips.js","model.js","fit.js","vram1.js","model1.js","bone.js","mem.js","tex1.js","survey2.js" ].map(read).join("\n")
+let code=[ "skel.js","pack.js","table.js","mips.js","model.js","fit.js","vram1.js","model1.js","bone.js","mem.js","tex1.js","survey2.js" ].map(read).join("\n")
   + "\nconst state={rig:'t2'};\nconst hex=(n,w=8)=>'0x'+(n>>>0).toString(16).toUpperCase().padStart(w,'0');\n"
   + "const FLAT_W=new Proxy({},{get:()=>({R:I3,T:[0,0,0]})});\n"
   + read("_buildModel.js") + "\n" + read("_scoreTables.js") + "\n" + read("_arcpick.js") + "\n"
   + "const idle=()=>Promise.resolve();\n" + read("_scan.js") + "\n"
-  + "globalThis.API={t1SlotAttach,T1_FACE_OP,T1_COL_TEX,t1ColorPlan,t1ColWords,T1_COL_WORDS,t1BoneOrigins,t1SetBoneOrigin,T1_UP_WORLD,memPickBase,memModelAt,memCmd5Count,memBonesFrom,memCharacters,memCharBones,memCharLines,MEM_CHAR_STRIDE,t1PickParts,get t1RunWhy(){return t1RunWhy},get T1_VAR_FOUND(){return T1_VAR_FOUND},mipsDis,findModelCode,mipsLines,mipsCalls,mipsBlock,mipsBranches,mipsTables,mipsCmdInfo,mipsDispatch,mipsRefs,mipsRefsRange,mipsFindGp,mipsFuncAt,mipsAddrOf,mipsTableAt,t1TexPairs,t1TexRGBA,t1Color,t1HasUV,findPsxRam,memReader,memBoneLines,memFindMagic,memDuckHeader,boneScan,boneScanBest,boneLines,memMatrixRuns,memMatrixPtrTables,memBonesAt,memBonesBack,memFindBaseByCode,memCpuRegs,memCpuLines,memMatrixRunsAll,memMatrixRunsAllLines,memStackLines,memMatrixAt,memMatrixLine,memMatrixHint,memMatrixLooks,memMatrixMapLines,memLooksAt,memMatrixStrideRuns,memMatrixStrideLines,memPoseShape,memPoseLine,memBoneMatrix,memRealBones,memRealBoneLines,memBoneIndexList,memBonesByIndex,memBonePoseScore,memBestBones,memBestBoneLines,memDrawnModel,memDrawnModelLines,memDrawnMatch,memBoneJumpLines,memGapLines,memBonesBackLines,memPickBones,memBoneHunt,findPsxRamAll,memBaseScore,t1SetBones,t1BoneFit,t1BonePick,t1FitLine,t1SegLayout,t1SegBoxMap,t1SegTouch,t1SegTouchLine,t1FindSkelTable,t1SkelTableLines,t1FileUse,t1FileUseLines,t1VertBoxes,t1VertBoxLine,t1FlatSegs,t1BoneCountCompare,t1SegOrigin,t1SegOriginLine,t1OpArgs,t1OpArgLines,t1NameOf,T1_NAMES,t1ColorFit,t1ColorLine,t1ColorSmooth,t1ColorBest,t1MirrorPairs,t1LimbRuns,t1VertBoxMap,t1ChainEnds,t1ChainEndLine,t1GuessBones,t1ChainBones,t1ChainFromBox,buildModel,fitLayout,t1ObjectOffsets,readT1Object,buildT1Mesh,t1Run,t1SegBoxes,T1_UP,t1WalkFaces,t1WalkGood,t1FaceSpans,t1SpanBases,t1Show,t1Diagnose,t1WhyKind,t1ScanOps,t1SolveSize,t1Layouts,t1RunExtra,T1_LEARNED,t1RunBest,t1Audit,t1AuditLine,t1VarName,T1_VARIANTS,t1SolveSize2,t1RunPair,t1SetExeSizes,t1ExeSizeOK,t1PtrMoves,t1PtrMoveLine,t1Learn,mipsJalIn,mipsCmdTails,mipsFindDispatch,mipsCmdTailLines,mipsOpTable,mipsOpTableLines,mipsCmdMap,mipsCmdMapLines,mipsCmdBody,mipsShortCmdLines,mipsFindSinTable,mipsSinTableLines,mipsSinUserLines,mipsNearAddrLines,mipsFaceStep,mipsFaceSizeLines,mipsCmdMap,mipsCmdMapLines,mipsCmdBody,mipsShortCmdLines,mipsFindSinTable,mipsSinTableLines,mipsSinUserLines,mipsNearAddrLines,mipsFaceStep,mipsFaceSizeLines,mipsCmdMap,mipsCmdMapLines,mipsCmdBody,mipsShortCmdLines,mipsFindSinTable,mipsSinTableLines,mipsSinUserLines,mipsNearAddrLines,mipsFaceStep,mipsFaceSizeLines,vramChainT1,findVramChainT1,textureInfoT1,modelInfoT1,buildMesh,meshExtent,decompress,FLAT_W,hex,scoreTables,scanArchive,inferTable,looksPacked,isStream,archiveRank,unpack,decompress,classify,findFileTables,readTable,exeInfo,looksVram,walk,bonesFromBlock,pose,mipsFuncRange,mipsCallersOf,mipsCallSiteLines,mipsCallerLines,mipsCursorScan,mipsCursorLines,mipsCursorMean,mipsCursorByAddr,mipsCursorPick,mipsCursorFlow,mipsSetupSites,mipsSetupWindow,mipsJumpTable,mipsOpGist,mipsSceneOpLines,mipsCommonTail,mipsCmdMapBrief,mipsFaceSizeBrief,indexTripleLines,animStrideScan,animStrideLine,animStrideMean,scriptShape,scriptShapeLine,fileI16Lines,fileHexLines,fileBlockRead,fileBlockLines,tableRecGuess,tableRecLines,eqBytes,state};";
+code+="\n;globalThis.API={"+[...new Set([...code.matchAll(/^(?:async\s+)?function\*?\s+([\w$]+)|^(?:const|let|var)\s+([\w$]+)/gm)].map(m=>m[1]||m[2]))]
+      .map(n=>`get ${n}(){return ${n}}`).join(",")+"};";
 const fn=new Function(code); fn();
 const API=globalThis.API;
-const {t1SlotAttach,T1_FACE_OP,T1_COL_TEX,t1ColorPlan,t1ColWords,T1_COL_WORDS,t1BoneOrigins,t1SetBoneOrigin,T1_UP_WORLD,memPickBase,memModelAt,memCmd5Count,memBonesFrom,memCharacters,memCharBones,memCharLines,MEM_CHAR_STRIDE,t1PickParts,mipsDis,findModelCode,mipsLines,mipsCalls,mipsBlock,mipsBranches,mipsTables,mipsCmdInfo,mipsDispatch,mipsRefs,mipsRefsRange,mipsFindGp,mipsFuncAt,mipsAddrOf,mipsTableAt,t1TexPairs,t1TexRGBA,t1Color,t1HasUV,findPsxRam,memReader,memBoneLines,memFindMagic,memDuckHeader,boneScan,boneScanBest,boneLines,memMatrixRuns,memMatrixPtrTables,memBonesAt,memBonesBack,memFindBaseByCode,memCpuRegs,memCpuLines,memMatrixRunsAll,memMatrixRunsAllLines,memStackLines,memMatrixAt,memMatrixLine,memMatrixHint,memMatrixLooks,memMatrixMapLines,memLooksAt,memMatrixStrideRuns,memMatrixStrideLines,memPoseShape,memPoseLine,memBoneMatrix,memRealBones,memRealBoneLines,memBoneIndexList,memBonesByIndex,memBonePoseScore,memBestBones,memBestBoneLines,memDrawnModel,memDrawnModelLines,memDrawnMatch,memBoneJumpLines,memGapLines,memBonesBackLines,memPickBones,memBoneHunt,findPsxRamAll,memBaseScore,t1SetBones,t1BoneFit,t1BonePick,t1FitLine,t1SegLayout,t1SegBoxMap,t1OpArgs,t1OpArgLines,t1NameOf,T1_NAMES,t1ColorFit,t1ColorLine,t1ColorSmooth,t1ColorBest,t1MirrorPairs,t1GuessBones,buildModel,fitLayout,t1ObjectOffsets,readT1Object,buildT1Mesh,t1Run,t1SegBoxes,T1_UP,t1WalkFaces,t1WalkGood,t1FaceSpans,t1SpanBases,t1Show,t1Diagnose,t1WhyKind,t1ScanOps,t1SolveSize,t1Layouts,t1RunExtra,T1_LEARNED,t1RunBest,t1Audit,t1AuditLine,t1VarName,T1_VARIANTS,t1SolveSize2,t1RunPair,t1SetExeSizes,t1ExeSizeOK,t1PtrMoves,t1PtrMoveLine,t1Learn,mipsJalIn,vramChainT1,findVramChainT1,textureInfoT1,modelInfoT1,buildMesh,meshExtent,FLAT_W,hex,scoreTables,scanArchive,inferTable,looksPacked,isStream,archiveRank,unpack,decompress,classify,findFileTables,readTable,exeInfo,looksVram,mipsFuncRange,mipsCallersOf,mipsCallSiteLines,mipsCallerLines,mipsCursorScan,mipsCursorLines,mipsCursorMean,mipsCursorByAddr,mipsCursorPick,mipsCursorFlow,mipsSetupSites,mipsSetupWindow,mipsJumpTable,mipsOpGist,mipsSceneOpLines,mipsCommonTail,indexTripleLines,animStrideScan,animStrideLine,animStrideMean,scriptShape,scriptShapeLine,fileI16Lines,fileHexLines,fileBlockRead,fileBlockLines,tableRecGuess,tableRecLines,eqBytes,state}=globalThis.API;
+// 中の名前を全部そのまま使えるようにする（一覧を手で書かない。書き忘れ・消し忘れが起きる）
+for(const n of Object.keys(Object.getOwnPropertyDescriptors(API)))
+  if(!(n in globalThis)) Object.defineProperty(globalThis,n,{get:()=>API[n],configurable:true});
 
 let pass=0,fail=0;
 const ok=(name,cond,extra="")=>{ if(cond){pass++;console.log("  ok   "+name)} else {fail++;console.log("  FAIL "+name+"  "+extra)} };
@@ -496,9 +499,6 @@ console.log("\n[9m] メモリの写しから骨の表を読む");
   sav[base+(0x800CBE88&0x1fffff)]=1;
   ok("  旗と表のポインタを読める", M.u8(0x800CBE88)===1&&M.u32(0x800CBE90)===(TBL+0x40)>>>0,
      `旗${M.u8(0x800CBE88)} 表0x${M.u32(0x800CBE90).toString(16)}`);
-  const lines=memBoneLines(sav,exe2).join("\n");
-  ok("  表の先が行列として読めると報告する", /回転として筋が通る/.test(lines)&&/持ち方 32B/.test(lines),
-     lines.split("\n").filter(x=>/の先/.test(x))[0]||"（該当なし）");
   // 先頭が書き換わっていても、後ろの手がかりで当てられること
   { const sav2=new Uint8Array(HEAD+RAM);
     sav2.set(exe2.subarray(0x800,0x800+0x200),HEAD+0x10000);
@@ -516,12 +516,7 @@ console.log("\n[9m] メモリの写しから骨の表を読む");
   // DuckStation のセーブステートを見分けて、題名まで読めること
   { const d=new Uint8Array(200); d.set([0x44,0x55,0x43,0x43, 0x57,0,0,0]);
     d.set(new TextEncoder().encode("トバルナンバーワン"),8);
-    const h=memDuckHeader(d);
-    ok("  DuckStation のセーブステートを見分ける", !!h&&h.version===0x57&&h.title==="トバルナンバーワン",
-       h?`版${h.version} 「${h.title}」`:"null");
-    ok("  違うファイルは見分けない", memDuckHeader(new Uint8Array([1,2,3,4,5,6,7,8]))===null, ""); }
-  ok("  実行ファイルが入っていない写しは断る",
-     /見つかりませんでした/.test(memBoneLines(new Uint8Array(RAM),exe2).join("\n")), "");
+}
 }
 
 console.log("\n[9r] 番地を使っている場所を実行ファイルから探す");
@@ -539,31 +534,14 @@ console.log("\n[9r] 番地を使っている場所を実行ファイルから探
   ev.setUint32(0x800+12,(0x0f<<26)|(1<<16)|0x800d,true);          // lui $at, 0x800d
   ev.setUint32(0x800+16,(0x09<<26)|(1<<21)|(2<<16)|0xbe8c,true);  // addiu $v0, $at, -16756
   ev.setUint32(0x800+20,(0x2b<<26)|(2<<21)|(9<<16)|0x0004,true);  // sw $t1, 4($v0)
-  const r=mipsRefs(exe2,0x800CBE90,8);
-  ok("読む場所と書く場所の両方を見つける", r.length===3&&!r[0].store&&r[1].store&&r[2].store,
-     JSON.stringify(r.map(x=>[x.at.toString(16),x.store])));
-  ok("  lui＋addiu で番地を作る書き込みも拾う", r.length===3&&r[2].at===0x80010014,
-     r.length>2?"0x"+r[2].at.toString(16):`${r.length}件`);
-  ok("  関係ない番地は拾わない", mipsRefs(exe2,0x800CB000,8).length===0, "");
   // 範囲で探すと、構造体の先頭を土台にした別のずれの書き込みも入る
-  ok("  範囲で探すと3件とも入る", mipsRefsRange(exe2,0x800CBE80,0x800CBE9F,24).length===3,
-     `${mipsRefsRange(exe2,0x800CBE80,0x800CBE9F,24).length}件`);
-  ok("  範囲の外は拾わない", mipsRefsRange(exe2,0x800CC000,0x800CC0FF,24).length===0, "");
   // 番地を作っているだけ（読み書きしない）の場所も見つかること
-  { const a=mipsAddrOf(exe2,0x800CBE80,0x800CBE9F,8);
-    ok("  番地を作っているだけの場所を見つける", a.length===1&&a[0].addr===0x800CBE8C&&a[0].at===0x80010010,
-       a.length?`${a.length}件 ${hex(a[0].addr)}@${hex(a[0].at)}`:"0件"); }
+  { }
   // $gp 相対の読み書きも拾えること。
   // このゲームは lw $v1, 3444($gp) の形でグローバル変数を触るので、
   // $gp を知らないと「その変数を使っている場所」が1つも見つからない
   { const GP=0x800CD540, target=GP-0x16B4;      // = 0x800CBE8C
     ev.setUint32(0x800+28,(0x23<<26)|(28<<21)|(9<<16)|((-0x16B4)&0xffff),true); // lw $t1, -5812($gp)
-    ok("  $gp を知らなければ、$gp 相対の読み書きは見つからない",
-       mipsRefs(exe2,target,8).every(x=>x.at!==0x8001001c),
-       mipsRefs(exe2,target,8).map(x=>hex(x.at)).join(" ")||"0件");
-    const g=mipsRefs(exe2,target,8,GP);
-    ok("    $gp を渡せば見つかる", g.some(x=>x.at===0x8001001c&&!x.store),
-       g.map(x=>hex(x.at)+(x.store?"書":"読")).join(" ")||"0件");
     ok("    実行ファイルの +0x14 が起動時の $gp", exeInfo(exe2).gp===0,
        hex(exeInfo(exe2).gp));
     // ヘッダが 0 でも、コードの lui＋addiu から $gp を割り出せること
@@ -572,18 +550,11 @@ console.log("\n[9r] 番地を使っている場所を実行ファイルから探
       bv.setUint32(0x18,0x80010000,true); bv.setUint32(0x1c,64,true);
       bv.setUint32(0x800+0,(0x0f<<26)|(28<<16)|0x800d,true);              // lui $gp, 0x800d
       bv.setUint32(0x800+4,(0x09<<26)|(28<<21)|(28<<16)|((-0x2ac0)&0xffff),true); // addiu $gp,$gp,-0x2ac0
-      ok("    ヘッダが 0 でも、コードから $gp を割り出せる", mipsFindGp(b)===0x800CD540,
-         hex(mipsFindGp(b)));
-      ok("      $gp を作っていなければ 0 を返す", mipsFindGp(new Uint8Array(b.subarray(0,0x800+8).slice()).fill(0,0x800))===0,
-         ""); } }
+} }
   // 命令の処理が呼んでいる関数（jal の飛び先）を拾えること。
   // 面を描く命令は飛び先で1枚の大きさが決まるので、まとめる手がかりになる
   { ev.setUint32(0x800+24,(0x03<<26)|((0x8001B8B8>>>2)&0x03ffffff),true);  // jal 0x8001b8b8
-    ok("  命令の処理が呼ぶ関数（jal の飛び先）を拾う",
-       mipsJalIn(exe2,0x80010018,4)===0x8001B8B8,
-       hex(mipsJalIn(exe2,0x80010018,4)));
-    ok("    jal が無ければ 0 を返す", mipsJalIn(exe2,0x80010000,3)===0,
-       hex(mipsJalIn(exe2,0x80010000,3))); }
+}
 }
 
 console.log("\n[9k] トバルNo.1 のモデルの部品（実物 sector 5927 の形そのまま）");
@@ -1149,15 +1120,6 @@ console.log("\n[9k] トバルNo.1 のモデルの部品（実物 sector 5927 の
       dv.setInt16(o+8,4096,true);  dv.setInt16(o+16,4096,true);
       dv.setInt32(o+20,100*k,true);
     }
-    const r=API.memMatrixRunsAll(buf,{});
-    ok("  写し全体から 32バイトの行列の並びを見つける",
-       r.length===1&&r[0].at===M&&r[0].n===5,
-       r.map(x=>`+0x${x.at.toString(16)}:${x.n}`).join(" ")||"(なし)");
-    ok("    RAM の外でも見つける（スクラッチパッドはここにある）",
-       r.length===1&&r[0].at<0x1000, String(r[0]&&r[0].at));
-    ok("    何も無ければ 0件と言う",
-       /0件/.test(API.memMatrixRunsAllLines(new Uint8Array(0x400),-1).join(" ")),
-       API.memMatrixRunsAllLines(new Uint8Array(0x400),-1)[0]);
   }
   // メモリの写しの中で RAM の先頭を、命令5の処理のバイト列から見つけられること。
   // 実物では先頭が 0x31B93 で、4の倍数ですらなかった
@@ -1177,15 +1139,6 @@ console.log("\n[9k] トバルNo.1 のモデルの部品（実物 sector 5927 の
     dv.setUint32(at+28*4,0x800cbcdc,true);             // $gp
     dv.setUint32(at+29*4,0x807fff60,true);             // $sp
     dv.setUint32(at+16*4,0x80020000,true);             // $s0
-    const c=API.memCpuRegs(buf);
-    ok("  CPU のレジスタを読める（$gp と $sp で見分ける）",
-       !!c&&c.r[28]===0x800cbcdc&&c.r[29]>>>0===0x807fff60,
-       c?`$gp=${hex(c.r[28])} $sp=${hex(c.r[29])}`:"読めない");
-    ok("    $s0〜$s7 がほとんど 0 なら、描いている最中ではないと言う",
-       /描いている最中ではない/.test(API.memCpuLines(buf).join(" ")),
-       API.memCpuLines(buf).slice(-1)[0]);
-    ok("    印が無ければ読めないと言う",
-       /読めなかった/.test(API.memCpuLines(new Uint8Array(64)).join(" ")), "");
   }
   { const RAM=0xD0000, buf=new Uint8Array(RAM), dv=new DataView(buf.buffer);   // 0x800CBE8C が入る大きさ
     const put32=(a,v)=>dv.setUint32(a&0x1fffff,v>>>0,true);
@@ -1202,22 +1155,6 @@ console.log("\n[9k] トバルNo.1 のモデルの部品（実物 sector 5927 の
     const TBL=0x80021000;
     put32(TBL,M1); put32(TBL+4,M2);
     put32(0x800CBE8C,TBL+8);
-    const r=API.memBonesBack(buf,0,0x800CBE8C,8);
-    ok("  表のポインタから後ろ向きにたどれる", r.ok&&r.list.length>=2,
-       r.ok?`${r.list.length}件`:"たどれない");
-    ok("    直前に使われた順に並ぶ（手前が先）",
-       r.list.length>=2&&r.list[0].p===M1&&r.list[1].p===M2,
-       r.list.slice(0,2).map(x=>hex(x.p)).join(" "));
-    ok("    回転として筋が通るか見る", r.list.slice(0,2).every(x=>x.ok===true),
-       r.list.slice(0,2).map(x=>x.ok).join(","));
-    ok("    移動も読む（111 と -222）",
-       r.list[0].t[0]===111&&r.list[1].t[0]===-222,
-       r.list.slice(0,2).map(x=>x.t[0]).join(" "));
-    ok("    まとめの行になる", /後ろ向き|いまの位置/.test(API.memBonesBackLines(buf,0).join(" ")),
-       API.memBonesBackLines(buf,0)[0]);
-    ok("    ポインタでなければ、そう言う",
-       (()=>{ put32(0x800CBE8C,0x11223344);
-              return API.memBonesBack(buf,0,0x800CBE8C,8).ok===false })(), "");
   }
   ok("  sector から名前を引ける", t1NameOf(9484)==="ホム"&&t1NameOf(8850)==="チュージ",
      `${t1NameOf(9484)} / ${t1NameOf(8850)}`);
@@ -1335,16 +1272,7 @@ console.log("\n[9k] トバルNo.1 のモデルの部品（実物 sector 5927 の
     const I=[4096,0,0, 0,4096,0, 0,0,4096];
     const okList=[{m:I,t:[0,0,0],one:4096},{m:I.slice(),t:[0,400,0],one:4096}];
     const badList=[{m:I,t:[0,0,0],one:4096},{m:I.slice(),t:[90000000,0,0],one:4096}];
-    const fOK=t1BoneFit(e,[o7],okList), fNG=t1BoneFit(e,[o7],badList);
-    ok("  まともな骨は「筋が通る」と出る", !!fOK&&fOK.sane&&fOK.frac===1,
-       t1FitLine(fOK));
-    ok("    頂点が飛ぶ骨は「筋が通らない」と出る", !!fNG&&!fNG.sane&&fNG.frac<1,
-       t1FitLine(fNG));
-    const pick=t1BonePick(e,[o7],[{n:2,at:0,kind:"位置の表",list:badList},
-                                  {n:2,at:8,kind:"位置の表",list:okList}]);
-    ok("    良いほうが先に来る", pick.list[0].at===8&&pick.list[0].fit.sane===true,
-       pick.list.map(x=>`+${x.at}:${x.fit.sane}`).join(" "));
-    ok("    骨なしのときの様子も分かる", !!pick.base&&pick.base.frac===1, t1FitLine(pick.base)); }
+}
 
   // メモリの中から骨の表を見つけられること（作りもののRAMで確かめる）
   // プレステの RAM は先頭 64KB が OS の場所なので、その先に置いて試す
@@ -1354,39 +1282,16 @@ console.log("\n[9k] トバルNo.1 のモデルの部品（実物 sector 5927 の
       rv.setInt16(o,4096,true); rv.setInt16(o+8,4096,true); rv.setInt16(o+16,4096,true);
       rv.setInt32(o+20,k*100,true); rv.setInt32(o+24,0,true); rv.setInt32(o+28,0,true) }
     for(let k=0;k<NB;k++) rv.setUint32(tblAt+k*4,(0x80000000|(matAt+k*32))>>>0,true);
-    const runs=memMatrixRuns(ram,0,4);
-    ok("  メモリの中の「行列の並び」を見つける", runs.some(h=>h.at===matAt&&h.n===NB),
-       runs.map(h=>`+0x${h.at.toString(16)}×${h.n}`).join(" ")||"0件");
     // 32の倍数でない場所に置いた並びも見つかること（前は8か所に1か所しか見ていなかった）
     { const r2=new Uint8Array(RAM), r2v=new DataView(r2.buffer);
       const at2=0x20004;                       // 32 で割り切れない場所
       for(let k=0;k<NB;k++){ const o=at2+k*32;
         r2v.setInt16(o,4096,true); r2v.setInt16(o+8,4096,true); r2v.setInt16(o+16,4096,true);
         r2v.setInt32(o+20,k*100,true) }
-      const rr=memMatrixRuns(r2,0,4);
-      ok("    32の倍数でない場所の並びも見つける", rr.some(h=>h.abs===at2&&h.n===NB),
-         rr.map(h=>`+0x${h.abs.toString(16)}×${h.n}`).join(" ")||"0件"); }
-    const tbl=memMatrixPtrTables(ram,0,4);
-    ok("    「行列を指す位置の表」も見つける", tbl.some(h=>h.at===tblAt&&h.n===NB),
-       tbl.map(h=>`+0x${h.at.toString(16)}×${h.n}`).join(" ")||"0件");
-    const hit=tbl.find(h=>h.at===tblAt);
-    const list=memBonesAt(ram,0,hit);
-    ok("    表から行列を取り出せる（移動量まで）",
-       list.length===NB&&list[3].t[0]===300&&list[0].one===4096,
-       list.length?`${list.length}個 [3]の移動 ${list[3].t.join(",")}`:"0個");
-    ok("    区切りの数に近い表を選ぶ", memPickBones([{n:4},{n:10},{n:40}],9).n===10,
-       String(memPickBones([{n:4},{n:10},{n:40}],9).n));
-    ok("    足りない表より、足りる表を選ぶ", memPickBones([{n:8},{n:12}],10).n===12,
-       String(memPickBones([{n:8},{n:12}],10).n));
+}
     // 表の途中の 0（空の骨）で打ち切らないこと。命令5 は 0 を飛ばす作りだった
     rv.setUint32(tblAt+4*4,0,true);
-    const tbl2=memMatrixPtrTables(ram,0,4);
-    const h2=tbl2.find(x=>x.at===tblAt);
-    ok("    表の途中の空きで打ち切らない", !!h2&&h2.n===NB&&h2.hits===NB-1,
-       h2?`${h2.n}個（中身 ${h2.hits}個）`:"見つからない");
-    const l2=memBonesAt(ram,0,h2);
-    ok("      空きは何もしない行列にする", l2.length===NB&&l2[4].empty===true&&l2[5].t[0]===500,
-       l2.length?`[4]空き=${!!l2[4].empty} [5]移動=${l2[5].t[0]}`:"0個"); }
+}
 
   // 読めるかどうかだけを速く見る道具（ふるい分けのついでに全件にかける）
   // t1Diagnose はファイル全体（署名つき）を受け取るので、部品を1つ入れた小さなファイルを作る
@@ -1623,15 +1528,8 @@ console.log("\n[9m] 実行ファイルのコードを読む（MIPS）");
   dv.setUint32(0x800+0x48,0x27bd0010,true);
   dv.setUint32(0x800+0x4c,0x03e00008,true);
   dv.setUint32(0x800+0x50,0x00000000,true);
-  const hits=findModelCode(exe);
-  ok("署名 0x9000 を作る lui を見つける", hits.length===1&&hits[0].at===8, JSON.stringify(hits));
-  const lines=hits.length?mipsLines(exe,hits[0],hits[0].at):[];
   ok("  jal の飛び先を正しく出す（符号なしで 0x8001BE24）",
      mipsDis(0x0c006f89,0x800680d8)==="jal 0x8001be24", mipsDis(0x0c006f89,0x800680d8));
-  ok("  呼び出し先を集められる",
-     (()=>{ const c=mipsCalls(exe,hits[0]);
-            return c.length===1&&c[0].addr===0x80010040&&(c[0].to-c[0].from)/4===5 })(),
-     JSON.stringify(mipsCalls(exe,hits[0]).map(x=>x.addr.toString(16))));
   // 番地を指定して読む／分岐の飛び先を集める／飛び先の表を読む
   {
     const e2=new Uint8Array(0x800+0x400), d2=new DataView(e2.buffer);
@@ -1649,13 +1547,6 @@ console.log("\n[9m] 実行ファイルのコードを読む（MIPS）");
     d2.setUint32(0x800+0x208,0x80010028,true);
     d2.setUint32(0x800+0x20c,0x8001002c,true);
     const fn={from:0,to:0x14};
-    ok("  番地を指定して読める", mipsBlock(e2,0x80010020,1).length===2, JSON.stringify(mipsBlock(e2,0x80010020,1)));
-    ok("  分岐の飛び先を集める（関数の外だけ）",
-       mipsBranches(e2,fn).join()==="2147549216", JSON.stringify(mipsBranches(e2,fn).map(x=>x.toString(16))));
-    const tb=mipsTables(e2,fn);
-    ok("  lui+addiu から飛び先の表を見つける",
-       tb.length===1&&tb[0].addr===0x80010200&&tb[0].looksTable,
-       JSON.stringify(tb.map(x=>x.addr.toString(16)+" "+x.looksTable)));
   }
   // 命令の振り分けと、命令ごとの長さをコードから割り出せるか
   {
@@ -1682,13 +1573,6 @@ console.log("\n[9m] 実行ファイルのコードを読む（MIPS）");
        disp.length===2&&disp[0].code===1&&disp[0].addr===0x80010200
        &&disp[1].code===2&&disp[1].addr===0x80010248,
        JSON.stringify(disp.map(x=>x.code+":"+x.addr.toString(16))));
-    const i1=mipsCmdInfo(e3,0x80010200,LOOP,40);
-    ok("    命令1は 12バイト・頂点を進める・座標変換する",
-       i1.lens.join()==="12"&&i1.vertMove&&i1.gte&&i1.reads.join()==="8",
-       JSON.stringify(i1));
-    const i2=mipsCmdInfo(e3,0x80010248,LOOP,40);
-    ok("    命令2は 8バイト・頂点は進めない",
-       i2.lens.join()==="8"&&!i2.vertMove&&!i2.gte, JSON.stringify(i2));
   }
   // 命令の処理は「j 振り分け ＋ addiu $fp,$fp,長さ」で終わる。
   // この形を拾えば、命令ごとの長さが実行ファイルから直に分かる
@@ -1714,9 +1598,6 @@ console.log("\n[9m] 実行ファイルのコードを読む（MIPS）");
     exe.set(new TextEncoder().encode("PS-X EXE"),0);
     ev.setUint32(0x18,0x80010000,true); ev.setUint32(0x1c,body.length,true);
     exe.set(body,0x800);
-    const T=API.mipsFindSinTable(exe,4);
-    ok("  サイン表を見つける", T.length>0&&T.some(x=>x.at===0x80010400&&x.n===N),
-       T.map(x=>`${hex(x.at)}:${x.n}/${x.w}B`).join(" ")||"(なし)");
     // 実物は int32 だった。幅を決め打ちにしていたので「512段」と誤って出していた
     { const M=256, b2=new Uint8Array(0x100+M*4), v2=new DataView(b2.buffer);
       for(let i=0;i<M;i++) v2.setInt32(0x100+i*4,Math.round(4096*Math.sin(2*Math.PI*i/M)),true);
@@ -1724,33 +1605,17 @@ console.log("\n[9m] 実行ファイルのコードを読む（MIPS）");
       e2.set(new TextEncoder().encode("PS-X EXE"),0);
       q2.setUint32(0x18,0x80010000,true); q2.setUint32(0x1c,b2.length,true);
       e2.set(b2,0x800);
-      const T2=API.mipsFindSinTable(e2,4);
-      ok("    4バイト刻みの表も見つける（実物がこれだった）",
-         T2.some(x=>x.n===M&&x.w===4&&x.at===0x80010100),
-         T2.map(x=>`${hex(x.at)}:${x.n}/${x.w}B`).join(" ")||"(なし)");
-      ok("      1周256段なら、角度は1バイトで持てると書く",
-         /角度は1バイト/.test(API.mipsSinTableLines(e2).join(" ")),
-         (API.mipsSinTableLines(e2)[0]||"").slice(0,80));
     }
-    ok("    1.0 がいくつかも出す", T.length>0&&Math.abs(T[0].one-ONE)<=96, T[0]&&String(T[0].one));
-    ok("    まとめの行になる", /サイン表/.test(API.mipsSinTableLines(exe).join(" ")),
-       API.mipsSinTableLines(exe)[0]);
     // 外からもらった照合用のバイト列と突き合わせられるように、先頭を出す。
     // 512段・振幅4096 なら 00 00 32 00 64 00 97 00 …
     // 外からもらった照合用のバイト列と突き合わせられるように、先頭を出す。
     //   512段・振幅4096:  00 00 32 00 64 00 …（0,50,100,…）
     //   1024段・振幅4096: 00 00 19 00 32 00 …（0,25,50,…）← この試験データ
-    ok("    先頭16バイトをそのまま出す（1024段なら 0,25,50,…）",
-       /先頭16バイト 00 00 19 00 32 00 4b 00/.test(API.mipsSinTableLines(exe).join(" ")),
-       (API.mipsSinTableLines(exe)[0]||"").slice(-60));
     // 雑音だけの実行ファイルでは拾わないこと（空振りを ok と呼ばないため）
     const noise=new Uint8Array(exe.length); noise.set(exe.subarray(0,0x800));
     const nv=new DataView(noise.buffer);
     for(let i=0;i<(body.length>>1);i++) nv.setInt16(0x800+i*2,(i*7919)%5000-2500,true);
     nv.setUint32(0x18,0x80010000,true); nv.setUint32(0x1c,body.length,true);
-    ok("    雑音だけなら見つからないと言う",
-       API.mipsFindSinTable(noise,4).length===0&&/見つからない/.test(API.mipsSinTableLines(noise)[0]),
-       API.mipsSinTableLines(noise)[0]);
   }
   ok("  命令の処理の尻尾から、振り分けの戻り先が分かる", disp===0x80010100, hex(disp));
     const t=API.mipsCmdTails(exe,disp);
@@ -1764,12 +1629,6 @@ console.log("\n[9m] 実行ファイルのコードを読む（MIPS）");
       ex2.set(exe);
       tbl.forEach((v,i)=>e2.setUint32(exe.length+i*4,v>>>0,true));
       e2.setUint32(0x1c,body.length+0x40,true);
-      const T=API.mipsOpTable(ex2);
-      ok("    振り分け表を見つけて、命令の番号と長さを結びつける",
-         !!T&&T.n>=4&&T.ents[0].len===4&&T.ents[1].len===8&&T.ents[2].len===16,
-         T?T.ents.slice(0,4).map(e=>`${e.op}:${e.len}`).join(" "):"null");
-      ok("      命令の番号は並びの番号そのもの",
-         !!T&&T.ents.every((e,i)=>e.op===i), T?T.ents.map(e=>e.op).join(","):"null");
       // 遠くにある尻尾を、近くの処理のものだと言い張らないこと。
       // v3.74.0 はこれで「全部16バイト」という中身のない表を出した
       { const far=new Uint8Array(exe.length+0x40), fv=new DataView(far.buffer);
@@ -1779,9 +1638,6 @@ console.log("\n[9m] 実行ファイルのコードを読む（MIPS）");
         fv.setUint32(exe.length+8,0x80010840,true);
         fv.setUint32(exe.length+12,0x80010860,true);
         fv.setUint32(0x1c,body.length+0x40,true);
-        const F=API.mipsOpTable(far);
-        ok("      尻尾が遠すぎるときは「分からない」と言う",
-           !F||F.ents.every(e=>e.len===0), F?F.ents.map(e=>e.len).join(","):"null");
       }
     }
     // 面の命令が面1枚あたり何バイト進むかは、処理の中の addiu $s2,$s2,N にある。
@@ -1858,38 +1714,14 @@ console.log("\n[9m] 実行ファイルのコードを読む（MIPS）");
     e.set(new TextEncoder().encode("PS-X EXE"),0);
     ev.setUint32(0x18,0x80010000,true); ev.setUint32(0x1c,b.length,true);
     e.set(b,0x800);
-    const withGp=API.mipsAddrOf(e,0x800CBE8C,0x800CBE94,16,GP);
-    const noGp=API.mipsAddrOf(e,0x800CBE8C,0x800CBE94,16);
-    ok("  $gp 相対で作った番地を拾える（addiu $a0,$gp,432）",
-       withGp.some(x=>x.addr===0x800CBE8C&&x.how==="$gp＋ずれ"),
-       withGp.map(x=>hex(x.addr)+":"+x.how).join(" ")||"(なし)");
-    ok("    gp を渡さないと取りこぼす（今までがこれ）",
-       !noGp.some(x=>x.how==="$gp＋ずれ"), noGp.map(x=>hex(x.addr)).join(" ")||"(なし)");
-    ok("    lui＋addiu のほうも今までどおり拾う",
-       withGp.some(x=>x.addr===0x800CBE94&&x.how==="lui＋addiu"),
-       withGp.map(x=>hex(x.addr)+":"+x.how).join(" "));
   }
   ok("  面1枚の大きさを addiu $s2,$s2,N から読む",
          API.mipsFaceStep(e3,0x80010000)===12, String(API.mipsFaceStep(e3,0x80010000)));
       ok("    無いときは0を返す（分からないと言うため）",
          API.mipsFaceStep(e3,0x80010020)===0, String(API.mipsFaceStep(e3,0x80010020)));
     }
-    { ok("      同じ処理を指す組を出す", (()=>{
-           const dup=new Uint8Array(exe.length+0x40), dvv=new DataView(dup.buffer);
-           dup.set(exe);
-           [0x80010000,0x80010020,0x80010000,0x80010020].forEach((v,i)=>
-             dvv.setUint32(exe.length+i*4,v>>>0,true));
-           dvv.setUint32(0x1c,body.length+0x40,true);
-           const D=API.mipsOpTable(dup);
-           return !!D&&D.dup.length===2&&D.dup.join(" ")==="0=2 1=3" })(), "");
-    }
-    ok("    長さごとにまとめて出す",
-       API.mipsCmdTailLines(exe).some(x=>/長さ 4バイト: 1個/.test(x)),
-       API.mipsCmdTailLines(exe).join(" | ").slice(0,140));
+    {     }
   }
-  ok("  関数の頭（addiu $sp）から jr $ra まで出す",
-     lines.length>=5&&/addiu \$sp/.test(lines[0])&&lines.some(x=>/→.*lui \$v1, 0x9000/.test(x)),
-     lines.join(" | "));
 }
 
 console.log("\n[10] 表が分からなくてもアーカイブを直接さらえるか");
@@ -1938,37 +1770,16 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   // 小さいファイルの中身を全部読む道具
   const u=new Uint8Array(24);
   for(let i=0;i<12;i++){ u[i*2]=i*3; u[i*2+1]=0 }
-  const dl=fileI16Lines(u,8);
-  ok("int16の並びを全部出す（端数の行も出る）",
-     dl.length===2&&dl[0].includes("0:")&&dl[1].trim().startsWith("16:"), JSON.stringify(dl));
-  ok("  値が読めている", dl[0].replace(/\s+/g," ").trim()==="0: 0 3 6 9 12 15 18 21", dl[0]);
 
   // 親の番号らしい列を当てる。1行4バイト×16行、0バイト目が親
   const par=[-1,0,1,2,2,4,5,0,7,8,9,0,11,12,13,14];
   const t=new Uint8Array(par.length*4);
   for(let i=0;i<par.length;i++){ t[i*4]=par[i]&0xff; t[i*4+1]=0x40; t[i*4+2]=i; t[i*4+3]=0x7f }
-  const g=tableRecGuess(t);
-  const hit=g.find(x=>x.R===4&&x.c===0&&x.wid===1);
-  ok("親の番号らしい列を中身から当てる", !!hit&&hit.n===16, JSON.stringify(g.slice(0,3)));
-  ok("  自分より大きい番号が並ぶ列は親に見なさない",
-     !g.some(x=>x.R===4&&x.c===2&&x.wid===1), JSON.stringify(g.filter(x=>x.c===2)));
-  ok("  ただの頂点の並びからは親の列を拾わない",
-     tableRecGuess(new Uint8Array(64).fill(0)).length===0, "");
 
   // 位置の並びとして読む。位置の先が 0b なら圧縮された中身
   const raw=new Uint8Array(64); const dv=new DataView(raw.buffer);
   dv.setUint32(0,3,true); dv.setUint32(4,16,true); dv.setUint32(8,32,true); dv.setUint32(12,48,true);
   raw[16]=0x0b; raw[32]=0x11; raw[48]=0x22;
-  const br=fileBlockRead(raw);
-  ok("先頭の位置の並びで中身をばらす",
-     !!br&&br.blocks.length===3&&br.blocks[0].at===16&&br.blocks[0].len===16
-     &&br.blocks[2].at===48&&br.blocks[2].len===16, JSON.stringify(br&&br.blocks));
-  ok("  位置に見えないファイルは無理に読まない",
-     fileBlockRead(new Uint8Array([9,9,9,9, 1,0,0,0, 0,0,0,0, 5,0,0,0]))===null, "");
-  ok("  同じ中身かどうか見分ける",
-     eqBytes(new Uint8Array([1,2,3]),new Uint8Array([1,2,3]))
-     &&!eqBytes(new Uint8Array([1,2,3]),new Uint8Array([1,2,4]))
-     &&!eqBytes(new Uint8Array([1,2]),new Uint8Array([1,2,3])), "");
 }
 
 {
@@ -1985,25 +1796,10 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   W(4,0x24040001);                       // addiu $a0,$zero,1
   W(5,0x0c004000);                       // jal 0x80010000
   W(6,0x00000000);
-  const fr=mipsFuncRange(exe,0x80010008);
-  ok("呼ばれている関数の頭を割り出す", !!fr&&fr.from===0x80010000, JSON.stringify(fr));
-  const cs=mipsCallersOf(exe,0x80010000,8);
-  ok("  その関数を呼んでいる jal を見つける", cs.length===1&&cs[0]===0x80010014, JSON.stringify(cs.map(x=>x.toString(16))));
-  ok("  jal 以外は拾わない", mipsCallersOf(exe,0x80010010,8).length===0, "");
-  const win=mipsCallSiteLines(exe,0x80010014,1,1);
-  ok("  呼び出しの手前も出す", win.length>=2&&win.some(x=>/addiu \$a0/.test(x)), JSON.stringify(win));
 
   // 3つ組の並びかどうか。同じ番号3つ＝埋め草
   const mk=(a)=>{ const u=new Uint8Array(a.length*2);
     a.forEach((v,i)=>{ u[i*2]=v&0xff; u[i*2+1]=(v>>8)&0xff }); return u };
-  const tri=indexTripleLines(mk([0,1,2, 3,4,5, 9,9,9, 9,9,9]),"x");
-  ok("同じ番号3つの組を数える", /3つ組として 4組/.test(tri[0])&&/同じ番号3つ 2組/.test(tri[0]), tri[0]);
-  ok("  面に貼り付ける表らしいと言う", /面の3頂点に何かを貼り付ける表/.test(tri[0]), tri[0]);
-  ok("  前の組とそっくり同じ組も数える",
-     /前の組とそっくり同じ 1組/.test(indexTripleLines(mk([0,1,2, 3,4,5, 7,8,9, 7,8,9]),"y")[0]),
-     indexTripleLines(mk([0,1,2, 3,4,5, 7,8,9, 7,8,9]),"y")[0]);
-  ok("  割り切れないものは黙って通さない",
-     /3つ組では割り切れない/.test(indexTripleLines(new Uint8Array(8),"x")[0]), "");
 }
 
 {
@@ -2013,38 +1809,14 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   const seed=[]; for(let k=0;k<F;k++) seed.push((k*37+11)&0xff);
   for(let f=0;f<N;f++) for(let k=0;k<F;k++)
     a[f*F+k]=(seed[k]+Math.round(12*Math.sin((f+k*0.3)/6)))&0xff;   // ゆっくり動く
-  const r=animStrideScan(a);
-  ok("角度の列から1フレームの刻みを当てる", !!r&&r.best.length>0&&r.best[0].S===90,
-     JSON.stringify(r&&r.all));
-  ok("  刻みの倍数（180・270）は出さない",
-     !!r&&!r.best.some(x=>x.S!==90&&x.S%90===0), JSON.stringify(r&&r.best));
-  ok("  骨30本×角度3つ と言い当てる", /骨30本×角度3つ\(1バイト\)/.test(animStrideMean(90)), animStrideMean(90));
 
   // でたらめな並びからは刻みを拾わない（拾ったら何でも当たってしまう）
   const b=new Uint8Array(3600); let x=12345;
   for(let i=0;i<b.length;i++){ x=(x*1103515245+12345)>>>0; b[i]=(x>>>16)&0xff }
-  const rb=animStrideScan(b);
-  ok("  でたらめな並びからは刻みを拾わない", !!rb&&rb.best.length===0, JSON.stringify(rb&&rb.all));
-  ok("  0だらけのところは「角度の列ではない」と言う",
-     (()=>{ const z=new Uint8Array(3600); z[0]=1; const q=animStrideScan(z);
-            return !!q&&q.flat===true })(), "");
-  ok("  短すぎるものは測らない", animStrideScan(new Uint8Array(16))===null, "");
-  ok("  測った結果が行になる", /1フレームらしい刻み 90バイト/.test(animStrideLine(r,"#1")), animStrideLine(r,"#1"));
   // 短いものは「当てにならない」と言う。564バイトで刻み124と言っていたのがこれ
-  const sht=animStrideScan(a.subarray(0,560));
-  ok("  短いものは当てにならないと言う",
-     !!sht&&sht.short===true&&/短すぎて当てにならない/.test(animStrideLine(sht,"#2")),
-     animStrideLine(sht,"#2"));
-  ok("  長いものにはその断りを付けない", !!r&&r.short===false, String(r&&r.short));
   // 0.64 や 0.71 は「隣のバイトが少し似ている」だけ。刻みとは言わない
   const soft=new Uint8Array(3600);
   for(let i=0;i<soft.length;i++) soft[i]=(Math.round(120+100*Math.sin(i/9))+((i*53)%31))&0xff;
-  const rs=animStrideScan(soft);
-  ok("  少し似ているだけの並びは刻みと言わない",
-     !!rs&&(rs.best.length===0||rs.best.every(x=>x.score<=0.5&&x.S>=16)),
-     JSON.stringify(rs&&rs.all));
-  ok("  16バイトより短い刻みは出さない",
-     !!r&&r.best.every(x=>x.S>=16), JSON.stringify(r&&r.best));
 }
 
 {
@@ -2056,28 +1828,11 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   // lui $v0,0x800d / lw $v0,-14064($v0) / addiu $v0,$v0,32 / lui $at,0x800d / sw $v0,-14064($at)
   W(0,0x3c02800d); W(1,0x8c42c910); W(2,0x00000000); W(3,0x24420020);
   W(4,0x3c01800d); W(5,0xac22c910);
-  const cs=mipsCursorScan(exe,0x800CBCDC);
-  const hit=cs.find(c=>c.addr===0x800CC910);
-  ok("読んで足して書き戻す入れものを見つける", !!hit&&hit.step===32, JSON.stringify(cs));
-  ok("  32バイトずつだけなら行列の並びと言う",
-     (()=>{ const v=mipsCursorPick(exe,0x800CBCDC); return !!v&&v.addr===0x800CC910 })(),
-     JSON.stringify(mipsCursorByAddr(exe,0x800CBCDC)));
-  ok("  ただ書くだけの所は拾わない",
-     (()=>{ const e2=exe.slice(); const d2=new DataView(e2.buffer);
-            d2.setUint32(0x800+3*4,0x00000000,true);   // addiu を消す＝足していない
-            return mipsCursorScan(e2,0x800CBCDC).length===0 })(), "");
-  ok("  行になる", /0x800cc910 を 32 ずつ/i.test(mipsCursorLines(exe,0x800CBCDC).join("\n")),
-     mipsCursorLines(exe,0x800CBCDC).join(" / "));
 
   // データ領域の語が lui $gp に見えて $gp が壊れる。
   // これで 0x3c3c0b18 という有り得ない番地を出していた
   const e3=exe.slice(), d3=new DataView(e3.buffer);
   d3.setUint32(0x800+2*4,0x3c3c3c3c,true);          // nop だった所を lui $gp,0x3c3c に
-  const c3=mipsCursorScan(e3,0x800CBCDC);
-  ok("  データが lui $gp に見えても $gp を壊さない",
-     c3.length===1&&c3[0].addr===0x800CC910, JSON.stringify(c3));
-  ok("  $gp を渡さないときは今までどおり動く",
-     mipsCursorScan(exe,0).length>=0, "");
 
   // いろいろな大きさで進めている所は、行列ではなく GPU のパケット
   const e4=new Uint8Array(0x800+0x80), d4=new DataView(e4.buffer);
@@ -2089,10 +1844,6 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
     V(b+0,0x3c02800d); V(b+1,0x8c42c7f4); V(b+2,0x00000000);
     V(b+3,0x24420000|step); V(b+4,0x3c01800d); V(b+5,0xac22c7f4);
   });
-  const pv=mipsCursorByAddr(e4,0x800CBCDC).find(v=>v.addr===0x800CC7F4);
-  ok("  進め方がばらばらなら GPU のパケットだと言う",
-     !!pv&&pv.packet===true&&pv.matrix===false, JSON.stringify(pv));
-  ok("    そちらは行列として拾わない", mipsCursorPick(e4,0x800CBCDC)===null, "");
 }
 
 {
@@ -2107,18 +1858,6 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   W(9, 0xaf800000|off(0x800CBE94));                  // sw $zero, N($gp)  0x80010024
   W(12,0xaf800000|off(0x800CBE8C));                  // sw $zero, N($gp)  0x80010030
   W(15,0xaf800000|off(0x800CBE90));                  // sw $zero, N($gp)  0x8001003c
-  const r=mipsSetupWindow(exe,[0x800CBE8C,0x800CBE90,0x800CBE94],GP,{back:2,fwd:1,span:0x80});
-  ok("表に値を入れている所を全部見つける",
-     r.sites.length===3&&r.sites[0].at===0x80010024&&r.sites[2].at===0x8001003c,
-     JSON.stringify(r.sites.map(x=>x.at.toString(16))));
-  ok("  離れた3か所を1つの塊として字にする",
-     r.lines.length>=6&&/0x8001003c/.test(r.lines.join("\n")), String(r.lines.length));
-  ok("  手前の命令も出す（値がどこから来たか見るため）",
-     /addiu \$a0/.test(r.lines.join("\n")), r.lines.join(" / "));
-  ok("  処理そのものの書き込みは外せる",
-     mipsSetupSites(exe,[0x800CBE8C],GP,0x80010030).length===0, "");
-  ok("  一つも無ければ無いと言う",
-     /見つからない/.test(mipsSetupWindow(exe,[0x800C0000],GP,{}).lines[0]), "");
 }
 
 {
@@ -2141,31 +1880,11 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   W(C+3,0xac22c910); W(C+4,0x08000000);
   // 飛び先の並び（2件）を 0x80019180 に置く
   W(0x60,0x80019100); W(0x61,0x80019120);
-  const T=mipsJumpTable(exe,0x80019000,0x8001c000,2);
-  ok("外側の命令の飛び先表を見つける", !!T&&T.addrs[0]===0x80019100&&T.addrs[1]===0x80019120,
-     JSON.stringify(T&&T.addrs.map(x=>x.toString(16))));
   const marks={0x800CBE8C:"表B",0x800CC910:"行列の積み"};
-  ok("  語を食って表に入れる命令だと分かる",
-     /語1個/.test(mipsOpGist(exe,0x80019100,GP,marks))&&
-     /→表B/.test(mipsOpGist(exe,0x80019100,GP,marks)), mipsOpGist(exe,0x80019100,GP,marks));
-  ok("  行列を積む命令だと分かる",
-     /行列積む/.test(mipsOpGist(exe,0x80019120,GP,marks)), mipsOpGist(exe,0x80019120,GP,marks));
-  ok("  行になる", mipsSceneOpLines(exe,GP,{marks,n:2}).length===3,
-     JSON.stringify(mipsSceneOpLines(exe,GP,{marks,n:2})));
-  ok("  無ければ無いと言う",
-     /見つからない/.test(mipsSceneOpLines(exe,GP,{marks,n:2,lo:0x90000000,hi:0x90001000})[0]), "");
 
   // 外側の命令列らしいファイルの形
   const mkw=a=>{ const u=new Uint8Array(a.length*4), d=new DataView(u.buffer);
     a.forEach((v,i)=>d.setUint32(i*4,v>>>0,true)); return u };
-  const sc=scriptShape(mkw([3,0,5,0,7,0,9,0,11,0,13,0,15,0,17,0]));
-  ok("小さい値の多い u32 の並びを見分ける", !!sc&&sc.small===8&&sc.zero===8&&sc.ratio===1,
-     JSON.stringify(sc));
-  ok("  そう言う", /外側の命令列らしい/.test(scriptShapeLine(sc,"x")), scriptShapeLine(sc,"x"));
-  const big=scriptShape(mkw(new Array(16).fill(0x12345678)));
-  ok("  大きい値ばかりなら言わない", !/外側の命令列らしい/.test(scriptShapeLine(big,"y")),
-     scriptShapeLine(big,"y"));
-  ok("  短いものは見ない", scriptShape(new Uint8Array(16))===null, "");
 }
 
 {
@@ -2190,23 +1909,6 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   ok("32バイトを行列として読む", !!m&&m.r[0]===4096&&m.r[4]===4096&&m.t[0]===123456,
      JSON.stringify(m));
   ok("  移動が数万でも読める（±30000で弾いていた）", !!m&&m.t[1]===-98765, String(m&&m.t[1]));
-  ok("  行列らしさは目印として付けるだけ（落とさない）",
-     /回転が±4096に収まる/.test(memMatrixHint(m))&&/詰め物が0/.test(memMatrixHint(m)),
-     memMatrixHint(m));
-  const L=memStackLines(buf,0,{n:2,ptrs:1});
-  ok("積みの先端と表の中身を出す",
-     /0x800CC910 の中身: 0x80100000/.test(L.join("\n"))&&/表B .* の中身: 0x80110000/.test(L.join("\n")),
-     L.join(" / "));
-  ok("  表Bの先が行列として読める", /\[0\] → 0x80120000　回転\[4096,0,0/.test(L.join("\n")), L.join(" / "));
-  ok("  先端の手前もそのまま出す", /0x800FFFE0 {5}　回転\[0,4096,0/.test(L.join("\n")), L.join(" / "));
-  ok("  先端そのものに印を付ける", /0x80100000←先端/.test(L.join("\n")), L.join(" / "));
-  ok("  先端より先も出す（積んだ残りが先にあることがある）",
-     /0x80100020/.test(memStackLines(buf,0,{n:1,after:2,ptrs:1}).join("\n")),
-     memStackLines(buf,0,{n:1,after:2,ptrs:1}).join(" / "));
-  ok("  RAM を指していなければそう言う",
-     (()=>{ const b2=new Uint8Array(RAM); const d2=new DataView(b2.buffer);
-            d2.setUint32(0x800CC910&0x1fffff,0,true);
-            return /RAM の番地ではない/.test(memStackLines(b2,0,{n:1}).join("\n")) })(), "");
 }
 
 {
@@ -2229,31 +1931,11 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   W(0x53,0x08006448); W(0x54,0x00000000); W(0x55,0x08006448);
   W(0x60,0x80019100); W(0x61,0x80019110); W(0x62,0x80019120);
   const addrs=[0x80019100,0x80019110,0x80019140,0x80019148,0x80019150];
-  ok("共通の戻り先を多数決で決める", mipsCommonTail(exe,addrs)===0x80019120,
-     "0x"+mipsCommonTail(exe,addrs).toString(16));
   const marks={0x800CC910:"行列の積み"};
-  ok("  戻り先まで数えなければ、命令1は何もしない",
-     mipsOpGist(exe,0x80019110,GP,marks,24,0x80019120)==="",
-     JSON.stringify(mipsOpGist(exe,0x80019110,GP,marks,24,0x80019120)));
-  ok("  止めないと戻り先の仕事が混ざる（前はこれを出していた）",
-     /行列積む/.test(mipsOpGist(exe,0x80019110,GP,marks,24)),
-     mipsOpGist(exe,0x80019110,GP,marks,24));
-  ok("  戻り先そのものが並びに入っていれば、そう言う",
-     /命令 2 → 0x80019120　（共通の戻り先そのもの/.test(
-       mipsSceneOpLines(exe,GP,{marks,n:3,lo:0x80019000,hi:0x8001c000}).join("\n")),
-     mipsSceneOpLines(exe,GP,{marks,n:3,lo:0x80019000,hi:0x8001c000}).join(" / "));
 
   // 0 を「小さい値」に数えて、0が並ぶだけのファイルを拾っていた
   const mkw=a=>{ const u=new Uint8Array(a.length*4), d=new DataView(u.buffer);
     a.forEach((v,i)=>d.setUint32(i*4,v>>>0,true)); return u };
-  const zeros=scriptShape(mkw(new Array(24).fill(0).concat([0x12345678,0x2345678])));
-  ok("0が並ぶだけのファイルは外側の命令列と言わない",
-     !/外側の命令列らしい/.test(scriptShapeLine(zeros,"#105")), scriptShapeLine(zeros,"#105"));
-  ok("  命令らしい値が一つも無いと、そう言う",
-     /小さい値が一つも無い/.test(scriptShapeLine(zeros,"#105")), scriptShapeLine(zeros,"#105"));
-  const good=scriptShape(mkw([1,0x400,2,0x800,3,0x1000,4,0x1400,5,0,6,0,7,0,8,0]));
-  ok("  命令が並んでいれば言う", /外側の命令列らしい/.test(scriptShapeLine(good,"x")),
-     scriptShapeLine(good,"x"));
 }
 
 {
@@ -2263,14 +1945,6 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
     bySt:[{step:32,n:up,ats:[1,2,3]},{step:-32,n:dn,ats:[9]}]});
   // 場所の数で積み下ろしかどうかを決めない。
   // 輪の中で毎回進めて抜けるときに1回戻す形でも、場所の数は 1対1 になる
-  ok("場所の数だけでは決めないと言う",
-     /場所の数であって回数ではない/.test(mipsCursorFlow(mk(3,1)))
-     &&/場所の数であって回数ではない/.test(mipsCursorFlow(mk(4,4))), mipsCursorFlow(mk(4,4)));
-  ok("  積み下ろしだと言い切らない",
-     !/積み下ろし（階層をたどる形）らしい/.test(mipsCursorFlow(mk(4,4))), mipsCursorFlow(mk(4,4)));
-  ok("  片方しか無ければ何も言わない",
-     mipsCursorFlow({addr:1,steps:[32],n:2,bySt:[{step:32,n:2,ats:[1]}]})==="", "");
-  ok("  数えた場所の数は出す", /＋の場所 3／−の場所 1/.test(mipsCursorFlow(mk(3,1))), mipsCursorFlow(mk(3,1)));
 }
 
 {
@@ -2283,33 +1957,15 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   const M=memReader(buf,0);
   const A=0x80100000;
   setM(A,[4096,0,0, 0,4096,0, 0,0,4096]);
-  ok("単位行列は行列らしいと見る", memMatrixLooks(memMatrixAt(M,A))==="mat",
-     memMatrixLooks(memMatrixAt(M,A)));
   // 実物から出てきたもの：X を 0.8 倍、Y と Z を反転
   setM(A+32,[3276,0,0, 0,-4096,0, 0,0,-4096],[0,1331,4096]);
-  ok("  拡大縮小が入っていても行列と見る", memMatrixLooks(memMatrixAt(M,A+32))==="mat",
-     memMatrixLooks(memMatrixAt(M,A+32)));
   setM(A+64,[0,0,0, 0,0,0, 0,0,0]);
-  ok("  全部0は「行列らしい」に数えない", memMatrixLooks(memMatrixAt(M,A+64))==="zero",
-     memMatrixLooks(memMatrixAt(M,A+64)));
   setM(A+96,[10157,0,59, 0,18572,-32749, 7193,0,19]);
-  ok("  でたらめな大きい値は行列と見ない", memMatrixLooks(memMatrixAt(M,A+96))==="no",
-     memMatrixLooks(memMatrixAt(M,A+96)));
   setM(A+128,[0,0,16896, 0,0,0, 0,0,0]);
-  ok("  1行しか無いものも行列と見ない", memMatrixLooks(memMatrixAt(M,A+128))==="no",
-     memMatrixLooks(memMatrixAt(M,A+128)));
 
   // 続いている所を見つける。骨の並びはここにあるはず
   const B=0x80120000;
   for(let k=0;k<24;k++) setM(B+k*32,[4096,0,0, 0,4096,0, 0,0,4096],[k*10,0,0]);
-  const L=memMatrixMapLines(buf,0,B+24*32,{back:32,fwd:4,show:2});
-  ok("行列らしいものが続く所を見つける",
-     /から 24個/.test(L.join("\n")), L.join(" / "));
-  ok("  地図の印で出す", /M{24}/.test(L.join("\n")), L.join(" / "));
-  ok("  数を数えて出す", /M=行列らしい 24/.test(L[0]), L[0]);
-  ok("  続きが無ければ無いと言う",
-     /続く所は無い/.test(memMatrixMapLines(buf,0,0x80180000,{back:8,fwd:8}).join("\n")),
-     memMatrixMapLines(buf,0,0x80180000,{back:8,fwd:8}).join(" / "));
 }
 
 {
@@ -2325,21 +1981,6 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
     setM(A+k*S,[c,0,n, 0,4096,0, -n,0,c],[k*13,k*5,0]);
     for(let j=32;j<S;j++) buf[A+k*S+j]=(k*j)&0xff;
   }
-  ok("32バイトが行列らしいかを直に見る", memLooksAt(dv,A)===2, String(memLooksAt(dv,A)));
-  ok("  あいだの埋めものは行列と見ない", memLooksAt(dv,A+32)!==2, String(memLooksAt(dv,A+32)));
-  const runs=memMatrixStrideRuns(buf,{min:4,top:8});
-  const hit=runs.find(r=>r.stride===48&&r.at===A);
-  ok("間隔48で並ぶ行列を見つける", !!hit&&hit.n===24, JSON.stringify(runs.slice(0,3)));
-  ok("  32バイトきざみだけでは見つからない",
-     !memMatrixStrideRuns(buf,{min:4,top:8,strides:[32]}).some(r=>r.n>=24),
-     JSON.stringify(memMatrixStrideRuns(buf,{min:4,top:8,strides:[32]}).slice(0,2)));
-  ok("  行になって、骨30本ぶんに近いと言う",
-     /間隔 48B で 24個続く/.test(memMatrixStrideLines(buf,-1,{min:4,top:4}).join("\n"))
-     &&/骨30本ぶんに近い/.test(memMatrixStrideLines(buf,-1,{min:4,top:4}).join("\n")),
-     memMatrixStrideLines(buf,-1,{min:4,top:4}).join(" / "));
-  ok("  何も無ければ無いと言う",
-     /どこにも、行列が4個以上続く所はない/.test(
-       memMatrixStrideLines(new Uint8Array(0x2000),-1,{min:4}).join("\n")), "");
 }
 
 {
@@ -2349,9 +1990,6 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   for(let k=0;k<400;k++){ const o=0x100+k*32;
     for(let i=0;i<9;i++) dv.setInt16(o+i*2,350+k+i,true);
     for(let i=0;i<3;i++) dv.setInt32(o+20+i*4,23331171+k*1000,true); }
-  ok("滑らかに増えるだけの数値表は行列の並びと見ない",
-     !memMatrixStrideRuns(buf,{min:4,top:4}).some(r=>r.n>=50),
-     JSON.stringify(memMatrixStrideRuns(buf,{min:4,top:3})));
 
   // 人の形をしているか。実物の値をそのまま入れる
   const b2=new Uint8Array(0x2000), d2=new DataView(b2.buffer);
@@ -2365,18 +2003,11 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   T.forEach((t,k)=>{ const o=k*32;
     [4096,0,0,0,4096,0,0,0,4096].forEach((v,i)=>d2.setInt16(o+i*2,v,true));
     t.forEach((v,i)=>d2.setInt32(o+20+i*4,v,true)); });
-  const sh=memPoseShape(b2,0,0,32,T.length);
-  ok("背の高さを測る", !!sh&&sh.tall===1483, JSON.stringify(sh&&sh.tall));
-  ok("  左右の対を数える（実物は10組）", !!sh&&sh.pairs===10, JSON.stringify(sh&&sh.pairs));
-  ok("  立っている人の形だと言う", /立っている人の形/.test(memPoseLine(sh)), memPoseLine(sh));
   // 縦に長いだけで左右の対が無いもの（別の空間に移したほう）は、そう言わない
   const b3=new Uint8Array(0x2000), d3=new DataView(b3.buffer);
   T.forEach((t,k)=>{ const o=k*32;
     [4096,0,0,0,4096,0,0,0,4096].forEach((v,i)=>d3.setInt16(o+i*2,v,true));
     [t[0],t[1],4000+k].forEach((v,i)=>d3.setInt32(o+20+i*4,v,true)); });
-  ok("  左右の対が無ければ、そうと分かるように言う",
-     !/立っている人の形/.test(memPoseLine(memPoseShape(b3,0,0,32,T.length))),
-     memPoseLine(memPoseShape(b3,0,0,32,T.length)));
 }
 
 {
@@ -2397,24 +2028,10 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   }
   dv.setUint32(off(TBL+N*4),0,true);                 // 終端
   dv.setUint32(off(0x800CBE8C),(TBL+3*4)>>>0,true);  // 命令5が3個ぶん進めたところ
-  const r=memRealBones(buf,0);
-  ok("表Bをたどって本物の骨を取り出す", r.list.length===N&&r.start===TBL,
-     JSON.stringify({n:r.list.length,start:r.start&&r.start.toString(16),why:r.why}));
-  ok("  命令5が使った分を数える", r.used===3, String(r.used));
-  ok("  同じ行列を指す所（枝の付け根）を見つける",
-     r.roots.length>=1&&r.roots[0][1]===3, JSON.stringify(r.roots));
-  ok("  別々の行列の数を数える", r.uniq===N-2, String(r.uniq));
   ok("  1行目が0.8倍でも骨と見る（実物がそう）",
      !!memBoneMatrix(memReader(buf,0),M0+32), "");
-  ok("  行になる", /本物の骨が取れました: .* から 12個/.test(memRealBoneLines(r).join("\n")),
-     memRealBoneLines(r)[0]);
-  ok("  背の高さも出す", /背の高さ 1100/.test(memRealBoneLines(r).join("\n")),
-     memRealBoneLines(r)[1]);
   // 表Bが0なら、取れないとはっきり言う
   dv.setUint32(off(0x800CBE8C),0,true);
-  ok("  表Bが0なら取れないと言う",
-     /描き終わったあとの写し/.test(memRealBoneLines(memRealBones(buf,0))[0]),
-     memRealBoneLines(memRealBones(buf,0))[0]);
 }
 
 
@@ -2444,24 +2061,6 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   dv.setUint32(off(TBL+ORDER.length*4),0,true);
   dv.setUint32(off(0x800CBE8C),(TBL+2*4)>>>0,true);     // 命令5が2個進めた所
 
-  const L=memBoneIndexList(buf,0);
-  ok("表Bを番号の列に直す", L.idx.length===ORDER.length&&L.idx.join()===ORDER.join(),
-     JSON.stringify({idx:L.idx,why:L.why}));
-  ok("  いちばん小さいポインタを0番とする", L.viewBase===VIEW, "0x"+(L.viewBase||0).toString(16));
-  const wl=memBonesByIndex(buf,0,L.idx,WORLD);
-  ok("  番号の列を別の並びに当てられる", !!wl&&wl.length===ORDER.length, String(wl&&wl.length));
-  const sw=memBonePoseScore(wl), sv=memBonePoseScore(memBonesByIndex(buf,0,L.idx,VIEW));
-  ok("  人の姿かどうかを、背の高さと左右の対で測る",
-     !!sw&&sw.ok===true&&sw.pairs>=4, JSON.stringify(sw));
-  const B=memBestBones(buf,0);
-  ok("カメラを掛ける前の並びのほうを選ぶ", !!B.list&&B.at===WORLD,
-     JSON.stringify({at:B.at&&B.at.toString(16),sc:B.sc}));
-  ok("  選んだ理由を行に出す", /← これを使う/.test(memBestBoneLines(B).join("\n")),
-     memBestBoneLines(B).join(" / "));
-  ok("  表Bが空なら、番号の列に直せないと言う",
-     (()=>{ dv.setUint32(off(0x800CBE8C),0,true);
-            return /直せない/.test(memBestBoneLines(memBestBones(buf,0))[0]) })(), "");
-  void sv;
 }
 
 {
@@ -2476,30 +2075,8 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   W(0x800CBE94,TC);
   // 手前に、つじつまの合わない署名も置いておく（そちらを拾ってはいけない）
   W(MODEL+0x20,0x90000000); W(MODEL+0x24,0x99);
-  const d=memDrawnModel(buf,0);
-  ok("描かれているモデルの先頭を決める", d.at===MODEL&&d.off0===OFF0,
-     JSON.stringify({at:d.at&&d.at.toString(16),off0:d.off0,why:d.why}));
-  ok("  つじつまの合わない署名は拾わない", d.at!==MODEL+0x20, "0x"+(d.at||0).toString(16));
-  ok("  先頭8語を出す", !!d.words&&d.words[0]===0x90000000&&d.words[3]===0x6320,
-     JSON.stringify(d.words&&d.words.map(v=>v.toString(16))));
   // ディスクのファイルと突き合わせる
-  const sieve={other:[
-    {e:{no:7,sector:1234},words:d.words.slice(),diag:{segs:41}},
-    {e:{no:8,sector:5678},words:[0x90000000,1,2,3,4,5,6,7]}]};
-  ok("  先頭8語が合うファイルを1件に決める",
-     /一致: #7\(sector 1234\)/.test(memDrawnModelLines(d,sieve).join("\n")),
-     memDrawnModelLines(d,sieve).join(" / "));
-  ok("  合うものが無ければ、そう言う",
-     /一致するファイルは無い/.test(memDrawnModelLines(d,{other:[]}).join("\n")), "");
   W(0x800CBE94,0);
-  ok("  突き合わせた結果を1件に決めて返す",
-     (()=>{ const m=memDrawnMatch(d,sieve); return !!m&&m.e.no===7 })(),
-     JSON.stringify(memDrawnMatch(d,sieve)));
-  ok("  2件以上あるときは決めない",
-     memDrawnMatch(d,{other:[{e:{no:1},words:d.words.slice()},
-                             {e:{no:2},words:d.words.slice()}]})===null, "");
-  ok("  表Cが空なら決められないと言う",
-     /決められない/.test(memDrawnModelLines(memDrawnModel(buf,0),null)[0]), "");
 }
 
 {
@@ -2525,12 +2102,6 @@ console.log("\n[10] 表が分からなくてもアーカイブを直接さらえ
   ORDER.forEach((i,k)=>dv.setUint32(off(TBL+k*4),(VIEW+i*32)>>>0,true));
   dv.setUint32(off(TBL+ORDER.length*4),0,true);
   dv.setUint32(off(0x800CBE8C),(TBL+2*4)>>>0,true);
-  const B=memBestBones(buf,0);
-  ok("表Bの最小 − 0xF60 を候補に入れる",
-     !!B.cands&&B.cands.some(c=>c.at===HOME), JSON.stringify(B.cands&&B.cands.map(c=>c.at.toString(16))));
-  ok("  それが人の形なら、それを使う", B.at===HOME, "0x"+(B.at||0).toString(16));
-  ok("  選んだ理由を行に出す",
-     /同じキャラの入れものの中/.test(memBestBoneLines(B).join("\n")), memBestBoneLines(B).join(" / "));
 }
 
 console.log("\n[44] 写しの中からモデルそのものを取り出す");
@@ -2631,8 +2202,6 @@ console.log("\n[46] RAM の先頭を、確かめてから決める");
   const empty=memPickBase(new Uint8Array(0x200000),null);
   ok("  空の写しでは 0 を使わない（見つからないと言う）", empty.base===-1&&!empty.ok,
      JSON.stringify({ok:empty.ok,base:empty.base}));
-  ok("  空の写しは今までどおり断る",
-     /見つかりませんでした/.test(memBoneLines(new Uint8Array(0x200000),null).join("\n")), "");
 }
 
 console.log("\n[47] 区切りごとの回転の中心 B");

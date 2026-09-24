@@ -1,10 +1,3 @@
-// ---- 骨さがし ----
-// 命令5 は「外から渡された表から次の行列を取り出す」処理だった。その行列はプレステの
-// MATRIX で、ちょうど32バイト:
-//   int16 m[9]（1.3.12 の固定小数。1.0 が 4096）＋ 詰め物2バイト ＋ int32 t[3]（移動量）
-// キャラクターのモデル（sector 5927）の並びにある 928 バイトの塊は 32 で割り切れて
-// 29個ぶん。骨の表ならこの形をしているはずなので、それを確かめる
-const MAT_SIZE=32, MAT_ONE=4096;
 // 行列の持ち方は1つとは限らない。ありそうな形を3つ試す
 // 1番目の形は、実行ファイルを読んで確かめた（推測ではない）。
 // 命令5の処理 0x8001F444 が、表Bの指す先からこう読んで GTE に入れている：
@@ -66,29 +59,6 @@ function boneScanBest(buf){
 function boneSample(b,k){
   const M=b.list[k]; if(!M) return "";
   return `      [${k}]${M.ok?"○":"×"} 回転 ${M.m.join(",")}${M.one?`（1.0＝${M.one}）`:""}　移動 ${M.t.join(",")}`;
-}
-// アーカイブの中を全部あたって、32バイトの行列が並んでいる塊を探す
-async function boneHunt(onProgress){
-  const list=state.entries.filter(e=>!e.kind||e.kind!=="raw").sort((a,b)=>b.size-a.size);
-  const hits=[];
-  for(let i=0;i<list.length;i++){
-    const e=list[i];
-    if(onProgress&&i%4===0) onProgress(i/list.length);
-    await idle();
-    try{
-      const raw=await readFull(e);
-      let parts=unpack(raw); if(!parts) parts=[raw];
-      parts.forEach((p,pi)=>{
-        if(!p||p.length<64) return;
-        let out=p; try{ if(p[0]===0x0b) out=decompress(p) }catch(_){ return }
-        const b=boneScanBest(out);
-        if(b&&b.n>=8&&b.ratio>=0.5) hits.push({e,pi,len:out.length,b});
-      });
-    }catch(_){}
-  }
-  if(onProgress) onProgress(1);
-  hits.sort((a,b)=>b.b.ratio-a.b.ratio||b.b.n-a.b.n);
-  return hits;
 }
 function boneLines(hits){
   const L=["骨さがし（32バイトの行列が並んでいる塊）:"];

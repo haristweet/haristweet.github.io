@@ -138,8 +138,6 @@ canvas:active{cursor:grabbing}
       <div class="files" id="files"></div>
       <p class="count" id="file-count"></p>
       <button class="btn wide" id="scan-all" style="margin-top:8px">全部のファイルを調べる</button>
-      <button class="btn wide" id="survey" style="margin-top:8px">モデル候補をまとめて調べる</button>
-      <button class="btn wide" id="bones" style="margin-top:8px">骨さがし（32バイトの行列を探す）</button>
     </div>
     <div data-tab="file"><p class="label">向き</p>
       <div class="seg" id="up-seg"><button data-up="0" aria-pressed="false">そのまま</button><button data-up="1" aria-pressed="false">X を上に</button><button data-up="2" aria-pressed="true">X を上（逆）</button><button data-up="3" aria-pressed="false">Z を上に</button><button data-up="4" aria-pressed="false">Y を上（逆）</button></div>
@@ -166,24 +164,6 @@ canvas:active{cursor:grabbing}
         <p class="label">写しの中にいた人</p>
         <select id="ramchar" aria-label="写しの中にいた人"></select>
         <p class="note">ディスクのファイルではなく、<b>写しに載っているモデルそのもの</b>を出しています。骨もモデルも同じ1つの写しの中にあるので、突き合わせが要りません。別の場面で取った2つの写しを比べたところ、ポーズは変わってもモデルは1バイトも変わりませんでした。</p>
-      </div>
-      <div id="borigin-box" hidden style="margin-top:8px">
-        <p class="label">回転の中心</p>
-        <select id="borigin" aria-label="回転の中心">
-          <option value="none">引かない（既定）</option>
-          <option value="box">区切りの箱の中心</option>
-          <option value="cent">区切りの重心</option>
-        </select>
-        <p class="note">区切りごとの中心を引いてから回す、という試みです。継ぎ目の伸びという数だけ見ると半分になります（1P 129→74、2P 95→52）が、<b>絵にすると姿は崩れます</b>（頭が消える）。数がよくなっても見た目が悪くなる例なので、既定は「引かない」です。</p>
-      </div>
-      <div id="boneshift-box" hidden style="margin-top:8px">
-        <p class="label">骨のずらし量</p>
-        <select id="boneshift" aria-label="骨のずらし量"></select>
-        <p class="note">区切り番号から骨の番号へ、いくつずらして引くか。読み取りの区切りは最初の命令5 で 1 になり、表Bの骨は 0 から並ぶので <b>-1</b> が筋の通る値です。人の形にならないときは、ここを変えて見比べてください。</p>
-      </div>
-      <div id="bonepick-box" hidden style="margin-top:8px">
-        <p class="label">使う骨の表（当ててみた結果の良い順）</p>
-        <select id="bonepick" aria-label="使う骨の表"></select>
       </div>
       <p class="note"><b>骨の行列は、ディスクにも実行ファイルにも入っていません。</b>描く直前にゲームが渡すもので、動いている最中にしか存在しません。だから、動かして止めて、その瞬間のメモリを取ります。<br>
       <b>取り方（DuckStation）</b><br>

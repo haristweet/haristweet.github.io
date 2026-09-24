@@ -1,4 +1,4 @@
-const VERSION="v4.42.0";
+const VERSION="v4.43.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -128,16 +128,6 @@ function buildModelInner(raw,info){
       }
       t1SetBones(null);
     }catch(err){ info.t1ChainTry="  鎖の効きが測れなかった: "+(err&&err.message||err) }
-    // v4.23.0 で「縦横比がいちばん大きいものを選ぶ」当てはめを入れたが、
-    // あれは間違いだった。骨がずれて部品が散らばると、いちばん長い辺は伸びる。
-    // つまり散らばったほうを高く評価していた。目で見たほうが正しかった。
-    // 番号の列に直す道ができたので、ずらす当てはめはやめる
-    if(T1_BONES_REAL&&state.bestBones&&state.bestBones.list)
-      info.t1RealBone=`  本物の骨 ${state.bestBones.list.length}本`
-        +`（表Bの順そのまま／${hex(state.bestBones.at)} の並びから）`
-        +(state.bestBones.sc?`　背の高さ ${state.bestBones.sc.tall}　左右の対 ${state.bestBones.sc.pairs}組`:"");
-    else if(T1_BONES_REAL&&state.realBones&&state.realBones.list.length)
-      info.t1RealBone=`  本物の骨 ${state.realBones.list.length}本（表Bの順そのまま）`;
     // 鎖をたどって積む（部品の座標が親からの相対だという読みに沿った置き方）
     if(t1Show.chainBone&&!T1_BONES_REAL){
       t1SetBones(null); buildT1Mesh(b.out,okObjs);
@@ -625,20 +615,6 @@ function digestLines(){
     const t=sieveLines(state.sieve).find(x=>/全 \d+件 →/.test(x));
     if(t) L.push("", t.trim());
   }
-  // 骨の表を触っている場所（いま追っている本丸）
-  // 「^  表[ABC]」で拾うと、長い報告のほうの見出し
-  //   「  表A（命令5が引く） を読んでいる 0x8001F450 のある関数:」
-  // まで混ざって、中身のない見出しだけが5行並んでいた。
-  // 読み書きの件数が出ている行だけにする
-  { const src=(state.report||"").split("\n").filter(x=>
-      /^起動時の \$gp/.test(x)||/^  表[ABC][^:]*: 読み /.test(x));
-    if(src.length){ L.push(""); L.push(...src) } }
-  // まとめには「分かったこと」だけ。逆アセンブルは長い報告のほうに置く。
-  // 短くすると言いながら足し続けて、350行まで膨らませてしまった
-  if(state.boneBrief&&state.boneBrief.length){
-    L.push(""); L.push("実行ファイルから読み取ったこと:");
-    L.push(...state.boneBrief);
-  }
   const inf=state.selInfo, e=state.entries[state.sel];
   if(inf&&e){
     L.push("");
@@ -693,31 +669,7 @@ function digestLines(){
     for(const w of (inf.t1Read&&inf.t1Read.why)||[]) L.push(`    読めない理由: ${w}`);
     for(const a of (inf.t1Read&&inf.t1Read.audit)||[]) L.push(`    読めなかった部品: ${a}`);
   }
-  if(state.mem&&state.mem.length){
-    L.push("");
-    // 区画ごとに枠を決めて、その中で切る。
-    // 1本の流れを「先頭N行」で切っていたので、あとから足したものが
-    // 先に出るものに押し出されて消えていた（6回やった）
-    const P=state.memParts;
-    if(P){
-      const sec=(k,cap)=>{ const a=P[k]||[]; if(a.length) L.push(...a.slice(0,cap)) };
-      sec("head",1);            // RAM の先頭が見つかったか
-      sec("chars",6);           // 写しの中にいた人（1P・2P…）
-      sec("drawn",4);           // いま描かれているモデルはどれか
-      sec("bones",4);           // 表Bから取れた骨
-      sec("best",4);            // どの並びに当てたか
-      sec("jump",8);            // 番号の列と、遠くの枝
-      sec("gap",10);            // 2つの並びのあいだに何があるか
-      sec("stack",8);           // 行列の積み場所の生ダンプ
-    } else
-    L.push(...state.mem.filter(x=>/骨|メモリの写し|収まった|RAM|一致|読める場所/.test(x)).slice(0,14));
-    // 行列の積み場所の生ダンプは、言葉で拾わずにそのまま渡す。
-    // ふるいを通していたので、足した行が全部落ちていた
-    if(!state.memParts){
-      if(state.memStack&&state.memStack.length) L.push(...state.memStack);
-      if(state.realBones) L.push(...memRealBoneLines(state.realBones));
-    }
-  }
+  if(state.mem&&state.mem.length) L.push("",...state.mem.slice(0,10));
   // まだ名前の付いていないキャラクターのモデル。残りを数えるため
   { const sig=((state.sieve&&state.sieve.other)||[])
       .filter(o=>o.words&&o.words[0]===0x90000000&&o.words[1]!==0x14&&!t1NameOf(o.e.sector));
@@ -743,115 +695,6 @@ function digestLines(){
         +`（格闘キャラは30前後。ローブ姿など脚の分かれていないキャラクターかもしれない）: `
         +few.map(o=>`#${o.e.no}(区切り${o.diag.segs})`).join(" "));
     } }
-  // 骨の表はモデルファイルの中に無いと分かった（余りが76バイトの埋め草だけ）。
-  // モデルの前後も全部モデルだった。残るのは「それ以外」150件と「読めない」4件。
-  // 小さいファイルほど表らしい（骨30本×8〜16バイト＝240〜480バイト）
-  if(state.sieve){
-    const sv=state.sieve;
-    const other=(sv.other||[]).filter(o=>!(o.words&&o.words[0]===0x90000000));
-    const small=other.slice().sort((a,b)=>a.e.size-b.e.size).slice(0,10);
-    if(small.length){
-      L.push("");
-      L.push("骨の表を探す先（モデルでもテクスチャでもないファイル、小さい順）:");
-      L.push("  "+small.map(o=>`#${o.e.no}(${o.e.sector}) ${fmtSize(o.e.size)}`
-        +(o.dec?`→${o.dec}B`:"")).join("　"));
-      // 先頭24バイトでは「小さい数が並ぶ」までしか分からなかったので、
-      // いちばん小さいものを1件、中身を全部出す
-      const full=small.find(o=>o.full);
-      if(full){
-        // 全部出したが、親の番号の列は無く、正体も決まらなかった。
-        // 18行使い続ける値打ちが無いので長い報告へ。まとめには言えることだけ
-        L.push(`  #${full.e.no}(${full.e.sector}) の中身（${full.full.length}B）`
-          +`　先頭: ${Array.from(full.full.subarray(0,16),
-              v=>v.toString(16).padStart(2,"0")).join(" ")}`);
-        L.push(...tableRecLines(tableRecGuess(full.full),full.full.length));
-        // 同じ番号が3つ並ぶ組がいくつもある。面の頂点番号の列を
-        // 固定長にするための埋め草に見えたので、数えて確かめる
-        L.push(...indexTripleLines(full.full,`#${full.e.no}`));
-        // 同じ大きさのものが何件もある。中身も同じなら「キャラごと」ではない
-        const same=small.filter(o=>o.full&&o.full.length===full.full.length);
-        if(same.length>1){
-          const diff=same.filter(o=>o!==full&&!eqBytes(o.full,full.full));
-          L.push(`  同じ ${full.full.length}B のファイル ${same.length}件のうち、`
-            +(diff.length?`中身が違うもの ${diff.length}件`
-                          +`（${diff.slice(0,6).map(o=>"#"+o.e.no).join(" ")}）`
-                          +"　→ キャラごとに別の中身"
-                        :"中身はどれも同じ　→ キャラごとではない"));
-        }
-      }
-    }
-    // 静止ポーズは独立したデータとして無く、位置の一部は形に焼き込まれ、
-    // 残りは毎フレームの角度で与えられる——その読みで進める。
-    // 探すのは骨格ファイルではなく角度の列。角度の列は
-    // 「1フレームぶんの刻みだけ離れたバイトがよく似ている」で見つかる
-    // 小さい順に8件だと、564バイトのものばかり並んで何も分からなかった。
-    // 大きさをばらして選ぶ。刻みを測るには繰り返しの回数が要る
-    { const pool=other.filter(o=>o.full&&o.full.length>=256)
-        .sort((a,b)=>a.full.length-b.full.length);
-      const cand=[];
-      for(let k=0;k<8&&pool.length;k++){
-        const i=Math.min(pool.length-1,
-          k<3?k:Math.round((k-2)/6*(pool.length-1)));
-        if(pool[i]&&!cand.includes(pool[i])) cand.push(pool[i]);
-      }
-      // 外側の命令列らしいファイルも、同じ候補で見る。
-      // 骨の階層は、その列の「行列を積む／戻す」で表されている
-      { const sc=other.filter(o=>o.full&&o.full.length>=64)
-          .map(o=>({o,r:scriptShape(o.full)}))
-          .filter(x=>x.r&&x.r.small>=8&&x.r.ratio>=0.3&&x.r.big<x.r.n*0.2)
-          .sort((a,b)=>b.r.ratio-a.r.ratio);
-        L.push(sc.length
-          ? "  外側の命令列らしいファイル "+sc.length+"件: "
-            +sc.slice(0,6).map(x=>`#${x.o.e.no}(${x.o.full.length}B)`).join(" ")
-          : "  外側の命令列らしいファイルは無い（列は実行時に組み立てられている）");
-        for(const x of sc.slice(0,2)) L.push(scriptShapeLine(x.r,`#${x.o.e.no}`));
-      }
-      if(cand.length){
-        L.push("  角度の列らしいものを、繰り返す刻みで探す:");
-        for(const o of cand){
-          let r=null,err="";
-          try{ r=animStrideScan(o.full) }catch(e){ err=e.message }
-          L.push(err?`  #${o.e.no}: 測れなかった（${err}）`
-                    :animStrideLine(r,`#${o.e.no}(${o.full.length}B)`));
-        }
-      } else L.push("  角度の列を探せる大きさのファイルが無い");
-    }
-    // 骨格がキャラごとなら、モデル40件と同じくらいの数の小さいファイルが
-    // どこかに固まっているはず。無ければ「共通1ファイル」説が濃くなる。
-    // 番号が続いていて、どれも小さいファイルのかたまりを探す
-    { const runs=[]; let cur=null;
-      for(const en of state.entries){
-        const o=other.find(x=>x.e===en);
-        const small=o&&en.size<=8192;
-        if(small){ if(cur) cur.push(en); else { cur=[en]; runs.push(cur) } }
-        else cur=null;
-      }
-      const big=runs.filter(r=>r.length>=8).sort((a,b)=>b.length-a.length);
-      L.push(big.length
-        ? "  小さいファイルが続いているかたまり: "
-          +big.slice(0,4).map(r=>`#${r[0].no}〜#${r[r.length-1].no}（${r.length}件）`).join(" ")
-          +"　→ 骨格がキャラごとに分かれているなら、この中にある"
-        : "  小さいファイルが8件以上続くかたまりは無い"
-          +"　→ 骨格はキャラごとではなく、共通の1ファイルか実行ファイルの中");
-    }
-    if((sv.broken||[]).length){
-      L.push(`  読めなかったファイル ${sv.broken.length}件（中身は同じ。1件だけ出す）`
-        +"（骨の表は圧縮されていない固定長の並びかもしれない。"
-        +"だとすると展開できないのは当たり前なので、中身を見る）:");
-      for(const b of sv.broken.slice(0,1)){
-        L.push(`    #${b.e.no}(${b.e.sector}) ${fmtSize(b.e.size)}`
-          +(b.rawLen?`／生 ${b.rawLen}B`:"")+`　${b.why}`);
-        if(b.head) L.push(`      先頭32バイト: ${b.head}`);
-      }
-      // 先頭が「増えていく位置の並び」に見えたので、その区切りでばらす。
-      // 位置の先が 0b で始まっていれば、それは圧縮された中身
-      const bf=(sv.broken||[]).find(b=>b.full);
-      if(bf){
-        L.push(`    #${bf.e.no} を「位置の並び」として読むと:`);
-        L.push(...fileBlockLines(fileBlockRead(bf.full)).map(x=>"  "+x));
-      }
-    }
-  }
   if(state.galGroups&&state.galGroups.length){
     L.push(""); L.push("同じ形でまとめた結果:"); L.push(...state.galGroups);
   }
@@ -873,354 +716,6 @@ function updateReport(){
   L.push(`実行ファイル: ${s.exeName}  ${ex.ok?`(PS-X EXE  text=${hex(ex.text)}  size=${hex(ex.size)}  pc=${hex(ex.pc)})`:"(PS-X EXE ではありません)"}`);
   L.push(`アーカイブ: ${s.arcName}  ${fmtSize(s.arcSize)}`);
   L.push("");
-  // 実行ファイルの中で、モデルの署名 0x90000000 を作っている場所＝モデルを読む関数。
-  // ここは何百行にもなるうえ、毎回同じ内容なので、ふだんは出さない
-  if(!repLong()) L.push("（実行ファイルの中身・生のバイト列は「実行ファイルや生の中身まで出す」を入れると出ます）","");
-  else try{
-    const all=findModelCode(s.exe), seen=new Set(), hits=[];
-    for(const h of all){ if(seen.has(h.from)) continue; seen.add(h.from); hits.push(h) }
-    if(hits.length){
-      L.push(`モデルを読んでいるコード（lui ??, 0x9000 が ${all.length}か所 → 関数 ${hits.length}個）:`);
-      const callees=new Map();
-      hits.slice(0,3).forEach((h,i)=>{
-        L.push(`  [${i}] ${hex(h.addr)}　関数 ${hex(ex.text+h.from)}…${hex(ex.text+h.to)}（${(h.to-h.from)/4}命令）`);
-        for(const c of mipsCalls(s.exe,h)) if(!seen.has(c.from)&&!callees.has(c.from)) callees.set(c.from,c);
-      });
-      // 呼び出し先も追う。部品を読む本体はこの先にある
-      let k=0; const deep=[];
-      for(const c of callees.values()){
-        if(k>=3) break;
-        const n=(c.to-c.from)/4; if(n<4||n>400) continue;
-        L.push(`  呼び出し先 ${hex(c.addr)}（${n}命令）`);
-        deep.push(c); k++;
-      }
-      // 命令ごとの処理は分岐の先にある。飛び先と、飛び先の表を読む
-      for(const c of deep){
-        // 命令ごとの「1つの長さ」をコードから割り出して一覧にする
-        const disp=mipsDispatch(s.exe,c);
-        if(disp.length){
-          const loop=c.addr+((()=>{ // ループの先頭＝命令コードを読む場所
-            return 0xc4 })());
-          const rows=[];
-          for(const d of disp){
-            const inf=mipsCmdInfo(s.exe,d.addr,0x8001efa8,300);
-            if(!inf) continue;
-            rows.push(`    命令 ${String(d.code).padStart(2)} → ${hex(d.addr)}　`
-              +`長さ ${inf.lens.length?inf.lens.join("/")+"B":"?"}　`
-              +`読む語 ${inf.reads.map(x=>"+"+x).join(",")||"-"}　`
-              +(inf.vertMove?"頂点を進める　":"")+(inf.gte?"座標変換":""));
-          }
-          const tabs2=[];   // 飛び先の表はもう読み終えたので出さない
-          for(const tb of tabs2.slice(0,1)) tb.vals.forEach((v,i)=>{
-            if(!v||v<0x80010000||v>0x800d0000) return;
-            const inf=mipsCmdInfo(s.exe,v,0x8001efa8,300); if(!inf) return;
-            rows.push(`    命令 ${String(i+8).padStart(2)} → ${hex(v)}　`
-              +`長さ ${inf.lens.length?inf.lens.join("/")+"B":"?"}　`
-              +`読む語 ${inf.reads.map(x=>"+"+x).join(",")||"-"}　`
-              +(inf.vertMove?"頂点を進める　":"")+(inf.gte?"座標変換":""));
-          });
-          if(rows.length){ L.push("  命令の一覧（コードから割り出したもの）:"); L.push(...rows) }
-        }
-
-      }
-      // 命令 3/4/5/6/7 が何をしているかはまだ分からない。部品を置く位置（骨の行列）は
-      // この中にあるはずなので、中身をそのまま出して読む
-      const want=new Set([3,4,5,6,7]), seenH=new Set();
-      for(const c of deep) for(const d of mipsDispatch(s.exe,c)){
-        if(!want.has(d.code)||seenH.has(d.addr)) continue;
-        seenH.add(d.addr);
-        L.push(...mipsBlock(s.exe,d.addr,18,`命令 ${d.code} の中身 `));
-      }
-      // 命令5 は 0x800CBE90 / 0x800CBE8C にある「表」から次の1件を取り出していた。
-      // その表を用意しているのが誰なのかが分かれば、部品の置き場所にたどり着く
-      for(const g of [0x800CBE90,0x800CBE8C,0x800CC910]){
-        const refs=mipsRefs(s.exe,g,14,ex.gp||mipsFindGp(s.exe));
-        if(!refs.length) continue;
-        L.push(`  ${hex(g)} を使っている場所（${refs.length}件）: `
-          +refs.map(r=>hex(r.at)+(r.store?"書":"読")).join(" "));
-        const st=refs.filter(r=>r.store);
-        for(const r of st.slice(0,2)) L.push(...mipsBlock(s.exe,r.at-0x20,12,"  そこの前後 "));
-      }
-      // 骨の表（0x800CBE90 / 0x800CBE8C）を用意しているのは、モデルを描く関数のはず。
-      // 署名 0x9000 を作っている関数のうち、大きいほうを丸ごと出して読む
-      for(const h of hits){
-        const n=(h.to-h.from)/4;
-        if(n<40||n>200) continue;
-        L.push(`  モデルを描く関数 ${hex(ex.text+h.from)}（${n}命令）:`);
-        L.push(...mipsLines(s.exe,h,h.from));
-        break;
-      }
-      // 骨の表は 0x800CBE88/8C/90 と3つ並んでいる（構造体らしい）。
-      // 番地を1つずつ見ていると、先頭を土台に別のずれで書く形を取りこぼすので、範囲で探す
-      { const rr=mipsRefsRange(s.exe,0x800CBE80,0x800CBE9F,24,ex.gp||mipsFindGp(s.exe));
-        if(rr.length){
-          L.push(`  骨の表のあたり 0x800CBE80…0x800CBE9F を使っている場所（${rr.length}件）:`);
-          L.push("    "+rr.map(r=>`${hex(r.addr)}${r.store?"書":"読"}@${hex(r.at)}`).join(" "));
-          for(const r of rr.filter(x=>x.store).slice(0,3))
-            L.push(...mipsBlock(s.exe,r.at-0x18,10,"  そこの前後 "));
-        } else L.push("  骨の表のあたりを使っている場所は見つかりませんでした"); }
-      // 読み書きの命令として現れない「番地を作っているだけ」の場所も探す。
-      // 表を用意する側は、番地を register に作って関数に渡しているはず
-      { const ao=mipsAddrOf(s.exe,0x800CBE80,0x800CBE9F,16);
-        L.push(ao.length
-          ? `  骨の表の番地を作っている場所（${ao.length}件）: `+ao.map(r=>`${hex(r.addr)}@${hex(r.at)}`).join(" ")
-          : "  骨の表の番地を作っているだけの場所は見つかりませんでした");
-        for(const r of ao.slice(0,3)) L.push(...mipsBlock(s.exe,r.at-0x10,10,"  そこの前後 ")); }
-      // 0x8001BBE0 の中にもう1つ命令の表がある（0x80010308、15件）。
-      // 0x8001EEE4 のものとは別なので、こちらも読む
-      { const tb=mipsTableAt(s.exe,0x80010308,15);
-        if(tb.length){
-          L.push("  もう1つの命令の表 0x80010308（15件）:");
-          tb.forEach((v,i)=>{
-            const inf=(v>=0x80010000&&v<0x800d0000)?mipsCmdInfo(s.exe,v,0x8001bdfc,200):null;
-            L.push(`    命令 ${String(i+1).padStart(2)} → ${hex(v)}`
-              +(inf?`　長さ ${inf.lens.length?inf.lens.join("/")+"B":"?"}　読む語 ${inf.reads.map(x=>"+"+x).join(",")||"-"}`:""));
-          });
-          // 面を描く命令（8以上）は「飛び先の関数」が1枚の大きさを決めている。
-          // 飛び先でまとめると、同じ大きさの命令どうしが分かる
-          const byJal=new Map();
-          tb.forEach((v,i)=>{ const op=i+1;
-            if(op<8||!(v>=0x80010000&&v<0x800d0000)) return;
-            const j=mipsJalIn(s.exe,v,14); if(!j) return;
-            if(!byJal.has(j)) byJal.set(j,[]);
-            byJal.get(j).push(op); });
-          if(byJal.size){
-            L.push("  面を描く命令の飛び先（同じ飛び先なら1枚の大きさも同じはず）:");
-            for(const [j,ops] of [...byJal].sort((a,b)=>a[0]-b[0]))
-              L.push(`    命令 ${ops.join(",")} → ${hex(j)}`);
-            for(const [j,ops] of [...byJal].sort((a,b)=>a[0]-b[0]))
-              L.push(...mipsBlock(s.exe,j,10,`  命令 ${ops.join(",")} が呼ぶ関数 `));
-          }
-        } }
-      // 旗が立っていないときに呼ばれる関数。下ごしらえならここ
-      L.push("  旗が立っていないときに呼ぶ関数 0x80019C78:");
-      L.push(...mipsFuncAt(s.exe,0x80019C78,60));
-      // 本当に部品を読み進める関数。0x8001BE24 がここを呼んでいる
-      L.push("  部品を読み進める関数 0x8001BBE0:");
-      L.push(...mipsFuncAt(s.exe,0x8001BBE0,90));
-      // 部品ごとの下ごしらえ。行列を積むならこの関数
-      for(const c of deep){ const n=(c.to-c.from)/4;
-        if(n>=20&&n<=80){ L.push(`  部品ごとの下ごしらえ ${hex(c.addr)}（${n}命令）:`); L.push(...mipsLines(s.exe,c)); break } }
-      L.push("");
-    } else L.push("モデルを読んでいるコードは見つかりませんでした\n");
-  }catch(err){ L.push("コードの読み取りに失敗: "+err.message+"\n") }
-  // 骨の表（0x800CBE8C/90/94）を触っている場所。$gp 相対も含めて数える。
-  // ここは短い報告にも出す。毎回変わりうるうえ、いま追っている本丸だから
-  try{
-    if(ex.ok){
-      // ヘッダの $gp が 0 のときは、コードの中で作っている場所から拾う
-      const gp=ex.gp||mipsFindGp(s.exe);
-      L.push(`起動時の $gp = ${hex(gp)}`
-        +(ex.gp?"（実行ファイルの +0x14 から）":gp?"（コードの lui＋addiu から割り出した）":"（見つからない）"));
-      for(const [nm,a] of [["表B",0x800CBE8C],["表A（命令5が引く）",0x800CBE90],["表C（部品）",0x800CBE94]]){
-        const r=mipsRefs(s.exe,a,24,gp);
-        const rd=r.filter(x=>!x.store).length, wr=r.filter(x=>x.store).length;
-        L.push(`  ${nm} ${hex(a)}: 読み ${rd}か所 / 書き ${wr}か所`
-          +(r.length?`　${r.map(x=>hex(x.at)+(x.store?"書":"読")).join(" ")}`:"　見つからない"));
-      }
-      // 表の中身の形を当て推量するのをやめて、表を作っている場所を読む。
-      // メモリの中を「32バイトの行列らしきもの」で探すやり方は尽きた
-      // （2MB に 210 か所しかなく、どれも筋が通らなかった）。
-      // 表を書いている命令の前後を見れば、1件が何バイトで何が入るかが分かる
-      state.boneCode=[];        // 長い報告に出すぶん（逆アセンブルを含む）
-      state.boneBrief=[];       // まとめに出すぶん（分かったことだけ）
-      // 同じ関数を何度も出さない。読む場所と書く場所が同じ関数の中にあると、
-      // まったく同じ逆アセンブルが二度並ぶ（表Aの読みと書きがそれだった）。
-      // 先頭の行で見分けると、窓の切り出し位置が違うだけで別物になってしまうので、
-      // 「その関数がどこからどこまでか」で見分ける
-      const seen=[];
-      for(const [nm,a] of [["表A（命令5が引く）",0x800CBE90],["表C（部品）",0x800CBE94]]){
-        for(const r of mipsRefs(s.exe,a,24,gp)){
-          const fn=mipsFuncAt(s.exe,r.at,64);
-          if(!fn.length) continue;
-          const at=x=>{ const m=x.match(/0x([0-9a-f]+)/); return m?parseInt(m[1],16):0 };
-          const lo=at(fn[0]), hi=at(fn[fn.length-1]);
-          if(seen.some(x=>lo<=x.hi&&hi>=x.lo)) continue;
-          seen.push({lo,hi});
-          state.boneCode.push(`  ${nm} を${r.store?"書いて":"読んで"}いる ${hex(r.at)} のある関数:`);
-          state.boneCode.push(...fn.slice(0,56).map(x=>x.replace(/^ {4}/,"    ")));
-          if(fn.length>56) state.boneCode.push(`    …（あと ${fn.length-56} 行）`);
-        }
-      }
-      // 命令ごとの長さと処理の場所を、実行ファイルから直に拾う。
-      // 命令5の尻尾（0x8001F4F4 の j ＋ addiu $fp,$fp,4）がそうだったので、
-      // 同じ形を全部拾えばいい。これでデータからの推測が要らなくなる
-      // 「命令ごとの長さ（尻尾を数えただけ）」と「振り分け表18件」は、
-      // 下の「命令ごとの飛び先と長さ（振り分けから）」に取って代わられた。
-      // 同じことを three 通りに出しても長くなるだけなので消した
-      // 振り分け表が読めれば、命令の番号と長さの対応が確定する
-
-      // 表を探し当てるより、振り分けそのものを読むほうが確か。
-      // 0x8001efa8 の中に「表から引いて jr で飛ぶ」形が書いてある
-      try{
-        const disp=mipsFindDispatch(s.exe);
-        if(disp){
-          const fn=mipsFuncAt(s.exe,disp,48);
-          state.boneCode.push(`  振り分けそのもの ${hex(disp)}:`);
-          state.boneCode.push(...fn.slice(0,40));
-        }
-      }catch(err){ state.boneCode.push("  振り分けの逆アセンブルで失敗: "+err.message) }
-      // 振り分けを丸ごと読んで、命令ごとの飛び先・長さ・面1枚の大きさを出す。
-      // ここが読めれば、こちらの決めごと（若い番号を小さいほうに）が要らなくなる
-      try{
-        const M=mipsCmdMap(s.exe);
-        // 命令の長さも面1枚の大きさも読み終わった。毎回18行＋8行出していたが、
-        // 中身は変わらないので1行ずつにして、長い報告のほうに戻す
-        state.boneBrief.push(...mipsCmdMapBrief(s.exe));
-        state.boneCode.push("  命令ごとの飛び先と長さ（振り分けから）:",
-                            ...mipsCmdMapLines(s.exe));
-        if(M&&M.tbl){
-          state.boneBrief.push(...mipsFaceSizeBrief(s.exe,M.tbl));
-          state.boneCode.push("  面の命令が面1枚あたり進むバイト数:");
-          state.boneCode.push(...mipsFaceSizeLines(s.exe,M.tbl));
-          const used=applyExeSizes(s.exe);
-          state.boneBrief.push(used
-            ? `  → 面の命令 ${used}個 の大きさを実行ファイルから決めた`
-              +"（頂点の数と法線の持ち方は、今までどおりデータに決めさせる）"
-            : "  → 実行ファイルからは決められなかった");
-        }
-      }catch(err){ state.boneCode.push("  振り分けの読み取りで失敗: "+err.message) }
-      // 表の置き場所を仕込んでいる所。lui＋addiu で番地を作る形は
-      // 読み書きの命令として現れないので、mipsRefs では取りこぼす
-      try{
-        // $gp 相対（addiu $?, $gp, N）も見る。lui＋addiu だけでは取りこぼす
-        const mk=mipsAddrOf(s.exe,0x800CBE8C,0x800CBE94,16,gp);
-        // 命令3と命令6の処理をそのまま出す。どちらも数命令しかないのに
-        // 意味が分かっていない。命令6が骨の番号を動かしているなら、
-        // こちらの数え方（命令5だけを数える）が根本から間違っていることになる
-        // 命令3と命令6は読み終わった（どちらも語1を足すだけ）。
-        // 残って意味が分からないのは命令1だけなので、そこだけ出す
-        try{ state.boneCode.push("  まだ意味の分かっていない命令の処理:",
-                                 ...mipsShortCmdLines(s.exe,[1]));
-             state.boneBrief.push(
-                                  "  （命令3＝$s3 に語1を足す／命令6＝$s7 に語1を足す。"
-                                  +"どちらも骨ではなく部品の中のポインタを動かすだけ：読み終わり）") }
-        catch(err){ state.boneBrief.push("  短い命令が読めなかった: "+err.message) }
-        // 命令3と命令6は $s3 と $s7 に語1を足すだけだった。骨ではなく、
-        // 部品の中のどれかを指すポインタを前後にずらしている（$s2 は面だった）。
-        // どのレジスタが何かは、部品を組み立てている関数に書いてある。
-        // 部品の繰り返し 0x8001BB5C の lw $a0,0($v1) → jal がその入口
-        try{
-          const call=mipsJalIn(s.exe,0x8001BB44,16);
-          if(call){
-            // ここはもう読み終わった（面=$gp+3468 / 法線=$gp+3736 / 色=$gp+3444）。
-            // 場所だけまとめに残して、中身は長い報告のほうへ戻す
-            state.boneBrief.push(`  部品を組み立てている関数 ${hex(call)}`
-              +"（読み終わり: 面=$gp+3468 法線=$gp+3736 色=$gp+3444）");
-            state.boneCode.push(`  部品を組み立てている関数 ${hex(call)}:`);
-            state.boneCode.push(...mipsFuncAt(s.exe,call,40).slice(0,36));
-          }
-        }catch(err){ state.boneBrief.push("  部品の関数が読めなかった: "+err.message) }
-        // 角度から行列を作っている所を、サイン表から手繰る
-        // この道は閉じた。サイン表を使っている所は4か所とも演出とGPUパケットで、
-        // 骨の行列を作っている所ではなかった。出し続けても同じ行が並ぶだけなので、
-        // 「見つかった表の場所」1行だけ残して、中身は長い報告へ
-        try{ const sl=mipsSinTableLines(s.exe,gp);
-             state.boneBrief.push("  角度の表: "+(sl[0]||"").replace(/^\s+/,"")
-               +"（使っている所は演出とGPUパケットだけ。骨の行列を作っている所ではない）");
-             state.boneCode.push("  角度から行列を作っている所を探す:",...sl,
-                                 ...mipsSinUserLines(s.exe,gp,80,[0x8004AD9C])) }
-        catch(err){ state.boneBrief.push("  サイン表さがしで失敗: "+err.message) }
-        // 表の番地は「構造体の一部」として書かれている可能性がある。
-        // 表そのものではなく、その前後まで広げて番地を作っている所を探す
-        // 24件出していたが、どれも $gp の近くを触っているだけで表とは関係なかった。
-        // 道が閉じたので長い報告へ戻す
-        try{ state.boneCode.push(...mipsNearAddrLines(s.exe,0x800CB000,0x800CC800,gp)) }
-        catch(err){ state.boneCode.push("  広げた番地さがしで失敗: "+err.message) }
-        // 表A・表B に最初の値を入れている所が、読み書きの形では出てこない。
-        // handler の中でしか触っていないなら、最初の値は
-        // 「別の register を土台にした書き込み」で入っている。
-        // それは命令の列を読む関数を呼んでいる側にあるはず
-        try{ const cl=mipsCallerLines(s.exe,0x8001EFA8,1,12);
-             state.boneBrief.push("  "+(cl[0]||"").replace(/^\s+/,""));
-             state.boneCode.push("  命令の列を読む関数を呼んでいる所:",...cl) }
-        catch(err){ state.boneBrief.push("  呼び出し元が読めなかった: "+err.message) }
-        // 呼び出し元に、0x800CC910 を 32 ずつ進めている所があった。
-        // 32バイトは行列ちょうど1個ぶん。番地を決め打ちで追うのはやめて、
-        // 「読んで・足して・同じ所に書き戻す」形を全部拾う
-        // $gp を直したら、表A・表B・表C の書き込みが1か所から3か所に増えた。
-        // 増えたぶんは 0x8001A18C 付近に固まっている。そこが仕込みの場所で、
-        // 骨の行列の並びの先頭を入れているのもそこのはず
-        // 読み終わった。0x8001A184 からの3組はどれも
-        //   lw $v0,0($s0) / addiu $s0,$s0,4 / sw $v0, N($gp)
-        // で、表に入る値は「外側の命令列から読んだ語そのもの」。
-        // 骨の行列の並びはディスクにも実行ファイルにも無く、ここで渡される
-        try{
-          const W=mipsSetupWindow(s.exe,[0x800CBE8C,0x800CBE90,0x800CBE94],gp,
-                                  {skipFrom:0x8001BB00,back:14,fwd:3,span:0x80});
-          state.boneBrief.push("  表A・表B・表C に値を入れている所"
-            +`（${W.sites.length}か所 ${W.sites.map(x=>hexA(x.at)).join(" ")}）`
-            +"　＝外側の命令列から読んだ語をそのまま入れている（読み終わり）");
-          state.boneCode.push("  表A・表B・表C に値を入れている所:",...W.lines.slice(0,40));
-        }catch(err){ state.boneBrief.push("  表の仕込みが読めなかった: "+err.message) }
-        // では、その外側の命令列には何があるのか。24個の命令がある
-        // （sltiu $a0, 24）。0x800CC910 が +32 と -32 の両方で動いているので、
-        // 行列の積み上げと取り出し＝階層は、この列で表されている
-        try{
-          const marks={0x800CBE8C:"表B",0x800CBE90:"表A",0x800CBE94:"表C",
-                       0x800CC910:"行列の積み",0x800CC7F4:"GPUのパケット"};
-          state.boneBrief.push(...mipsSceneOpLines(s.exe,gp,{marks}));
-          // 行列の積みを ±32 で動かしている所を、そのまま字にする。
-          // 積む所と戻す所が分かれば、階層のたどり方がそのまま読める
-          const mv=mipsCursorByAddr(s.exe,gp)
-            .find(v=>v.steps.includes(32)&&v.steps.includes(-32));
-          if(mv){
-            state.boneBrief.push(`  ${hexA(mv.addr)} を ±32 で動かしている所`
-              +(mipsCursorFlow(mv)?"（"+mipsCursorFlow(mv)+"）":"")+":");
-            state.boneBrief.push("   （読み終わり: −32 の直後は lw $ra / addiu $sp ＝ 関数の出口。"
-              +"輪の先頭で毎回 ＋32 し、列が尽きたら 1回 −32 して戻す。"
-              +"進みすぎた1つぶんを戻しているだけで、積み下ろしではない）");
-            // − の所をかならず見る。そこが「戻す」のか「後始末」なのかで、
-            // 階層のたどり方かどうかが決まる。
-            // ＋の所ばかり2つ出していて、− の所を一度も見ていなかった
-            const minus=(mv.bySt||[]).filter(x=>x.step<0).flatMap(x=>x.ats);
-            const plus=(mv.bySt||[]).filter(x=>x.step>0).flatMap(x=>x.ats);
-            for(const at of [...minus.slice(0,1),...plus.slice(0,2)]){
-              state.boneBrief.push(`   ${hexA(at)} のあたり`
-                +(minus.includes(at)?"（−32＝戻す側）":"（＋32＝進む側）")+":");
-              state.boneBrief.push(...mipsCallSiteLines(s.exe,at,5,4));
-            }
-          } else state.boneBrief.push("  行列の積みを ±32 で動かしている所は無い");
-        }catch(err){ state.boneBrief.push("  外側の命令が読めなかった: "+err.message) }
-        try{
-          state.boneBrief.push(...mipsCursorLines(s.exe,gp));
-          // 行列1個ぶんずつ進めている所は、その関数ごと読む。
-          // 部品をひとつ描くたびに行列を1つ進めているなら、
-          // その並びの先頭を入れている所が同じ関数の中にあるはず
-          const m=mipsCursorPick(s.exe,gp);
-          if(m){
-            const r=mipsRefs(s.exe,m.addr,16,gp);
-            state.boneBrief.push(`  ${hexA(m.addr)} を触っている所 ${r.length}件: `
-              +r.map(x=>`${hexA(x.at)}${x.store?"書":"読"}`).join(" "));
-            // 進めているのではなく「入れている」所を読む。並びの先頭はそこで入る
-            const put=r.filter(x=>x.store&&!(m.ats||[]).includes(x.at));
-            for(const x of put.slice(0,2)){
-              state.boneBrief.push(`  ${hexA(m.addr)} に入れている ${hexA(x.at)} のある関数:`);
-              state.boneBrief.push(...mipsFuncAt(s.exe,x.at,40).slice(0,26));
-            }
-            if(!put.length) state.boneBrief.push(
-              `  ${hexA(m.addr)} は進めるだけで、先頭を入れている所が無い`
-              +"（別の register を土台にした書き込みで入っている）");
-          }
-        }catch(err){ state.boneBrief.push("  進めている入れもの探しで失敗: "+err.message) }
-        state.boneBrief.push(mk.length
-          ? `  表の番地を作っている場所 ${mk.length}件: `
-            +mk.map(x=>`${hex(x.at)}→${hex(x.addr)}(${x.how})`).join(" ")
-          : "  表の番地を作っている場所は見つからない（lui＋addiu も $gp 相対も）");
-        // 見つかったら、そこを含む関数も出す。表に何を入れているかはその中にある
-        for(const x of mk.slice(0,2)){
-          const fn=mipsFuncAt(s.exe,x.at,48);
-          if(fn.length){
-            state.boneCode.push(`  ${hex(x.addr)} を作っている ${hex(x.at)} のある関数:`);
-            state.boneCode.push(...fn.slice(0,40));
-          }
-        }
-      }catch(err){ state.boneCode.push("  表の番地さがしで失敗: "+err.message) }
-      if(state.boneCode.length){ L.push("骨の表を作っている場所:"); L.push(...state.boneCode) }
-      L.push("");
-    }
-  }catch(err){ L.push("骨の表の参照さがしで失敗: "+err.message,"");
-               state.boneCode=["  読めなかった: "+err.message] }
   const kn=knownDisc(s.exeName);
   if(kn){
     L.push("");
@@ -1264,16 +759,10 @@ function updateReport(){
   if(state.galWhy&&state.galWhy.length)
     L.push("","一覧で読めなかったモデルと、その理由:",...state.galWhy,"");
   if(state.mem) L.push("", ...state.mem, "");
-  if(state.bones) L.push("", ...boneLines(state.bones), "");
   if(state.sieve){
     L.push("");
     L.push("候補を全部ふるいにかけた結果:");
     L.push(...sieveLines(state.sieve));
-  }
-  if(repLong()&&state.survey&&state.survey.length){
-    L.push("");
-    L.push(`モデル候補をまとめて調べた結果 (${state.survey.length}件・大きい順):`);
-    L.push(...surveyLines(state.survey));
   }
   const e=state.entries[state.sel], inf=state.selInfo;
   L.push("");
@@ -1774,59 +1263,19 @@ $("memfile").onchange=async e=>{
     }
     const exe=state.src&&state.src.exe;
     const prep=await memPrepare(buf,exe);
-    // いま選んでいるモデルの区切りの数に合う骨の表を探して、そのまま使う
-    const segs=(state.selInfo&&state.selInfo.t1Segs)||0;
-    const hunt=memBoneHunt(prep.buf,exe,segs);
-    // 個数が近いというだけでは決めない。いま選んでいるモデルに実際に当ててみて、
-    // 頂点が枠に収まり、大きさが人として筋の通るものだけを候補に残す
-    state.boneCands=[]; let note="";
-    const cur=state.t1Objs;
-    if(cur&&cur.d&&cur.objs){
-      const pick=t1BonePick(cur.d,cur.objs,hunt.cands);
-      state.boneCands=pick.list;
-      hunt.lines.push(`  骨なしのとき: ${t1FitLine(pick.base)}`);
-      for(const c of pick.list.slice(0,8))
-        hunt.lines.push(`    ${c.sane===false?"":""}${c.kind} +0x${c.at.toString(16)} ${c.n}個 → ${t1FitLine(c.fit)}`);
-      const best=pick.list.find(c=>c.fit.sane);
-      t1SetBones(best?best.list:null,!!best);
-      state.boneSel=best?state.boneCands.indexOf(best):-1;
-      note=best?`骨 ${best.n}個 を当てました`
-               :"当ててみて筋の通る表がなかったので、骨なしのままにしました";
-    }else{ t1SetBones(null); note="先にモデルを選んでから、もう一度どうぞ" }
-    fillBonePick();
-    state.mem=[`メモリの写し: ${f.name}（${fmtSize(f.size)}）${prep.note}`,
-               ...hunt.lines,...memBoneLines(prep.buf,exe)];
-    st.textContent=`${f.name}: ${note}`;
-    // ディスクと突き合わせずに、写しの中のモデルをそのまま出す。
-    // 骨もモデルも同じ写しの中にあり、そちらは欠けずに読めた
-    try{
-      const pick=memPickBase(prep.buf,exe);
-      const b2=pick.base;
-      const cs=b2>=0?memCharacters(prep.buf,b2):[];
-      state.ramBuf=prep.buf; state.ramBase=b2;
-      state.ramChars=cs.length?cs:null;
-      const cl=memCharLines(cs);
-      if(state.memParts) state.memParts.chars=cl;
-      state.mem.push("",...cl);            // 長いほうの報告にも出す
-      fillRamChar();
-      if(cs.length){
-        st.textContent=`${f.name}: 写しの中の ${cs.map(c=>c.who).join("・")} を取り出しました`;
-        await selectRamChar(0);
-        busy(""); updateReport(); openTab("info");
-        return;
-      }
-    }catch(err){ console.error(err);
-      state.mem.push("  写しからモデルを取り出せませんでした: "+err.message) }
-    // 描かれていたモデルが1件に決まったら、そちらへ切り替える。
-    // 骨と区切りの数が合うのはそのモデルだけなので、人に選び直させない
-    let jump=-1;
-    try{ const m=memDrawnMatch(state.drawnModel,state.sieve);
-         if(m) jump=state.entries.indexOf(m.e) }catch(_){}
-    if(jump>=0&&jump!==state.sel){
-      st.textContent=`${f.name}: ${note}　描かれていたモデル #${state.entries[jump].no} に切り替えました`;
-      selectEntry(jump);
-    }
-    else if(state.sel>=0) selectEntry(state.sel);       // 骨をかけて組み立て直す
+    state.mem=[`メモリの写し: ${f.name}（${fmtSize(f.size)}）${prep.note}`];
+    // 写しに載っているモデルと骨をそのまま出す（ディスクとは突き合わせない）
+    const pick=memPickBase(prep.buf,exe);
+    const cs=pick.base>=0?memCharacters(prep.buf,pick.base):[];
+    state.ramBuf=prep.buf; state.ramBase=pick.base;
+    state.ramChars=cs.length?cs:null;
+    state.mem.push(...memCharLines(cs));
+    fillRamChar();
+    if(cs.length){
+      st.textContent=`${f.name}: 写しの中の ${cs.map(c=>c.who).join("・")} を取り出しました`;
+      await selectRamChar(0);
+      busy("");
+    } else st.textContent=`${f.name}: 写しの中にキャラクターが見つかりませんでした`;
   }catch(err){ console.error(err); state.mem=["メモリの写しを読めませんでした: "+err.message];
     st.textContent="読めませんでした: "+err.message }
   updateReport(); openTab("info");
@@ -1873,21 +1322,7 @@ async function selectRamChar(k){
   busy(""); updateStatus(); updateReport(); updateHud();
   fillT1Part(state.selInfo); fillT1Slot(state.selInfo);
 }
-$("boneshift").onchange=e=>{ t1SetBoneShift(+e.target.value); redrawCurrent() };
-$("borigin").onchange=e=>{ t1SetBoneOrigin(e.target.value); redrawCurrent() };
-function fillBoneShift(){
-  const ob=$("borigin-box"), os=$("borigin");
-  if(ob&&os){ ob.hidden=!(state.ramChars&&state.ramChars.length); os.value=T1_BONE_ORIGIN }
-  const box=$("boneshift-box"), sel=$("boneshift");
-  if(!box||!sel) return;
-  if(!state.ramChars||!state.ramChars.length){ box.hidden=true; return }
-  box.hidden=false;
-  if(!sel.options.length)
-    sel.innerHTML=[-3,-2,-1,0,1,2].map(v=>`<option value="${v}">${v>0?"+":""}${v}${v===-1?"（既定・筋の通る値）":""}</option>`).join("");
-  sel.value=String(T1_BONE_SHIFT);
-}
 function fillRamChar(){
-  fillBoneShift();
   const box=$("ramchar-box"), sel=$("ramchar");
   const c=state.ramChars||[];
   if(!box||!sel) return;
@@ -1909,24 +1344,6 @@ function fillT1Slot(inf){
   const v=state.t1Slot>=100?state.t1Slot-100:state.t1Slot;
   sel.value=String(v>=n?n-1:v);
 }
-// 骨の表を選び直せるようにする。自動で選んだものが気に入らないときのため
-function fillBonePick(){
-  const box=$("bonepick-box"), sel=$("bonepick");
-  const c=state.boneCands||[];
-  if(!c.length){ box.hidden=true; return }
-  box.hidden=false;
-  sel.innerHTML="";
-  const add=(v,t)=>{ const o=document.createElement("option"); o.value=v; o.textContent=t; sel.append(o) };
-  add(-1,"骨を使わない（手足は胴に畳み込まれたまま）");
-  c.forEach((x,i)=>add(i,`${x.fit.sane?"○":"×"} ${x.kind} +0x${x.at.toString(16)} ${x.n}個 / ${t1FitLine(x.fit)}`));
-  sel.value=String(state.boneSel==null?-1:state.boneSel);
-}
-$("bonepick").onchange=e=>{
-  const i=+e.target.value; state.boneSel=i;
-  const c=(state.boneCands||[])[i];
-  t1SetBones(c?c.list:null);
-  redrawCurrent();
-};
 $("t1part").onchange=e=>{ state.t1Part=+e.target.value; redrawCurrent() };
 $("t1slot").onchange=e=>{ state.t1Slot=+e.target.value; redrawCurrent() };
 $("ramchar").onchange=e=>{ selectRamChar(+e.target.value) };
@@ -1973,25 +1390,6 @@ $("table-pick").onchange=async e=>{
 $("type-filter").onchange=renderFiles;
 $("model-only").onchange=renderFiles;
 $("scan-all").onclick=scanAll;
-$("survey").onclick=async()=>{
-  if(!state.surveying){ try{ state.sieve=await sieveAll(p=>busy(`候補を全部ふるいにかけています… ${Math.round(p*100)}%`)); fillTexPick() }catch(err){ console.warn(err) } }
-  if(state.surveying) return;
-  state.surveying=true; $("survey").textContent="調べています…";
-  try{
-    state.survey=await surveyModels(40,p=>busy(`モデル候補をまとめて調べています… ${Math.round(p*100)}%`));
-  }catch(err){ console.error(err); $("status").textContent="調べられませんでした: "+err.message }
-  busy(""); state.surveying=false; $("survey").textContent="モデル候補をまとめて調べる";
-  updateReport(); openTab("info");
-};
-// 骨さがし。命令5 が引く表＝32バイトの行列の並びを、アーカイブ全体から探す
-$("bones").onclick=async()=>{
-  if(state.boning) return;
-  state.boning=true; $("bones").textContent="探しています…";
-  try{ state.bones=await boneHunt(p=>busy(`骨を探しています… ${Math.round(p*100)}%`)) }
-  catch(err){ console.error(err); $("status").textContent="探せませんでした: "+err.message }
-  busy(""); state.boning=false; $("bones").textContent="骨さがし（32バイトの行列を探す）";
-  updateReport(); openTab("info");
-};
 $("copy-report").onclick=async()=>{
   const t=$("report");
   try{ await navigator.clipboard.writeText(t.value) }catch(_){ t.select(); document.execCommand("copy") }

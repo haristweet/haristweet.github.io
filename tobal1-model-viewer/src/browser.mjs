@@ -99,90 +99,12 @@ await pg.waitForTimeout(500);
     return digestLines().join("\n") });
   console.log("骨さがしの結果がまとめまで届く: "
     +(/骨さがし/.test(bl)?"ok":"NG（まとめから落ちている）"));
-  // 小さいファイルの中身をまとめに出す道も、実際に通ること。
-  // 先頭24バイトしか持っていなかったので中身が読めなかった——
-  // 覚えるようにしただけでは足りず、まとめまで届くかを見ないとまた落ちる
-  const sm=await pg.evaluate(()=>{
-    const body=new Uint8Array(64);
-    for(let i=0;i<32;i++){ body[i*2]=i*2+1; body[i*2+1]=0 }
-    // 角度の列らしいもの（1フレーム90バイト×40）も入れて、
-    // 刻みさがしの結果がまとめまで届くか見る
-    const anim=new Uint8Array(90*40);
-    for(let f=0;f<40;f++) for(let k=0;k<90;k++)
-      anim[f*90+k]=((k*37+11)+Math.round(12*Math.sin((f+k*0.3)/6)))&0xff;
-    const raw=new Uint8Array(64), dv=new DataView(raw.buffer);
-    dv.setUint32(0,3,true); dv.setUint32(4,16,true);
-    dv.setUint32(8,32,true); dv.setUint32(12,48,true);
-    state.sieve={tex:[],vag:[],bones:[],total:2,
-      other:[{e:{no:999,sector:5473,size:2048},dec:64,words:[0,0,0,0],
-              full:body,head:"01 00 03 00"},
-             {e:{no:997,sector:5474,size:4096},dec:anim.length,words:[0,0,0,0],
-              full:anim,head:"00 00 00 00"}],
-      broken:[{e:{no:998,sector:5969,size:2048},why:"展開できない",rawLen:64,
-               head:"03 00 00 00",full:raw}]};
-    return digestLines().join("\n") });
-  console.log("小さいファイルの中身がまとめまで届く: "
-    +(/#999\(5473\) の中身（64B）/.test(sm)&&/先頭: 01 00 03 00/.test(sm)
-      ?"ok":"NG（まとめから落ちている）"));
-  console.log("  どういう表かの見立てもまとめまで届く: "
-    +(/#999: 3つ組/.test(sm)?"ok":"NG（まとめから落ちている）"));
-  console.log("  外側の命令列さがしの結果がまとめまで届く: "
-    +(/外側の命令列らしいファイル/.test(sm)?"ok":"NG（まとめから落ちている）"));
-  console.log("  角度の列さがしの結果がまとめまで届く: "
-    +(/#997\(3600B\): 1フレームらしい刻み 90バイト/.test(sm)?"ok":"NG（まとめから落ちている）"));
-  console.log("  読めなかったファイルを位置の並びとして読む: "
-    +(/#998 を「位置の並び」として読むと/.test(sm)&&/位置 16 長さ 16B/.test(sm)
-      ?"ok":"NG"));
-  // まとめから落としたものが、うっかり残っていないか（行数が戻るのを防ぐ）
-  console.log("  564バイトの全部出しはまとめに残っていない: "
-    +(/^ {4}\d+: /m.test(sm)&&!/位置 \d+ 長さ/.test(sm.split("#998")[0])?"NG":"ok"));
-  // 写しの生ダンプは、言葉で拾うふるいを通していたので全部落ちていた（5度目）。
-  // ふるいを通さずに渡す道ができたか、ここで見張る
-  const ms=await pg.evaluate(()=>{
-    state.mem=["メモリの写し: x（1 KB）","  RAM の先頭の候補 1件:"];
-    state.memParts={stack:["  行列の積みの先端 0x800CC910 の中身: 0x801E7A94（RAM を指している）",
-                    "    0x801E7A74     　回転[4096,0,0,0,4096,0,0,0,4096] 詰0 移動(1,2,3)　← 詰め物が0"]};
-    return digestLines().join("\n") });
-  // 区画ごとに枠を持たせた。あとから足した区画が、先に出る区画に
-  // 押し出されないこと。同じ落とし方を6回しているので、ここで見張る
-  const mp=await pg.evaluate(()=>{
-    state.mem=["メモリの写し: x"];
-    const many=Array.from({length:40},(_,i)=>"  先に出る行 "+i);
-    state.memParts={head:["先頭は +0x0"],cpu:many,
-      drawn:["  描かれているモデル: RAM 0xDEADBEEF"],
-      bones:["  本物の骨が取れました: 40個"],
-      jump:["  番号の列: 0 33 17"],
-      gap:["  ワールド側 0xCAFE"],
-      stack:["  行列の積みの先端"]};
-    return digestLines().join("\n") });
-  console.log("あとの区画が、先の区画に押し出されない: "
-    +([/描かれているモデル: RAM 0xDEADBEEF/,/本物の骨が取れました: 40個/,
-       /番号の列: 0 33 17/,/ワールド側 0xCAFE/,/行列の積みの先端/]
-      .every(re=>re.test(mp))?"ok":"NG（また落ちている）"));
-  console.log("  枠を使い切る区画は、その区画の中で切る: "
-    +(!/先に出る行 39/.test(mp)?"ok":"NG（切れていない）"));
-  console.log("写しの生ダンプがまとめまで届く: "
-    +(/0x800CC910 の中身: 0x801E7A94/.test(ms)&&/回転\[4096,0,0/.test(ms)
-      ?"ok":"NG（まとめから落ちている）"));
-  console.log("  ふるいの言葉に関わらず届く: "
-    +(await pg.evaluate(()=>{ state.mem=["メモリの写し: x"];
-        state.memParts={stack:["  ぜんぜん関係ない言葉だけの行 12345"]};
-        return /ぜんぜん関係ない言葉だけの行/.test(digestLines().join("\n")) })
-      ?"ok":"NG（まだ言葉で拾っている）"));
   console.log("  握りつぶしていない: "+(/読めなかった: /.test(put.txt)?"NG（例外が出ている）":"ok"));
   console.log("  （実データでの中身は、ディスクを読んだときのまとめで見る"
     +(d.t1?"／この試験データはトバル1の道を通っている":"／この試験データはトバル1の道を通らない")+"）"); }
 // ここから先は長い版のまま調べる（一覧の中身を見たいので）
 await pg.evaluate(()=>{ const c=document.getElementById("rep-long");
   c.checked=true; c.dispatchEvent(new Event("change")) });
-// モデル候補をまとめて調べる
-await pg.click("#survey");
-await pg.waitForFunction(()=>document.getElementById("report").value.includes("まとめて調べた結果"),null,{timeout:60000});
-console.log("--- まとめて調べる ---\n"+await pg.evaluate(()=>{
-  const L=document.getElementById("report").value.split("\n");
-  const i=L.findIndex(l=>l.includes("まとめて調べた結果"));
-  return L.slice(i,i+6).concat(L.filter(l=>l.includes("先頭の印ごと")||l.includes("三角形が取れた"))).join("\n");
-}));
 // アーカイブを直接さらう
 await pg.click('#src-seg button[data-v="scan"]');
 await pg.waitForFunction(()=>document.getElementById("report").value.includes("直接さらった"),null,{timeout:60000});

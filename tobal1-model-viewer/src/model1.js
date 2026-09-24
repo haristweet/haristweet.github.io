@@ -948,7 +948,6 @@ const T1_COL_TEX={12:true,13:true};        // 語1以降が色ではなく u,v
 // 同じ所にあると内側に埋まって見えない。モデルの大きさは背が800前後なので、
 // 6 は目で見て分からない程度
 let T1_DECAL_PUSH=6;
-function t1SetDecalPush(v){ T1_DECAL_PUSH=+v||0 }
 // テクスチャ付きの面の、貼り先を読む。並びはプレステの描画命令そのもの:
 //   語0: 色（テクスチャをそのまま出すので 255,255,255）
 //   語1: u0,v0 ＋ 上半分に CLUT
@@ -1010,7 +1009,6 @@ function t1ColorPlan(run){
 //  数だけで決めず、既定は引かないことにした。画面から試せる
 // ============================================================
 let T1_BONE_ORIGIN="none";             // "none" / "cent" / "box"
-function t1SetBoneOrigin(v){ T1_BONE_ORIGIN=v||"none" }
 function t1BoneOrigins(d,o,mode){
   if(!mode||mode==="none"||!o.run||!o.run.vseg) return null;
   if(o._boff&&o._boffMode===mode) return o._boff;
@@ -1035,7 +1033,6 @@ function t1BoneOrigins(d,o,mode){
 // 区切り番号から骨の番号へのずらし量。既定は -1。
 // t1Run は最初の命令5 で区切りを 1 にするが、表Bの骨は 0 から並ぶ
 let T1_BONE_SHIFT=-1;
-function t1SetBoneShift(v){ T1_BONE_SHIFT=v|0 }
 function t1SetBones(list,real){ T1_BONES=(list&&list.length)?list:null; if(real!=null) T1_BONES_REAL=!!real }
 // 頂点を置き場所に入れる命令の「読み方」。既定は「1と2だけが入れる／語1が置き場所／語2が個数」。
 // これで読めない部品があるので、別の読み方も用意して、合うものを探して覚える
@@ -1633,55 +1630,6 @@ function t1RunPair(d,o,limit,V,okr){
 //    ・全体の大きさが人として筋が通るか
 //  を見る。これなら中身を知らなくても良し悪しが決まる
 // ============================================================
-function t1BoneFit(d,objs,list){
-  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
-  const mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
-  let good=0, total=0;
-  for(const o of objs){
-    if(!o.run||!o.ok) continue;
-    for(const f of o.run.faces) for(const i of f.idx){
-      const q=o.base+o.vertPtr+i*8;
-      if(q+6>d.length) continue;
-      let x=dv.getInt16(q,true), y=dv.getInt16(q+2,true), z=dv.getInt16(q+4,true);
-      const M=list&&list.length?list[(f.seg|0)%list.length]:null;
-      if(M){ const k=M.one||4096;
-        const X=(M.m[0]*x+M.m[1]*y+M.m[2]*z)/k+M.t[0];
-        const Y=(M.m[3]*x+M.m[4]*y+M.m[5]*z)/k+M.t[1];
-        const Z=(M.m[6]*x+M.m[7]*y+M.m[8]*z)/k+M.t[2];
-        x=X; y=Y; z=Z }
-      total++;
-      if(Math.abs(x)<T1_MAX_COORD&&Math.abs(y)<T1_MAX_COORD&&Math.abs(z)<T1_MAX_COORD){
-        good++;
-        const p=[x,y,z];
-        for(let a=0;a<3;a++){ if(p[a]<mn[a])mn[a]=p[a]; if(p[a]>mx[a])mx[a]=p[a] }
-      }
-    }
-  }
-  if(!total) return null;
-  const span=[0,1,2].map(a=>mx[a]>mn[a]?mx[a]-mn[a]:0).sort((a,b)=>b-a);
-  const frac=good/total;
-  // 人として筋が通る大きさか（背の高さ 150〜4000、いちばん長い軸が短い軸の 1.2〜6倍）
-  const ratio=span[1]>0?span[0]/span[1]:99;
-  const sane=frac>=0.995&&span[0]>=150&&span[0]<=4000&&ratio>=1.1&&ratio<=6;
-  return {frac,span,ratio,sane,n:list?list.length:0};
-}
-// 候補の中から、当ててみて筋が通ったものだけを残し、良い順に並べる
-function t1BonePick(d,objs,cands){
-  const base=t1BoneFit(d,objs,null);
-  const out=[];
-  for(const c of cands||[]){
-    const fit=t1BoneFit(d,objs,c.list);
-    if(fit) out.push(Object.assign({},c,{fit}));
-  }
-  out.sort((a,b)=>(b.fit.sane-a.fit.sane)||(b.fit.frac-a.fit.frac)||(b.n-a.n));
-  return {base,list:out};
-}
-// 当ててみた結果を1行にする
-function t1FitLine(f){
-  if(!f) return "確かめられません";
-  return `枠に収まった頂点 ${Math.round(f.frac*1000)/10}%　大きさ ${f.span.map(v=>Math.round(v)).join("×")}`
-    +`　${f.sane?"筋が通る":"筋が通らない"}`;
-}
 
 // ============================================================
 //  仮の骨組み（形から組み立てる）
