@@ -665,6 +665,9 @@ console.log("\n[9k] トバルNo.1 のモデルの部品（実物 sector 5927 の
        r?`面${r.faces.length}枚 命令${r.solved.op}=${r.solved.size}B`:"null");
   }
 
+  // 命令14・15 はもう解けている（v4.48.0）。ここは「知らない命令を引き算で覚える」仕組みの試験なので、
+  // 試験のあいだだけ知らない命令に戻す
+  const KEEP1415=[T1_FACE_OP[14],T1_FACE_OP[15]]; delete T1_FACE_OP[14]; delete T1_FACE_OP[15];
   // 1つ解けると次が解ける（雪だるま式）ことを確かめる。
   // 部品A: 命令14 だけ → 引き算で解ける
   // 部品B: 命令14 と 命令15 → A で 14 を覚えていれば、15 も引き算で解ける
@@ -762,6 +765,7 @@ console.log("\n[9k] トバルNo.1 のモデルの部品（実物 sector 5927 の
        &&T1_LEARNED[15]&&T1_LEARNED[15].size===16,
        rp&&rp.solved2?`${rp.solved2.ways}通り 命令14=${T1_LEARNED[14]&&T1_LEARNED[14].size}B 命令15=${T1_LEARNED[15]&&T1_LEARNED[15].size}B`:"null");
     for(const k of Object.keys(T1_LEARNED)) delete T1_LEARNED[k]; }
+  T1_FACE_OP[14]=KEEP1415[0]; T1_FACE_OP[15]=KEEP1415[1];
 
   // 骨の行列を当てると、区切りが動くこと。
   // 頂点は「その骨のローカル座標」で入っているので、行列をかけないと手足が胴に重なる
@@ -2363,6 +2367,23 @@ console.log("\n[53] 色の入っていない部品／合わない写しの骨");
   t1BonesFit(m,[{base:0,nv:4,group:0}],info2);
   ok("  本数が合えば当てたまま", T1_BONES&&T1_BONES.length===2&&!info2.t1BoneSkip, "");
   t1SetBones(null,false); state.t1BoneKeep=null;
+}
+
+console.log("\n[54] 命令14・15（法線の無いテクスチャの面）");
+{
+  // 命令2 で頂点を3つ（頂点ごとの色つき）→ 命令14 で三角1枚。色の語は 3（頂点）＋3（u,v）
+  const e=new Uint8Array(0x80), v=new DataView(e.buffer);
+  const put=(o,vals)=>vals.forEach((x,i)=>v.setUint32(o+i*4,x>>>0,true));
+  put(0,[0x58,0x40,0x58,0x64]);                  // 面・頂点・法線・色の位置
+  put(0x10,[2,0,3,0, 14,1, 0]);                   // 命令2（置き場所0から3個）、命令14 を1枚
+  [[0,0,0],[100,0,0],[0,100,0]].forEach((p,i)=>{ v.setInt16(0x40+i*8,p[0],true); v.setInt16(0x42+i*8,p[1],true); v.setInt16(0x44+i*8,p[2],true) });
+  put(0x58,[0,4,8]);                              // 三角（頂点番号は4倍）
+  const R=t1Run(e,0);
+  ok("命令14 を三角 12B として読む", !!R&&R.faces.length===1&&R.faces[0].idx.length===3, R?R.faces.length:t1RunWhy);
+  const pl=R&&t1ColorPlan(R);
+  ok("  色の語は 頂点3 ＋ u,v 3 ＝ 6語", pl&&pl.words===6, pl&&pl.words);
+  ok("  u,v だけの面（色は頂点ごと）と分かる", pl&&pl.at[0].tex&&pl.at[0].uvOnly&&pl.at[0].at===3, pl&&JSON.stringify(pl.at[0]));
+  ok("  命令15 は四角 16B", T1_FACE_OP[15]&&T1_FACE_OP[15].size===16&&T1_FACE_OP[15].n===4, "");
 }
 
 console.log(`\n${pass} ok / ${fail} fail`);

@@ -1969,12 +1969,13 @@ function buildT1Mesh(d,objs){
       const vpush=new Map();
       if(T1_VRAM&&T1_DECAL_PUSH&&!o.noColor){
         R.faces.forEach((f,i)=>{ const pf=plan?plan.at[i]:null;
-          if(!pf||!pf.tex||!f.n) return;
-          const L=Math.hypot(f.n[0],f.n[1],f.n[2]); if(!(L>1)) return;
+          if(!pf||!pf.tex) return;
+          const n=f.n||t1FaceNormalRaw(d,o,f.idx);   // 法線の無い面（命令14・15）は形から出す
+          const L=n?Math.hypot(n[0],n[1],n[2]):0; if(!(L>1e-6)) return;
           const a=f.idx, sg=fixSeg!=null?fixSeg:((VSEG&&VSEG[a[0]]!=null)?VSEG[a[0]]:f.seg);
-          const k=t1PushSign(d,o,a,f.n,segMid.get(sg|0))/L;
+          const k=t1PushSign(d,o,a,n,segMid.get(sg|0))/L;
           for(const v of a){ const s=vpush.get(v)||[0,0,0];
-            s[0]+=f.n[0]*k; s[1]+=f.n[1]*k; s[2]+=f.n[2]*k; vpush.set(v,s) } });
+            s[0]+=n[0]*k; s[1]+=n[1]*k; s[2]+=n[2]*k; vpush.set(v,s) } });
         for(const [v,s] of vpush){ const L=Math.hypot(s[0],s[1],s[2]);
           vpush.set(v,L>1e-6?[s[0]/L*T1_DECAL_PUSH,s[1]/L*T1_DECAL_PUSH,s[2]/L*T1_DECAL_PUSH]:null) }
       }
@@ -2002,7 +2003,7 @@ function buildT1Mesh(d,objs){
           //   角の数ぴったり … 角ごと
           // 色を持たない面（命令10・11）は、頂点ごとの色を引く
           const vAt=plan&&plan.vcolAt;
-          const pc=pf?(j=>pf.w===0?(vAt&&vAt[a[j]]!=null?vAt[a[j]]:0)
+          const pc=pf?(j=>(pf.w===0||pf.uvOnly)?(vAt&&vAt[a[j]]!=null?vAt[a[j]]:0)
                         :(pf.w===1||pf.tex)?pf.at
                         :pf.w===pf.corners?pf.at+j
                         :pf.at+1+j):null;
@@ -2391,7 +2392,11 @@ const T1_FACE_OP={8:{size:20,n:3,nrm:true},9:{size:24,n:4,nrm:true},
 //   最後の8バイトは ±4300 に収まり詰め物が0 → 法線。51枚中51枚。
 //   命令12 の4つ目の語は 8枚中0枚しか通らない → こちらは三角のまま。
 // 三角として読んでいたので、19枚ぶんの面が欠け、色の割り当てもそこでずれていた
-                  12:{size:20,n:3,nrm:true},13:{size:24,n:4,nrm:true}};
+                  12:{size:20,n:3,nrm:true},13:{size:24,n:4,nrm:true},
+// 命令14・15 は法線の無いテクスチャの面（三角12B／四角16B）。マリーの顔の貼りもので見つけた。
+// 色の語は1面3語で u,v だけ。色そのものは命令2 の頂点ごとの色を使う
+// （顔の部品: 命令13×12=48語 ＋ 命令2の8頂点 ＋ 4面×3語 ＝ 68語 ＝ 272B でぴったり）
+                  14:{size:12,n:3,nrm:false},15:{size:16,n:4,nrm:false}};
 const T1_SLOTS=256;
 // メモリから取れた骨の行列。区切り（命令5）の番号で引く。null なら骨なしで描く
 let T1_BONES=null;
@@ -2468,8 +2473,9 @@ function t1SlotAttach(d,objs){
   }
   return out.size?out:null;
 }
-const T1_COL_WORDS={8:1,9:1,12:4,13:4};
-const T1_COL_TEX={12:true,13:true};        // 語1以降が色ではなく u,v
+const T1_COL_WORDS={8:1,9:1,12:4,13:4,14:3,15:3};
+const T1_COL_TEX={12:true,13:true,14:true,15:true};        // 語1以降が色ではなく u,v
+const T1_COL_UVONLY={14:true,15:true};    // 色の語が無く、語0から u,v（色は頂点ごと）
 // 貼りもの（顔の目・眉・傷）を、頭の面から外へ押し出す量。
 // 同じ所にあると内側に埋まって見えない。モデルの大きさは背が800前後なので、
 // 6 は目で見て分からない程度
@@ -2485,6 +2491,15 @@ function t1SegCenters(d,objs){
       m.set(sg|0,c) } }
   for(const [k,c] of m) m.set(k,[c[0]/c[3],c[1]/c[3],c[2]/c[3]]);
   return m;
+}
+// 面の形から出した法線（ファイルの座標のまま）。向きは t1PushSign で外へそろえる
+function t1FaceNormalRaw(d,o,idx){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+  const P=idx.slice(0,3).map(i=>{ const q=o.base+o.vertPtr+i*8;
+    return q+6<=d.length?[dv.getInt16(q,true),dv.getInt16(q+2,true),dv.getInt16(q+4,true)]:null });
+  if(P.some(v=>!v)) return null;
+  const a=[P[1][0]-P[0][0],P[1][1]-P[0][1],P[1][2]-P[0][2]], b=[P[2][0]-P[0][0],P[2][1]-P[0][1],P[2][2]-P[0][2]];
+  return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 }
 // 法線の向きのままで外へ出るなら 1、内へ入るなら -1（中心が分からなければ 1）
 function t1PushSign(d,o,idx,n,mid){
@@ -2502,7 +2517,8 @@ function t1PushSign(d,o,idx,n,mid){
 //   語3: u2,v2 ＋ 上半分に u3,v3（四角のときだけ。三角では 0）
 function t1FaceTex(d,o,pf,corners){
   if(!pf||!pf.tex) return null;
-  const cp=o.base+o.colPtr, q=i=>cp+(pf.at+i)*4;
+  // 命令14・15 は色の語が無いので、u,v が1語前から始まる
+  const cp=o.base+o.colPtr, q=i=>cp+(pf.at+(pf.uvOnly?-1:0)+i)*4;
   if(q(3)+4>d.length) return null;
   const clut=d[q(1)+2]|(d[q(1)+3]<<8);
   const page=d[q(2)+2]|(d[q(2)+3]<<8);
@@ -2542,13 +2558,13 @@ function t1ColorPlan(run){
   // 面だけを見て数えると、命令2 が使う頂点ごとの色を取りこぼす
   if(run.colWords!=null&&run.faces.every(f=>f.cW!=null)){
     const at=run.faces.map(f=>({at:f.cAt,w:f.cW,corners:f.idx.length,
-                               tex:!!T1_COL_TEX[f.op],vert:f.cW===0}));
+                               tex:!!T1_COL_TEX[f.op],uvOnly:!!T1_COL_UVONLY[f.op],vert:f.cW===0}));
     return {at,words:run.colWords,vcolAt:run.vcolAt};
   }
   const at=new Array(run.faces.length); let p=0;
   for(let i=0;i<run.faces.length;i++){
     const f=run.faces[i], w=t1ColWords(f.op,f.idx.length);
-    at[i]={at:p,w,corners:f.idx.length,tex:!!T1_COL_TEX[f.op]}; p+=w;
+    at[i]={at:p,w,corners:f.idx.length,tex:!!T1_COL_TEX[f.op],uvOnly:!!T1_COL_UVONLY[f.op]}; p+=w;
   }
   return {at,words:p};
 }
@@ -2663,6 +2679,7 @@ function t1Run(d,base,limit,extra,V){
         let cAt=-1, cW=0;
         if(op===8||op===9){ cAt=cw; cW=1; cw+=1 }
         else if(op===12||op===13){ cAt=cw; cW=4; cw+=4 }
+        else if(op===14||op===15){ cAt=cw; cW=3; cw+=3 }
         faces.push({idx,n:nr,seg,op,cAt,cW}); used.set(op,(used.get(op)||0)+1);
         xp+=k.size;
       }
@@ -4038,7 +4055,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.47.0";
+const VERSION="v4.48.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
