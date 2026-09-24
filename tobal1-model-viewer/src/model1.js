@@ -456,6 +456,21 @@ function buildT1Mesh(d,objs){
       const before=tris;
       let fidx=0;
       const skipPart=t1Show.segOnly>=0&&t1Show.segPart>=0&&o.base!==t1Show.segPart;
+      // 貼りものの押し出しは頂点ごとに決める。面ごとに自分の法線で押すと、
+      // 隣の面と共有する頂点が別々の所へ動き、境目で絵が段違いになる（チュージの目・眉）。
+      // 頂点を共有する貼りもの面の法線（外向きにそろえたもの）を平均して押す
+      const vpush=new Map();
+      if(T1_VRAM&&T1_DECAL_PUSH&&!o.noColor){
+        R.faces.forEach((f,i)=>{ const pf=plan?plan.at[i]:null;
+          if(!pf||!pf.tex||!f.n) return;
+          const L=Math.hypot(f.n[0],f.n[1],f.n[2]); if(!(L>1)) return;
+          const a=f.idx, sg=fixSeg!=null?fixSeg:((VSEG&&VSEG[a[0]]!=null)?VSEG[a[0]]:f.seg);
+          const k=t1PushSign(d,o,a,f.n,segMid.get(sg|0))/L;
+          for(const v of a){ const s=vpush.get(v)||[0,0,0];
+            s[0]+=f.n[0]*k; s[1]+=f.n[1]*k; s[2]+=f.n[2]*k; vpush.set(v,s) } });
+        for(const [v,s] of vpush){ const L=Math.hypot(s[0],s[1],s[2]);
+          vpush.set(v,L>1e-6?[s[0]/L*T1_DECAL_PUSH,s[1]/L*T1_DECAL_PUSH,s[2]/L*T1_DECAL_PUSH]:null) }
+      }
       for(const f of R.faces){
         // 区切りを1つだけ描く（どの区切りが何なのかを見分けるため）。
         // 番号は部品ごとに振り直されるので、部品も合っていないといけない
@@ -487,15 +502,8 @@ function buildT1Mesh(d,objs){
           const tx=(T1_VRAM&&pf&&pf.tex&&!o.noColor)?t1FaceTex(d,o,pf,a.length):null;
           const flat=t1Show.flatColor
             ?C0(pf?pc(t[0]):byFace?cface:byCorner?cbase:a[t[0]]):null;
-          // 貼りものは法線の向きへ押し出す。押す量は骨の大きさに対して十分小さい
-          let push=null;
-          if(tx&&f.n&&T1_DECAL_PUSH){ const L=Math.hypot(f.n[0],f.n[1],f.n[2]);
-            // ファイルの法線が内向きの面がある（ホムの胸の「饂飩」）。付く区切りの中心から
-            // 見て外へ向くように、向きを面ごとに決める
-            const sg=fixSeg!=null?fixSeg:((VSEG&&VSEG[a[0]]!=null)?VSEG[a[0]]:f.seg);
-            const k=t1PushSign(d,o,a,f.n,segMid.get(sg|0))*T1_DECAL_PUSH/L;
-            if(L>1) push=[f.n[0]*k,f.n[1]*k,f.n[2]*k] }
-          for(const j of t){ pos.push(...V0(a[j],f.seg,push));
+          // 貼りものは外へ押し出す（押す量と向きは上の vpush で頂点ごとに決めてある）
+          for(const j of t){ pos.push(...V0(a[j],f.seg,tx?vpush.get(a[j]):null));
             col.push(...(sc||flat||C0(pf?pc(j):byFace?cface:byCorner?cbase+j:a[j])));
             if(tx&&tx.uv[j]){ t0.push(tx.uv[j][0],tx.uv[j][1],tx.tp[0]);
                               t1.push(tx.tp[1],tx.tp[2],tx.tp[3],tx.tp[4]); texTris++ }
