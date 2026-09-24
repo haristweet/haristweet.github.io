@@ -349,6 +349,7 @@ function buildT1Mesh(d,objs){
   // 「本体だけ」…いちばん頂点の多い部品（キャラクターの胴体）だけにする
   if(t1Show.only){ const big=objs.slice().sort((a,b)=>b.nv-a.nv)[0]; if(big) objs=[big] }
   try{ slotAttach=t1SlotAttach(d,objs) }catch(_){ slotAttach=null }
+  const segMid=t1SegCenters(d,objs);     // 貼りものを押し出す向き（外側）を決めるのに使う
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   // 色の引き方を部品ごとに測っておく（頂点ごと／面の頂点ごと／面に1色）
   const cfit=new Map();
@@ -489,7 +490,11 @@ function buildT1Mesh(d,objs){
           // 貼りものは法線の向きへ押し出す。押す量は骨の大きさに対して十分小さい
           let push=null;
           if(tx&&f.n&&T1_DECAL_PUSH){ const L=Math.hypot(f.n[0],f.n[1],f.n[2]);
-            if(L>1) push=[f.n[0]/L*T1_DECAL_PUSH,f.n[1]/L*T1_DECAL_PUSH,f.n[2]/L*T1_DECAL_PUSH] }
+            // ファイルの法線が内向きの面がある（ホムの胸の「饂飩」）。付く区切りの中心から
+            // 見て外へ向くように、向きを面ごとに決める
+            const sg=fixSeg!=null?fixSeg:((VSEG&&VSEG[a[0]]!=null)?VSEG[a[0]]:f.seg);
+            const k=t1PushSign(d,o,a,f.n,segMid.get(sg|0))*T1_DECAL_PUSH/L;
+            if(L>1) push=[f.n[0]*k,f.n[1]*k,f.n[2]*k] }
           for(const j of t){ pos.push(...V0(a[j],f.seg,push));
             col.push(...(sc||flat||C0(pf?pc(j):byFace?cface:byCorner?cbase+j:a[j])));
             if(tx&&tx.uv[j]){ t0.push(tx.uv[j][0],tx.uv[j][1],tx.tp[0]);
@@ -954,6 +959,27 @@ const T1_COL_TEX={12:true,13:true};        // 語1以降が色ではなく u,v
 // 同じ所にあると内側に埋まって見えない。モデルの大きさは背が800前後なので、
 // 6 は目で見て分からない程度
 let T1_DECAL_PUSH=6;
+// 本体の区切りごとの頂点の中心（ファイルの座標のまま）。本体＝組の無い部品
+function t1SegCenters(d,objs){
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength), m=new Map();
+  for(const o of objs){ if(!o.ok||o.group||!o.run||!o.run.vseg) continue;
+    for(let i=0;i<o.nv;i++){ const sg=o.run.vseg[i]; if(sg==null) continue;
+      const q=o.base+o.vertPtr+i*8; if(q+6>d.length) break;
+      const c=m.get(sg|0)||[0,0,0,0];
+      c[0]+=dv.getInt16(q,true); c[1]+=dv.getInt16(q+2,true); c[2]+=dv.getInt16(q+4,true); c[3]++;
+      m.set(sg|0,c) } }
+  for(const [k,c] of m) m.set(k,[c[0]/c[3],c[1]/c[3],c[2]/c[3]]);
+  return m;
+}
+// 法線の向きのままで外へ出るなら 1、内へ入るなら -1（中心が分からなければ 1）
+function t1PushSign(d,o,idx,n,mid){
+  if(!mid) return 1;
+  const dv=new DataView(d.buffer,d.byteOffset,d.byteLength), c=[0,0,0];
+  for(const i of idx){ const q=o.base+o.vertPtr+i*8; if(q+6>d.length) return 1;
+    c[0]+=dv.getInt16(q,true); c[1]+=dv.getInt16(q+2,true); c[2]+=dv.getInt16(q+4,true) }
+  const dot=(c[0]/idx.length-mid[0])*n[0]+(c[1]/idx.length-mid[1])*n[1]+(c[2]/idx.length-mid[2])*n[2];
+  return dot<0?-1:1;
+}
 // テクスチャ付きの面の、貼り先を読む。並びはプレステの描画命令そのもの:
 //   語0: 色（テクスチャをそのまま出すので 255,255,255）
 //   語1: u0,v0 ＋ 上半分に CLUT
