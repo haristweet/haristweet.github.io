@@ -1,4 +1,4 @@
-const VERSION="v4.48.0";
+const VERSION="v4.49.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -580,8 +580,8 @@ function updateStatus(){
   // 写しの中の人を出しているときは、ディスクの一覧に相手がいない
   if(!e&&state.ramSel>=0&&state.ramChars&&state.ramChars[state.ramSel]){
     const c=state.ramChars[state.ramSel], inf=state.selInfo;
-    $("status").textContent=state.selErr?`写しの ${c.who}　— ${state.selErr}`
-      :`写しの ${c.who}　${hex(c.model.at)}　${fmtSize(c.model.len)}　三角形 ${inf?inf.tris.toLocaleString():0}`
+    $("status").textContent=state.selErr?`${c.label||"写しの "+c.who}　— ${state.selErr}`
+      :`${c.label||"写しの "+c.who}　${hex(c.model.at)}　${fmtSize(c.model.len)}　三角形 ${inf?inf.tris.toLocaleString():0}`
        +(inf&&inf.extent?`　広がり ${inf.extent}`:"")+`　骨 ${c.bones.list.length}本`
        +(inf&&inf.t1Parts?`　${inf.t1Parts}`:"");
     return;
@@ -1296,6 +1296,7 @@ $("memfile").onchange=async e=>{
     const exe=state.src&&state.src.exe;
     const prep=await memPrepare(buf,exe);
     state.mem=[`メモリの写し: ${f.name}（${fmtSize(f.size)}）${prep.note}`];
+    state.ramName=f.name.replace(/\.[^.]*$/,""); state.fromSaved=false;
     // 写しに載っているモデルと骨をそのまま出す（ディスクとは突き合わせない）
     const pick=memPickBase(prep.buf,exe);
     const cs=pick.base>=0?memCharacters(prep.buf,pick.base):[];
@@ -1333,7 +1334,7 @@ async function selectRamChar(k){
       try{ localStorage.setItem("t1up2",String(t1Show.up)) }catch(_){}
     }
     // 骨は、カメラを掛ける前の並びに置き換えたものを使う
-    const bb=memCharBones(state.ramBuf,state.ramBase,c);
+    const bb=c.savedBones||memCharBones(state.ramBuf,state.ramBase,c);   // 保存したキャラは骨も保存してある
     state.ramBones=bb;
     t1SetBones(bb&&bb.list&&bb.list.length?bb.list:null,!!(bb&&bb.list&&bb.list.length));
     const {mesh,info}=buildModel(c.model.bytes);
@@ -1358,7 +1359,7 @@ function fillRamChar(){
   const box=$("ramchar-box"), sel=$("ramchar");
   const c=state.ramChars||[];
   if(!box||!sel) return;
-  if(!c.length){ box.hidden=true; return }
+  if(!c.length||state.fromSaved){ box.hidden=true; return }
   box.hidden=false;
   sel.innerHTML=c.map((x,i)=>`<option value="${i}">${x.who}　モデル ${hex(x.model.at)}　骨 ${x.bones.list.length}本</option>`).join("");
   sel.value=String(state.ramSel<0?0:state.ramSel);
@@ -1379,6 +1380,82 @@ function fillT1Slot(inf){
 $("t1part").onchange=e=>{ state.t1Part=+e.target.value; redrawCurrent() };
 $("t1slot").onchange=e=>{ state.t1Slot=+e.target.value; redrawCurrent() };
 $("ramchar").onchange=e=>{ selectRamChar(+e.target.value) };
+
+// ============================================================
+//  写しから取り出したキャラクターを、ブラウザの中（IndexedDB）に保存する
+//
+//  毎回 RAM と VRAM を読み込まなくても、一覧から選ぶだけで出せるように。
+//  保存するのはモデルのバイト列・当てた骨・VRAM（1MB）だけ。
+//  データはこの端末のブラウザにだけ残り、サイトには載らない
+// ============================================================
+const SAVED_DB="tobal1-viewer", SAVED_STORE="chars";
+function savedDb(){
+  return new Promise((ok,ng)=>{
+    if(typeof indexedDB==="undefined") return ng(new Error("このブラウザでは保存できません"));
+    const rq=indexedDB.open(SAVED_DB,1);
+    rq.onupgradeneeded=()=>{ rq.result.createObjectStore(SAVED_STORE,{keyPath:"id",autoIncrement:true}) };
+    rq.onsuccess=()=>ok(rq.result); rq.onerror=()=>ng(rq.error||new Error("保存先を開けません"));
+  });
+}
+async function savedDo(mode,fn){
+  const db=await savedDb();
+  try{ return await new Promise((ok,ng)=>{ const tx=db.transaction(SAVED_STORE,mode), st=tx.objectStore(SAVED_STORE);
+    const rq=fn(st); tx.oncomplete=()=>ok(rq&&rq.result); tx.onerror=()=>ng(tx.error); tx.onabort=()=>ng(tx.error) }) }
+  finally{ db.close() }
+}
+const savedAll=()=>savedDo("readonly",st=>st.getAll());
+// VRAM は絵にする形（1画素4バイト）で持っているので、元の 16bit の並びに戻して半分の大きさで保存する
+function vramRaw(rgba){ if(!rgba) return null; const o=new Uint8Array(1024*512*2);
+  for(let i=0;i<1024*512;i++){ o[i*2]=rgba[i*4]; o[i*2+1]=rgba[i*4+1] } return o }
+async function saveRamChars(){
+  const cs=state.ramChars||[], st=$("saved-status");
+  if(!cs.length||state.fromSaved) return;
+  if(!state.vram&&!confirm("VRAM ダンプがまだ読み込まれていません。模様（テクスチャ）なしで保存しますか？")) return;
+  const vram=vramRaw(state.vram);
+  let n=0;
+  for(const c of cs){
+    const name=prompt(`${c.who} の名前（一覧に出ます）`,`${state.ramName||"写し"} ${c.who}`);
+    if(name===null) continue;
+    const bb=memCharBones(state.ramBuf,state.ramBase,c);
+    await savedDo("readwrite",s=>s.add({name:name.trim()||c.who,who:c.who,saved:Date.now(),
+      model:new Uint8Array(c.model.bytes),at:c.model.at,len:c.model.len,cmd5:c.cmd5,
+      bones:c.bones.list,bb:bb?{list:bb.list,at:bb.at,sc:bb.sc,view:bb.view}:null,vram}));
+    n++;
+  }
+  if(st) st.textContent=n?`${n}人を保存しました。次からは「保存したキャラクター」から選べます`:"";
+  await fillSaved();
+}
+async function fillSaved(){
+  const box=$("saved-box"), sel=$("savedchar"); if(!box||!sel) return [];
+  let list=[]; try{ list=await savedAll() }catch(err){ box.hidden=true; return [] }
+  box.hidden=!list.length;
+  sel.innerHTML='<option value="">選んでください</option>'
+    +list.map(r=>`<option value="${r.id}">${r.name.replace(/[<&>"]/g,"")}${r.vram?"":"（模様なし）"}</option>`).join("");
+  if(state.savedId!=null&&list.some(r=>r.id===state.savedId)) sel.value=String(state.savedId);
+  return list;
+}
+async function selectSaved(id){
+  const r=(await savedAll()).find(x=>x.id===id); if(!r) return;
+  state.savedId=id; state.fromSaved=true;
+  // 写しの人と同じ形にして、同じ道（selectRamChar）で描く
+  const c={who:r.who,label:r.name,cmd5:r.cmd5,model:{bytes:r.model,at:r.at,len:r.len},
+           bones:{list:r.bones,ptrs:[]},savedBones:r.bb};
+  state.ramChars=[c]; state.ramBuf=null;
+  state.vram=r.vram?t1VramRGBA(r.vram):null; t1SetVram(state.vram);
+  fillRamChar();
+  await selectRamChar(0);
+}
+$("savedchar").onchange=e=>{ if(e.target.value) selectSaved(+e.target.value) };
+$("saved-del").onclick=async()=>{
+  const sel=$("savedchar"), id=+sel.value; if(!sel.value) return;
+  const name=sel.options[sel.selectedIndex].textContent;
+  if(!confirm(`「${name}」を消しますか？`)) return;
+  await savedDo("readwrite",s=>s.delete(id));
+  if(state.savedId===id) state.savedId=null;
+  await fillSaved();
+};
+$("saved-add").onclick=()=>saveRamChars();
+fillSaved();
 // いま出しているものを組み立て直す（写しの中の人か、ディスクのファイルか）
 function redrawCurrent(){
   if(state.ramSel>=0&&state.ramChars) return selectRamChar(state.ramSel);

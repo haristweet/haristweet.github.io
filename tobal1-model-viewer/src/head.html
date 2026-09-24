@@ -157,12 +157,19 @@ canvas:active{cursor:grabbing}
       <button class="btn wide" id="texsave" style="margin-top:6px">この一覧を画像で保存</button>
       <div id="texgrid" class="texgrid"></div>
     </div>
+    <div data-tab="file" id="saved-box" hidden><p class="label">保存したキャラクター</p>
+      <select id="savedchar" aria-label="保存したキャラクター"></select>
+      <button class="btn" id="saved-del" style="margin-top:6px">選んでいるものを消す</button>
+      <p class="note">写しから保存したキャラクターです。RAM・VRAM を読み込み直さなくても、ここから選ぶだけで出せます。データはこの端末のブラウザの中にだけあります。</p>
+    </div>
     <div data-tab="file"><p class="label">メモリの写し（本物の骨）</p>
       <label class="pick" style="display:inline-block">RAM ダンプ・VRAM ダンプを選ぶ<input id="memfile" type="file" hidden></label>
       <p class="note"><b>VRAM ダンプ（1,048,576バイト）</b>も、ここに入れてください。キャラクターの模様（胸の紋章、ブーツの三角など）はテクスチャで、その絵は VRAM にあります。RAM ダンプには入っていません。両方入れると模様まで出ます。</p>
       <div id="ramchar-box" hidden style="margin-top:8px">
         <p class="label">写しの中にいた人</p>
         <select id="ramchar" aria-label="写しの中にいた人"></select>
+        <button class="btn" id="saved-add" style="margin-top:6px">この写しの人をブラウザに保存</button>
+        <div class="note" id="saved-status"></div>
         <p class="note">ディスクのファイルではなく、<b>写しに載っているモデルそのもの</b>を出しています。骨もモデルも同じ1つの写しの中にあるので、突き合わせが要りません。別の場面で取った2つの写しを比べたところ、ポーズは変わってもモデルは1バイトも変わりませんでした。</p>
       </div>
       <p class="note"><b>骨の行列は、ディスクにも実行ファイルにも入っていません。</b>描く直前にゲームが渡すもので、動いている最中にしか存在しません。だから、動かして止めて、その瞬間のメモリを取ります。<br>

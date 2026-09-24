@@ -55,6 +55,10 @@ RAM ダンプ（`mem.js`）
   `dump_07`: オライムス・フェイ（2色目）。これで主要8キャラ×2色が揃い、16体ともコードの直しなしで出る
 - 骨の組はカメラ前（ワールド）が表B の指す先の 0xF60 手前。背の高さ 800〜3000 で見分ける（4体で確認）
 
+保存（`app.js` の saveRamChars / selectSaved）
+- 写しの人は IndexedDB（tobal1-viewer / chars）に保存できる。モデル・骨（memCharBones の結果）・VRAM 生 1MB。
+  選ぶと写しの人と同じ形にして selectRamChar で描く
+
 ## 残っていること
 
 - 対戦中にどの手の形を使っているか（場面を変えた RAM ダンプで `0x10, 0` を比べる）
