@@ -1,10 +1,10 @@
-const VERSION="v4.50.0";
+const VERSION="v4.51.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
 const FLAT_W=new Proxy({},{get:()=>({R:I3,T:[0,0,0]})});   // 「関節を使わない」= どの枠も向き・位置なし
 async function readHead(e,n){ return e.src==="iso"?await state.src.readIso(e.iso,n):await state.src.readArc(e.sector,n) }
-function clearMesh(){ layers[0].count=0; triCount=0 }
+function clearMesh(){ for(const L of layers) L.count=0; triCount=0 }
 const MAX_READ=16*1024*1024;   // 表が当てにならないとき、でたらめな大きさで確保に失敗しないように
 async function readFull(e){
   if(state.cache.has(e.key)) return state.cache.get(e.key);
@@ -535,6 +535,7 @@ async function selectEntry(i){
     const raw=await readFull(e);
     const {mesh,info}=buildModel(raw);
     state.selInfo=info;
+    layers[1].count=0;                       // 写しのもう1人は、ディスクのモデルでは出さない
     if(info.error){ state.selErr=info.error; clearMesh() } else upload(mesh);
     draw();
   }catch(err){
@@ -1344,11 +1345,13 @@ async function selectRamChar(k){
       +(c.cmd5&&c.bones.list.length===c.cmd5?"（一致）":"（合っていない）")
       +(bb?`　骨を当てた並び ${hex(bb.at)}${bb.sc?`　背の高さ ${bb.sc.tall}　左右の対 ${bb.sc.pairs}組`:"（カメラを掛けたまま）"}`:"");
     state.selInfo=info;
+    layers[1].count=0;
     if(info.error){ state.selErr=info.error; clearMesh() } else upload(mesh);
     // 向きを正面に戻す。写しの骨を当てると縦に伸びるので、寄りすぎて見切れる
     if(typeof resetView==="function"){ resetView(); view.dist=1.5 }
     // 最初から正面を向ける。骨はワールドの向きなので、2P は後ろ向きで出ていた
     { const y=t1FrontYaw(bb&&bb.list); if(y!=null){ view.yaw=y; draw() } }
+    if(!info.error&&state.ramBoth&&!state.fromSaved) showRamPartner(k,mesh,bb);
     draw();
   }catch(err){
     state.selErr=err.message; state.selInfo=err.info||null; console.error(err);
@@ -1356,6 +1359,30 @@ async function selectRamChar(k){
   }
   busy(""); updateStatus(); updateReport(); updateHud();
   fillT1Part(state.selInfo); fillT1Slot(state.selInfo);
+}
+// 同じ写しのもう1人を、層1 に並べて描く。骨はどちらも対戦の場面の座標なので、
+// そのまま描けばゲームと同じ立ち位置で向かい合う
+function showRamPartner(k,mesh,bb){
+  const j=(state.ramChars||[]).findIndex((_,i)=>i!==k); if(j<0) return;
+  const c=state.ramChars[j];
+  try{
+    const b2=memCharBones(state.ramBuf,state.ramBase,c);
+    if(!b2||!b2.list||!b2.list.length) return;
+    t1SetBones(b2.list,true);
+    const m2=buildModel(c.model.bytes).mesh;
+    upload(m2,false,1);
+    // 2人とも入るようにカメラを合わせ、2人を結ぶ線の真横から見る
+    const P=new Float32Array(mesh.pos.length+m2.pos.length); P.set(mesh.pos); P.set(m2.pos,mesh.pos.length);
+    fitView(P); view.dist=1.2;
+    const mid=a=>{ let s=0,n=0; for(let i=0;i<a.length;i+=3){ s+=a[i]; n++ } return n?s/n:0 };
+    const midz=a=>{ let s=0,n=0; for(let i=2;i<a.length;i+=3){ s+=a[i]; n++ } return n?s/n:0 };
+    const d=[mid(m2.pos)-mid(mesh.pos),midz(m2.pos)-midz(mesh.pos)];   // 選んだ人 → もう1人
+    const one=k===0?1:-1;   // 1P が左、2P が右に来るように
+    view.yaw=Math.atan2(d[1],d[0])+Math.PI/2; draw();
+    if((cam.s[0]*d[0]+cam.s[2]*d[1])*one<0){ view.yaw+=Math.PI; draw() }
+  }finally{
+    t1SetBones(bb&&bb.list&&bb.list.length?bb.list:null,!!(bb&&bb.list&&bb.list.length));   // 選んだ人の骨に戻す
+  }
 }
 function fillRamChar(){
   const box=$("ramchar-box"), sel=$("ramchar");
@@ -1382,6 +1409,7 @@ function fillT1Slot(inf){
 $("t1part").onchange=e=>{ state.t1Part=+e.target.value; redrawCurrent() };
 $("t1slot").onchange=e=>{ state.t1Slot=+e.target.value; redrawCurrent() };
 $("ramchar").onchange=e=>{ selectRamChar(+e.target.value) };
+$("ramboth").onchange=e=>{ state.ramBoth=e.target.checked; if(state.ramSel>=0) selectRamChar(state.ramSel) };
 
 // ============================================================
 //  写しから取り出したキャラクターを、ブラウザの中（IndexedDB）に保存する

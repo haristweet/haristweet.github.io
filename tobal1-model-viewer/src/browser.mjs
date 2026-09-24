@@ -348,6 +348,16 @@ if(fs.existsSync("dump3.bin")){
         errs.push("ディスクのモデルで、読み込んだ VRAM が使われていない");
       await pg3.evaluate(()=>selectRamChar(0));
       await pg3.waitForTimeout(700); }
+  // 2人とも出す：もう1人が層1 に描かれ、切ると消える
+  { await pg3.evaluate(()=>{ const b=document.getElementById("ramboth"); b.checked=true; b.dispatchEvent(new Event("change")) });
+    await pg3.waitForTimeout(1200);
+    const on=await pg3.evaluate(()=>({l0:layers[0].count,l1:layers[1].count}));
+    await pg3.evaluate(()=>{ const b=document.getElementById("ramboth"); b.checked=false; b.dispatchEvent(new Event("change")) });
+    await pg3.waitForTimeout(900);
+    const off=await pg3.evaluate(()=>layers[1].count);
+    console.log(`--- 2人とも出す ---\n選んだ人 ${on.l0/3}枚・もう1人 ${on.l1/3}枚／切ると ${off}`);
+    if(!(on.l0>0&&on.l1>0)) errs.push("2人とも出すで、もう1人が描かれていない");
+    if(off!==0) errs.push("2人とも出すを切っても、もう1人が残る"); }
   // 差し替えの部品を1つ出す
   await pg3.selectOption("#t1slot","0");
   await pg3.waitForTimeout(800);

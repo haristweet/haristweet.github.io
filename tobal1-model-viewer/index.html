@@ -168,6 +168,7 @@ canvas:active{cursor:grabbing}
       <div id="ramchar-box" hidden style="margin-top:8px">
         <p class="label">写しの中にいた人</p>
         <select id="ramchar" aria-label="写しの中にいた人"></select>
+        <label style="display:block;margin-top:6px"><input type="checkbox" id="ramboth"> 2人とも出す（ゲームと同じ立ち位置で並べる）</label>
         <button class="btn" id="saved-add" style="margin-top:6px">この写しの人をブラウザに保存</button>
         <div class="note" id="saved-status"></div>
         <p class="note">ディスクのファイルではなく、<b>写しに載っているモデルそのもの</b>を出しています。骨もモデルも同じ1つの写しの中にあるので、突き合わせが要りません。別の場面で取った2つの写しを比べたところ、ポーズは変わってもモデルは1バイトも変わりませんでした。</p>
@@ -3949,12 +3950,26 @@ function makeLayer(){
   for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.NEAREST],[gl.TEXTURE_MAG_FILTER,gl.NEAREST],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
   return {bufs:{p:gl.createBuffer(),n:gl.createBuffer(),c:gl.createBuffer(),t0:gl.createBuffer(),t1:gl.createBuffer()},tex,count:0,vram:null};
 }
-const layers=[makeLayer()];
+const layers=[makeLayer(),makeLayer()];   // 層1 は、同じ写しのもう1人を並べるときに使う
 let triCount=0, center=[0,0,0], radius=1000;
 const view={yaw:0,pitch:0.08,dist:1,pan:[0,0,0]};
 const cam={s:[1,0,0],u:[0,1,0],half:1};   // 描画時のカメラの右・上方向と、注視点の面での画面の半分の高さ
 const shading={gouraud:false};
 try{ shading.gouraud=localStorage.getItem("t1gouraud")==="1" }catch(_){}
+function fitView(P){
+  if(!P.length){ center=[0,0,0]; radius=1; view.pan=[0,0,0]; return }
+  // 最小・最大で決めると1点の外れ値でモデルが点になり、軸ごとの 2〜98% で決めると
+  // 頂点が1か所に固まっているとき帯がゼロ幅になって半径が 1 になり、遠くが切れて消える。
+  // 中心は各軸の中央値、半径は「中心からの距離の 98% 点」で決める
+  const mid=a=>{ const xs=[]; for(let i=a;i<P.length;i+=3) xs.push(P[i]); xs.sort((x,y)=>x-y); return xs[xs.length>>1] };
+  center=[mid(0),mid(1),mid(2)];
+  const ds=[];
+  for(let i=0;i<P.length;i+=3) ds.push(Math.hypot(P[i]-center[0],P[i+1]-center[1],P[i+2]-center[2]));
+  ds.sort((a,b)=>a-b);
+  // 読み方が固まったので、ほぼ全部が入るように取る（飛んだ点だけ落とす）
+  radius=ds[Math.min(ds.length-1,Math.floor(ds.length*0.999))]||1;
+  view.pan=[0,0,0];
+}
 function upload(mesh,fit=true,li=0){
   const L=layers[li];
   const P=mesh.pos, N=new Float32Array(P.length);
@@ -3976,19 +3991,7 @@ function upload(mesh,fit=true,li=0){
     for(let t=0,i=0;i<P.length;t++,i+=9){ if(!mesh.sm[t]) continue;
       for(let k=0;k<3;k++){ const a=acc.get(key(i+k*3)), l=Math.hypot(a[0],a[1],a[2])||1; N[i+k*3]=a[0]/l; N[i+k*3+1]=a[1]/l; N[i+k*3+2]=a[2]/l } }
   }
-  if(fit&&P.length){
-    // 最小・最大で決めると1点の外れ値でモデルが点になり、軸ごとの 2〜98% で決めると
-    // 頂点が1か所に固まっているとき帯がゼロ幅になって半径が 1 になり、遠くが切れて消える。
-    // 中心は各軸の中央値、半径は「中心からの距離の 98% 点」で決める
-    const mid=a=>{ const xs=[]; for(let i=a;i<P.length;i+=3) xs.push(P[i]); xs.sort((x,y)=>x-y); return xs[xs.length>>1] };
-    center=[mid(0),mid(1),mid(2)];
-    const ds=[];
-    for(let i=0;i<P.length;i+=3) ds.push(Math.hypot(P[i]-center[0],P[i+1]-center[1],P[i+2]-center[2]));
-    ds.sort((a,b)=>a-b);
-    // 読み方が固まったので、ほぼ全部が入るように取る（飛んだ点だけ落とす）
-    radius=ds[Math.min(ds.length-1,Math.floor(ds.length*0.999))]||1;
-    view.pan=[0,0,0];
-  } else if(fit){ center=[0,0,0]; radius=1; view.pan=[0,0,0] }
+  if(fit) fitView(P);
   if(mesh.vram&&L.vram!==mesh.vram){ gl.bindTexture(gl.TEXTURE_2D,L.tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1024,512,0,gl.RGBA,gl.UNSIGNED_BYTE,mesh.vram); L.vram=mesh.vram }
   for(const [k,data] of [["p",P],["n",N],["c",mesh.col],["t0",mesh.t0],["t1",mesh.t1]]){gl.bindBuffer(gl.ARRAY_BUFFER,L.bufs[k]);gl.bufferData(gl.ARRAY_BUFFER,data,gl.DYNAMIC_DRAW)}
   L.count=P.length/3; if(li===0) triCount=L.count;
@@ -4069,13 +4072,13 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.50.0";
+const VERSION="v4.51.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
 const FLAT_W=new Proxy({},{get:()=>({R:I3,T:[0,0,0]})});   // 「関節を使わない」= どの枠も向き・位置なし
 async function readHead(e,n){ return e.src==="iso"?await state.src.readIso(e.iso,n):await state.src.readArc(e.sector,n) }
-function clearMesh(){ layers[0].count=0; triCount=0 }
+function clearMesh(){ for(const L of layers) L.count=0; triCount=0 }
 const MAX_READ=16*1024*1024;   // 表が当てにならないとき、でたらめな大きさで確保に失敗しないように
 async function readFull(e){
   if(state.cache.has(e.key)) return state.cache.get(e.key);
@@ -4606,6 +4609,7 @@ async function selectEntry(i){
     const raw=await readFull(e);
     const {mesh,info}=buildModel(raw);
     state.selInfo=info;
+    layers[1].count=0;                       // 写しのもう1人は、ディスクのモデルでは出さない
     if(info.error){ state.selErr=info.error; clearMesh() } else upload(mesh);
     draw();
   }catch(err){
@@ -5415,11 +5419,13 @@ async function selectRamChar(k){
       +(c.cmd5&&c.bones.list.length===c.cmd5?"（一致）":"（合っていない）")
       +(bb?`　骨を当てた並び ${hex(bb.at)}${bb.sc?`　背の高さ ${bb.sc.tall}　左右の対 ${bb.sc.pairs}組`:"（カメラを掛けたまま）"}`:"");
     state.selInfo=info;
+    layers[1].count=0;
     if(info.error){ state.selErr=info.error; clearMesh() } else upload(mesh);
     // 向きを正面に戻す。写しの骨を当てると縦に伸びるので、寄りすぎて見切れる
     if(typeof resetView==="function"){ resetView(); view.dist=1.5 }
     // 最初から正面を向ける。骨はワールドの向きなので、2P は後ろ向きで出ていた
     { const y=t1FrontYaw(bb&&bb.list); if(y!=null){ view.yaw=y; draw() } }
+    if(!info.error&&state.ramBoth&&!state.fromSaved) showRamPartner(k,mesh,bb);
     draw();
   }catch(err){
     state.selErr=err.message; state.selInfo=err.info||null; console.error(err);
@@ -5427,6 +5433,30 @@ async function selectRamChar(k){
   }
   busy(""); updateStatus(); updateReport(); updateHud();
   fillT1Part(state.selInfo); fillT1Slot(state.selInfo);
+}
+// 同じ写しのもう1人を、層1 に並べて描く。骨はどちらも対戦の場面の座標なので、
+// そのまま描けばゲームと同じ立ち位置で向かい合う
+function showRamPartner(k,mesh,bb){
+  const j=(state.ramChars||[]).findIndex((_,i)=>i!==k); if(j<0) return;
+  const c=state.ramChars[j];
+  try{
+    const b2=memCharBones(state.ramBuf,state.ramBase,c);
+    if(!b2||!b2.list||!b2.list.length) return;
+    t1SetBones(b2.list,true);
+    const m2=buildModel(c.model.bytes).mesh;
+    upload(m2,false,1);
+    // 2人とも入るようにカメラを合わせ、2人を結ぶ線の真横から見る
+    const P=new Float32Array(mesh.pos.length+m2.pos.length); P.set(mesh.pos); P.set(m2.pos,mesh.pos.length);
+    fitView(P); view.dist=1.2;
+    const mid=a=>{ let s=0,n=0; for(let i=0;i<a.length;i+=3){ s+=a[i]; n++ } return n?s/n:0 };
+    const midz=a=>{ let s=0,n=0; for(let i=2;i<a.length;i+=3){ s+=a[i]; n++ } return n?s/n:0 };
+    const d=[mid(m2.pos)-mid(mesh.pos),midz(m2.pos)-midz(mesh.pos)];   // 選んだ人 → もう1人
+    const one=k===0?1:-1;   // 1P が左、2P が右に来るように
+    view.yaw=Math.atan2(d[1],d[0])+Math.PI/2; draw();
+    if((cam.s[0]*d[0]+cam.s[2]*d[1])*one<0){ view.yaw+=Math.PI; draw() }
+  }finally{
+    t1SetBones(bb&&bb.list&&bb.list.length?bb.list:null,!!(bb&&bb.list&&bb.list.length));   // 選んだ人の骨に戻す
+  }
 }
 function fillRamChar(){
   const box=$("ramchar-box"), sel=$("ramchar");
@@ -5453,6 +5483,7 @@ function fillT1Slot(inf){
 $("t1part").onchange=e=>{ state.t1Part=+e.target.value; redrawCurrent() };
 $("t1slot").onchange=e=>{ state.t1Slot=+e.target.value; redrawCurrent() };
 $("ramchar").onchange=e=>{ selectRamChar(+e.target.value) };
+$("ramboth").onchange=e=>{ state.ramBoth=e.target.checked; if(state.ramSel>=0) selectRamChar(state.ramSel) };
 
 // ============================================================
 //  写しから取り出したキャラクターを、ブラウザの中（IndexedDB）に保存する

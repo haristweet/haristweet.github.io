@@ -30,12 +30,26 @@ function makeLayer(){
   for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.NEAREST],[gl.TEXTURE_MAG_FILTER,gl.NEAREST],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
   return {bufs:{p:gl.createBuffer(),n:gl.createBuffer(),c:gl.createBuffer(),t0:gl.createBuffer(),t1:gl.createBuffer()},tex,count:0,vram:null};
 }
-const layers=[makeLayer()];
+const layers=[makeLayer(),makeLayer()];   // 層1 は、同じ写しのもう1人を並べるときに使う
 let triCount=0, center=[0,0,0], radius=1000;
 const view={yaw:0,pitch:0.08,dist:1,pan:[0,0,0]};
 const cam={s:[1,0,0],u:[0,1,0],half:1};   // 描画時のカメラの右・上方向と、注視点の面での画面の半分の高さ
 const shading={gouraud:false};
 try{ shading.gouraud=localStorage.getItem("t1gouraud")==="1" }catch(_){}
+function fitView(P){
+  if(!P.length){ center=[0,0,0]; radius=1; view.pan=[0,0,0]; return }
+  // 最小・最大で決めると1点の外れ値でモデルが点になり、軸ごとの 2〜98% で決めると
+  // 頂点が1か所に固まっているとき帯がゼロ幅になって半径が 1 になり、遠くが切れて消える。
+  // 中心は各軸の中央値、半径は「中心からの距離の 98% 点」で決める
+  const mid=a=>{ const xs=[]; for(let i=a;i<P.length;i+=3) xs.push(P[i]); xs.sort((x,y)=>x-y); return xs[xs.length>>1] };
+  center=[mid(0),mid(1),mid(2)];
+  const ds=[];
+  for(let i=0;i<P.length;i+=3) ds.push(Math.hypot(P[i]-center[0],P[i+1]-center[1],P[i+2]-center[2]));
+  ds.sort((a,b)=>a-b);
+  // 読み方が固まったので、ほぼ全部が入るように取る（飛んだ点だけ落とす）
+  radius=ds[Math.min(ds.length-1,Math.floor(ds.length*0.999))]||1;
+  view.pan=[0,0,0];
+}
 function upload(mesh,fit=true,li=0){
   const L=layers[li];
   const P=mesh.pos, N=new Float32Array(P.length);
@@ -57,19 +71,7 @@ function upload(mesh,fit=true,li=0){
     for(let t=0,i=0;i<P.length;t++,i+=9){ if(!mesh.sm[t]) continue;
       for(let k=0;k<3;k++){ const a=acc.get(key(i+k*3)), l=Math.hypot(a[0],a[1],a[2])||1; N[i+k*3]=a[0]/l; N[i+k*3+1]=a[1]/l; N[i+k*3+2]=a[2]/l } }
   }
-  if(fit&&P.length){
-    // 最小・最大で決めると1点の外れ値でモデルが点になり、軸ごとの 2〜98% で決めると
-    // 頂点が1か所に固まっているとき帯がゼロ幅になって半径が 1 になり、遠くが切れて消える。
-    // 中心は各軸の中央値、半径は「中心からの距離の 98% 点」で決める
-    const mid=a=>{ const xs=[]; for(let i=a;i<P.length;i+=3) xs.push(P[i]); xs.sort((x,y)=>x-y); return xs[xs.length>>1] };
-    center=[mid(0),mid(1),mid(2)];
-    const ds=[];
-    for(let i=0;i<P.length;i+=3) ds.push(Math.hypot(P[i]-center[0],P[i+1]-center[1],P[i+2]-center[2]));
-    ds.sort((a,b)=>a-b);
-    // 読み方が固まったので、ほぼ全部が入るように取る（飛んだ点だけ落とす）
-    radius=ds[Math.min(ds.length-1,Math.floor(ds.length*0.999))]||1;
-    view.pan=[0,0,0];
-  } else if(fit){ center=[0,0,0]; radius=1; view.pan=[0,0,0] }
+  if(fit) fitView(P);
   if(mesh.vram&&L.vram!==mesh.vram){ gl.bindTexture(gl.TEXTURE_2D,L.tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1024,512,0,gl.RGBA,gl.UNSIGNED_BYTE,mesh.vram); L.vram=mesh.vram }
   for(const [k,data] of [["p",P],["n",N],["c",mesh.col],["t0",mesh.t0],["t1",mesh.t1]]){gl.bindBuffer(gl.ARRAY_BUFFER,L.bufs[k]);gl.bufferData(gl.ARRAY_BUFFER,data,gl.DYNAMIC_DRAW)}
   L.count=P.length/3; if(li===0) triCount=L.count;
