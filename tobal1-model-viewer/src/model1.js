@@ -118,8 +118,11 @@ function readT1Object(d,base){
     if((c[0]+c[1])*8+(c[2]+c[3])*12===o.faceBytes){ o.counts=c; o.countsAt=k; break }
   }
   // 面の数（ヘッダの並び）は表示のために探すだけ。読み方は面の大きさから決まる
+  // 色の長さは命令の列から決まる（頂点の数×4 とは限らない）。ここでは色の欄が
+  // 中で始まっていることだけを見る。頂点×4 を求めていたので、ホムの最後の手（色が
+  // 頂点×4 より短く、モデルの末尾で終わる）が読めなかった
   o.ok = o.nv>0 && o.nv<65536 && o.faceBytes>0 && o.faceBytes%4===0 &&
-         base+o.colPtr+o.nv*4<=d.length;
+         base+o.colPtr<d.length;
   return o;
 }
 // 面の1枚の形（実物 sector 5927 の面のバイト列から）:

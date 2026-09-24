@@ -1,4 +1,4 @@
-const VERSION="v4.44.0";
+const VERSION="v4.45.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -999,7 +999,15 @@ $("src-seg").onclick=async e=>{
 function gridToPng(gridId,title,name){
   const figs=[...$(gridId).querySelectorAll("figure")].filter(f=>f.querySelector("canvas"));
   if(!figs.length) return false;
-  const CELL=132, CAP=45, PAD=10, HEAD=26;   // 説明は3行まで（組の名札が増えた）
+  const CELL=132, PAD=10, HEAD=26, LINE=13;
+  // 説明は枠の幅で折り返す。折り返さずに書くと隣の枠の説明に重なっていた。
+  // 行数も切らない（切ると「色はディスクに無い」のような後ろの行が消える）
+  const mg=document.createElement("canvas").getContext("2d"); mg.font="11px sans-serif";
+  const wrap=t=>{ const out=[]; let cur="";
+    for(const ch of t){ if(cur&&mg.measureText(cur+ch).width>CELL){ out.push(cur); cur="" } cur+=ch }
+    if(cur) out.push(cur); return out };
+  const caps=figs.map(f=>(f.querySelector("figcaption").textContent||"").split("\n").flatMap(wrap));
+  const CAP=Math.max(3,...caps.map(c=>c.length))*LINE+6;
   const COLS=Math.max(1,Math.min(6,figs.length));
   const rows=Math.ceil(figs.length/COLS);
   const W=PAD+COLS*(CELL+PAD), H=PAD+HEAD+rows*(CELL+CAP+PAD);
@@ -1020,8 +1028,7 @@ function gridToPng(gridId,title,name){
     const w=Math.max(1,cv.width*sc), h=Math.max(1,cv.height*sc);
     g.drawImage(cv,cx+(CELL-w)/2,cy+(CELL-h)/2,w,h);
     g.font="11px sans-serif"; g.fillStyle="#bdb7ac";
-    (f.querySelector("figcaption").textContent||"").split("\n").slice(0,3)
-      .forEach((t,k)=>g.fillText(t,cx,cy+CELL+3+k*13));
+    caps[i].forEach((t,k)=>g.fillText(t,cx,cy+CELL+3+k*LINE));
   });
   out.toBlob(b=>saveBlob(b,name),"image/png");
   return true;

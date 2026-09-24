@@ -116,7 +116,7 @@ canvas:active{cursor:grabbing}
   .drop{padding:14px} .drop .card{padding:20px}
 }
 .texgrid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-.texgrid figure{margin:0;font-size:11px;color:var(--ink2);text-align:center}
+.texgrid figure{margin:0;font-size:11px;color:var(--ink2);text-align:center;max-width:162px;overflow-wrap:anywhere}
 .texgrid canvas{display:block;image-rendering:pixelated;background:
   repeating-conic-gradient(#3a3a3a 0% 25%,#2e2e2e 0% 50%) 50%/12px 12px;
   border:1px solid var(--line);max-width:160px;height:auto}
@@ -1625,8 +1625,11 @@ function readT1Object(d,base){
     if((c[0]+c[1])*8+(c[2]+c[3])*12===o.faceBytes){ o.counts=c; o.countsAt=k; break }
   }
   // 面の数（ヘッダの並び）は表示のために探すだけ。読み方は面の大きさから決まる
+  // 色の長さは命令の列から決まる（頂点の数×4 とは限らない）。ここでは色の欄が
+  // 中で始まっていることだけを見る。頂点×4 を求めていたので、ホムの最後の手（色が
+  // 頂点×4 より短く、モデルの末尾で終わる）が読めなかった
   o.ok = o.nv>0 && o.nv<65536 && o.faceBytes>0 && o.faceBytes%4===0 &&
-         base+o.colPtr+o.nv*4<=d.length;
+         base+o.colPtr<d.length;
   return o;
 }
 // 面の1枚の形（実物 sector 5927 の面のバイト列から）:
@@ -4001,7 +4004,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.44.0";
+const VERSION="v4.45.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5002,7 +5005,15 @@ $("src-seg").onclick=async e=>{
 function gridToPng(gridId,title,name){
   const figs=[...$(gridId).querySelectorAll("figure")].filter(f=>f.querySelector("canvas"));
   if(!figs.length) return false;
-  const CELL=132, CAP=45, PAD=10, HEAD=26;   // 説明は3行まで（組の名札が増えた）
+  const CELL=132, PAD=10, HEAD=26, LINE=13;
+  // 説明は枠の幅で折り返す。折り返さずに書くと隣の枠の説明に重なっていた。
+  // 行数も切らない（切ると「色はディスクに無い」のような後ろの行が消える）
+  const mg=document.createElement("canvas").getContext("2d"); mg.font="11px sans-serif";
+  const wrap=t=>{ const out=[]; let cur="";
+    for(const ch of t){ if(cur&&mg.measureText(cur+ch).width>CELL){ out.push(cur); cur="" } cur+=ch }
+    if(cur) out.push(cur); return out };
+  const caps=figs.map(f=>(f.querySelector("figcaption").textContent||"").split("\n").flatMap(wrap));
+  const CAP=Math.max(3,...caps.map(c=>c.length))*LINE+6;
   const COLS=Math.max(1,Math.min(6,figs.length));
   const rows=Math.ceil(figs.length/COLS);
   const W=PAD+COLS*(CELL+PAD), H=PAD+HEAD+rows*(CELL+CAP+PAD);
@@ -5023,8 +5034,7 @@ function gridToPng(gridId,title,name){
     const w=Math.max(1,cv.width*sc), h=Math.max(1,cv.height*sc);
     g.drawImage(cv,cx+(CELL-w)/2,cy+(CELL-h)/2,w,h);
     g.font="11px sans-serif"; g.fillStyle="#bdb7ac";
-    (f.querySelector("figcaption").textContent||"").split("\n").slice(0,3)
-      .forEach((t,k)=>g.fillText(t,cx,cy+CELL+3+k*13));
+    caps[i].forEach((t,k)=>g.fillText(t,cx,cy+CELL+3+k*LINE));
   });
   out.toBlob(b=>saveBlob(b,name),"image/png");
   return true;
@@ -6146,11 +6156,19 @@ function memBonesFrom(buf,base,cur,opt){
 //  確かめ方は「表Cの1つ目 ＝ モデルの先頭 + 0x3C」で、両方で成り立った
 // ============================================================
 const MEM_CHAR_STRIDE=0x1E48;
+const MEM_T1_TABLE_B=0x801F0484;   // 1P の表B・表C（dump3 で確かめた場所）
+const MEM_T1_TABLE_C=0x801F0684;
 function memCharacters(buf,base,opt){
   const o=opt||{}, M=memReader(buf,base);
-  const b0=M.u32(o.tableB||0x800CBE8C), c0=M.u32(o.tableC||0x800CBE94);
+  let b0=M.u32(o.tableB||0x800CBE8C), c0=M.u32(o.tableC||0x800CBE94), fixed=false;
   const out=[];
-  if(!M.ptr(b0)||!M.ptr(c0)) return out;
+  // 表の場所を指す語が 0 の写しがある（dump4: オライムス・ホム）。表そのものは
+  // いつもの場所に入っていたので、そこを直に読む。中身は下でモデルの署名まで確かめる
+  if(!M.ptr(b0)||!M.ptr(c0)){
+    if(o.tableB||o.tableC) return out;
+    b0=MEM_T1_TABLE_B; c0=MEM_T1_TABLE_C; fixed=true;
+  }
+  out.fixed=fixed;
   const stride=o.stride||MEM_CHAR_STRIDE;
   for(let k=0;k<(o.max||4);k++){
     const d=k*stride, tb=b0+d, tc=c0+d;
@@ -6179,13 +6197,16 @@ function memCharBones(buf,base,c,opt){
     const list=memBonesByIndex(buf,base,idx,at);
     if(!list) continue;
     const sc=memBonePoseScore(list);
-    if(at===viewBase||sc.ok) return {list,at,idx,sc,view:at===viewBase};
+    // 0xF60 手前の組は、背の高さが人らしければ使う。左右の対の数は見ない
+    // （ホムは対が3組しかなく、対4組を求めていたせいで逆さまの組に落ちていた）
+    if(at===viewBase||sc.ok||(sc.tall>800&&sc.tall<3000)) return {list,at,idx,sc,view:at===viewBase};
   }
   return {list:c.bones.list,at:viewBase,idx,view:true};
 }
 function memCharLines(list){
   if(!list||!list.length) return ["  写しの中に登場人物が見つからない（表B・表Cが RAM を指していない）"];
   const L=[`  写しの中の登場人物 ${list.length}人（入れものは 0x${MEM_CHAR_STRIDE.toString(16).toUpperCase()} バイト間隔）`];
+  if(list.fixed) L.push(`    表の場所を指す語（0x800CBE8C）が 0 だったので、いつもの場所（表B ${hex(MEM_T1_TABLE_B)}・表C ${hex(MEM_T1_TABLE_C)}）を直に読んだ`);
   for(const c of list)
     L.push(`    ${c.who}: モデル ${hex(c.model.at)}（${c.model.len} B${c.model.ended?"":"・次の署名が無いので上限まで"}）`
       +`　本体の命令5 ${c.cmd5}回　表B ${hex(c.tableB)} から骨 ${c.bones.list.length}本`

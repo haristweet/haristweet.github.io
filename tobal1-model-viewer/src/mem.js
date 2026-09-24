@@ -344,11 +344,19 @@ function memBonesFrom(buf,base,cur,opt){
 //  確かめ方は「表Cの1つ目 ＝ モデルの先頭 + 0x3C」で、両方で成り立った
 // ============================================================
 const MEM_CHAR_STRIDE=0x1E48;
+const MEM_T1_TABLE_B=0x801F0484;   // 1P の表B・表C（dump3 で確かめた場所）
+const MEM_T1_TABLE_C=0x801F0684;
 function memCharacters(buf,base,opt){
   const o=opt||{}, M=memReader(buf,base);
-  const b0=M.u32(o.tableB||0x800CBE8C), c0=M.u32(o.tableC||0x800CBE94);
+  let b0=M.u32(o.tableB||0x800CBE8C), c0=M.u32(o.tableC||0x800CBE94), fixed=false;
   const out=[];
-  if(!M.ptr(b0)||!M.ptr(c0)) return out;
+  // 表の場所を指す語が 0 の写しがある（dump4: オライムス・ホム）。表そのものは
+  // いつもの場所に入っていたので、そこを直に読む。中身は下でモデルの署名まで確かめる
+  if(!M.ptr(b0)||!M.ptr(c0)){
+    if(o.tableB||o.tableC) return out;
+    b0=MEM_T1_TABLE_B; c0=MEM_T1_TABLE_C; fixed=true;
+  }
+  out.fixed=fixed;
   const stride=o.stride||MEM_CHAR_STRIDE;
   for(let k=0;k<(o.max||4);k++){
     const d=k*stride, tb=b0+d, tc=c0+d;
@@ -377,13 +385,16 @@ function memCharBones(buf,base,c,opt){
     const list=memBonesByIndex(buf,base,idx,at);
     if(!list) continue;
     const sc=memBonePoseScore(list);
-    if(at===viewBase||sc.ok) return {list,at,idx,sc,view:at===viewBase};
+    // 0xF60 手前の組は、背の高さが人らしければ使う。左右の対の数は見ない
+    // （ホムは対が3組しかなく、対4組を求めていたせいで逆さまの組に落ちていた）
+    if(at===viewBase||sc.ok||(sc.tall>800&&sc.tall<3000)) return {list,at,idx,sc,view:at===viewBase};
   }
   return {list:c.bones.list,at:viewBase,idx,view:true};
 }
 function memCharLines(list){
   if(!list||!list.length) return ["  写しの中に登場人物が見つからない（表B・表Cが RAM を指していない）"];
   const L=[`  写しの中の登場人物 ${list.length}人（入れものは 0x${MEM_CHAR_STRIDE.toString(16).toUpperCase()} バイト間隔）`];
+  if(list.fixed) L.push(`    表の場所を指す語（0x800CBE8C）が 0 だったので、いつもの場所（表B ${hex(MEM_T1_TABLE_B)}・表C ${hex(MEM_T1_TABLE_C)}）を直に読んだ`);
   for(const c of list)
     L.push(`    ${c.who}: モデル ${hex(c.model.at)}（${c.model.len} B${c.model.ended?"":"・次の署名が無いので上限まで"}）`
       +`　本体の命令5 ${c.cmd5}回　表B ${hex(c.tableB)} から骨 ${c.bones.list.length}本`

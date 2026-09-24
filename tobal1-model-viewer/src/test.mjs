@@ -2158,6 +2158,16 @@ console.log("\n[44] 写しの中からモデルそのものを取り出す");
   ok("  表Cが指していないと、人は見つからない",
      (()=>{ const b2=buf.slice(); new DataView(b2.buffer).setUint32(0x0CBE94,0,true);
             return memCharacters(b2,0).length===0 })(), "");
+
+  // 表を指す語が 0 でも、いつもの場所に表があれば読む（dump4 がそうだった）
+  { const b3=new Uint8Array(buf.length), v3=new DataView(b3.buffer);
+    b3.set(buf); v3.setUint32(0x0CBE8C,0,true); v3.setUint32(0x0CBE94,0,true);
+    const s=MEM_T1_TABLE_B-B1;   // 表をいつもの場所へずらして置き直す
+    for(let k=0;k<8;k++){ v3.setUint32((B1+s+k*4)&0x1fffff,V1+(k%8)*32,true); v3.setUint32((B2+s+k*4)&0x1fffff,V2+(k%8)*32,true) }
+    v3.setUint32((MEM_T1_TABLE_C)&0x1fffff,M1+0x3c,true); v3.setUint32((MEM_T1_TABLE_C+0x1E48)&0x1fffff,M2+0x3c,true);
+    const c3=memCharacters(b3,0);
+    ok("  表を指す語が 0 でも、いつもの場所の表を読む", c3.length===2&&c3.fixed&&c3[0].model.at===M1, c3.length);
+    ok("    そう読んだことを行に出す", /直に読んだ/.test(memCharLines(c3).join("\n")), ""); }
 }
 
 console.log("\n[45] 差し替えの組から、出すものを選ぶ");
