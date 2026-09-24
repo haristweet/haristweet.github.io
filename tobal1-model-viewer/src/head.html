@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>トバルNo.1 モデルビューア</title>
+<meta name="description" content="手元の『トバルNo.1』のディスクイメージから、キャラクターの3Dモデルを取り出して回して見る（非公式）。">
+<style>
+:root{
+  --ground:#e9e6e0; --panel:#f7f5f1; --ink:#1d1c1a; --ink2:#6b675f; --line:#d4cfc6;
+  --accent:#0f766e; --accent-soft:rgba(15,118,110,.12); --stage:#2a2926; --stage2:#3a3834;
+  --sans:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,"Roboto Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{height:100dvh;overflow:hidden;overscroll-behavior:none}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:14px;display:flex;flex-direction:column}
+header{display:flex;align-items:baseline;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line)}
+header h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.02em}
+header .sub{color:var(--ink2);font-size:12px}
+header .rev{margin-left:auto;color:var(--ink2);font-size:11px;white-space:nowrap}
+main{flex:1;display:grid;grid-template-columns:260px 1fr;min-height:0}
+aside{background:var(--panel);border-right:1px solid var(--line);padding:14px 12px;overflow:auto;display:flex;flex-direction:column;gap:16px}
+.label{font-size:11px;letter-spacing:.1em;color:var(--ink2);font-weight:600;margin:0 0 6px 4px}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{all:unset;cursor:pointer;text-align:center;padding:7px 4px;font-size:13px;white-space:nowrap;border-left:1px solid var(--line)}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+select,.pick-motion{width:100%;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink)}
+/* ファイルの一覧 */
+.files{display:flex;flex-direction:column;border-top:1px solid var(--line);max-height:min(52vh,520px);overflow:auto;overscroll-behavior:contain}
+.files .grp{font-size:11px;color:var(--ink2);letter-spacing:.08em;padding:12px 4px 4px;position:sticky;top:0;background:var(--panel)}
+.files button{all:unset;cursor:pointer;display:flex;gap:8px;align-items:baseline;width:100%;box-sizing:border-box;padding:7px 6px;border-bottom:1px solid var(--line);font-size:13px;-webkit-tap-highlight-color:transparent}
+.files button:hover{background:var(--accent-soft)}
+.files button[aria-pressed=true]{background:var(--accent);color:#fff;font-weight:600}
+.files button .no{font-family:var(--mono);font-size:12px;min-width:3.6em;opacity:.75;font-variant-numeric:tabular-nums}
+.files button .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.files button .sz{font-family:var(--mono);font-size:11px;opacity:.7;white-space:nowrap}
+.filter{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--ink2);margin:6px 0 0}
+.note{font-size:11px;color:var(--ink2);margin:4px 0 0;line-height:1.6}
+.note.known{color:#9a3412;background:#fff4ed;border:1px solid #fbcfb5;border-radius:7px;padding:8px;margin-bottom:8px}
+.count{font-size:11px;color:var(--ink2);margin:6px 0 0 4px}
+.wide{width:100%}
+.btn{all:unset;cursor:pointer;display:block;text-align:center;border:1px solid var(--line);background:#fff;border-radius:7px;padding:8px;font-size:13px}
+.btn:hover{background:var(--accent-soft)}
+.report{width:100%;height:280px;font-family:var(--mono);font-size:11px;line-height:1.5;border:1px solid var(--line);border-radius:7px;padding:8px;background:#fff;color:var(--ink);white-space:pre;overflow:auto;resize:vertical}
+.bgm-row{display:flex;gap:8px;align-items:center}
+.bgm-row select{flex:1;min-width:0}
+.bgm-row input{width:80px;accent-color:var(--accent)}
+/* 表示 */
+.stage{position:relative;background:radial-gradient(ellipse at 50% 35%,var(--stage2),var(--stage));min-height:0}
+canvas{width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+html,body,button,input,select,label,.tabbar,aside{touch-action:manipulation}
+canvas:active{cursor:grabbing}
+.bgs{position:absolute;left:12px;top:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:250px}
+.bgs button{all:unset;cursor:pointer;width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.55);box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.bgs button[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.stage.light .status,.stage.light .hint,.stage.light .shot{color:rgba(0,0,0,.7)}
+.stage.light .shot button{background:rgba(0,0,0,.08);border-color:rgba(0,0,0,.2);color:#1d1c1a}
+/* 窓が狭いと背景の丸とぶつかるので、折り返して逃がす */
+.shot{position:absolute;right:12px;top:12px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;align-items:center;color:rgba(255,255,255,.75);font-size:12px;max-width:calc(100% - 280px)}
+.shot label{display:flex;gap:4px;align-items:center;cursor:pointer}
+/* 調べた結果を画面に重ねて出す。貼り付けなくてもスクショだけで分かるように */
+.hud{position:absolute;left:12px;bottom:44px;max-width:min(560px,calc(100% - 24px));
+  font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(255,255,255,.82);
+  background:rgba(0,0,0,.38);padding:6px 9px;border-radius:8px;white-space:pre-wrap;pointer-events:none}
+.stage.light .hud{color:rgba(0,0,0,.78);background:rgba(255,255,255,.55)}
+.shot button{all:unset;cursor:pointer;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:6px 10px;font-size:12px}
+.shot button:hover{background:rgba(255,255,255,.24)}
+.hint{position:absolute;right:14px;bottom:12px;color:rgba(255,255,255,.55);font-size:12px;pointer-events:none}
+.status{position:absolute;left:14px;bottom:12px;right:auto;max-width:calc(100% - 28px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,.75);font-size:12px}
+.busy{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:rgba(255,255,255,.8);font-size:13px;background:rgba(0,0,0,.45);padding:10px 16px;border-radius:10px}
+.drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px}
+.drop .card{background:var(--panel);border-radius:12px;padding:26px 28px;max-width:500px;line-height:1.75;box-shadow:0 10px 40px rgba(0,0,0,.35);max-height:100%;overflow:auto}
+.drop h2{margin:0 0 8px;font-size:16px}
+.drop p{margin:0 0 10px;color:var(--ink2);font-size:13px}
+.drop code{background:#ebe7df;padding:1px 5px;border-radius:4px;font-size:12px}
+.drop .pick{display:inline-block;margin-top:6px;background:var(--accent);color:#fff;border-radius:7px;padding:8px 16px;cursor:pointer;font-weight:600}
+.drop.over .card{outline:3px dashed var(--accent);outline-offset:6px}
+.err{color:#b91c1c;font-size:13px;margin-top:8px;white-space:pre-wrap}
+[hidden]{display:none!important}
+.tabbar,.sheet-close{display:none}
+/* 表示が狭いと下でぶつかるので、操作のヒントは引っ込める */
+@media(max-width:1100px){ .hint{display:none} }
+@media(max-width:720px){
+  header{padding:10px 14px} header h1{font-size:16px} header .sub{display:none}
+  body.loaded header{display:none}
+  main{display:block;position:relative;flex:1}
+  .stage{position:absolute;left:0;right:0;top:0;bottom:calc(60px + env(safe-area-inset-bottom))}
+  body:not(.loaded) .stage{bottom:0}
+  body.loaded .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;height:calc(60px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:var(--panel);border-top:1px solid var(--line);z-index:30}
+  .tabbar button{all:unset;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--ink2);-webkit-tap-highlight-color:transparent}
+  .tabbar button .ic{font-size:20px;line-height:1}
+  .tabbar button[aria-pressed=true]{color:var(--accent);font-weight:600}
+  aside{position:fixed;left:0;right:0;bottom:calc(60px + env(safe-area-inset-bottom));max-height:56dvh;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+        background:var(--panel);border:0;border-radius:18px 18px 0 0;box-shadow:0 -10px 30px rgba(0,0,0,.35);padding:6px 16px 16px;z-index:25;display:block}
+  aside:not(.open){display:none!important}
+  aside>div{display:none;margin-top:12px}
+  aside[data-tab=file]>[data-tab=file],aside[data-tab=look]>[data-tab=look],aside[data-tab=info]>[data-tab=info]{display:block}
+  .sheet-close{display:block;position:sticky;top:0;margin:0 auto;width:40px;height:5px;border-radius:3px;background:var(--line);z-index:2}
+  .label{margin:0 0 6px 2px;font-size:12px}
+  .seg button{padding:11px 8px;font-size:15px}
+  .files{max-height:38dvh}
+  .files button{padding:11px 6px;font-size:15px}
+  .bgs{position:static;flex-wrap:wrap;gap:10px}
+  .bgs button{width:38px;height:38px}
+  .shot-opt{display:flex;gap:8px;align-items:center;font-size:14px;margin-top:12px}
+  .bgm-row input{width:110px}
+  .status{top:calc(10px + env(safe-area-inset-top));bottom:auto;left:12px;right:90px;font-size:13px;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+  .stage.light .status{text-shadow:none}
+  .shot{top:calc(8px + env(safe-area-inset-top));right:10px}
+  .shot button{padding:9px 12px;font-size:13px;border-radius:10px}
+  .hint{display:none}
+  .drop{padding:14px} .drop .card{padding:20px}
+}
+.texgrid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.texgrid figure{margin:0;font-size:11px;color:var(--ink2);text-align:center}
+.texgrid canvas{display:block;image-rendering:pixelated;background:
+  repeating-conic-gradient(#3a3a3a 0% 25%,#2e2e2e 0% 50%) 50%/12px 12px;
+  border:1px solid var(--line);max-width:160px;height:auto}
+</style>
+</head>
+<body>
+<header><h1>トバルNo.1 モデルビューア</h1><span class="sub">手元のディスクイメージからキャラクターを取り出して表示します</span><span class="rev" id="rev">・ 非公式</span></header>
+<main>
+  <aside id="side" hidden>
+    <div class="sheet-close" aria-hidden="true"></div>
+    <div data-tab="file"><p class="label">読み込み元</p>
+      <p class="note known" id="known-note" hidden></p>
+      <div class="seg" id="src-seg"><button data-v="table" aria-pressed="true">アーカイブ</button><button data-v="scan" aria-pressed="false" title="アーカイブの中を直接さらってファイルの先頭を探す">直接さらう</button><button data-v="iso" aria-pressed="false" title="ディスクの中のファイルをそのまま並べる">ディスク</button></div>
+      <p class="note" id="src-note"></p>
+    </div>
+    <div data-tab="file"><p class="label">ファイル</p>
+      <select id="type-filter" aria-label="種類でしぼる"></select>
+      <label class="filter"><input type="checkbox" id="model-only" checked> モデルらしいものだけ</label>
+      <div class="files" id="files"></div>
+      <p class="count" id="file-count"></p>
+      <button class="btn wide" id="scan-all" style="margin-top:8px">全部のファイルを調べる</button>
+      <button class="btn wide" id="survey" style="margin-top:8px">モデル候補をまとめて調べる</button>
+      <button class="btn wide" id="bones" style="margin-top:8px">骨さがし（32バイトの行列を探す）</button>
+    </div>
+    <div data-tab="file"><p class="label">向き</p>
+      <div class="seg" id="up-seg"><button data-up="0" aria-pressed="false">そのまま</button><button data-up="1" aria-pressed="false">X を上に</button><button data-up="2" aria-pressed="true">X を上（逆）</button><button data-up="3" aria-pressed="false">Z を上に</button><button data-up="4" aria-pressed="false">Y を上（逆）</button></div>
+      <p class="note">モデルの「背の高さ」がどの軸かはファイルに書かれていません。実物は X 811 / Y 411 / Z 417 で、X が背の高さ（人の縦横比 2:1:1）でした。そのうえで上下をひっくり返した「X を上（逆）」が既定です。人の形にならないときはここを変えてみてください。<br><b>メモリの写しから出しているときは「そのまま」</b>です。本物の骨を当てたあとは、ワールドの Y がそのまま背の高さになります。写しを読み込むと自動でこちらに変わります。</p>
+    </div>
+    <div data-tab="file"><p class="label">キャラクターを見分ける</p>
+      <button class="btn wide" id="mdlgal">モデルを並べて見る</button>
+      <p class="note" id="mdlnote">キャラクターのモデルを順に描いて、小さな絵にして並べます。形と色で誰が誰かを見分けるための道具です。絵を押すと、そのモデルに切り替わります。見出しの「命令」は命令の列として実行できた部品の数で、「推測」が付いているもの（橙色）は読み切れずに形が崩れています。</p>
+      <button class="btn wide" id="mdlsave" style="margin-top:6px">この一覧を画像で保存</button>
+      <button class="btn wide" id="seggal" style="margin-top:10px">いまのモデルの骨の区切りを1つずつ並べる</button>
+      <p class="note">命令5 で区切られたかたまりを1つずつ描いて並べます。どの区切りが腕・脚・胴・頭なのかを見分けるための道具です。</p>
+      <div id="mdlgrid" class="texgrid"></div>
+    </div>
+    <div data-tab="file"><p class="label">テクスチャ</p>
+      <select id="texpick"></select>
+      <p class="note" id="texnote">キャラクターの<b>体</b>には貼り先（UV）がなく、頂点の色だけで塗られています。テクスチャは<b>顔のパーツ（目・口）</b>や背景・文字に使われていて、体とは別に描かれます。「すべて並べて見る」で見比べられます。</p>
+      <button class="btn wide" id="texsave" style="margin-top:6px">この一覧を画像で保存</button>
+      <div id="texgrid" class="texgrid"></div>
+    </div>
+    <div data-tab="file"><p class="label">メモリの写し（本物の骨）</p>
+      <label class="pick" style="display:inline-block">RAM ダンプ・VRAM ダンプを選ぶ<input id="memfile" type="file" hidden></label>
+      <p class="note"><b>VRAM ダンプ（1,048,576バイト）</b>も、ここに入れてください。キャラクターの模様（胸の紋章、ブーツの三角など）はテクスチャで、その絵は VRAM にあります。RAM ダンプには入っていません。両方入れると模様まで出ます。</p>
+      <div id="ramchar-box" hidden style="margin-top:8px">
+        <p class="label">写しの中にいた人</p>
+        <select id="ramchar" aria-label="写しの中にいた人"></select>
+        <p class="note">ディスクのファイルではなく、<b>写しに載っているモデルそのもの</b>を出しています。骨もモデルも同じ1つの写しの中にあるので、突き合わせが要りません。別の場面で取った2つの写しを比べたところ、ポーズは変わってもモデルは1バイトも変わりませんでした。</p>
+      </div>
+      <div id="borigin-box" hidden style="margin-top:8px">
+        <p class="label">回転の中心</p>
+        <select id="borigin" aria-label="回転の中心">
+          <option value="none">引かない（既定）</option>
+          <option value="box">区切りの箱の中心</option>
+          <option value="cent">区切りの重心</option>
+        </select>
+        <p class="note">区切りごとの中心を引いてから回す、という試みです。継ぎ目の伸びという数だけ見ると半分になります（1P 129→74、2P 95→52）が、<b>絵にすると姿は崩れます</b>（頭が消える）。数がよくなっても見た目が悪くなる例なので、既定は「引かない」です。</p>
+      </div>
+      <div id="boneshift-box" hidden style="margin-top:8px">
+        <p class="label">骨のずらし量</p>
+        <select id="boneshift" aria-label="骨のずらし量"></select>
+        <p class="note">区切り番号から骨の番号へ、いくつずらして引くか。読み取りの区切りは最初の命令5 で 1 になり、表Bの骨は 0 から並ぶので <b>-1</b> が筋の通る値です。人の形にならないときは、ここを変えて見比べてください。</p>
+      </div>
+      <div id="bonepick-box" hidden style="margin-top:8px">
+        <p class="label">使う骨の表（当ててみた結果の良い順）</p>
+        <select id="bonepick" aria-label="使う骨の表"></select>
+      </div>
+      <p class="note"><b>骨の行列は、ディスクにも実行ファイルにも入っていません。</b>描く直前にゲームが渡すもので、動いている最中にしか存在しません。だから、動かして止めて、その瞬間のメモリを取ります。<br>
+      <b>取り方（DuckStation）</b><br>
+      1. 設定 → 高度な設定 で「デバッグメニューを表示」をオンにする<br>
+      2. ゲームを起動し、メニューバーの <b>デバッグ → CPU デバッガ</b> を開く<br>
+      3. ツールバーの「＋」で、アドレス <b>8001F464</b>・種類「実行」のブレークポイントを追加する<br>
+      4. 再開して、<b>キャラクターが画面に出ている場面</b>まで進める。そこで止まります<br>
+      5. 止まったまま、<b>デバッグ → RAM ダンプ…</b>（2,097,152 バイトのファイルができます）<br>
+      6. そのファイルをここで選ぶ<br>
+      止める番地は <b>8001F464</b> にしてください。0x8001F44C だと、その手前の分岐で「骨が無いときは素通り」するので、表が空のまま止まります。<br>
+      セーブステートでも読めますが、描き終わったあとの瞬間だと表が空になっています。圧縮は <b>Deflate</b> か <b>なし</b> にしてください（既定の zstd はブラウザがほどけません）。</p>
+      <div class="note" id="mem-status"></div>
+    </div>
+    <div data-tab="file" id="t1slot-box" hidden><p class="label">顔の貼りもの・手の差し替え</p>
+      <select id="t1slot" aria-label="差し替えの部品"></select>
+      <p class="note">モデルには<b>差し替え用の枠</b>が入っています。8個は<b>右手4種・左手4種</b>で、対になるものは Z だけが符号ごと裏返り（左右の鏡像）、片側の4種は外へ届く長さが順に伸びます（握り拳→開いた手）。<b>同時に出すものではない</b>ので、組から1つずつだけ出します。残りの1組は<b>顔の貼りもの</b>で、面が全部テクスチャ、同じ形でパレットだけ違うものが2つ（表情違い）あります。<b>目・眉・傷・絆創膏</b>がここに入っています。頭の面とほぼ同じ所にあるので、少しだけ外へ押し出して描いています。<br>本体の腕は手首で切れていて、<b>手はこの差し替えの部品で付きます</b>。付く骨は、部品の頂点がいちばん重なる区切りで決めています（RAM の描く命令の並びと6つとも一致）。いまどの形を使っているかは写しからはまだ分からないので、既定は1番目です。</p>
+    </div>
+    <div data-tab="file" id="t1part-box" hidden><p class="label">ファイルの中のモデル</p>
+      <select id="t1part"></select>
+      <p class="note">1つのファイルに 0x90000000 のモデルが複数入っています。いちばん大きいものがキャラクター本体で、小さいものは部品の少ない簡易版のようです。</p>
+    </div>
+    <div data-tab="file"><p class="label">骨格の組み方</p>
+      <div class="seg" id="rig-seg"><button data-v="t2" aria-pressed="true">トバル2と同じ</button><button data-v="flat" aria-pressed="false">関節を使わない</button></div>
+      <p class="note">トバル2から持ってきた骨のつなぎ方で組みます。部品がばらける・重なるときは「関節を使わない」にすると、モデルの中の座標をそのまま出します。</p>
+    </div>
+    <div data-tab="look" id="look-bg"><p class="label">背景</p></div>
+    <div id="bgm-box" data-tab="look" hidden><p class="label">BGM</p>
+      <div class="bgm-row"><select id="bgm"><option value="-1">なし</option></select>
+      <input id="bgm-vol" type="range" min="0" max="1" step="0.05" value="0.6" aria-label="音量"></div>
+      <p class="note">ディスクの XA から見つけたチャンネルをそのまま鳴らします。曲になっていないものも混じります。</p>
+    </div>
+    <div data-tab="info"><p class="label">アーカイブ</p>
+      <select id="arc-pick" aria-label="アーカイブ"></select>
+      <p class="note">どのファイルがデータのまとまりかも自動で当てています。中身が 0% ばかりのときは変えてみてください。</p>
+    </div>
+    <div data-tab="info"><p class="label">解析結果</p>
+      <label class="filter"><input type="checkbox" id="rep-long"> 実行ファイルや生の中身まで出す（とても長い）</label>
+      <textarea class="report" id="report" readonly spellcheck="false"></textarea>
+      <button class="btn wide" id="copy-digest" style="margin-top:8px">作者に送るまとめをコピー（短い）</button>
+      <button class="btn wide" id="copy-report" style="margin-top:6px">この内容をぜんぶコピー</button>
+      <p class="label" style="margin-top:16px">ファイル表の候補</p>
+      <select id="table-pick" aria-label="ファイル表の候補"></select>
+      <p class="note">実行ファイルの中から「位置と大きさの並び」らしいところを探しています。モデルが出てこないときは別の候補に切り替えてみてください。</p>
+    </div>
+  </aside>
+  <section class="stage">
+    <canvas id="gl"></canvas>
+    <div class="hud" id="hud" hidden></div>
+    <div class="bgs" id="bg-box" hidden aria-label="背景の色"></div>
+    <div class="shot" id="shot-box" hidden>
+      <label id="gouraud-opt"><input type="checkbox" id="gouraud"> なめらかな陰影</label>
+      <label id="showall-opt"><input type="checkbox" id="showall"> 読めない部品も出す</label>
+      <label id="showonly-opt"><input type="checkbox" id="showonly"> 本体だけ</label>
+      <label id="segcol-opt"><input type="checkbox" id="segcol"> 骨ごとに色分け</label>
+      <label id="spread-opt"><input type="checkbox" id="spread"> 部品を並べる</label>
+      <label id="segspread-opt"><input type="checkbox" id="segspread"> 骨の区切りごとに並べる</label>
+      <label id="guessbone-opt"><input type="checkbox" id="guessbone"> 仮の骨組みで左右に開く（推測）</label>
+      <label id="chainbone-opt"><input type="checkbox" id="chainbone"> 骨の鎖をたどって積む（推測）</label>
+      <label id="flatcol-opt"><input type="checkbox" id="flatcol" checked> 色を面ごとにそろえる（平面塗り）</label>
+      <label id="colmode-opt">色の引き方
+        <select id="colmode">
+          <option value="">自動で決める</option>
+          <option value="頂点ごと">頂点ごと</option>
+          <option value="面の頂点ごと">面の頂点ごと</option>
+          <option value="面に1色">面に1色</option>
+          <option value="面に1色（四角は2枚ぶん）">面に1色（四角は2枚ぶん）</option>
+        </select></label>
+      <label id="hud-opt"><input type="checkbox" id="hudon" checked> 調べた結果を画面に出す</label>
+      <label id="gbamt-opt">開く量 <input type="range" id="gbamt" min="0" max="120" value="60" step="5"><span id="gbamt-v">0.60</span></label>
+      <button class="btn" id="viewreset" style="margin-left:6px">見た目をふつうに戻す</button>
+      <label><input type="checkbox" id="shot-clear"> 背景なし</label>
+      <label id="crop-opt"><input type="checkbox" id="shot-crop"> キャラだけ切り抜き</label>
+      <button id="shot">スクショを保存</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="busy" id="busy" hidden></div>
+    <div class="hint" id="hint" hidden>ドラッグで回転 ・ 右ドラッグ／Shift＋ドラッグで移動 ・ ホイールで拡大 ・ ダブルクリックで元に戻す</div>
+    <div class="drop" id="drop">
+      <div class="card">
+        <h2>ディスクイメージを読み込んでください</h2>
+        <p>手元の『トバルNo.1』の <code>.chd</code> か <code>.bin</code> をここにドロップするか、下のボタンから選んでください（iPhone は「ファイル」アプリから選べます）。ディスクから取り出した実行ファイル（<code>SLPS_004.00</code> など）とデータのまとまったファイルを2つ選んでも読めます。</p>
+        <p>ゲームのデータはこのページに一切含まれていません。読み込んだファイルはブラウザの中だけで読み取り、どこにも送信しません。</p>
+        <p>このビューアはトバルNo.1の中身を実行時に探しにいきます。うまく出てこないときは「解析」の内容をそのまま作者に送ってください。</p>
+        <label class="pick">ファイルを選ぶ<input id="file" type="file" multiple hidden></label>
+        <div class="err" id="err"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<nav class="tabbar" id="tabbar" aria-label="操作">
+  <button data-tab="file" aria-pressed="false"><span class="ic">📦</span>ファイル</button>
+  <button data-tab="look" aria-pressed="false"><span class="ic">🎨</span>背景・BGM</button>
+  <button data-tab="info" aria-pressed="false"><span class="ic">🔍</span>解析</button>
+</nav>
+<script>
+"use strict";

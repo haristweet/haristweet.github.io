@@ -1,0 +1,13 @@
+# 組み立てで作られるもの
+bundle.js
+index.html
+_*.js
+# mkfix.py が作る試験用の偽ファイル
+fixture_*.bin
+SLPM_860.33
+# 手元のゲームの写し（著作物なので入れない）
+dump*.bin
+vram*.bin
+*.sav
+# 画面の写し
+*.png
