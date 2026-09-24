@@ -2330,5 +2330,30 @@ console.log("\n[52] 差し替えの部品を、どの骨に付けるか");
   ok("  差し替えの部品が無ければ何も返さない", t1SlotAttach(d,[body])===null, "");
 }
 
+console.log("\n[53] 色の入っていない部品／合わない写しの骨");
+{
+  // 色の欄が全部 0 の部品は「色が無い」。1語でも違えば色がある
+  const d=new Uint8Array(64);
+  const o={base:0,colPtr:16};
+  ok("色の欄が全部 0 なら、色が入っていない", t1ColorBlank(d,o,[])===true, "");
+  d[40]=0x80;
+  ok("  1語でも違えば、色がある", t1ColorBlank(d,o,[])===false, "");
+  ok("  違う語が次の部品より後ろなら、見ない", t1ColorBlank(d,o,[40])===true, "");
+  // 写しの骨の本数と、本体の命令5 の回数が合わなければ外す
+  const m=new Uint8Array(64), mv=new DataView(m.buffer);
+  mv.setUint32(0x10,5,true); mv.setUint32(0x14,5,true); mv.setUint32(0x18,0,true);   // 命令5 を2回
+  const bone={m:[4096,0,0,0,4096,0,0,0,4096],t:[0,0,0]};
+  const info={};
+  t1SetBones([bone,bone,bone],true); state.t1BoneKeep=null;
+  t1BonesFit(m,[{base:0,nv:4,group:0}],info);
+  ok("骨3本・命令5が2回なら、骨を外す", T1_BONES===null&&!T1_BONES_REAL&&state.t1BoneKeep===true, String(T1_BONES&&T1_BONES.length));
+  ok("  外した理由を出す", /3本は当てていません.*2回/.test(info.t1BoneSkip||""), info.t1BoneSkip);
+  const info2={};
+  t1SetBones([bone,bone],true); state.t1BoneKeep=null;
+  t1BonesFit(m,[{base:0,nv:4,group:0}],info2);
+  ok("  本数が合えば当てたまま", T1_BONES&&T1_BONES.length===2&&!info2.t1BoneSkip, "");
+  t1SetBones(null,false); state.t1BoneKeep=null;
+}
+
 console.log(`\n${pass} ok / ${fail} fail`);
 process.exit(fail?1:0);

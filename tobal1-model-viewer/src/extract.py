@@ -9,7 +9,7 @@ def grab(sig):
             if d==0: break
         j+=1
     return src[i:j+1]
-open('_buildModel.js','w',encoding='utf-8').write(grab('function buildModel(raw){')+'\n'+grab('function buildModelInner(raw,info){')+'\n'+grab('function tryBody(out){')+'\n'+grab('function finishT1(r1,info,parts,b){')+'\n'+grab('function collectDump(blk,info){'))
+open('_buildModel.js','w',encoding='utf-8').write(grab('function buildModel(raw){')+'\n'+grab('function buildModelInner(raw,info){')+'\n'+grab('function t1BonesFit(d,objs,info){')+'\n'+grab('function tryBody(out){')+'\n'+grab('function finishT1(r1,info,parts,b){')+'\n'+grab('function collectDump(blk,info){'))
 open('_scoreTables.js','w',encoding='utf-8').write(
   'const GOOD_KIND={model:1,pack:1,lz:1,tim:1};\n'
   + grab('async function scoreOne(t){') + '\n'

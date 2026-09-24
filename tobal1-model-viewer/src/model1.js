@@ -415,7 +415,10 @@ function buildT1Mesh(d,objs){
                   const g=segLay?segLay.get(seg|0):null;
                   if(g) return [v[0]+g[0],v[1]+g[1],v[2]+g[2]];
                   return sp?[v[0]+sp[0],v[1]+sp[1],v[2]+sp[2]]:v };
-    const C0=i=>{ const q=o.base+o.colPtr+i*4;
+    // 色の欄が全部同じ値なら、色は入っていない（ディスクの #157 は全部 0。
+    // 対戦中にゲームが書き込む）。そのまま引くと真っ黒になるので灰色で描く
+    o.noColor=t1ColorBlank(d,o,partBases.length?partBases:objs.map(x=>x.base).filter(x=>x>0).sort((x,y)=>x-y));
+    const C0=o.noColor?()=>T1_NO_COLOR:i=>{ const q=o.base+o.colPtr+i*4;
                   return q+2<d.length?[d[q]/255,d[q+1]/255,d[q+2]/255]:[.5,.5,.5] };
     // 色の引き方は部品ごとに測って決める。頂点ごとでない部品を頂点番号で引くと模様が乱れる。
     //   頂点ごと     … 頂点番号で引く
@@ -477,7 +480,7 @@ function buildT1Mesh(d,objs){
                         :(pf.w===1||pf.tex)?pf.at
                         :pf.w===pf.corners?pf.at+j
                         :pf.at+1+j):null;
-          const tx=(T1_VRAM&&pf&&pf.tex)?t1FaceTex(d,o,pf,a.length):null;
+          const tx=(T1_VRAM&&pf&&pf.tex&&!o.noColor)?t1FaceTex(d,o,pf,a.length):null;
           const flat=t1Show.flatColor
             ?C0(pf?pc(t[0]):byFace?cface:byCorner?cbase:a[t[0]]):null;
           // 貼りものは法線の向きへ押し出す。押す量は骨の大きさに対して十分小さい
@@ -973,6 +976,17 @@ function t1VramRGBA(buf){
   return out;
 }
 let T1_VRAM=null;
+// 色の入っていない部品を塗る色
+const T1_NO_COLOR=[.62,.62,.6];
+// 部品の色の欄（次の部品の手前まで）が全部同じ語なら true。
+// 本物のモデルは白1色でも、テクスチャの u,v や面ごとの色が混じるので同じ語だけにはならない
+function t1ColorBlank(d,o,ends){
+  const st=o.base+o.colPtr; let en=d.length;
+  for(const b of ends) if(b>st&&b<en) en=b;
+  if(en-st<16) return false;
+  for(let q=st+4;q+4<=en;q++) if(d[q]!==d[q-4]) return false;
+  return true;
+}
 function t1SetVram(rgba){ T1_VRAM=rgba||null; return !!T1_VRAM }
 function t1ColWords(op,corners){
   const w=T1_COL_WORDS[op];

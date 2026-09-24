@@ -1,4 +1,4 @@
-const VERSION="v4.43.0";
+const VERSION="v4.44.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -34,7 +34,23 @@ function applyExeSizes(exe){
 // 読み込んだファイルからモデルを組む。途中で分かったことは info に集める（解析の表示用）
 function buildModel(raw){
   const info={parts:0,partSizes:[],texIndex:-1,decLen:0,ops:0,tris:0,bones:0,rig:state.rig};
+  // 写しの骨が合わないモデルでは、そのモデルを組むあいだだけ骨を外す（t1BonesFit）。
+  // 終わったら戻す。写しの人を選び直さなくても、合うモデルにはまた当たるように
+  const keep={list:T1_BONES,real:T1_BONES_REAL}; state.t1BoneKeep=null;
   try{ return buildModelInner(raw,info) }catch(err){ err.info=info; throw err }
+  finally{ if(state.t1BoneKeep) t1SetBones(keep.list,keep.real); state.t1BoneKeep=null }
+}
+// 写しの骨は、本体の命令5 の回数と本数が合うモデルにだけ当てる。
+// 合わないのに当てると、区切りが1つずつずれた骨が掛かって形が崩れる
+// （写しの 2P の骨34本が、区切り41のディスクの #157 に当たっていた）
+function t1BonesFit(d,objs,info){
+  if(!T1_BONES_REAL||!T1_BONES) return;
+  const body=objs.filter(o=>!o.group).sort((a,b)=>(b.nv||0)-(a.nv||0))[0];
+  const n=body?memCmd5Count(d,body.base):0;
+  if(!n||n===T1_BONES.length) return;
+  state.t1BoneKeep=true;
+  info.t1BoneSkip=`  写しの骨 ${T1_BONES.length}本は当てていません（このモデルの本体の命令5 は ${n}回で、本数が合わない）`;
+  t1SetBones(null,false);
 }
 function buildModelInner(raw,info){
   let parts=unpack(raw);
@@ -88,6 +104,7 @@ function buildModelInner(raw,info){
         +"（組の中は同じ形のポーズ違い＝手。実際に出るのは組から1つ）"; }
     if(!okObjs.length) continue;
     state.t1Objs={d:b.out,objs:okObjs};      // 骨を当てて確かめるときに使う
+    t1BonesFit(b.out,okObjs,info);
     // 仮の骨組み。本物の行列が無いときに、鏡の対を左右へ開いて形を出す（推測）
     // 鎖で積んだときの効きは、印が付いていなくても測る。
     // 「印を付けて見てください」と頼むのをやめるため。
@@ -161,6 +178,9 @@ function buildModelInner(raw,info){
                     :"  仮の骨組み: 鏡の対が見つからないので、何もしていません";
     }
     const r1=buildT1Mesh(b.out,okObjs);
+    info.t1BonesUsed=T1_BONES?T1_BONES.length:0;   // 画面の説明はこれで出す（組んだあと骨は戻すので）
+    { const n=okObjs.filter(o=>o.noColor).length;
+      if(n) info.t1NoColor=`  色が入っていない部品 ${n}/${okObjs.length}個（色の欄が全部同じ値。対戦中にゲームが書き込むらしい）。灰色で描いています`; }
     // 色をどう引いたかを出す。手で選んだ引き方が効いているのかどうかが
     // 画面から分からず、古い選択が残ったまま「色がおかしい」ことがあった
     { let byPlan=0;
@@ -594,7 +614,9 @@ function updateHud(){
   L.push((nm?`${nm}　`:"")+`#${e.no} sector ${e.sector}　三角形 ${inf.tris||0}`);
   if(inf.t1Read) L.push(`部品 ${inf.t1Read.run}/${inf.t1Read.total} 命令の列として実行`
     +(inf.t1Segs?`　骨の区切り ${inf.t1Segs}`:"")
-    +(T1_BONES?`　骨 ${T1_BONES.length} を当てている`:""));
+    +(inf.t1BonesUsed?`　骨 ${inf.t1BonesUsed} を当てている`:""));
+  if(inf.t1BoneSkip) L.push(inf.t1BoneSkip.trim());
+  if(inf.t1NoColor) L.push(inf.t1NoColor.trim());
   if(inf.t1Color) L.push(inf.t1Color.trim());
   for(const x of (inf.t1ColorLines||[]).slice(0,2)) L.push(x);
   box.textContent=L.join("\n");
@@ -628,7 +650,8 @@ function digestLines(){
     if(inf.t1Read&&inf.t1Read.run!=null)
       L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個／当てずっぽう ${inf.t1Read.guess}個`
         +(inf.t1Read.vari&&inf.t1Read.vari!=="既定"?`／頂点を入れる読み方: ${inf.t1Read.vari}`:""));
-    if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`+(T1_BONES?`／骨 ${T1_BONES.length}個 を当てている`:"／骨はまだ無い"));
+    if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`+(inf.t1BonesUsed?`／骨 ${inf.t1BonesUsed}個 を当てている`:"／骨はまだ無い"));
+    if(inf.t1BoneSkip) L.push(inf.t1BoneSkip);
     if(inf.t1SegLine&&inf.t1SegLine.length){
       if(inf.t1Guess) L.push(inf.t1Guess);
       if(inf.t1ChainTry) L.push(inf.t1ChainTry);
@@ -798,6 +821,7 @@ function updateReport(){
     if(inf.t1UV) L.push(inf.t1UV);
     if(inf.t1Read) L.push(`  部品の読み方: 命令の列として実行 ${inf.t1Read.run}個`
       +(inf.t1Read.guess?`／当てずっぽう ${inf.t1Read.guess}個（ここが多いと形が崩れる）`:"（全部きちんと読めています）"));
+    if(inf.t1NoColor) L.push(inf.t1NoColor);
     if(inf.t1Color) L.push(inf.t1Color);
     if(inf.t1ColorLines) inf.t1ColorLines.forEach(x=>L.push("    "+x));
     if(inf.t1OpArgs){
@@ -806,7 +830,7 @@ function updateReport(){
     }
     if(inf.t1Guess) L.push(inf.t1Guess);
     if(inf.t1Segs) L.push(`  骨の区切り: ${inf.t1Segs}個`
-      +(T1_BONES?`　メモリから取った骨 ${T1_BONES.length}個 を当てています`
+      +(inf.t1BonesUsed?`　メモリから取った骨 ${inf.t1BonesUsed}個 を当てています`
                :`　骨の行列がまだ無いので、手足は胴に畳み込まれたまま出ます`));
     if(inf.t1Read&&inf.t1Read.vari&&inf.t1Read.vari!=="既定")
       L.push(`    頂点を入れる命令の読み方: ${inf.t1Read.vari}`);
@@ -1086,6 +1110,7 @@ $("mdlgal").onclick=async()=>{
         +`\n三角形 ${info.tris}`+(sg?`　区切り${sg}`:"")
         +(r?`　命令${r.run}`+(r.guess?`／推測${r.guess}`:""):"");
       if(sg&&sg<20) cap.textContent+="\n選手ではないかも";
+      if(info.t1NoColor) cap.textContent+="\n色はディスクに無い（灰色で表示）";
       cap.style.whiteSpace="pre-line";
       if(r&&r.guess) cap.style.color="#c2683f";   // 当てずっぽうが混じるものは目立たせる
       cv.style.cursor="pointer";
