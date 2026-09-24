@@ -199,7 +199,7 @@ canvas:active{cursor:grabbing}
     </div>
     <div data-tab="file" id="t1slot-box" hidden><p class="label">顔の貼りもの・手の差し替え</p>
       <select id="t1slot" aria-label="差し替えの部品"></select>
-      <p class="note">モデルには<b>差し替え用の枠</b>が入っています。8個は<b>右手4種・左手4種</b>で、対になるものは Z だけが符号ごと裏返り（左右の鏡像）、片側の4種は外へ届く長さが順に伸びます（握り拳→開いた手）。<b>同時に出すものではない</b>ので、組から1つずつだけ出します。残りの1組は<b>顔の貼りもの</b>で、面が全部テクスチャ、同じ形でパレットだけ違うものが2つ（表情違い）あります。<b>目・眉・傷・絆創膏</b>がここに入っています。頭の面とほぼ同じ所にあるので、少しだけ外へ押し出して描いています。<br>手の組は<b>本体にも同じ手が入っている</b>ので、足すと二重になります。既定では出しません。</p>
+      <p class="note">モデルには<b>差し替え用の枠</b>が入っています。8個は<b>右手4種・左手4種</b>で、対になるものは Z だけが符号ごと裏返り（左右の鏡像）、片側の4種は外へ届く長さが順に伸びます（握り拳→開いた手）。<b>同時に出すものではない</b>ので、組から1つずつだけ出します。残りの1組は<b>顔の貼りもの</b>で、面が全部テクスチャ、同じ形でパレットだけ違うものが2つ（表情違い）あります。<b>目・眉・傷・絆創膏</b>がここに入っています。頭の面とほぼ同じ所にあるので、少しだけ外へ押し出して描いています。<br>本体の腕は手首で切れていて、<b>手はこの差し替えの部品で付きます</b>。付く骨は、部品の頂点がいちばん重なる区切りで決めています（RAM の描く命令の並びと6つとも一致）。いまどの形を使っているかは写しからはまだ分からないので、既定は1番目です。</p>
     </div>
     <div data-tab="file" id="t1part-box" hidden><p class="label">ファイルの中のモデル</p>
       <select id="t1part"></select>
@@ -2353,14 +2353,12 @@ function t1ObjectOffsets(d){
 //  左右の手で、片側4種は外へ届く長さが 211→229→288→307 と伸びる。
 //  握り拳から開いた手までの差し替えである。
 //
-//  だから全部いっぺんに描いてはいけない（手が片側に4つ重なる）。
-//  そしてゲーム自身が「本体だけ」と言っていた:
-//  部品の表（表C）に入っていたのは本体1個だけで、あとは全部 0 だった。
-//  本体の命令5の回数（1P 40・2P 34）が、骨の表の長さとぴったり一致する
+//  だから全部いっぺんに描いてはいけない（手が片側に4つ重なる）。各組から1つずつ出す。
+//  本体には手が無い（前腕の先で切れている）ので、手の組は出さないと手が抜ける。
+//  ゲームも手と顔は本体とは別の回に描いている（RAM の描く命令の並び、t1SlotAttach の注）
 // ============================================================
 // その部品が「貼りもの」か（面の命令が全部テクスチャ＝顔の目・眉・傷）。
-// 組み立てる前に決めたいので、o.run ではなく命令の列を直接歩く。
-// 手の組は本体にも同じ手が入っているので、足すと二重になる
+// 組み立てる前に決めたいので、o.run ではなく命令の列を直接歩く
 function t1PartIsDecal(d,o){
   if(o.run&&o.run.faces&&o.run.faces.length)
     return o.run.faces.every(f=>T1_COL_TEX[f.op]);
@@ -2381,18 +2379,20 @@ function t1PartIsDecal(d,o){
 function t1GroupIsDecal(list,d){
   return list.length>0&&list.every(o=>t1PartIsDecal(d,o));
 }
+// slot: 0〜 ＝ 各組からその番目（組より大きければ最後）、-1 ＝ 本体だけ、
+//       -2 ＝ 貼りもの（顔）だけで手は出さない。100以上は前の版の値なので 100 を引く
 function t1PickParts(objs,slot,d){
   const body=objs.filter(o=>!o.group);
   if(!body.length) return objs;                 // 組が付いていなければ、そのまま
-  if(slot==null||slot<0) return body;           // 「出さない」なら本体だけ
+  if(slot==null||slot===-1||slot<-2) return body;   // 「出さない」なら本体だけ
+  const decalOnly=slot===-2;
+  const pick=decalOnly?0:slot>=100?slot-100:slot;
   const by=new Map();
   for(const o of objs){ if(!o.group) continue;
     const a=by.get(o.group)||[]; a.push(o); by.set(o.group,a) }
   const out=body.slice();
-  const all=slot>=100;                          // 100以上なら、貼りもの以外の組も出す
-  const pick=all?slot-100:slot;
   for(const [,a] of [...by].sort((x,y)=>x[0]-y[0])){
-    if(!all&&!t1GroupIsDecal(a,d)) continue;    // 既定は貼りものだけ（手は二重になる）
+    if(decalOnly&&!t1GroupIsDecal(a,d)) continue;
     out.push(a[Math.min(pick,a.length-1)]);     // 組ごとに1つだけ
   }
   return out;
@@ -3193,17 +3193,26 @@ let T1_BONES_REAL=false;         // メモリから取れた本物か（本物�
 // ============================================================
 //  差し替えの部品（手・顔）を、どの骨に付けるか
 //
-//  差し替えの部品は命令5 が1回しかない。ゲームは別の回に、その部品専用の
-//  表を立てて描いているので、どの骨に付くかは部品の中に書かれていない。
-//  そのままだと全部が骨0（腰の付け根）に付いてしまう。
+//  差し替えの部品は命令5 が1回しかなく、どの骨に付くかは部品の中に
+//  書かれていない。そのままだと全部が骨0（腰の付け根）に付いてしまう。
 //
-//  頂点は本体と同じ空間に入っているので、**箱の中心がいちばん近い
-//  本体の区切り**を選べば決まる。実測（dump3）:
-//    1P 顔 → 区切り40（骨39）　2P 顔 → 区切り34（骨33）
-//  これは別の測り方（40本の骨を1本ずつ当てて、体のいちばん上に
-//  いちばん近づくものを探す）と同じ答えだった。
-//    1P 骨39 で頭の中心から163（骨0 なら546）／2P 骨33 で121（骨0 なら480）
-//  手も左右の対になる（1P 骨33 と 骨27、2P 骨27 と 骨21）
+//  答えは RAM の「描く命令の並び」にあった（dump3・1P は 0x801E69C4 から）:
+//    6, 骨の行列, 別の行列, 0x10, 0, 右手1, 右手2, 右手3
+//    6, 骨の行列, 別の行列, 0x10, 0, 左手1, 左手2, 左手3
+//    6, 骨の行列, 別の行列, 顔
+//  その行列が表B の何番目かを数えると
+//    1P 右手 → 骨30　左手 → 骨36　顔 → 骨39
+//    2P 右手 → 骨24　左手 → 骨30　顔 → 骨33
+//  どれも腕の鎖（付け根→肩→肘→手首）のいちばん先の骨で、顔は頭の骨。
+//
+//  部品の頂点は、付く骨の区切りと**同じ骨の座標**で書かれている（手は X が
+//  11 から始まる＝手首から先。その区切りの本体の頂点も X が 0 から）。
+//  だから、部品の頂点がいちばん近くに重なる区切りを選べば、RAM が無くても
+//  決まる。各頂点から区切りのいちばん近い頂点までの距離の、近いほう 1/4 の平均で比べる
+//  （手首のつなぎ目だけ重なればよい）。上の6つとも RAM の答えと一致した。
+//
+//  前の版は「箱の中心がいちばん近い区切り」で選んでいて、手は上腕（1P 区切り34・28）
+//  に付いていた。腕から緑の破片が飛び出していたのはこれ
 // ============================================================
 function t1SlotAttach(d,objs){
   const body=objs.find(o=>!o.group&&o.run&&o.run.vseg);
@@ -3211,24 +3220,23 @@ function t1SlotAttach(d,objs){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
   const V=(o,i)=>{ const q=o.base+o.vertPtr+i*8;
     return q+6<=d.length?[dv.getInt16(q,true),dv.getInt16(q+2,true),dv.getInt16(q+4,true)]:null };
-  const bx=new Map(), vs=body.run.vseg;
+  const segV=new Map(), vs=body.run.vseg;
   for(let i=0;i<vs.length;i++){ const sg=vs[i]; if(sg==null) continue; const v=V(body,i); if(!v) continue;
-    let b=bx.get(sg); if(!b){ b={mn:[1e9,1e9,1e9],mx:[-1e9,-1e9,-1e9]}; bx.set(sg,b) }
-    for(let k=0;k<3;k++){ if(v[k]<b.mn[k])b.mn[k]=v[k]; if(v[k]>b.mx[k])b.mx[k]=v[k] } }
-  if(!bx.size) return null;
+    const a=segV.get(sg)||[]; a.push(v); segV.set(sg,a) }
+  if(!segV.size) return null;
   const out=new Map();
   for(const o of objs){
     if(!o.group||!o.run) continue;
-    const mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
-    for(let i=0;i<o.nv;i++){ const v=V(o,i); if(!v) continue;
-      for(let k=0;k<3;k++){ if(v[k]<mn[k])mn[k]=v[k]; if(v[k]>mx[k])mx[k]=v[k] } }
-    if(mn[0]>mx[0]) continue;
-    const mid=mn.map((v,k)=>(v+mx[k])/2);
+    const P=[]; for(let i=0;i<o.nv;i++){ const v=V(o,i); if(v) P.push(v) }
+    if(!P.length) continue;
     let best=null;
-    for(const [sg,b] of bx){
-      const m=b.mn.map((v,k)=>(v+b.mx[k])/2);
-      const dd=Math.hypot(m[0]-mid[0],m[1]-mid[1],m[2]-mid[2]);
-      if(!best||dd<best.d) best={seg:sg,d:dd};
+    for(const [sg,a] of segV){
+      const ds=P.map(p=>{ let m=1e9;
+        for(const v of a){ const e=Math.hypot(p[0]-v[0],p[1]-v[1],p[2]-v[2]); if(e<m) m=e }
+        return m }).sort((x,y)=>x-y);
+      const h=ds.slice(0,Math.max(1,ds.length>>2));
+      const sc=h.reduce((t,x)=>t+x,0)/h.length;
+      if(!best||sc<best.d) best={seg:sg,d:sc};
     }
     if(best) out.set(o.base,best.seg);
   }
@@ -4824,7 +4832,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.41.0";
+const VERSION="v4.42.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -4896,8 +4904,7 @@ function buildModelInner(raw,info){
     const offs=t1ObjectOffsets(b.out);
     const objs=offs.map((p,i)=>{ const o=readT1Object(b.out,p); if(o) o.group=offs.group?offs.group[i]:0; return o }).filter(Boolean);
     const allObjs=objs.filter(o=>o.ok);
-    // 描くのは本体だけ。組（差し替えの枠）を全部描くと、手が片側に4つ重なる。
-    // ゲーム自身の部品の表（表C）に入っていたのも本体1個だけだった
+    // 組（差し替えの枠）は各組から1つだけ描く。全部描くと、手が片側に4つ重なる
     const okObjs=t1PickParts(allObjs,state.t1Slot,b.out);
     { const by=new Map();
       for(const o of allObjs){ if(!o.group) continue; by.set(o.group,(by.get(o.group)||0)+1) }
@@ -6723,17 +6730,18 @@ function fillRamChar(){
   sel.innerHTML=c.map((x,i)=>`<option value="${i}">${x.who}　モデル ${hex(x.model.at)}　骨 ${x.bones.list.length}本</option>`).join("");
   sel.value=String(state.ramSel<0?0:state.ramSel);
 }
-// 差し替えの組から何番目を出すか。既定は「出さない（本体だけ）」
+// 差し替えの組から何番目を出すか。既定は各組の1つ目（手と顔が付く）
 function fillT1Slot(inf){
   const box=$("t1slot-box"), sel=$("t1slot");
   if(!box||!sel) return;
   const n=inf&&inf.t1SlotMax||0;
   if(n<1){ box.hidden=true; return }
   box.hidden=false;
-  sel.innerHTML=Array.from({length:n},(_,i)=>`<option value="${i}">顔の貼りもの ${i+1} 番目${i?"":"（既定）"}</option>`).join("")
-    +Array.from({length:n},(_,i)=>`<option value="${100+i}">手も出す（${i+1} 番目・本体の手と二重になります）</option>`).join("")
-    +'<option value="-1">出さない（本体だけ・ゲームの1回ぶんと同じ）</option>';
-  sel.value=String(state.t1Slot);
+  sel.innerHTML=Array.from({length:n},(_,i)=>`<option value="${i}">手の形 ${i+1}${i?"":"（既定）"}</option>`).join("")
+    +'<option value="-2">手を出さない（顔の貼りものだけ）</option>'
+    +'<option value="-1">出さない（本体だけ）</option>';
+  const v=state.t1Slot>=100?state.t1Slot-100:state.t1Slot;
+  sel.value=String(v>=n?n-1:v);
 }
 // 骨の表を選び直せるようにする。自動で選んだものが気に入らないときのため
 function fillBonePick(){
