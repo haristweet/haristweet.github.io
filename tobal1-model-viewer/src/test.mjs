@@ -2386,5 +2386,14 @@ console.log("\n[54] 命令14・15（法線の無いテクスチャの面）");
   ok("  命令15 は四角 16B", T1_FACE_OP[15]&&T1_FACE_OP[15].size===16&&T1_FACE_OP[15].n===4, "");
 }
 
+console.log("\n[55] 最初に正面を向ける");
+{
+  const I={m:[4096,0,0,0,4096,0,0,0,4096],t:[0,0,0]};
+  const Y180={m:[-4096,0,0,0,4096,0,0,0,-4096],t:[0,0,0]};
+  ok("回転なしの骨0 なら、正面は +Z と +Y の間（yaw = π/2）", Math.abs(t1FrontYaw([I])-Math.PI/2)<1e-6, t1FrontYaw([I]));
+  ok("  Y まわりに半回転すると、反対を向く", Math.abs(t1FrontYaw([Y180])+Math.PI/2)<1e-6, t1FrontYaw([Y180]));
+  ok("  骨が無ければ決めない", t1FrontYaw(null)===null, "");
+}
+
 console.log(`\n${pass} ok / ${fail} fail`);
 process.exit(fail?1:0);

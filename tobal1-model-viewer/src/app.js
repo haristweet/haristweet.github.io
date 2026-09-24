@@ -1,4 +1,4 @@
-const VERSION="v4.49.0";
+const VERSION="v4.50.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -1347,6 +1347,8 @@ async function selectRamChar(k){
     if(info.error){ state.selErr=info.error; clearMesh() } else upload(mesh);
     // 向きを正面に戻す。写しの骨を当てると縦に伸びるので、寄りすぎて見切れる
     if(typeof resetView==="function"){ resetView(); view.dist=1.5 }
+    // 最初から正面を向ける。骨はワールドの向きなので、2P は後ろ向きで出ていた
+    { const y=t1FrontYaw(bb&&bb.list); if(y!=null){ view.yaw=y; draw() } }
     draw();
   }catch(err){
     state.selErr=err.message; state.selInfo=err.info||null; console.error(err);

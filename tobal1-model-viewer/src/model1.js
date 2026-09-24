@@ -973,6 +973,13 @@ const T1_COL_UVONLY={14:true,15:true};    // 色の語が無く、語0から u,v
 // 同じ所にあると内側に埋まって見えない。モデルの大きさは背が800前後なので、
 // 6 は目で見て分からない程度
 let T1_DECAL_PUSH=6;
+// キャラクターの正面の向き（カメラの yaw）。骨0 の (0,1,1) を水平にしたもの。
+// 写し9組・18体で、顔の貼りものから出した向きと 0.45 以内で合った（1P は 0 付近、2P は π 付近）
+function t1FrontYaw(bones){
+  const R=bones&&bones[0]&&bones[0].m; if(!R) return null;
+  const x=R[1]+R[2], z=R[7]+R[8];
+  return Math.hypot(x,z)>1e-6?Math.atan2(z,x):null;
+}
 // 本体の区切りごとの頂点の中心（ファイルの座標のまま）。本体＝組の無い部品
 function t1SegCenters(d,objs){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength), m=new Map();

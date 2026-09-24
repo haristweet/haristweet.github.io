@@ -2487,6 +2487,13 @@ const T1_COL_UVONLY={14:true,15:true};    // 色の語が無く、語0から u,v
 // 同じ所にあると内側に埋まって見えない。モデルの大きさは背が800前後なので、
 // 6 は目で見て分からない程度
 let T1_DECAL_PUSH=6;
+// キャラクターの正面の向き（カメラの yaw）。骨0 の (0,1,1) を水平にしたもの。
+// 写し9組・18体で、顔の貼りものから出した向きと 0.45 以内で合った（1P は 0 付近、2P は π 付近）
+function t1FrontYaw(bones){
+  const R=bones&&bones[0]&&bones[0].m; if(!R) return null;
+  const x=R[1]+R[2], z=R[7]+R[8];
+  return Math.hypot(x,z)>1e-6?Math.atan2(z,x):null;
+}
 // 本体の区切りごとの頂点の中心（ファイルの座標のまま）。本体＝組の無い部品
 function t1SegCenters(d,objs){
   const dv=new DataView(d.buffer,d.byteOffset,d.byteLength), m=new Map();
@@ -4062,7 +4069,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.49.0";
+const VERSION="v4.50.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5411,6 +5418,8 @@ async function selectRamChar(k){
     if(info.error){ state.selErr=info.error; clearMesh() } else upload(mesh);
     // 向きを正面に戻す。写しの骨を当てると縦に伸びるので、寄りすぎて見切れる
     if(typeof resetView==="function"){ resetView(); view.dist=1.5 }
+    // 最初から正面を向ける。骨はワールドの向きなので、2P は後ろ向きで出ていた
+    { const y=t1FrontYaw(bb&&bb.list); if(y!=null){ view.yaw=y; draw() } }
     draw();
   }catch(err){
     state.selErr=err.message; state.selInfo=err.info||null; console.error(err);
