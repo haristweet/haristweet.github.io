@@ -2,24 +2,24 @@
 //   テクスチャあり: パレット[番号][テクスチャの 4bit]×(環境＋拡散×max(0,法線・光))、テクスチャなし: 36×(同じ)
 //   色＝色の変換表[チャンネル][色 RAM の 5bit][明るさ]。影は黒の半透明で、体と背景のあとに描く
 const VGL_VS=`
-attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol; attribute vec2 aLoc; attribute vec4 aOrgSize; attribute vec3 aMisc;
+attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol; attribute vec2 aLoc; attribute vec4 aOrgSize; attribute vec3 aMisc; attribute vec2 aLk;
 uniform mat4 uView; uniform vec2 uFocal; uniform vec3 uLight;
-varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vDot;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vDot; varying vec2 vLk;
 void main(){
   vec4 p=uView*vec4(aPos,1.0); vec3 n=normalize(mat3(uView)*aNrm);
   vDot=dot(n,uLight);
-  vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc;
+  vLk=aLk; vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc;
   // 奥行き 0.05〜100 を -1〜1 に
   gl_Position=vec4(uFocal.x*p.x, uFocal.y*p.y, (p.z*100.05-10.0)/99.95, p.z);
 }`;
 const VGL_FS=`
 precision highp float;
 uniform sampler2D uTex, uClut, uXlat; uniform vec3 uLumaK; uniform float uShadow, uCut;
-varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vDot;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vDot; varying vec2 vLk;
 float xl(float row,float luma){ return texture2D(uXlat,vec2((luma+0.5)/64.0,(row+0.5)/96.0)).r; }
 void main(){
   if(uShadow>0.5){ gl_FragColor=vec4(0.0,0.0,0.0,0.45); return; }
-  float k=uLumaK.x+uLumaK.y*max(0.0,vDot), luma;
+  float k=vLk.x+vLk.y*max(0.0,vDot), luma;
   if(vMisc.x>0.5){
     vec2 t=vOrgSize.xy+mod(vLoc,vOrgSize.zw);
     float x=floor(t.x)+vMisc.y*512.0, y=floor(t.y);
@@ -62,13 +62,13 @@ function vglNew(canvas){
       if(!counts[0]&&!counts[1]) return; gl.enable(gl.DEPTH_TEST); gl.useProgram(pr);
       const u=n=>gl.getUniformLocation(pr,n);
       gl.uniformMatrix4fv(u("uView"),false,view); gl.uniform2fv(u("uFocal"),focal); gl.uniform3fv(u("uLight"),light);
-      gl.uniform3f(u("uLumaK"),BUILD_AMB,BUILD_DIF,BUILD_FLAT); gl.uniform1f(u("uCut"),vglCut);
+      gl.uniform3f(u("uLumaK"),0.0,0.0,BUILD_FLAT); gl.uniform1f(u("uCut"),vglCut);
       gl.uniform1i(u("uTex"),0); gl.uniform1i(u("uClut"),1); gl.uniform1i(u("uXlat"),2);
       const F=4, S=BUILD_STRIDE*F;
       for(let i=0;i<2;i++){ if(!counts[i]) continue;
         gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]);
         const at=(n,k,o)=>{ const l=gl.getAttribLocation(pr,n); if(l<0) return; gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,k,gl.FLOAT,false,S,o*F) };
-        at("aPos",3,0); at("aNrm",3,3); at("aCol",3,6); at("aLoc",2,9); at("aOrgSize",4,11); at("aMisc",3,15);
+        at("aPos",3,0); at("aNrm",3,3); at("aCol",3,6); at("aLoc",2,9); at("aOrgSize",4,11); at("aMisc",3,15); at("aLk",2,19);
         gl.uniform1f(u("uShadow"),i);
         if(i){ gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false) }
         gl.drawArrays(gl.TRIANGLES,0,counts[i]);

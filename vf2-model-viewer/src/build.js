@@ -1,6 +1,6 @@
 // 場面の2人（と背景）を、描くための頂点の配列にする（WebGL でも node の台本でも使う）。
-// 頂点ごとに 18 個の数: 位置3（カメラの座標）・法線3・色 RAM の 5bit×3・テクスチャの loc2・org2・size2・テクスチャ（0 なし・1 あり・2 あり＋値 15 を抜く）・ページ・パレット番号
-const BUILD_STRIDE=18;
+// 頂点ごとに 21 個の数: 位置3（カメラの座標）・法線3・色 RAM の 5bit×3・テクスチャの loc2・org2・size2・テクスチャ（0 なし・1 あり・2 あり＋値 15 を抜く）・ページ・パレット番号・面の頭の bit10-11 と bit17-22（(h>>10&3)|((h>>17&63)<<2)）・明るさの係数2（環境・拡散）
+const BUILD_STRIDE=21;
 // models: {0: 1P のモデル, 1: 2P のモデル, stage: ステージのモデル}（どれも Map 番号→モデル）。
 // opt.which: "body"（影以外）か "shadow"（影だけ）。opt.players: [1P を出すか, 2P を出すか]。opt.stage: 背景を出すか（false で出さない）
 function sceneMesh(sc,col,models,opt={}){
@@ -22,18 +22,21 @@ function sceneMesh(sc,col,models,opt={}){
       const n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=Math.hypot(...n)||1; for(let i=0;i<3;i++) n[i]/=l;
       const c16=cram.getUint16((p.attr[3]>>6&1023)*2,true), c5=[c16&31,c16>>5&31,c16>>10&31];
       let tx=null; if(p.attr[0]>>14&1) tx=texCoords(p.attr,p.uv);
+      const lk=BUILD_LIGHT[p.h>>18&31]||BUILD_LIGHT_ALL;
       const vert=k=>{ out.push(...q[k],...n,...c5);
-        if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,(p.attr[0]>>13&1)?2:1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0) };
+        if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,(p.attr[0]>>13&1)?2:1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0);
+        out.push((p.h>>10&3)|((p.h>>17&63)<<2),...lk) };
       for(let i=1;i+1<q.length;i++){ vert(0); vert(i); vert(i+1) }
     }
   }
   return {data:new Float32Array(out), count:out.length/BUILD_STRIDE, missing:[...missing], shadows};
 }
-// 明るさ（0〜63）。写真の画素と照らして当てはめた式（light.mjs。3つの写しで、テクスチャの面の明るさのずれが平均 6〜12 段）:
-//   テクスチャあり: パレットの値×(0.88＋0.82×max(0, 法線・光))。テクスチャなし: 36×(同じ)。法線は頂点の並びから、光は命令 10 の向き
-// ゲームの本当の計算（VU1）はまだ読んでいない
-const BUILD_AMB=0.88, BUILD_DIF=0.82, BUILD_FLAT=36;
-function buildLuma(texVal,dot){ const k=BUILD_AMB+BUILD_DIF*Math.max(0,dot); return Math.max(0,Math.min(63,Math.floor((texVal<0?BUILD_FLAT:texVal)*k))) }
+// 明るさ（0〜63）＝パレットの値（テクスチャなしは 36）×(環境＋拡散×max(0, 法線・光))。法線は頂点の並びから、光は命令 10 の向き。
+// 環境・拡散の係数は、面の頭の bit18-22（面ごとの光の設定。ゲームの値）ごとに、5つの写しの写真の画素（キャラと背景、約 67 万）に当てはめたもの（light.mjs）。
+// 設定 31（光の影響を受けない。パレット 1 の値 49〜56 がそのまま色の変換表の特別な欄＝木の緑などを指す）は 1.0 に固定。
+// 当てはめに使わなかった写しで、写真とのずれが全体の係数より減るのを確かめた（04・05: 5.72→3.96、背景込みの 05: 7.99→6.91）。ゲームの本当の計算（VU1）は読んでいない
+const BUILD_LIGHT={2:[1.33,0],3:[0.7,0.57],4:[0.56,1.08],5:[0.67,1.01],6:[0.47,1.4],7:[1.03,0.84],10:[1.25,0.57],11:[0.72,1.09],16:[1.43,0.14],19:[0.35,0.49],21:[1.21,0],28:[1.66,0],31:[1,0]}, BUILD_LIGHT_ALL=[1.12,0.02], BUILD_FLAT=36;
+function buildLuma(texVal,dot,lk){ const k=lk[0]+lk[1]*Math.max(0,dot); return Math.max(0,Math.min(63,Math.floor((texVal<0?BUILD_FLAT:texVal)*k))) }
 // OBJ ファイル（展開後のモデルの一覧）の候補から、そのプレイヤーが描いた番号をいちばん多く含むものを選ぶ
 // （1P の表にはステージの部品も入っているので「全部」は求めない。同じ数なら先の候補＝1色目）。skip の番号は数えない
 function sceneChooseModels(sc,player,candidates,skip){

@@ -1067,8 +1067,8 @@ function sceneWhichRob(tex,robs){
   return res;
 }
 // 場面の2人（と背景）を、描くための頂点の配列にする（WebGL でも node の台本でも使う）。
-// 頂点ごとに 18 個の数: 位置3（カメラの座標）・法線3・色 RAM の 5bit×3・テクスチャの loc2・org2・size2・テクスチャ（0 なし・1 あり・2 あり＋値 15 を抜く）・ページ・パレット番号
-const BUILD_STRIDE=18;
+// 頂点ごとに 21 個の数: 位置3（カメラの座標）・法線3・色 RAM の 5bit×3・テクスチャの loc2・org2・size2・テクスチャ（0 なし・1 あり・2 あり＋値 15 を抜く）・ページ・パレット番号・面の頭の bit10-11 と bit17-22（(h>>10&3)|((h>>17&63)<<2)）・明るさの係数2（環境・拡散）
+const BUILD_STRIDE=21;
 // models: {0: 1P のモデル, 1: 2P のモデル, stage: ステージのモデル}（どれも Map 番号→モデル）。
 // opt.which: "body"（影以外）か "shadow"（影だけ）。opt.players: [1P を出すか, 2P を出すか]。opt.stage: 背景を出すか（false で出さない）
 function sceneMesh(sc,col,models,opt={}){
@@ -1090,18 +1090,21 @@ function sceneMesh(sc,col,models,opt={}){
       const n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=Math.hypot(...n)||1; for(let i=0;i<3;i++) n[i]/=l;
       const c16=cram.getUint16((p.attr[3]>>6&1023)*2,true), c5=[c16&31,c16>>5&31,c16>>10&31];
       let tx=null; if(p.attr[0]>>14&1) tx=texCoords(p.attr,p.uv);
+      const lk=BUILD_LIGHT[p.h>>18&31]||BUILD_LIGHT_ALL;
       const vert=k=>{ out.push(...q[k],...n,...c5);
-        if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,(p.attr[0]>>13&1)?2:1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0) };
+        if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,(p.attr[0]>>13&1)?2:1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0);
+        out.push((p.h>>10&3)|((p.h>>17&63)<<2),...lk) };
       for(let i=1;i+1<q.length;i++){ vert(0); vert(i); vert(i+1) }
     }
   }
   return {data:new Float32Array(out), count:out.length/BUILD_STRIDE, missing:[...missing], shadows};
 }
-// 明るさ（0〜63）。写真の画素と照らして当てはめた式（light.mjs。3つの写しで、テクスチャの面の明るさのずれが平均 6〜12 段）:
-//   テクスチャあり: パレットの値×(0.88＋0.82×max(0, 法線・光))。テクスチャなし: 36×(同じ)。法線は頂点の並びから、光は命令 10 の向き
-// ゲームの本当の計算（VU1）はまだ読んでいない
-const BUILD_AMB=0.88, BUILD_DIF=0.82, BUILD_FLAT=36;
-function buildLuma(texVal,dot){ const k=BUILD_AMB+BUILD_DIF*Math.max(0,dot); return Math.max(0,Math.min(63,Math.floor((texVal<0?BUILD_FLAT:texVal)*k))) }
+// 明るさ（0〜63）＝パレットの値（テクスチャなしは 36）×(環境＋拡散×max(0, 法線・光))。法線は頂点の並びから、光は命令 10 の向き。
+// 環境・拡散の係数は、面の頭の bit18-22（面ごとの光の設定。ゲームの値）ごとに、5つの写しの写真の画素（キャラと背景、約 67 万）に当てはめたもの（light.mjs）。
+// 設定 31（光の影響を受けない。パレット 1 の値 49〜56 がそのまま色の変換表の特別な欄＝木の緑などを指す）は 1.0 に固定。
+// 当てはめに使わなかった写しで、写真とのずれが全体の係数より減るのを確かめた（04・05: 5.72→3.96、背景込みの 05: 7.99→6.91）。ゲームの本当の計算（VU1）は読んでいない
+const BUILD_LIGHT={2:[1.33,0],3:[0.7,0.57],4:[0.56,1.08],5:[0.67,1.01],6:[0.47,1.4],7:[1.03,0.84],10:[1.25,0.57],11:[0.72,1.09],16:[1.43,0.14],19:[0.35,0.49],21:[1.21,0],28:[1.66,0],31:[1,0]}, BUILD_LIGHT_ALL=[1.12,0.02], BUILD_FLAT=36;
+function buildLuma(texVal,dot,lk){ const k=lk[0]+lk[1]*Math.max(0,dot); return Math.max(0,Math.min(63,Math.floor((texVal<0?BUILD_FLAT:texVal)*k))) }
 // OBJ ファイル（展開後のモデルの一覧）の候補から、そのプレイヤーが描いた番号をいちばん多く含むものを選ぶ
 // （1P の表にはステージの部品も入っているので「全部」は求めない。同じ数なら先の候補＝1色目）。skip の番号は数えない
 function sceneChooseModels(sc,player,candidates,skip){
@@ -1114,24 +1117,24 @@ function sceneChooseModels(sc,player,candidates,skip){
 //   テクスチャあり: パレット[番号][テクスチャの 4bit]×(環境＋拡散×max(0,法線・光))、テクスチャなし: 36×(同じ)
 //   色＝色の変換表[チャンネル][色 RAM の 5bit][明るさ]。影は黒の半透明で、体と背景のあとに描く
 const VGL_VS=`
-attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol; attribute vec2 aLoc; attribute vec4 aOrgSize; attribute vec3 aMisc;
+attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol; attribute vec2 aLoc; attribute vec4 aOrgSize; attribute vec3 aMisc; attribute vec2 aLk;
 uniform mat4 uView; uniform vec2 uFocal; uniform vec3 uLight;
-varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vDot;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vDot; varying vec2 vLk;
 void main(){
   vec4 p=uView*vec4(aPos,1.0); vec3 n=normalize(mat3(uView)*aNrm);
   vDot=dot(n,uLight);
-  vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc;
+  vLk=aLk; vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc;
   // 奥行き 0.05〜100 を -1〜1 に
   gl_Position=vec4(uFocal.x*p.x, uFocal.y*p.y, (p.z*100.05-10.0)/99.95, p.z);
 }`;
 const VGL_FS=`
 precision highp float;
 uniform sampler2D uTex, uClut, uXlat; uniform vec3 uLumaK; uniform float uShadow, uCut;
-varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vDot;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vDot; varying vec2 vLk;
 float xl(float row,float luma){ return texture2D(uXlat,vec2((luma+0.5)/64.0,(row+0.5)/96.0)).r; }
 void main(){
   if(uShadow>0.5){ gl_FragColor=vec4(0.0,0.0,0.0,0.45); return; }
-  float k=uLumaK.x+uLumaK.y*max(0.0,vDot), luma;
+  float k=vLk.x+vLk.y*max(0.0,vDot), luma;
   if(vMisc.x>0.5){
     vec2 t=vOrgSize.xy+mod(vLoc,vOrgSize.zw);
     float x=floor(t.x)+vMisc.y*512.0, y=floor(t.y);
@@ -1174,13 +1177,13 @@ function vglNew(canvas){
       if(!counts[0]&&!counts[1]) return; gl.enable(gl.DEPTH_TEST); gl.useProgram(pr);
       const u=n=>gl.getUniformLocation(pr,n);
       gl.uniformMatrix4fv(u("uView"),false,view); gl.uniform2fv(u("uFocal"),focal); gl.uniform3fv(u("uLight"),light);
-      gl.uniform3f(u("uLumaK"),BUILD_AMB,BUILD_DIF,BUILD_FLAT); gl.uniform1f(u("uCut"),vglCut);
+      gl.uniform3f(u("uLumaK"),0.0,0.0,BUILD_FLAT); gl.uniform1f(u("uCut"),vglCut);
       gl.uniform1i(u("uTex"),0); gl.uniform1i(u("uClut"),1); gl.uniform1i(u("uXlat"),2);
       const F=4, S=BUILD_STRIDE*F;
       for(let i=0;i<2;i++){ if(!counts[i]) continue;
         gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]);
         const at=(n,k,o)=>{ const l=gl.getAttribLocation(pr,n); if(l<0) return; gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,k,gl.FLOAT,false,S,o*F) };
-        at("aPos",3,0); at("aNrm",3,3); at("aCol",3,6); at("aLoc",2,9); at("aOrgSize",4,11); at("aMisc",3,15);
+        at("aPos",3,0); at("aNrm",3,3); at("aCol",3,6); at("aLoc",2,9); at("aOrgSize",4,11); at("aMisc",3,15); at("aLk",2,19);
         gl.uniform1f(u("uShadow"),i);
         if(i){ gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false) }
         gl.drawArrays(gl.TRIANGLES,0,counts[i]);
@@ -1190,7 +1193,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て
-const VERSION="0.2.0";
+const VERSION="0.3.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
