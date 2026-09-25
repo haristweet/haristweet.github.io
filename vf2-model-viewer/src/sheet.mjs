@@ -15,7 +15,7 @@ if(process.env.ROBTEX!==undefined){
 const TEXY=+(process.env.TEXY||2);
 let u8=new Uint8Array(fs.readFileSync(inp));
 if(String.fromCharCode(...u8.subarray(0,6))==="CRICMP") u8=ctx.cricmpUnpack(u8);
-const ids=idsArg?idsArg.split(",").map(Number):null, models=ctx.objModels(u8).filter(m=>!ids||ids.includes(m.id)), cols=+colsArg||12, C=+cellArg||160, rows=Math.ceil(models.length/cols);
+const ids=idsArg&&idsArg.length?idsArg.split(",").map(Number):null, models=ctx.objModels(u8).filter(m=>!ids||ids.includes(m.id)), cols=+colsArg||12, C=+cellArg||160, rows=Math.ceil(models.length/cols);
 const R=ctx.rasterNew(cols*C,rows*C,[40,38,34]);
 const yaw=(+(yawArg??30))*Math.PI/180, pitch=(+(pitchArg??15))*Math.PI/180;
 const rot=p=>{ const x=p[0]*Math.cos(yaw)+p[2]*Math.sin(yaw), z0=-p[0]*Math.sin(yaw)+p[2]*Math.cos(yaw);
