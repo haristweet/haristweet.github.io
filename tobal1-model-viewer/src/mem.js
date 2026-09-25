@@ -374,6 +374,13 @@ function memCharacters(buf,base,opt){
   return out;
 }
 // 表Bの並びを、歪みのない（カメラを掛ける前の）並びに置き換える
+// 骨の行列が回転になっているか（3行とも長さが 1.0＝4096 に近い）。
+// でたらめな所を読んだときは、ここで外れる
+function memRotOk(list){
+  return !!list&&list.length>0&&list.every(b=>{ const m=b.m, k=b.one||4096;
+    for(let r=0;r<3;r++){ const L=Math.hypot(m[r*3],m[r*3+1],m[r*3+2])/k; if(!(L>0.9&&L<1.1)) return false }
+    return true });
+}
 function memCharBones(buf,base,c,opt){
   const o=opt||{};
   if(!c||!c.bones||!c.bones.ptrs.length) return null;
@@ -385,9 +392,10 @@ function memCharBones(buf,base,c,opt){
     const list=memBonesByIndex(buf,base,idx,at);
     if(!list) continue;
     const sc=memBonePoseScore(list);
-    // 0xF60 手前の組は、背の高さが人らしければ使う。左右の対の数は見ない
-    // （ホムは対が3組しかなく、対4組を求めていたせいで逆さまの組に落ちていた）
-    if(at===viewBase||sc.ok||(sc.tall>800&&sc.tall<3000)) return {list,at,idx,sc,view:at===viewBase};
+    // 0xF60 手前の組は、行列がちゃんとした回転になっていれば使う。ポーズでは決めない。
+    // 背の高さで決めていたので、ジャイアントスイングで横に振られたエポン（背 331）が
+    // カメラを掛けた後の組に落ち、床に寝て離れた所に出ていた（v4.53.0）
+    if(at===viewBase||memRotOk(list)) return {list,at,idx,sc,view:at===viewBase};
   }
   return {list:c.bones.list,at:viewBase,idx,view:true};
 }
