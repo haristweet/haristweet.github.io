@@ -8,3 +8,17 @@ export function pngEncode(W,H,px){
   const ih=Buffer.alloc(13); ih.writeUInt32BE(W,0); ih.writeUInt32BE(H,4); ih[8]=8; ih[9]=2;
   return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk("IHDR",ih),chunk("IDAT",zlib.deflateSync(raw)),chunk("IEND",Buffer.alloc(0))]);
 }
+// PNG を読む（8bit の RGB/RGBA、インターレースなし）。{W,H,px(RGB)} を返す
+export function pngDecode(buf){
+  let p=8, W, H, ct, idat=[];
+  while(p<buf.length){ const L=buf.readUInt32BE(p), t=buf.toString("ascii",p+4,p+8);
+    if(t==="IHDR"){ W=buf.readUInt32BE(p+8); H=buf.readUInt32BE(p+12); ct=buf[p+17] }
+    if(t==="IDAT") idat.push(buf.subarray(p+8,p+8+L)); p+=12+L }
+  const bpp=ct===6?4:3, r=zlib.inflateSync(Buffer.concat(idat)), st=W*bpp, out=new Uint8Array(st*H);
+  for(let y=0;y<H;y++){ const f=r[y*(st+1)], src=y*(st+1)+1, o=y*st;
+    for(let x=0;x<st;x++){ const a=x>=bpp?out[o+x-bpp]:0, b=y?out[o-st+x]:0, c=(x>=bpp&&y)?out[o-st+x-bpp]:0; let v=r[src+x];
+      if(f===1) v+=a; else if(f===2) v+=b; else if(f===3) v+=(a+b)>>1; else if(f===4){ const q=a+b-c, pa=Math.abs(q-a), pb=Math.abs(q-b), pc=Math.abs(q-c); v+=pa<=pb&&pa<=pc?a:pb<=pc?b:c }
+      out[o+x]=v&255 } }
+  const px=new Uint8Array(W*H*3); for(let i=0;i<W*H;i++){ px[i*3]=out[i*bpp]; px[i*3+1]=out[i*bpp+1]; px[i*3+2]=out[i*bpp+2] }
+  return {W,H,px};
+}
