@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.5.0";
+const VERSION="0.6.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -19,8 +19,34 @@ async function candidatesFor(code){
   const pick=code?names.filter(n=>n.startsWith("OBJ_"+code)):names;
   const out=[]; for(const n of pick.sort()) out.push({name:n,models:await readObj(n)}); return out;
 }
+// ディスクだけで見る
+async function readDec(name){ const f=APP.disc.get(name); if(!f) throw new Error(name+" がディスクに無い"); return cricmpUnpack(await f()) }
+function listChars(){
+  const names=[...APP.disc.keys()].filter(n=>/^OBJ_[A-Z]{3}\d[A-Z]?\.CMP$/.test(n)&&SC_ROB.includes(n.slice(4,7))).sort(), sel=$("s-char");
+  sel.innerHTML=names.map(n=>`<option>${n.replace(".CMP","")}</option>`).join(""); if(names.includes("OBJ_AKI1.CMP")) sel.value="OBJ_AKI1";
+  $("discview").hidden=!names.length;
+}
+async function showDisc(){
+  if(!APP.disc) return; const name=$("s-char").value+".CMP";
+  try{
+    status("読み込み中…");
+    if(!APP.dvBase) APP.dvBase={fix:await readDec("FIXPAGE.CMP"), ic:await readDec("IC12_15.CMP"), dfl:await readDec("TEX_DFL.CMP")};
+    const models=new Map((await readObj(name)).map(m=>[m.id,m])), rob=(await readRobs())[SC_ROB.indexOf(name.slice(4,7))], ids=[...models.keys()].sort((a,b)=>a-b);
+    if(APP.dv?.name!==name) APP.dv={name,ids,k:-1};
+    const only=APP.dv.k<0?null:ids[APP.dv.k], col=dvColors(APP.dvBase.fix,APP.dvBase.ic,rob,APP.dvBase.dfl), sc=dvScene(models,only);
+    APP.mode="disc"; APP.cur=-1; listStates();
+    APP.scene={sc,col,models:{0:models,1:null,stage:null},names:[name.replace(".CMP",""),"なし","なし"],light:sceneLight(null,sc)};
+    APP.gl.setColors(col); APP.gl.setBack(null); rebuild(); resetView();
+    if(only!=null){ APP.rot=[0.6,0.3]; draw() }   // 1つだけのときは斜めから（真横だと薄い部品が見えない）
+    $("n-part").textContent=only==null?`全部（${ids.length}）`:`${APP.dv.k+1}/${ids.length}（番号 ${only}）`;
+    $("shot").hidden=true; $("empty").hidden=true; $("hint").hidden=false;
+    status(APP.states.length?"":"セーブステートを選ぶと、ゲームのその場面の姿勢と色で2人が出ます");
+  }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
+}
+function stepPart(d){ if(!APP.dv) return; const n=APP.dv.ids.length; APP.dv.k=d===0?-1:((APP.dv.k<0?(d>0?-1:0):APP.dv.k)+d+n)%n; showDisc() }
 async function show(){
   const st=APP.states[APP.cur]; if(!st||!APP.disc) return;
+  APP.mode="state";
   try{
     status("読み込み中…");
     if(!st.mem){ st.mem=await st.zip.get("eeMemory.bin")(); const v1=st.zip.get("vu1Memory.bin"); st.vu1=v1?await v1():null; const sh=st.zip.get("Screenshot.png"); if(sh) st.shot=URL.createObjectURL(new Blob([await sh()],{type:"image/png"})) }
@@ -48,6 +74,7 @@ function rebuild(){
   const o={players:[$("c-p1").checked,$("c-p2").checked],stage:$("c-stage").checked,light:S.light};
   const body=sceneMesh(S.sc,S.col,S.models,{...o,which:"body"}), shadow=$("c-shadow").checked?sceneMesh(S.sc,S.col,S.models,{...o,which:"shadow"}):null;
   APP.gl.setMesh(body,shadow);
+  if(APP.mode==="disc"){ $("info").textContent=`${S.names[0]}　部品 ${S.sc.draws.length} 個　三角形 ${body.count/3}（ディスクだけ。姿勢なし・色は灰色がち）`; draw(); return }
   $("info").textContent=`1P ${S.names[0]}・2P ${S.names[1]}・背景 ${S.names[2]}　部品 ${S.sc.draws.length} 個（うち影 ${body.shadows}）　三角形 ${(body.count+(shadow?shadow.count:0))/3}`+(body.missing.length?`　ファイルに無い番号 ${body.missing.length} 個`:"");
   draw();
 }
@@ -97,7 +124,7 @@ function init(){
   hookInput(); draw();
   $("f-disc").onchange=async e=>{ const f=e.target.files[0]; if(!f) return;
     try{ status("ディスクを読み込み中…"); APP.disc=await discOpen(f); APP.robs=null; APP.objCache.clear();
-      $("n-disc").textContent=f.name; $("step-disc").classList.add("done"); status(""); if(APP.cur>=0) show(); else status("次に 2 のセーブステートを選んでください") }
+      $("n-disc").textContent=f.name; $("step-disc").classList.add("done"); status(""); APP.dvBase=null; listChars(); if(APP.cur>=0) show(); else showDisc() }
     catch(err){ status("ディスクを読めなかった: "+err.message,true) } };
   $("f-state").onchange=async e=>{
     for(const f of e.target.files){ try{ APP.states.push({name:f.name,zip:await p2sOpen(await f.arrayBuffer())}) }catch(err){ status(f.name+" を読めなかった: "+err.message,true) } }
@@ -107,8 +134,10 @@ function init(){
   };
   for(const id of ["c-p1","c-p2","c-shadow","c-stage"]) $(id).onchange=rebuild;
   $("c-sky").onchange=draw;
+  $("s-char").onchange=()=>{ APP.dv=null; showDisc() };
+  $("b-prev").onclick=()=>stepPart(-1); $("b-next").onclick=()=>stepPart(1); $("b-all").onclick=()=>stepPart(0);
   $("c-overlay").onchange=e=>$("viewer").classList.toggle("overlay",e.target.checked);
   $("b-reset").onclick=resetView;
-  $("b-png").onclick=()=>{ draw(); $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=(APP.states[APP.cur]?.name||"vf2").replace(/\.p2s$/i,"")+"_v"+VERSION+".png"; a.click() }) };
+  $("b-png").onclick=()=>{ draw(); $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=(APP.mode==="disc"?APP.scene?.names[0]:APP.states[APP.cur]?.name||"vf2").replace(/\.p2s$/i,"")+"_v"+VERSION+".png"; a.click() }) };
 }
 init();

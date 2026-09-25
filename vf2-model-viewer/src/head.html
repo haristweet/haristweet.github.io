@@ -38,6 +38,10 @@ h1{font-size:20px;margin:0 0 4px}
 .ctrl button{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:5px 12px;cursor:pointer;font:inherit}
 #info{color:var(--mut);font-size:13px;margin:6px 0 0}
 .ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
+.discview{margin:12px 0 0;padding:10px 14px;border:1px solid var(--line,#ccc);border-radius:10px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.discview small{flex-basis:100%;color:var(--mut)}
+.discview select,.discview button{font:inherit;padding:4px 8px}
+.discview .parts{white-space:nowrap}
 details{margin:16px 0 0;color:var(--mut);font-size:13px}
 </style>
 </head>
@@ -51,9 +55,13 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <div class="step" id="step-state"><b>2. セーブステート</b><small>PCSX2 の .p2s（対戦中のもの。いくつでも）。姿勢と色はここから読みます</small>
     <label class="btn">選ぶ<input type="file" id="f-state" accept=".p2s" multiple></label><span class="name" id="n-state">まだ</span><div id="states"></div></div>
 </div>
+<div class="discview" id="discview" hidden><b>ディスクだけで見る</b>
+  <select id="s-char" aria-label="キャラのファイル"></select>
+  <span class="parts">部品 <button id="b-prev" aria-label="前の部品">◀</button> <span id="n-part">全部</span> <button id="b-next" aria-label="次の部品">▶</button> <button id="b-all">全部</button></span>
+  <small>セーブステートが無くても、キャラの部品を大きさをそろえて並べて見られます。姿勢は無く、肌や服の色は対戦中にゲームが作る表で付くので、ここでは灰色がちになります</small></div>
 <div id="status"></div>
 <div class="viewer" id="viewer"><img id="shot" alt="" hidden><canvas id="cv"></canvas>
-  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます</div>
+  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます（1 だけでも部品を見られます）</div>
   <div class="hint" id="hint" hidden>ドラッグで回す・ホイールかピンチで寄る</div></div>
 <div class="ctrl">
   <label><input type="checkbox" id="c-p1" checked> 1P</label>
@@ -67,7 +75,8 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
 </div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
-<p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさは、写真と照らして当てはめた近い式です（ゲームの本当の計算はまだ読んでいません）。背景はステージのモデルのうち、そのコマで描いた部品です（空や遠景の絵は出ません）。</p>
+<p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさは、ゲームの VU1 のプログラムと同じ式です。背景はステージのモデルのうち、そのコマで描いた部品です。空と遠景は、アーケードの2Dのタイルの面をゲームと同じずらし方で画面に貼ります（視点を回しても動きません）。</p>
+<p>ディスクだけで見るときは、色の材料もディスクから取ります。ただし色の変換表はステージごとにゲームが作るもので、ディスクには無いので、おおよその値で代わりにしています。</p>
 <p id="ver"></p></details>
 </main>
 <script>
