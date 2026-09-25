@@ -8,9 +8,11 @@ void main(){
   vec4 p=uView*vec4(aPos,1.0);
   float d=clamp(dot(uLight,aNrm),0.0,1.0), s=clamp(2.0*d*aNrm.z-uLight.z,0.0,1.0);
   vB=floor(clamp(aLk.x*d+aLk.y+(aLk.w>0.5?aLk.z*pow(s,8.0):0.0),0.0,127.0));
-  vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc; vSpecial=aSpecial;
+  vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc; vSpecial=mod(aSpecial,2.0);
   // 奥行き 0.05〜100 を -1〜1 に
   gl_Position=vec4(uFocal.x*p.x, uFocal.y*p.y, (p.z*100.05-10.0)/99.95, p.z);
+  // 貼りもの（目や眉）は肌とほぼ同じ所にあるので、ごくわずか手前へ（ゲームは部品の中を描く順に重ね塗りする。VU1 の m2mdlSetSameZval）
+  if(aSpecial>1.5) gl_Position.z-=0.00002*p.z;
 }`;
 const VGL_FS=`
 precision highp float;

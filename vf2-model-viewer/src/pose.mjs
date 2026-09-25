@@ -37,7 +37,7 @@ function render(which,stage){
       let tv=-1;
       if(tex){ const lx=w0*V[0][9]+w1*V[1][9]+w2*V[2][9], ly=w0*V[0][10]+w1*V[1][10]+w2*V[2][10], sw=V[0][13], sh=V[0][14];
         const X=Math.floor(V[0][11]+((lx%sw)+sw)%sw), Y=Math.floor(V[0][12]+((ly%sh)+sh)%sh); const tx=g("texRam")(col.tex,V[0][16],X,Y); if(V[0][15]>1.5&&tx===15) continue; tv=tx }
-      zb[i]=z; const l=g("buildLuma")(Lc,tv,V[0][23]>.5);
+      zb[i]=z; const l=g("buildLuma")(Lc,tv,V[0][23]%2>.5);
       for(let ch=0;ch<3;ch++) px[i*4+ch]=col.xlat[ch*0x800+c5[ch]*64+l]; px[i*4+3]=1;
     }
   }
