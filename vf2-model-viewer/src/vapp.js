@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.4.1";
+const VERSION="0.4.2";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -92,7 +92,7 @@ function listStates(){
     b.onclick=()=>{ APP.cur=i; listStates(); show() }; box.appendChild(b) });
 }
 function init(){
-  $("ver").textContent="版 "+VERSION;
+  $("ver").textContent="版 "+VERSION; $("ver-h").textContent="v"+VERSION;
   try{ APP.gl=vglNew($("cv")) }catch(e){ status(e.message,true); return }
   hookInput(); draw();
   $("f-disc").onchange=async e=>{ const f=e.target.files[0]; if(!f) return;
@@ -108,6 +108,6 @@ function init(){
   for(const id of ["c-p1","c-p2","c-shadow","c-stage"]) $(id).onchange=rebuild;
   $("c-overlay").onchange=e=>$("viewer").classList.toggle("overlay",e.target.checked);
   $("b-reset").onclick=resetView;
-  $("b-png").onclick=()=>{ draw(); $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=(APP.states[APP.cur]?.name||"vf2").replace(/\.p2s$/i,"")+".png"; a.click() }) };
+  $("b-png").onclick=()=>{ draw(); $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=(APP.states[APP.cur]?.name||"vf2").replace(/\.p2s$/i,"")+"_v"+VERSION+".png"; a.click() }) };
 }
 init();

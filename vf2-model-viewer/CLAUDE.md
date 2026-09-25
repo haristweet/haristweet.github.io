@@ -11,6 +11,8 @@ PS2『SEGA AGES 2500 Vol.16 バーチャファイター2』（SLPM_625.47）の�
 
 ## ページ（`index.html`、版は `src/vapp.js` の VERSION、履歴は CHANGELOG.md）
 
+版を上げたら、そのコミットに `git tag -a vf2-vX.Y.Z` を付けて `git push origin vf2-vX.Y.Z`（見出しの横と PNG の名前にも版が出る）
+
 ```
 cd vf2-model-viewer/src
 sh check.sh          # 組み立て（assemble.py が head.html と .js を連結）→ 単体試験（node test.mjs。disc/ にデータがあれば本物で）→ ../index.html
