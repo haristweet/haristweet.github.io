@@ -1,17 +1,18 @@
 // 明るさの解析（写真を答えにする）。セーブステートの2人を組み、画素ごとに
 // 「面の向き・光の向き・色 RAM・テクスチャの値」と「写真の色を色の変換表で逆に引いた明るさ（0〜63）」を並べて out/light_<名前>.json に書く。
 //   node light.mjs disc/states/01_akira_lau
+// 1画素＝[法線・光, パレット値, 写真の明るさ, その当てはまりの色の差, 色 RAM, テクスチャの値, 曲線の番号, 頭, x, y, 写真の色, 法線, 予測の明るさ, B, 光の設定(拡散/環境/光沢/光沢あり)]
 import fs from "fs"; import vm from "vm"; import path from "path"; import {pngDecode} from "./png.mjs";
 const here=path.dirname(new URL(import.meta.url).pathname), ctx={console}; vm.createContext(ctx);
 for(const f of ["cricmp.js","obj.js","tex.js","scene.js","build.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
 const g=n=>vm.runInContext(n,ctx);
 const dir=process.argv[2], mem=fs.readFileSync(path.join(dir,"eeMemory.bin"));
-const sc=g("sceneRead")(mem), col=g("sceneColors")(mem);
+const sc=g("sceneRead")(mem), col=g("sceneColors")(mem), vl=g("sceneLight")(fs.existsSync(path.join(dir,"vu1Memory.bin"))?fs.readFileSync(path.join(dir,"vu1Memory.bin")):null,sc);
 const bin=path.join(here,"disc/bin"), cand=fs.readdirSync(bin).filter(f=>/^OBJ_[A-Z]{3}\d\.CMP$/.test(f)).map(f=>({name:f,models:g("objModels")(g("cricmpUnpack")(new Uint8Array(fs.readFileSync(path.join(bin,f)))))}));
 const models={}; for(const p of [0,1]){ const c=g("sceneChooseModels")(sc,p,cand); models[p]=c&&c.map }
 const stc=fs.readdirSync(bin).filter(f=>/^OBJ_STAGE\d+\.CMP$/.test(f)).map(f=>({name:f,models:g("objModels")(g("cricmpUnpack")(new Uint8Array(fs.readFileSync(path.join(bin,f)))))}));
 { const st=g("sceneChooseModels")(sc,0,stc,models[0]?new Set(models[0].keys()):null); models.stage=st&&st.map }
-const mesh=g("sceneMesh")(sc,col,models,{}), D=mesh.data, S=g("BUILD_STRIDE");
+const mesh=g("sceneMesh")(sc,col,models,{light:vl}), D=mesh.data, S=g("BUILD_STRIDE");
 const shot=pngDecode(fs.readFileSync(path.join(dir,"Screenshot.png")));
 const W=640,H=480, zb=new Float32Array(W*H).fill(Infinity), rec=new Array(W*H);
 const fx=sc.focal[0]*622/496, fy=sc.focal[1]*412/384, L=sc.light, ll=Math.hypot(...L), Ln=L.map(v=>v/ll);
@@ -30,13 +31,15 @@ for(let t=0;t<mesh.count;t+=3){
     if(tex){ const lx=w0*V[0][9]+w1*V[1][9]+w2*V[2][9], ly=w0*V[0][10]+w1*V[1][10]+w2*V[2][10];
       const ox=V[0][11],oy=V[0][12],sw=V[0][13],shh=V[0][14],page=V[0][16]; pal=V[0][17]; const pal_x=0;
       const X=Math.floor(ox+((lx%sw)+sw)%sw), Y=Math.floor(oy+((ly%shh)+shh)%shh), tx=g("texRam")(col.tex,page,X,Y); tl=col.clut[pal*128+tx*4]; traw=tx; if(V[0][15]>1.5&&tx===15) continue }
-    rec[i]={dot,c5,tl,traw,pal,hb:V[0][18],n:[V[0][3],V[0][4],V[0][5]]};
+    // ページと同じ式の予測（buildBright・buildLuma）と、面の光の設定（頭 bit18-22）
+    const lk=[V[0][19],V[0][20],V[0][21],V[0][22]], B=g("buildBright")(n,lk,vl), pred=g("buildLuma")(col.clut[V[0][17]*128+B],traw,V[0][23]%2>.5);
+    rec[i]={dot,c5,tl,traw,pal,hb:V[0][18],n:[V[0][3],V[0][4],V[0][5]],pred,B,ls:lk.join("/")};
   }
 }
 // 写真の色 → 明るさ（その面の色 RAM の行で、いちばん近い列）
 const out=[];
 for(let i=0;i<W*H;i++){ const r=rec[i]; if(!r) continue; const s=i*3, sp=[shot.px[s],shot.px[s+1],shot.px[s+2]];
   let best=[1e9,0]; for(let l=0;l<64;l++){ const q=xl(r.c5,l), e=Math.abs(q[0]-sp[0])+Math.abs(q[1]-sp[1])+Math.abs(q[2]-sp[2]); if(e<best[0]) best=[e,l] }
-  out.push([+r.dot.toFixed(3),r.tl,best[1],best[0],r.c5.join(","),r.traw,r.pal,r.hb,i%W,(i/W)|0,sp.join(","),r.n.map(v=>+v.toFixed(4))]) }
+  out.push([+r.dot.toFixed(3),r.tl,best[1],best[0],r.c5.join(","),r.traw,r.pal,r.hb,i%W,(i/W)|0,sp.join(","),r.n.map(v=>+v.toFixed(4)),r.pred,r.B,r.ls]) }
 fs.writeFileSync(path.join(here,"out/light_"+path.basename(dir)+".json"),JSON.stringify(out));
 console.log("画素",out.length,"光",Ln.map(v=>v.toFixed(3)).join(","));
