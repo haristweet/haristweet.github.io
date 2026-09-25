@@ -85,7 +85,7 @@ const LVS=`attribute vec3 p;attribute vec3 c;uniform mat4 mvp;varying vec3 vc;vo
 const LFS=`precision mediump float;varying vec3 vc;void main(){gl_FragColor=vec4(vc,1.);}`;
 const lineProg=gl.createProgram(); gl.attachShader(lineProg,sh(gl.VERTEX_SHADER,LVS)); gl.attachShader(lineProg,sh(gl.FRAGMENT_SHADER,LFS)); gl.linkProgram(lineProg);
 const gridBuf={p:gl.createBuffer(),c:gl.createBuffer(),n:0};
-const grid={floor:false,wall:false,step:200,color:"#7d828c"};
+const grid={floor:false,wall:false,step:200,color:"#7d828c",style:"line"};
 try{ Object.assign(grid,JSON.parse(localStorage.getItem("t1grid")||"{}")) }catch(_){}
 function gridSave(){ try{ localStorage.setItem("t1grid",JSON.stringify(grid)) }catch(_){} }
 function gridLines(){
@@ -99,7 +99,8 @@ function gridLines(){
   const h=/^#?([0-9a-f]{6})$/i.exec(grid.color||""), base=h?[0,2,4].map(i=>parseInt(h[1].slice(i,i+2),16)/255):[.5,.5,.5];
   const RED=[.85,.25,.25], GRN=[.3,.75,.35], BLU=[.3,.5,.95];
   const pos=[], col=[], line=(a,b,c)=>{ pos.push(...a,...b); col.push(...c,...c) };
-  if(grid.floor){
+  if(grid.floor&&grid.style==="tile"){ /* タイルの床は gridTiles で面として描く */ }
+  else if(grid.floor){
     for(let x=x0;x<=x1;x+=st) line([x,y0,z0],[x,y0,z1],x===0?BLU:base);   // x=0 の線は Z 軸に沿う
     for(let z=z0;z<=z1;z+=st) line([x0,y0,z],[x1,y0,z],z===0?RED:base);   // z=0 の線は X 軸に沿う
   }
@@ -113,7 +114,43 @@ function gridLines(){
   }
   return {pos,col};
 }
+// ゲーム風のタイルの床（対戦画面の床をまねた近似。ゲームの値ではない）。
+// 白〜水色のタイルを1枚ずつ少し明るさを変えて敷き、青紫の帯で階段状の四角い枠を描く
+function gridTiles(){
+  const on=layers.filter(L=>L.count&&L.mn);
+  if(!(grid.floor&&grid.style==="tile")||!on.length) return {pos:[],col:[]};
+  const mn=[0,1,2].map(a=>Math.min(...on.map(L=>L.mn[a]))), mx=[0,1,2].map(a=>Math.max(...on.map(L=>L.mx[a])));
+  const st=Math.max(1,+grid.step||200), n=Math.max(8,Math.ceil(Math.max(mx[0]-mn[0],mx[2]-mn[2])*1.2/st)+4);
+  const cx=Math.round((mn[0]+mx[0])/2/st), cz=Math.round((mn[2]+mx[2])/2/st), y=mn[1]-0.5;
+  const R=Math.max(3,Math.round(n*0.55));                 // 帯の枠の半径（タイルの数）
+  const hash=(i,j)=>{ let h=(i*73856093)^(j*19349663); h=(h^(h>>>13))*1274126177; return ((h^(h>>>16))>>>0)/4294967296 };
+  const pos=[], col=[];
+  for(let j=-n;j<n;j++) for(let i=-n;i<n;i++){
+    const ai=Math.abs(i+0.5), aj=Math.abs(j+0.5), m=Math.max(ai,aj);
+    // 階段状の枠：外周の1マス幅。角は1マス内側へ段を付ける
+    const band=(Math.abs(m-R)<0.6&&Math.min(ai,aj)<R-1.5)||(Math.abs(ai-(R-1))<0.6&&Math.abs(aj-(R-1))<0.6);
+    const k=hash(i+cx,j+cz)*0.08;
+    const c=band?[0.38+k*0.5,0.44+k*0.5,0.78]:[0.72+k,0.86+k,0.93+k*0.5];
+    const x0=(cx+i)*st, x1=x0+st, z0=(cz+j)*st, z1=z0+st;
+    // 1枚の中でも奥ほど少し暗く（画面の床のなめらかな色の変わり方をまねる）
+    const cc=(z)=>{ const f=1-0.06*((z-z0)/st); return c.map(v=>Math.min(1,v*f)) };
+    pos.push(x0,y,z0, x1,y,z0, x1,y,z1,  x0,y,z0, x1,y,z1, x0,y,z1);
+    col.push(...cc(z0),...cc(z0),...cc(z1),...cc(z0),...cc(z1),...cc(z1));
+  }
+  return {pos,col};
+}
 function drawGrid(mvp){
+  const tl=gridTiles();
+  if(tl.pos.length){
+    for(let i=0;i<8;i++) gl.disableVertexAttribArray(i);
+    gl.useProgram(lineProg); gl.uniformMatrix4fv(gl.getUniformLocation(lineProg,"mvp"),false,mvp);
+    for(const [k,data] of [["p",tl.pos],["c",tl.col]]){ const loc=gl.getAttribLocation(lineProg,k);
+      gl.bindBuffer(gl.ARRAY_BUFFER,gridBuf[k]); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.DYNAMIC_DRAW);
+      gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,3,gl.FLOAT,false,0,0) }
+    gl.drawArrays(gl.TRIANGLES,0,tl.pos.length/3);
+    gl.disableVertexAttribArray(gl.getAttribLocation(lineProg,"p")); gl.disableVertexAttribArray(gl.getAttribLocation(lineProg,"c"));
+    gl.useProgram(prog);
+  }
   const g=gridLines(); if(!g.pos.length) return;
   for(let i=0;i<8;i++) gl.disableVertexAttribArray(i);   // 体を描いたときの並びが残っていると、数が足りないと言われる
   gl.useProgram(lineProg);

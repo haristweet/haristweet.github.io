@@ -366,6 +366,13 @@ if(fs.existsSync("dump3.bin")){
     console.log(`--- 格子 ---\n画素 ${a0} → 出すと ${a1} → 切ると ${a2}`);
     if(!(a1>a0)) errs.push("格子を出しても何も描かれない");
     if(a2!==a0) errs.push("格子を切っても元に戻らない"); }
+  { const t=await pg3.evaluate(()=>{ const f=document.getElementById("grid-floor"), sy=document.getElementById("grid-style");
+      const px=()=>{ draw(); const c=document.getElementById("gl"),g=c.getContext("webgl"),b=new Uint8Array(c.width*c.height*4);
+        g.readPixels(0,0,c.width,c.height,g.RGBA,g.UNSIGNED_BYTE,b); let n=0; for(let i=3;i<b.length;i+=4) if(b[i]>8) n++; return n };
+      const a0=px(); f.checked=true; sy.value="tile"; f.dispatchEvent(new Event("change")); sy.dispatchEvent(new Event("change"));
+      const a1=px(); f.checked=false; sy.value="line"; f.dispatchEvent(new Event("change")); sy.dispatchEvent(new Event("change")); return {a0,a1,a2:px()} });
+    console.log(`タイルの床: 画素 ${t.a0} → ${t.a1} → ${t.a2}`);
+    if(!(t.a1>t.a0)||t.a2!==t.a0) errs.push("タイルの床が描けない／戻らない"); }
   // 3Dプリント用に閉じた形を作る（細かさは粗いで速く）
   { await pg3.evaluate(()=>{ document.getElementById("pr-res").value="120"; document.getElementById("pr-make").click() });
     await pg3.waitForFunction(()=>document.getElementById("pr-status").textContent.length>0,null,{timeout:120000});

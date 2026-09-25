@@ -223,6 +223,7 @@ canvas:active{cursor:grabbing}
     <div data-tab="look" id="look-bg"><p class="label">背景</p></div>
     <div data-tab="look" id="grid-box"><p class="label">格子（ワイヤーフレーム）</p>
       <label style="display:block"><input type="checkbox" id="grid-floor"> 床（X と Z の面）</label>
+      <label style="display:block;margin-left:1.6em">床の見た目 <select id="grid-style" style="width:auto"><option value="line">格子（線）</option><option value="tile">タイル（対戦画面の床をまねた近似）</option></select></label>
       <label style="display:block"><input type="checkbox" id="grid-wall"> 縦の面（X と Y の面。体の奥に立てる）</label>
       <div class="bgm-row" style="margin-top:6px">
         <label>マスの大きさ <select id="grid-step"><option value="50">50</option><option value="100">100</option><option value="200">200</option><option value="400">400</option><option value="800">800</option></select></label>
