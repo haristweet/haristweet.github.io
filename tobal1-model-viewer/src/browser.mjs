@@ -372,7 +372,15 @@ if(fs.existsSync("dump3.bin")){
     const t=await pg3.evaluate(()=>document.getElementById("pr-status").innerText);
     console.log("--- 3Dプリント ---\n"+t);
     if(!/閉じた形になりました/.test(t)) errs.push("3Dプリント用の形が閉じていない: "+t.split("\n")[0]);
-    await pg3.evaluate(()=>document.getElementById("pr-back").click()); await pg3.waitForTimeout(900); }
+    // テクスチャつき 3MF と、元の形の glb を書き出せる（保存をすり替えて大きさだけ見る）
+    const got=await pg3.evaluate(async()=>{ const g={}, keep=window.saveBlob; window.saveBlob=async(b,n)=>{ g[n.replace(/.*_/,"")]=b.size };
+      document.getElementById("pr-3mft").click(); for(let i=0;i<600&&!Object.keys(g).length;i++) await new Promise(r=>setTimeout(r,100));
+      document.getElementById("pr-back").click(); await new Promise(r=>setTimeout(r,900));
+      document.getElementById("pr-glb").click(); for(let i=0;i<100&&Object.keys(g).length<2;i++) await new Promise(r=>setTimeout(r,100));
+      window.saveBlob=keep; return g });
+    console.log("書き出し: "+JSON.stringify(got));
+    if(!(got["tex.3mf"]>1000)) errs.push("テクスチャつき 3MF を書き出せない");
+    if(!(got["元の形.glb"]>1000)) errs.push("元の形の glb を書き出せない"); }
   // 差し替えの部品を1つ出す
   await pg3.selectOption("#t1slot","0");
   await pg3.waitForTimeout(800);

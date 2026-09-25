@@ -160,7 +160,7 @@ canvas:active{cursor:grabbing}
       <p class="note">写しから保存したキャラクターです。RAM・VRAM を読み込み直さなくても、ここから選ぶだけで出せます。データはこの端末のブラウザの中にだけあります。</p>
     </div>
     <div data-tab="file" id="print-box"><p class="label">3Dプリント用に書き出す</p>
-      <p class="note">いま表示している形を、印刷サービスに出せる<b>閉じた形</b>に作り直します（升目に置いて太らせ、表面を作り直す）。細かい所は少し丸くなります。</p>
+      <p class="note">いま表示している形を、印刷サービスに出せる<b>閉じた形</b>に作り直します（升目に置いて太らせ、表面を作り直す）。細かい所は少し丸くなります。<b>元の形のまま</b>の書き出し（glb）は閉じていないので、そのままでは印刷に出せません。Blender などで手直しする出発点です。</p>
       <div class="print-grid">
         <label>背の高さ（mm）<input type="number" id="pr-height" value="100" min="10" max="500" step="5"></label>
         <label>細かさ <select id="pr-res"><option value="120">粗い（速い）</option><option value="160" selected>ふつう</option><option value="220">細かい（重い）</option></select></label>
@@ -168,11 +168,13 @@ canvas:active{cursor:grabbing}
         <label><input type="checkbox" id="pr-base" checked> 台座を付ける</label>
         <label><input type="checkbox" id="pr-hollow"> 中を空洞にする（殻 <input type="number" id="pr-shell" value="2" min="1" max="10" step="0.5" style="width:4em"> mm）</label>
       </div>
+      <button class="btn wide" id="pr-glb" style="margin-top:6px">元の形のまま保存（glb・Blender で仕上げる用）</button>
       <button class="btn wide" id="pr-make" style="margin-top:6px">閉じた形を作る（画面で確かめる）</button>
       <div class="note" id="pr-status"></div>
       <div class="print-grid" id="pr-save-row" hidden>
         <button class="btn" id="pr-stl">STL で保存（単色）</button>
-        <button class="btn" id="pr-3mf">3MF で保存（色つき）</button>
+        <button class="btn" id="pr-3mf">3MF で保存（色は点ごと・軽い）</button>
+        <button class="btn" id="pr-3mft">3MF で保存（色はテクスチャ・くっきり）</button>
         <button class="btn" id="pr-back">元の表示に戻す</button>
       </div>
     </div>
@@ -4121,7 +4123,9 @@ async function printBuild(meshes,o,progress){
   for(let i=0;i<verts.length;i+=3){ verts[i]=(surf.verts[i]-ox)*vox; verts[i+1]=surf.verts[i+1]*vox-y0mm; verts[i+2]=(surf.verts[i+2]-oz)*vox }
   await tick("確かめています…");
   const chk=printCheck(verts,surf.tris);
-  return {verts,tris:surf.tris,colors:vc,vox,thick:2*r*vox,parts,hollowed,size:[size[0],size[1]+baseH,size[2]],check:chk,opt:o};
+  // 元の座標 → mm の写し方（テクスチャで塗るときに、元の面を同じ所へ置くため）
+  const xf={s,mn:mn.slice(),yoff:oy*vox-y0mm};
+  return {verts,tris:surf.tris,colors:vc,vox,thick:2*r*vox,parts,hollowed,size:[size[0],size[1]+baseH,size[2]],check:chk,opt:o,xf};
 }
 
 // 6方向でつながった塊の数
@@ -4262,6 +4266,176 @@ async function print3MF(r){
     ["[Content_Types].xml",'<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>'],
     ["_rels/.rels",'<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>'],
     ["3D/3dmodel.model",print3MFModel(r)]]);
+}
+
+
+// ============================================================
+//  元の面の色を1点ずつ取る（テクスチャ込み）。透けている所は null
+// ============================================================
+function printFaceColor(m,t,w,u,v){
+  const C=m.col, T0=m.t0, T1=m.t1;
+  const col=[C[t*9]*w+C[t*9+3]*u+C[t*9+6]*v,C[t*9+1]*w+C[t*9+4]*u+C[t*9+7]*v,C[t*9+2]*w+C[t*9+5]*u+C[t*9+8]*v];
+  if(T0&&T0[t*9+2]>0.5&&m.vram){
+    const tu=T0[t*9]*w+T0[t*9+3]*u+T0[t*9+6]*v, tv=T0[t*9+1]*w+T0[t*9+4]*u+T0[t*9+7]*v;
+    const tx=printTexel(m.vram,tu,tv,T0[t*9+2],[T1[t*12],T1[t*12+1],T1[t*12+2],T1[t*12+3]]);
+    if(tx===-1) return null;
+    if(tx) return tx.map((q,k)=>Math.min(1,q*col[k]*255/128));
+  }
+  return col;
+}
+// 点 p にいちばん近い三角形上の点（重心座標で返す）
+function printClosest(p,a,b,c){
+  const ab=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], ac=[c[0]-a[0],c[1]-a[1],c[2]-a[2]], ap=[p[0]-a[0],p[1]-a[1],p[2]-a[2]];
+  const dot=(x,y)=>x[0]*y[0]+x[1]*y[1]+x[2]*y[2];
+  const d1=dot(ab,ap), d2=dot(ac,ap); if(d1<=0&&d2<=0) return [1,0,0];
+  const bp=[p[0]-b[0],p[1]-b[1],p[2]-b[2]], d3=dot(ab,bp), d4=dot(ac,bp); if(d3>=0&&d4<=d3) return [0,1,0];
+  const vc=d1*d4-d3*d2; if(vc<=0&&d1>=0&&d3<=0){ const v=d1/(d1-d3); return [1-v,v,0] }
+  const cp=[p[0]-c[0],p[1]-c[1],p[2]-c[2]], d5=dot(ab,cp), d6=dot(ac,cp); if(d6>=0&&d5<=d6) return [0,0,1];
+  const vb=d5*d2-d1*d6; if(vb<=0&&d2>=0&&d6<=0){ const w=d2/(d2-d6); return [1-w,0,w] }
+  const va=d3*d6-d5*d4; if(va<=0&&(d4-d3)>=0&&(d5-d6)>=0){ const w=(d4-d3)/((d4-d3)+(d5-d6)); return [0,1-w,w] }
+  const den=1/(va+vb+vc), v=vb*den, w=vc*den; return [1-v-w,v,w];
+}
+
+// ============================================================
+//  閉じた形をテクスチャで塗る。面1枚ごとに升（3×3 画素）を使い、
+//  升の各画素に、いちばん近い元の面の色を写す（透けている貼りものは飛ばして下の面へ）
+// ============================================================
+async function printBake(r,meshes,progress,cellPx){
+  const tick=async m=>{ if(progress) await progress(m) };
+  const T=cellPx||3, xf=r.xf, nt=r.tris.length/3;
+  // 元の面を mm に置き、2mm の升に振り分ける（近くを探すため）
+  const src=[]; const G=2, grid=new Map();
+  const toMM=(P,i)=>[(P[i]-xf.mn[0])*xf.s,(P[i+1]-xf.mn[1])*xf.s+xf.yoff,(P[i+2]-xf.mn[2])*xf.s];
+  for(const m of meshes){ const P=m.pos; for(let t=0;t<P.length/9;t++){
+    const a=toMM(P,t*9), b=toMM(P,t*9+3), c=toMM(P,t*9+6), id=src.length; src.push({m,t,a,b,c});
+    const lo=[0,1,2].map(k=>Math.floor(Math.min(a[k],b[k],c[k])/G)), hi=[0,1,2].map(k=>Math.floor(Math.max(a[k],b[k],c[k])/G));
+    for(let z=lo[2];z<=hi[2];z++) for(let y=lo[1];y<=hi[1];y++) for(let x=lo[0];x<=hi[0];x++){
+      const key=x+","+y+","+z; let L=grid.get(key); if(!L){ L=[]; grid.set(key,L) } L.push(id) } } }
+  const colorAt=p=>{
+    let best=null, bd=1e9;
+    const cx=Math.floor(p[0]/G), cy=Math.floor(p[1]/G), cz=Math.floor(p[2]/G);
+    for(let R=1;R<=2&&!best;R++){ const seen=new Set();
+      for(let z=cz-R;z<=cz+R;z++) for(let y=cy-R;y<=cy+R;y++) for(let x=cx-R;x<=cx+R;x++){
+        const L=grid.get(x+","+y+","+z); if(!L) continue;
+        for(const id of L){ if(seen.has(id)) continue; seen.add(id); const S=src[id];
+          const q=printClosest(p,S.a,S.b,S.c);
+          const pt=[0,1,2].map(k=>S.a[k]*q[0]+S.b[k]*q[1]+S.c[k]*q[2]), d=(pt[0]-p[0])**2+(pt[1]-p[1])**2+(pt[2]-p[2])**2;
+          if(d>=bd) continue;
+          const col=printFaceColor(S.m,S.t,q[0],q[1],q[2]); if(!col) continue;   // 透けている所は飛ばす
+          bd=d; best=col } } }
+    return best||[150/255,150/255,150/255] };           // 近くに元の面が無い（台座など）
+  // 面1枚ごとに T×T 画素の升。角は画素の中心の内側に置くので、隣の升の画素を拾わない。
+  // 三角形の外の画素（升の右上）は、三角形の縁の色で埋める（にじみ止め）
+  const cells=nt, per=Math.floor(2048/T), W=per*T, H=Math.ceil(cells/per)*T;
+  const img=new Uint8Array(W*H*4), uv=new Float32Array(nt*6), V=r.verts;
+  const cs=[[0.5,0.5],[T-0.5,0.5],[0.5,T-0.5]];
+  for(let t=0;t<nt;t++){
+    const bx=(t%per)*T, by=Math.floor(t/per)*T;
+    for(let k=0;k<3;k++){ uv[t*6+k*2]=(bx+cs[k][0])/W; uv[t*6+k*2+1]=1-(by+cs[k][1])/H }   // 3MF は左下が (0,0)
+    const ia=r.tris[t*3]*3, ib=r.tris[t*3+1]*3, ic=r.tris[t*3+2]*3, span=T-1;
+    for(let py=0;py<T;py++) for(let px=0;px<T;px++){
+      let l1=px/span, l2=py/span, l0=1-l1-l2;
+      if(l0<0){ const sm=l1+l2; l1/=sm; l2/=sm; l0=0 }        // 升の右上は縁へ寄せる
+      const p=[0,1,2].map(k=>V[ia+k]*l0+V[ib+k]*l1+V[ic+k]*l2);
+      const col=colorAt(p), o=((by+py)*W+bx+px)*4;
+      img[o]=col[0]*255; img[o+1]=col[1]*255; img[o+2]=col[2]*255; img[o+3]=255;
+    }
+    if(t%8000===0) await tick(`テクスチャを塗っています… ${Math.round(t/nt*100)}%`);
+  }
+  return {W,H,img,uv};
+}
+// 3MF（テクスチャつき）。png はブラウザで作った画像のバイト列
+function print3MFTexModel(r,bake){
+  const V=r.verts, out=[];
+  out.push('<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="ja-JP" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="http://schemas.microsoft.com/3dmanufacturing/material/2015/02">\n<resources>\n');
+  out.push('<m:texture2d id="3" path="/3D/Textures/color.png" contenttype="image/png" tilestyleu="clamp" tilestylev="clamp" filter="nearest"/>\n<m:texture2dgroup id="4" texid="3">\n');
+  const f=v=>(Math.round(v*1e5)/1e5).toString();
+  for(let i=0;i<bake.uv.length;i+=2) out.push(`<m:tex2coord u="${f(bake.uv[i])}" v="${f(bake.uv[i+1])}"/>\n`);
+  out.push('</m:texture2dgroup>\n<object id="1" type="model" pid="4" pindex="0"><mesh><vertices>\n');
+  const g=v=>(Math.round(v*1000)/1000).toString();
+  for(let i=0;i<V.length;i+=3) out.push(`<vertex x="${g(V[i])}" y="${g(-V[i+2])}" z="${g(V[i+1])}"/>\n`);
+  out.push('</vertices><triangles>\n');
+  for(let t=0;t<r.tris.length/3;t++) out.push(`<triangle v1="${r.tris[t*3]}" v2="${r.tris[t*3+1]}" v3="${r.tris[t*3+2]}" pid="4" p1="${t*3}" p2="${t*3+1}" p3="${t*3+2}"/>\n`);
+  out.push('</triangles></mesh></object>\n</resources>\n<build><item objectid="1"/></build>\n</model>\n');
+  return out.join("");
+}
+async function print3MFTex(r,bake,png){
+  return printZip([
+    ["[Content_Types].xml",'<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="png" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodeltexture"/></Types>'],
+    ["_rels/.rels",'<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>'],
+    ["3D/_rels/3dmodel.model.rels",'<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/Textures/color.png" Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dtexture"/></Relationships>'],
+    ["3D/3dmodel.model",print3MFTexModel(r,bake)],
+    ["3D/Textures/color.png",png]]);
+}
+
+// ============================================================
+//  元の形のまま書き出す（glTF の .glb）。Blender で手直しする出発点。
+//  使っているテクスチャ（ページ＋パレットの組）を VRAM から切り出して1枚の絵にまとめる
+// ============================================================
+function printAtlas(meshes){
+  const groups=new Map();
+  for(const m of meshes){ const T0=m.t0, T1=m.t1; if(!T0||!m.vram) continue;
+    for(let t=0;t<T0.length/9;t++){ if(!(T0[t*9+2]>0.5)) continue;
+      const key=[T0[t*9+2],T1[t*12],T1[t*12+1],T1[t*12+2],T1[t*12+3]].join(",");
+      let g=groups.get(key); if(!g){ g={mode:T0[t*9+2],t1:[T1[t*12],T1[t*12+1],T1[t*12+2],T1[t*12+3]],u0:1e9,v0:1e9,u1:-1e9,v1:-1e9,vram:m.vram}; groups.set(key,g) }
+      for(let k=0;k<3;k++){ const u=T0[t*9+k*3], v=T0[t*9+k*3+1]; g.u0=Math.min(g.u0,Math.floor(u)); g.v0=Math.min(g.v0,Math.floor(v)); g.u1=Math.max(g.u1,Math.ceil(u)); g.v1=Math.max(g.v1,Math.ceil(v)) } } }
+  // 棚詰め（1画素の余白つき）。先頭に白い 4×4（テクスチャの無い面用）
+  const list=[...groups.values()].sort((a,b)=>(b.v1-b.v0)-(a.v1-a.v0));
+  const W=1024; let x=6, y=0, rowH=6; const place=[];
+  for(const g of list){ const w=g.u1-g.u0+3, h=g.v1-g.v0+3;
+    if(x+w>W){ x=0; y+=rowH; rowH=0 } g.bx=x; g.by=y; x+=w; rowH=Math.max(rowH,h); place.push(g) }
+  const H=Math.max(8,y+rowH), img=new Uint8Array(W*H*4);
+  for(let yy=0;yy<4;yy++) for(let xx=0;xx<4;xx++){ const o=((yy+1)*W+xx+1)*4; img[o]=img[o+1]=img[o+2]=img[o+3]=255 }
+  for(const g of place) for(let yy=-1;yy<=g.v1-g.v0;yy++) for(let xx=-1;xx<=g.u1-g.u0;xx++){
+    const u=Math.min(Math.max(g.u0+xx,g.u0),g.u1), v=Math.min(Math.max(g.v0+yy,g.v0),g.v1);   // 余白は端の画素を伸ばす
+    const c=printTexel(g.vram,u+0.5,v+0.5,g.mode,g.t1), o=((g.by+1+yy)*W+g.bx+1+xx)*4;
+    if(c&&c!==-1){ img[o]=c[0]*255; img[o+1]=c[1]*255; img[o+2]=c[2]*255; img[o+3]=255 }
+  }
+  return {W,H,img,groups};
+}
+// meshes → glb のバイト列。高さ height mm（glTF はメートル）。Y が上
+function printGLB(meshes,height,atlas,png){
+  let mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+  for(const m of meshes){ const P=m.pos; for(let i=0;i<P.length;i+=3) for(let a=0;a<3;a++){ if(P[i+a]<mn[a])mn[a]=P[i+a]; if(P[i+a]>mx[a])mx[a]=P[i+a] } }
+  const k=(height/1000)/(mx[1]-mn[1]), cx=(mn[0]+mx[0])/2, cz=(mn[2]+mx[2])/2;
+  const bufs=[], views=[], accs=[], meshesJ=[], nodes=[]; let off=0;
+  const add=(arr,type,count,extra)=>{ const b=new Uint8Array(arr.buffer,arr.byteOffset,arr.byteLength);
+    const pad=(4-(off%4))%4; if(pad){ bufs.push(new Uint8Array(pad)); off+=pad }
+    views.push({buffer:0,byteOffset:off,byteLength:b.length}); bufs.push(b); off+=b.length;
+    accs.push(Object.assign({bufferView:views.length-1,componentType:5126,count,type},extra||{})); return accs.length-1 };
+  meshes.forEach((m,mi)=>{
+    const n=m.pos.length/3, pos=new Float32Array(n*3), col=new Float32Array(n*3), uv=new Float32Array(n*2);
+    const pmn=[1e9,1e9,1e9], pmx=[-1e9,-1e9,-1e9];
+    for(let i=0;i<n;i++){
+      const p=[(m.pos[i*3]-cx)*k,(m.pos[i*3+1]-mn[1])*k,(m.pos[i*3+2]-cz)*k];
+      for(let a=0;a<3;a++){ pos[i*3+a]=p[a]; pmn[a]=Math.min(pmn[a],p[a]); pmx[a]=Math.max(pmx[a],p[a]) }
+      const t=Math.floor(i/3), tex=m.t0&&m.t0[t*9+2]>0.5&&m.vram;
+      let g=null; if(tex) g=atlas.groups.get([m.t0[t*9+2],m.t1[t*12],m.t1[t*12+1],m.t1[t*12+2],m.t1[t*12+3]].join(","));
+      const mul=g?255/128:1;
+      for(let a=0;a<3;a++) col[i*3+a]=Math.min(1,m.col[i*3+a]*mul);
+      if(g){ uv[i*2]=(g.bx+1+(m.t0[i*3]-g.u0))/atlas.W; uv[i*2+1]=(g.by+1+(m.t0[i*3+1]-g.v0))/atlas.H }
+      else { uv[i*2]=3/atlas.W; uv[i*2+1]=3/atlas.H }
+    }
+    const pa=add(pos,"VEC3",n,{min:pmn,max:pmx}), ca=add(col,"VEC3",n), ua=add(uv,"VEC2",n);
+    meshesJ.push({name:"character"+(mi+1),primitives:[{attributes:{POSITION:pa,COLOR_0:ca,TEXCOORD_0:ua},material:0}]});
+    nodes.push({mesh:mi,name:"character"+(mi+1)});
+  });
+  const pad=(4-(off%4))%4; if(pad){ bufs.push(new Uint8Array(pad)); off+=pad }
+  views.push({buffer:0,byteOffset:off,byteLength:png.length}); bufs.push(png); off+=png.length;
+  const json={asset:{version:"2.0",generator:"tobal1-model-viewer"},scene:0,scenes:[{nodes:nodes.map((_,i)=>i)}],nodes,meshes:meshesJ,
+    materials:[{name:"ps1",pbrMetallicRoughness:{baseColorTexture:{index:0},metallicFactor:0,roughnessFactor:1},alphaMode:"MASK",alphaCutoff:0.5,doubleSided:true}],
+    textures:[{sampler:0,source:0}],samplers:[{magFilter:9728,minFilter:9728,wrapS:33071,wrapT:33071}],
+    images:[{bufferView:views.length-1,mimeType:"image/png"}],accessors:accs,bufferViews:views,buffers:[{byteLength:0}]};
+  const binPad=(4-(off%4))%4; if(binPad){ bufs.push(new Uint8Array(binPad)); off+=binPad }
+  json.buffers[0].byteLength=off;
+  let js=new TextEncoder().encode(JSON.stringify(json)); const jp=(4-(js.length%4))%4;
+  if(jp){ const t=new Uint8Array(js.length+jp); t.set(js); t.fill(0x20,js.length); js=t }
+  const total=12+8+js.length+8+off, outB=new Uint8Array(total), dv=new DataView(outB.buffer);
+  dv.setUint32(0,0x46546C67,true); dv.setUint32(4,2,true); dv.setUint32(8,total,true);
+  dv.setUint32(12,js.length,true); dv.setUint32(16,0x4E4F534A,true); outB.set(js,20);
+  let o=20+js.length; dv.setUint32(o,off,true); dv.setUint32(o+4,0x004E4942,true); o+=8;
+  for(const b of bufs){ outB.set(b,o); o+=b.length }
+  return outB;
 }
 // ============================================================
 //  WebGL
@@ -4469,7 +4643,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.54.0";
+const VERSION="v4.55.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -6985,6 +7159,24 @@ $("shot").onclick=()=>{
   $("pr-stl").onclick=()=>{ if(last) saveBlob(new Blob([printSTL(last)],{type:"model/stl"}),name()+".stl") };
   $("pr-3mf").onclick=async()=>{ if(!last) return; busy("3MF を作っています…"); await idle();
     const b=await print3MF(last); busy(""); saveBlob(new Blob([b],{type:"model/3mf"}),name()+".3mf") };
+  // 画素の並び → PNG のバイト列（ブラウザの絵の道具で作る）
+  const pngBytes=async(W,H,img)=>{ const cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+    cv.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(img.buffer,img.byteOffset,img.byteLength),W,H),0,0);
+    const b=await new Promise(r=>cv.toBlob(r,"image/png")); return new Uint8Array(await b.arrayBuffer()) };
+  $("pr-3mft").onclick=async()=>{ if(!last||!src) return;
+    try{ const bake=await printBake(last,src,async m=>{ busy(m); await idle() });
+      busy("3MF を作っています…"); await idle();
+      const png=await pngBytes(bake.W,bake.H,bake.img), b=await print3MFTex(last,bake,png); busy("");
+      saveBlob(new Blob([b],{type:"model/3mf"}),name()+"_tex.3mf");
+      status([...$("pr-status").innerHTML.split("<br>").filter(x=>!/^テクスチャ/.test(x)),`テクスチャ ${bake.W}×${bake.H}　3MF ${(b.size/1048576).toFixed(1)} MB`+(b.size>20*1048576?"　⚠ 20MB を超えています":"")]) }
+    catch(err){ busy(""); status(["テクスチャで塗れませんでした: "+err.message]) } };
+  $("pr-glb").onclick=async()=>{
+    const meshes=layers.filter(L=>L.count&&L.mesh&&!L.mesh.isPrint).map(L=>L.mesh);
+    if(!meshes.length){ status(["先にキャラクターを表示してください（閉じた形を表示中なら「元の表示に戻す」）"]); return }
+    busy("元の形を書き出しています…"); await idle();
+    try{ const at=printAtlas(meshes), png=await pngBytes(at.W,at.H,at.img), g=printGLB(meshes,num("pr-height",100),at,png); busy("");
+      saveBlob(new Blob([g],{type:"model/gltf-binary"}),name()+"_元の形.glb") }
+    catch(err){ busy(""); status(["書き出せませんでした: "+err.message]) } };
   $("pr-back").onclick=()=>{ $("pr-save-row").hidden=true; status([]); last=null; src=null; redrawCurrent() };
 }
 // ============================================================

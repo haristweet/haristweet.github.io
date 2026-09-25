@@ -2443,5 +2443,36 @@ console.log("\n[57] 3Dプリント用に閉じた形を作る");
   ok("3MF は ZIP（PK で始まる）", zb[0]===0x50&&zb[1]===0x4b, zb.slice(0,4));
 }
 
+console.log("\n[58] テクスチャで塗る／元の形のまま書き出す");
+{
+  const mk=(quads,rgb)=>{ const pos=[];
+    for(const q of quads){ pos.push(...q[0],...q[1],...q[2],...q[0],...q[2],...q[3]) }
+    const n=pos.length/3, col=new Float32Array(n*3); for(let i=0;i<n;i++) col.set(rgb,i*3);
+    return {pos:new Float32Array(pos),col,t0:new Float32Array(n*3),t1:new Float32Array(n*4),vram:null} };
+  const box=(x,y,z,w,h,d)=>{ const X=x+w,Y=y+h,Z=z+d; return [
+    [[x,y,z],[X,y,z],[X,y,Z],[x,y,Z]],[[x,y,z],[x,Y,z],[X,Y,z],[X,y,z]],[[x,y,Z],[X,y,Z],[X,Y,Z],[x,Y,Z]],
+    [[x,y,z],[x,y,Z],[x,Y,Z],[x,Y,z]],[[X,y,z],[X,Y,z],[X,Y,Z],[X,y,Z]],[[x,Y,z],[x,Y,Z],[X,Y,Z],[X,Y,z]]] };
+  const red=mk(box(0,0,0,100,100,100),[1,0,0]), blue=mk(box(0,100,0,100,100,100),[0,0,1]);   // 下が赤、上が青
+  const r=await printBuild([red,blue],{height:40,res:40,thick:1,base:false});
+  const bk=await printBake(r,[red,blue]);
+  ok("面ごとに升を割り当て、座標は面の角3つずつ", bk.uv.length===r.tris.length*2&&bk.W%3===0, `${bk.uv.length} / ${r.tris.length*2}`);
+  // 下のほうの面は赤、上のほうの面は青で塗られる
+  let redOK=0, blueOK=0, lowN=0, highN=0;
+  for(let t=0;t<r.tris.length/3;t++){ const y=r.verts[r.tris[t*3]*3+1]; const per=bk.W/3, bx=(t%per)*3, by=Math.floor(t/per)*3;
+    const o=((by+0)*bk.W+bx+0)*4;
+    if(y<8){ lowN++; if(bk.img[o]>200&&bk.img[o+2]<50) redOK++ } if(y>32){ highN++; if(bk.img[o+2]>200&&bk.img[o]<50) blueOK++ } }
+  ok("  下の面は赤、上の面は青で塗られる", redOK>lowN*0.9&&blueOK>highN*0.9, `赤 ${redOK}/${lowN} 青 ${blueOK}/${highN}`);
+  const x=print3MFTexModel(r,bk);
+  ok("  3MF にテクスチャの座標の組がある", /<m:texture2dgroup id="4" texid="3">/.test(x)&&/p1="0" p2="1" p3="2"/.test(x), "");
+  const at=printAtlas([red]);
+  ok("元の形の絵は、テクスチャが無くても白い所だけ持つ", at.W===1024&&at.img[(1*at.W+1)*4]===255, `${at.W}×${at.H}`);
+  const g=printGLB([red,blue],100,at,new Uint8Array([137,80,78,71]));
+  const gv=new DataView(g.buffer), jl=gv.getUint32(12,true), js=JSON.parse(new TextDecoder().decode(g.subarray(20,20+jl)));
+  ok("  glb の頭（glTF 2・長さが合う）", gv.getUint32(0,true)===0x46546C67&&gv.getUint32(8,true)===g.length, g.length);
+  ok("  2人ぶんの形が別々の node で入る", js.nodes.length===2&&js.meshes[0].primitives[0].attributes.TEXCOORD_0!=null, js.nodes.length);
+  const P=js.accessors[js.meshes[1].primitives[0].attributes.POSITION];
+  ok("  高さは指定の mm（glTF はメートル）", Math.abs(P.max[1]-0.1)<1e-6, P.max[1]);
+}
+
 console.log(`\n${pass} ok / ${fail} fail`);
 process.exit(fail?1:0);

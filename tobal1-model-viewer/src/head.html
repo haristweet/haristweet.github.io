@@ -160,7 +160,7 @@ canvas:active{cursor:grabbing}
       <p class="note">写しから保存したキャラクターです。RAM・VRAM を読み込み直さなくても、ここから選ぶだけで出せます。データはこの端末のブラウザの中にだけあります。</p>
     </div>
     <div data-tab="file" id="print-box"><p class="label">3Dプリント用に書き出す</p>
-      <p class="note">いま表示している形を、印刷サービスに出せる<b>閉じた形</b>に作り直します（升目に置いて太らせ、表面を作り直す）。細かい所は少し丸くなります。</p>
+      <p class="note">いま表示している形を、印刷サービスに出せる<b>閉じた形</b>に作り直します（升目に置いて太らせ、表面を作り直す）。細かい所は少し丸くなります。<b>元の形のまま</b>の書き出し（glb）は閉じていないので、そのままでは印刷に出せません。Blender などで手直しする出発点です。</p>
       <div class="print-grid">
         <label>背の高さ（mm）<input type="number" id="pr-height" value="100" min="10" max="500" step="5"></label>
         <label>細かさ <select id="pr-res"><option value="120">粗い（速い）</option><option value="160" selected>ふつう</option><option value="220">細かい（重い）</option></select></label>
@@ -168,11 +168,13 @@ canvas:active{cursor:grabbing}
         <label><input type="checkbox" id="pr-base" checked> 台座を付ける</label>
         <label><input type="checkbox" id="pr-hollow"> 中を空洞にする（殻 <input type="number" id="pr-shell" value="2" min="1" max="10" step="0.5" style="width:4em"> mm）</label>
       </div>
+      <button class="btn wide" id="pr-glb" style="margin-top:6px">元の形のまま保存（glb・Blender で仕上げる用）</button>
       <button class="btn wide" id="pr-make" style="margin-top:6px">閉じた形を作る（画面で確かめる）</button>
       <div class="note" id="pr-status"></div>
       <div class="print-grid" id="pr-save-row" hidden>
         <button class="btn" id="pr-stl">STL で保存（単色）</button>
-        <button class="btn" id="pr-3mf">3MF で保存（色つき）</button>
+        <button class="btn" id="pr-3mf">3MF で保存（色は点ごと・軽い）</button>
+        <button class="btn" id="pr-3mft">3MF で保存（色はテクスチャ・くっきり）</button>
         <button class="btn" id="pr-back">元の表示に戻す</button>
       </div>
     </div>

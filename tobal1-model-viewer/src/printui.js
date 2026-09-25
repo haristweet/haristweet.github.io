@@ -38,5 +38,23 @@
   $("pr-stl").onclick=()=>{ if(last) saveBlob(new Blob([printSTL(last)],{type:"model/stl"}),name()+".stl") };
   $("pr-3mf").onclick=async()=>{ if(!last) return; busy("3MF を作っています…"); await idle();
     const b=await print3MF(last); busy(""); saveBlob(new Blob([b],{type:"model/3mf"}),name()+".3mf") };
+  // 画素の並び → PNG のバイト列（ブラウザの絵の道具で作る）
+  const pngBytes=async(W,H,img)=>{ const cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+    cv.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(img.buffer,img.byteOffset,img.byteLength),W,H),0,0);
+    const b=await new Promise(r=>cv.toBlob(r,"image/png")); return new Uint8Array(await b.arrayBuffer()) };
+  $("pr-3mft").onclick=async()=>{ if(!last||!src) return;
+    try{ const bake=await printBake(last,src,async m=>{ busy(m); await idle() });
+      busy("3MF を作っています…"); await idle();
+      const png=await pngBytes(bake.W,bake.H,bake.img), b=await print3MFTex(last,bake,png); busy("");
+      saveBlob(new Blob([b],{type:"model/3mf"}),name()+"_tex.3mf");
+      status([...$("pr-status").innerHTML.split("<br>").filter(x=>!/^テクスチャ/.test(x)),`テクスチャ ${bake.W}×${bake.H}　3MF ${(b.size/1048576).toFixed(1)} MB`+(b.size>20*1048576?"　⚠ 20MB を超えています":"")]) }
+    catch(err){ busy(""); status(["テクスチャで塗れませんでした: "+err.message]) } };
+  $("pr-glb").onclick=async()=>{
+    const meshes=layers.filter(L=>L.count&&L.mesh&&!L.mesh.isPrint).map(L=>L.mesh);
+    if(!meshes.length){ status(["先にキャラクターを表示してください（閉じた形を表示中なら「元の表示に戻す」）"]); return }
+    busy("元の形を書き出しています…"); await idle();
+    try{ const at=printAtlas(meshes), png=await pngBytes(at.W,at.H,at.img), g=printGLB(meshes,num("pr-height",100),at,png); busy("");
+      saveBlob(new Blob([g],{type:"model/gltf-binary"}),name()+"_元の形.glb") }
+    catch(err){ busy(""); status(["書き出せませんでした: "+err.message]) } };
   $("pr-back").onclick=()=>{ $("pr-save-row").hidden=true; status([]); last=null; src=null; redrawCurrent() };
 }
