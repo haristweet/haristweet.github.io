@@ -40,6 +40,13 @@ function vglNew(canvas){
   const pr=gl.createProgram(); gl.attachShader(pr,sh(gl.VERTEX_SHADER,VGL_VS)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,VGL_FS)); gl.linkProgram(pr);
   if(!gl.getProgramParameter(pr,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
   const bufs=[gl.createBuffer(),gl.createBuffer()], counts=[0,0], tex={};
+  // 空と遠景（MODEL2 の2Dの面。画面に貼るだけで、視点を回しても動かない）
+  const bp=gl.createProgram();
+  gl.attachShader(bp,sh(gl.VERTEX_SHADER,"attribute vec2 aXY; varying vec2 vUV; void main(){ vUV=vec2(aXY.x*0.5+0.5,0.5-aXY.y*0.5); gl_Position=vec4(aXY,0.999,1.0); }"));
+  gl.attachShader(bp,sh(gl.FRAGMENT_SHADER,"precision mediump float; uniform sampler2D uBack; varying vec2 vUV; void main(){ vec4 c=texture2D(uBack,vUV); if(c.a<0.5) discard; gl_FragColor=vec4(c.rgb,1.0); }"));
+  gl.linkProgram(bp); if(!gl.getProgramParameter(bp,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(bp));
+  const quad=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,quad); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  let hasBack=false;
   const lum=(name,unit,w,h,data)=>{ let t=tex[name]; if(!t){ t=tex[name]=gl.createTexture() }
     gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,w,h,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,data);
@@ -55,12 +62,26 @@ function vglNew(canvas){
       lum("clut",1,128,256,col.clut.slice(0,128*256));   // 曲線（明るさの段階 B → L）。番号ごとに 128 段
       lum("xlat",2,64,96,col.xlat.slice(0,64*96));
     },
+    // 空と遠景の絵（496×384 の RGBA。null で消す）
+    setBack(rgba){ hasBack=!!rgba; if(!rgba) return; let t=tex.back; if(!t) t=tex.back=gl.createTexture();
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,496,384,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+      for(const p of [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D,p,gl.NEAREST);
+      for(const p of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D,p,gl.CLAMP_TO_EDGE) },
     // body＝体と背景、shadow＝影
     setMesh(body,shadow){ [body,shadow].forEach((m,i)=>{ gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]); gl.bufferData(gl.ARRAY_BUFFER,m?m.data:new Float32Array(0),gl.STATIC_DRAW); counts[i]=m?m.count:0 }) },
     // view: 4×4（列優先）、focal: [x,y]（クリップ座標の倍率）
-    draw(view,focal,light){
+    draw(view,focal,light,back){
       const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-      if(!counts[0]&&!counts[1]) return; gl.enable(gl.DEPTH_TEST); gl.useProgram(pr);
+      if(!counts[0]&&!counts[1]) return;
+      for(let l=0;l<8;l++) gl.disableVertexAttribArray(l);
+      if(back&&hasBack){   // いちばん先に、奥行きを書かずに画面いっぱいに貼る（ゲームも 3D より先に描く）
+        gl.useProgram(bp); gl.disable(gl.DEPTH_TEST); gl.bindBuffer(gl.ARRAY_BUFFER,quad);
+        const l=gl.getAttribLocation(bp,"aXY"); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,2,gl.FLOAT,false,0,0);
+        gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,tex.back); gl.uniform1i(gl.getUniformLocation(bp,"uBack"),3);
+        gl.drawArrays(gl.TRIANGLE_STRIP,0,4); gl.disableVertexAttribArray(l);
+      }
+      gl.enable(gl.DEPTH_TEST); gl.useProgram(pr);
       const u=n=>gl.getUniformLocation(pr,n);
       gl.uniformMatrix4fv(u("uView"),false,view); gl.uniform2fv(u("uFocal"),focal); gl.uniform3fv(u("uLight"),light);
       gl.uniform1f(u("uCut"),vglCut);

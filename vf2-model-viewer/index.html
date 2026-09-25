@@ -60,6 +60,7 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <label><input type="checkbox" id="c-p2" checked> 2P</label>
   <label><input type="checkbox" id="c-shadow" checked> 影</label>
   <label><input type="checkbox" id="c-stage" checked> 背景</label>
+  <label><input type="checkbox" id="c-sky" checked> 空</label>
   <label><input type="checkbox" id="c-overlay"> ゲームの画面と重ねる</label>
   <button id="b-reset">ゲームの視点に戻す</button>
   <button id="b-png">PNG で保存</button>
@@ -1077,6 +1078,50 @@ function sceneLight(vu1,sc){
   for(let q=0;q<32;q++) tab.push([dv.getFloat32(q*16,true),dv.getFloat32(q*16+4,true),dv.getFloat32(q*16+8,true),dv.getUint32(q*16+12,true)]);
   return {tab, L:[0,1,2].map(i=>dv.getFloat32(32*16+i*4,true)), flags:dv.getUint32(32*16+12,true), fromVu:true};
 }
+// MODEL2 の2Dの面（空・遠景）。アーケードのタイル（セガ System 24 と同じ作り）を PS2 版は g_m2Scr に写して持っている。
+// 本体の sysScrWL（i960 の番地 → g_m2Scr）と m2esiUpdateCellmap・m2esiMakeupClutData を読んで決めた並び:
+//   +0       タイルの表 4面 × 64×64 × 16bit（0x1000000〜）。値: bit0-13 タイル番号、bit7-14 パレット（bit15 で +0x100）
+//   +0x8000  1行ごとの横のずらし（0x1008000〜）
+//   +0x9000  ずらしの設定 8語（0x100a000〜）
+//   +0xa810  タイルの絵 512KB（0x1080000〜）。8×8 画素・4bit。PS2 の並びに直してある（下位の4bit が左）
+//   +0x8a810 パレット 0x1000 色（16bit: R bit0-4・G 5-9・B 10-14、bit15 が 0 なら半分の明るさ）。色 0 は透明
+const M2SCR=0x12cd770;
+function scrRead(mem){
+  const b=mem.subarray(M2SCR,M2SCR+0x8c870), dv=new DataView(b.buffer,b.byteOffset,b.byteLength), w=o=>dv.getUint16(o,true);
+  const ramp=[0,1,2].map(c=>Array.from(b.subarray(0x8c810+c*32,0x8c810+c*32+32)));
+  const pal=new Uint8Array(0x1000*4);
+  for(let i=0;i<0x1000;i++){ const c=w(0x8a810+i*2), h=c&0x8000?0:1;
+    pal[i*4]=ramp[0][c&31]>>h; pal[i*4+1]=ramp[1][c>>5&31]>>h; pal[i*4+2]=ramp[2][c>>10&31]>>h; pal[i*4+3]=(i&15)?255:0 }
+  const regs=[]; for(let i=0;i<8;i++) regs.push(w(0x9000+i*2));
+  return {b,w,pal,regs,ramp};
+}
+// 1面を 512×512 の RGBA に（ずらしは付けない）
+function scrLayer(s,layer){
+  const out=new Uint8Array(512*512*4);
+  for(let ty=0;ty<64;ty++) for(let tx=0;tx<64;tx++){
+    const v=s.w(layer*0x2000+(ty*64+tx)*2), tile=v&0x3fff, pal=((v>>7)&0xff)+(v&0x8000?0x100:0);
+    for(let y=0;y<8;y++) for(let x=0;x<8;x++){
+      const byte=s.b[0xa810+tile*32+y*4+(x>>1)], pen=(x&1)?byte>>4:byte&15, c=(pal*16+pen)&0xfff, o=((ty*8+y)*512+tx*8+x)*4;
+      out[o]=s.pal[c*4]; out[o+1]=s.pal[c*4+1]; out[o+2]=s.pal[c*4+2]; out[o+3]=pen?255:0;
+    }
+  }
+  return out;
+}
+// 奥の2面（2・3）を MODEL2 の画面 496×384 に並べる（m2eScrUpdate→m2esiUpdateScrPos を写した）。
+//   横: 語2（bit15 が立てば 1行ごとの表 +0x8800 の値）の下位9bit。画面の x → 絵の u＝(x − 横) mod 512
+//   縦: 語6 の下位ビット。bit13 が立てば面2 と面3 を縦につないだ 1024 行、立たなければ 512 行で折り返す。bit15 は消す
+// 返すのは RGBA（透明は a=0）
+function scrBack(s){
+  const out=new Uint8Array(496*384*4), h=s.regs[2], c=s.regs[6];
+  if(c&0x8000) return out;
+  const L2=scrLayer(s,2), L3=scrLayer(s,3), wrap=c&0x2000?0x3ff:0x1ff;
+  for(let y=0;y<384;y++){
+    const hh=(h&0x8000?s.w(0x8800+y*2):h)&0x1ff, v=(y+(c&wrap))&wrap, L=v<512?L2:L3;
+    for(let x=0;x<496;x++){ const u=(x-hh)&511, i=((v&511)*512+u)*4, o=(y*496+x)*4;
+      out[o]=L[i]; out[o+1]=L[i+1]; out[o+2]=L[i+2]; out[o+3]=L[i+3] }
+  }
+  return out;
+}
 // 場面の2人（と背景）を、描くための頂点の配列にする（WebGL でも node の台本でも使う）。
 // 頂点ごとに 24 個の数: 位置3（カメラの座標）・法線3・色 RAM の 5bit×3・テクスチャの loc2・org2・size2・テクスチャ（0 なし・1 あり・2 あり＋値 15 を抜く）・ページ・パレット番号・面の頭の bit10-11 と bit17-22（(h>>10&3)|((h>>17&63)<<2)）・光の表の値4（拡散・環境・光沢・光沢の回数）・旗（1＝光の設定 10〜12、2＝貼りもの＝h1 の上位バイトが 0 でない。目や眉）
 const BUILD_STRIDE=24;
@@ -1173,6 +1218,13 @@ function vglNew(canvas){
   const pr=gl.createProgram(); gl.attachShader(pr,sh(gl.VERTEX_SHADER,VGL_VS)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,VGL_FS)); gl.linkProgram(pr);
   if(!gl.getProgramParameter(pr,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
   const bufs=[gl.createBuffer(),gl.createBuffer()], counts=[0,0], tex={};
+  // 空と遠景（MODEL2 の2Dの面。画面に貼るだけで、視点を回しても動かない）
+  const bp=gl.createProgram();
+  gl.attachShader(bp,sh(gl.VERTEX_SHADER,"attribute vec2 aXY; varying vec2 vUV; void main(){ vUV=vec2(aXY.x*0.5+0.5,0.5-aXY.y*0.5); gl_Position=vec4(aXY,0.999,1.0); }"));
+  gl.attachShader(bp,sh(gl.FRAGMENT_SHADER,"precision mediump float; uniform sampler2D uBack; varying vec2 vUV; void main(){ vec4 c=texture2D(uBack,vUV); if(c.a<0.5) discard; gl_FragColor=vec4(c.rgb,1.0); }"));
+  gl.linkProgram(bp); if(!gl.getProgramParameter(bp,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(bp));
+  const quad=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,quad); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  let hasBack=false;
   const lum=(name,unit,w,h,data)=>{ let t=tex[name]; if(!t){ t=tex[name]=gl.createTexture() }
     gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,w,h,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,data);
@@ -1188,12 +1240,26 @@ function vglNew(canvas){
       lum("clut",1,128,256,col.clut.slice(0,128*256));   // 曲線（明るさの段階 B → L）。番号ごとに 128 段
       lum("xlat",2,64,96,col.xlat.slice(0,64*96));
     },
+    // 空と遠景の絵（496×384 の RGBA。null で消す）
+    setBack(rgba){ hasBack=!!rgba; if(!rgba) return; let t=tex.back; if(!t) t=tex.back=gl.createTexture();
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,496,384,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+      for(const p of [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D,p,gl.NEAREST);
+      for(const p of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D,p,gl.CLAMP_TO_EDGE) },
     // body＝体と背景、shadow＝影
     setMesh(body,shadow){ [body,shadow].forEach((m,i)=>{ gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]); gl.bufferData(gl.ARRAY_BUFFER,m?m.data:new Float32Array(0),gl.STATIC_DRAW); counts[i]=m?m.count:0 }) },
     // view: 4×4（列優先）、focal: [x,y]（クリップ座標の倍率）
-    draw(view,focal,light){
+    draw(view,focal,light,back){
       const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-      if(!counts[0]&&!counts[1]) return; gl.enable(gl.DEPTH_TEST); gl.useProgram(pr);
+      if(!counts[0]&&!counts[1]) return;
+      for(let l=0;l<8;l++) gl.disableVertexAttribArray(l);
+      if(back&&hasBack){   // いちばん先に、奥行きを書かずに画面いっぱいに貼る（ゲームも 3D より先に描く）
+        gl.useProgram(bp); gl.disable(gl.DEPTH_TEST); gl.bindBuffer(gl.ARRAY_BUFFER,quad);
+        const l=gl.getAttribLocation(bp,"aXY"); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,2,gl.FLOAT,false,0,0);
+        gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,tex.back); gl.uniform1i(gl.getUniformLocation(bp,"uBack"),3);
+        gl.drawArrays(gl.TRIANGLE_STRIP,0,4); gl.disableVertexAttribArray(l);
+      }
+      gl.enable(gl.DEPTH_TEST); gl.useProgram(pr);
       const u=n=>gl.getUniformLocation(pr,n);
       gl.uniformMatrix4fv(u("uView"),false,view); gl.uniform2fv(u("uFocal"),focal); gl.uniform3fv(u("uLight"),light);
       gl.uniform1f(u("uCut"),vglCut);
@@ -1212,7 +1278,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て
-const VERSION="0.4.2";
+const VERSION="0.5.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -1251,7 +1317,7 @@ async function show(){
     const st2=sceneChooseModels(sc,0,stc,models[0]?new Set(models[0].keys()):null);
     models.stage=st2?st2.map:null; names.push(st2?st2.name.replace(".CMP",""):"なし");
     APP.scene={sc,col,models,names,light:sceneLight(st.vu1,sc)};
-    APP.gl.setColors(col); rebuild(); resetView();
+    APP.gl.setColors(col); APP.gl.setBack(scrBack(scrRead(st.mem))); rebuild(); resetView();
     $("shot").src=st.shot||""; $("shot").hidden=!st.shot; $("empty").hidden=true; $("hint").hidden=false;
     status("");
   }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
@@ -1283,7 +1349,7 @@ function draw(){
   const V=new Float32Array([R[0],R[1],R[2],0, R[3],R[4],R[5],0, R[6],R[7],R[8],0, t[0]+APP.pan[0],t[1]+APP.pan[1],t[2],1]);
   // ゲームの画面（496×384 を 622×412 に広げて見せている）と同じ写り方。この欄の縦横比は 622:412
   const f=APP.scene.sc.focal, focal=[f[0]*APP.zoom*2/496, f[1]*APP.zoom*2/384];
-  APP.gl.draw(V,focal,APP.scene.light.L);   // 光はゲームのカメラの座標のまま（法線も回す前のもの）
+  APP.gl.draw(V,focal,APP.scene.light.L,$("c-sky").checked);   // 光はゲームのカメラの座標のまま（法線も回す前のもの）
 }
 function hookInput(){
   const v=$("viewer"), pts=new Map(); let last=null, pinch=null;
@@ -1319,6 +1385,7 @@ function init(){
     if(APP.disc) show(); else status("次に 1 のディスクのイメージを選んでください");
   };
   for(const id of ["c-p1","c-p2","c-shadow","c-stage"]) $(id).onchange=rebuild;
+  $("c-sky").onchange=draw;
   $("c-overlay").onchange=e=>$("viewer").classList.toggle("overlay",e.target.checked);
   $("b-reset").onclick=resetView;
   $("b-png").onclick=()=>{ draw(); $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=(APP.states[APP.cur]?.name||"vf2").replace(/\.p2s$/i,"")+"_v"+VERSION+".png"; a.click() }) };

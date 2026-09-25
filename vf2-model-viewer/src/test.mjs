@@ -1,7 +1,7 @@
 // 単体試験。ページの .js を1つの文脈に読み、本物のデータ（disc/ にあれば）で確かめる。node test.mjs
 import fs from "fs"; import vm from "vm"; import assert from "assert";
 const ctx={console,TextDecoder,Blob,File,Response,DecompressionStream,Uint8Array}; vm.createContext(ctx);
-for(const f of ["zstd.js","p2s.js","cricmp.js","obj.js","tex.js","scene.js","vdisc.js"]) vm.runInContext(fs.readFileSync(f,"utf8"),ctx,{filename:f});
+for(const f of ["zstd.js","p2s.js","cricmp.js","obj.js","tex.js","scene.js","m2scr.js","vdisc.js"]) vm.runInContext(fs.readFileSync(f,"utf8"),ctx,{filename:f});
 const g=n=>vm.runInContext(n,ctx);
 let ok=0; const t=async(name,fn)=>{ await fn(); ok++; console.log("  ok",name) };
 // 偽のデータでの試験（データが無くても回る）
@@ -36,6 +36,9 @@ if(has("disc/vf2.bin")){
         const li=g("sceneLight")(await z.get("vu1Memory.bin")(),sc); assert.ok(li.fromVu); assert.equal(li.tab.length,32);
         assert.ok(Math.abs(Math.hypot(...li.L)-Math.hypot(...sc.light))<0.05,"VU1 の光のベクトルが命令 10 とほぼ同じ長さ");
         assert.deepEqual(li.tab[31].slice(0,3),[0,127.5,0]);   // 設定 31＝光の影響を受けない（木など）
+        // 空: 奥の面は消えておらず、画面の上端の行はすべて塗られている（空に透明の穴が無い）
+        const sk=g("scrRead")(mem), bk=g("scrBack")(sk); assert.equal(sk.regs[6]&0x8000,0);
+        for(let x=0;x<496;x++) assert.equal(bk[x*4+3],255,"空の上端 x="+x);
       });
     }
   }

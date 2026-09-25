@@ -7,7 +7,7 @@ PS2『SEGA AGES 2500 Vol.16 バーチャファイター2』（SLPM_625.47）の�
 
 - 作業: セーブステート7つ（01〜05 は構え、06 はアキラ同士の組み合い、07 はパイ同士で 1P が空中蹴り。06・07 は 2P が2色目、各キャラのステージ。PCSX2 v2.8.2）で、2人と背景を組んで色も付けられた（pose.mjs・ページ）
 - 頼んでいること: 投げ・ダウン・別のステージのセーブステート（2色目・同キャラは 06 で確認済み）
-- 次にやること: v0.4.1（顔の貼りものを手前に）まで済み。残り: 空と遠景・投げ／ダウンの写しで確認（頼んである）
+- 次にやること: v0.5.0（空と遠景）まで済み。残り: ディスクだけで見る画面・明るさの残りのずれ・投げ／ダウンの写しで確認（頼んである）
 
 ## ページ（`index.html`、版は `src/vapp.js` の VERSION、履歴は CHANGELOG.md）
 
@@ -18,7 +18,7 @@ cd vf2-model-viewer/src
 sh check.sh          # 組み立て（assemble.py が head.html と .js を連結）→ 単体試験（node test.mjs。disc/ にデータがあれば本物で）→ ../index.html
 node browser.mjs     # Playwright。何も無し → 写しだけ → 両方、の順にたどり、PC とスマホの幅で撮る（out/b_*.png）
 ```
-- ソース: zstd.js（fzstd 0.1.1、MIT）・p2s.js・vdisc.js・cricmp.js・obj.js・tex.js・scene.js・build.js・vgl.js・vapp.js・head.html
+- ソース: zstd.js（fzstd 0.1.1、MIT）・p2s.js・vdisc.js・cricmp.js・obj.js・tex.js・scene.js・m2scr.js（空）・build.js・vgl.js・vapp.js・head.html
 - キャラのファイルは、テクスチャの一致（sceneWhichRob）でキャラを決め、描いた番号をいちばん多く含む OBJ_xxx1/2 を選ぶ（1P の表にはステージの部品も入る）
 
 ## データの置き場所（リポジトリに入れない）
@@ -98,7 +98,12 @@ node sheet.mjs disc/bin/OBJ_AKI1.CMP out/aki1.png [列数] [ヨー度] [ピッ�
 - 【数字】（v0.3.0 まで）明るさの係数を光の設定ごとに写真へ当てはめていた。v0.4.0 で VU1 の式に置き換えた
 - 【絵】設定 31 はパレット 1（値 49〜56）をそのまま明るさにする。色の変換表の 48 列以降は特別な欄（木の緑など）で、そこを引くと写真と同じ緑になる
 - 【確定】「パレット」（g_geo+0x2040 の 128B）は GS の CLUT ではなく、VU1 に送る「明るさの段階 B → L」の曲線（VU1 のプログラムで確認）
-- 【×】空・遠景の山は出ない（3D の物体としては命令の列に無い。MODEL2 の別の層？）
+- 【確定】空・遠景は 3D の物体ではなく、アーケードの2Dのタイルの面（MAME の segas24_tile と同じ作り）。PS2 版は i960 の 0x1000000〜 への書き込みを
+  sysScrWL などで g_m2Scr（0x12cd770）へ写す: +0 タイルの表 4面×64×64（値 bit0-13 タイル、bit7-14 パレット＋bit15 で 0x100）、+0x8000 1行ごとの横ずらし、
+  +0x9000 設定8語、+0xa810 タイルの絵 512KB（8×8・4bit、下位4bit が左）、+0x8a810 パレット（16bit、bit15 が 0 なら半分、色0 は透明）、+0x8c810 5bit→8bit の表
+- 【確定】m2eScrUpdate: 奥の組（面2・3）を先に、手前の組（面0・1 ＝ 体力の棒などの表示）をあとに描く。奥の組は 横＝語2（bit15 で行ごとの表 +0x8800）、
+  設定＝語6（bit15 で消す、bit13 で面2・3 を縦につなぐ、下位が縦のずらし）。画面の x → u＝(x − 横) mod 512（m2esiUpdateScrPos）
+- 【絵】m2scr.js の scrBack で、01〜07 の写真の空・山・雲・夕焼けと位置が合う。窓（マスク、+0x9010）はまだ使っていない
 
 ## VU1 のプログラム（`python3 vudis.py disc/states/01_akira_lau/vu1MicroMem.bin [始め 終わり]`）
 
