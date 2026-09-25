@@ -33,6 +33,9 @@ if(has("disc/vf2.bin")){
         const sc=g("sceneRead")(mem); assert.equal(sc.draws.length,nd); assert.deepEqual(sc.focal,[600,600]);
         const who=g("sceneWhichRob")(g("sceneColors")(mem).tex,robs).map(i=>g("SC_ROB")[i]);
         assert.deepEqual(who,[p1,p2]);
+        const li=g("sceneLight")(await z.get("vu1Memory.bin")(),sc); assert.ok(li.fromVu); assert.equal(li.tab.length,32);
+        assert.ok(Math.abs(Math.hypot(...li.L)-Math.hypot(...sc.light))<0.05,"VU1 の光のベクトルが命令 10 とほぼ同じ長さ");
+        assert.deepEqual(li.tab[31].slice(0,3),[0,127.5,0]);   // 設定 31＝光の影響を受けない（木など）
       });
     }
   }

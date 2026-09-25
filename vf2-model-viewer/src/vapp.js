@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.3.0";
+const VERSION="0.4.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -23,7 +23,7 @@ async function show(){
   const st=APP.states[APP.cur]; if(!st||!APP.disc) return;
   try{
     status("読み込み中…");
-    if(!st.mem){ st.mem=await st.zip.get("eeMemory.bin")(); const sh=st.zip.get("Screenshot.png"); if(sh) st.shot=URL.createObjectURL(new Blob([await sh()],{type:"image/png"})) }
+    if(!st.mem){ st.mem=await st.zip.get("eeMemory.bin")(); const v1=st.zip.get("vu1Memory.bin"); st.vu1=v1?await v1():null; const sh=st.zip.get("Screenshot.png"); if(sh) st.shot=URL.createObjectURL(new Blob([await sh()],{type:"image/png"})) }
     const sc=sceneRead(st.mem), col=sceneColors(st.mem), who=sceneWhichRob(col.tex,await readRobs());
     const models={}, names=[];
     for(const pl of [0,1]){
@@ -37,7 +37,7 @@ async function show(){
     for(const n of stageNames) stc.push({name:n,models:await readObj(n)});
     const st2=sceneChooseModels(sc,0,stc,models[0]?new Set(models[0].keys()):null);
     models.stage=st2?st2.map:null; names.push(st2?st2.name.replace(".CMP",""):"なし");
-    APP.scene={sc,col,models,names};
+    APP.scene={sc,col,models,names,light:sceneLight(st.vu1,sc)};
     APP.gl.setColors(col); rebuild(); resetView();
     $("shot").src=st.shot||""; $("shot").hidden=!st.shot; $("empty").hidden=true; $("hint").hidden=false;
     status("");
@@ -45,7 +45,7 @@ async function show(){
 }
 function rebuild(){
   const S=APP.scene; if(!S) return;
-  const o={players:[$("c-p1").checked,$("c-p2").checked],stage:$("c-stage").checked};
+  const o={players:[$("c-p1").checked,$("c-p2").checked],stage:$("c-stage").checked,light:S.light};
   const body=sceneMesh(S.sc,S.col,S.models,{...o,which:"body"}), shadow=$("c-shadow").checked?sceneMesh(S.sc,S.col,S.models,{...o,which:"shadow"}):null;
   APP.gl.setMesh(body,shadow);
   $("info").textContent=`1P ${S.names[0]}・2P ${S.names[1]}・背景 ${S.names[2]}　部品 ${S.sc.draws.length} 個（うち影 ${body.shadows}）　三角形 ${(body.count+(shadow?shadow.count:0))/3}`+(body.missing.length?`　ファイルに無い番号 ${body.missing.length} 個`:"");
@@ -70,8 +70,7 @@ function draw(){
   const V=new Float32Array([R[0],R[1],R[2],0, R[3],R[4],R[5],0, R[6],R[7],R[8],0, t[0]+APP.pan[0],t[1]+APP.pan[1],t[2],1]);
   // ゲームの画面（496×384 を 622×412 に広げて見せている）と同じ写り方。この欄の縦横比は 622:412
   const f=APP.scene.sc.focal, focal=[f[0]*APP.zoom*2/496, f[1]*APP.zoom*2/384];
-  const L=APP.scene.sc.light, ll=Math.hypot(...L)||1, Ln=L.map(v=>v/ll), Lr=[0,1,2].map(i=>R[i]*Ln[0]+R[3+i]*Ln[1]+R[6+i]*Ln[2]);
-  APP.gl.draw(V,focal,Lr);
+  APP.gl.draw(V,focal,APP.scene.light.L);   // 光はゲームのカメラの座標のまま（法線も回す前のもの）
 }
 function hookInput(){
   const v=$("viewer"), pts=new Map(); let last=null, pinch=null;

@@ -47,3 +47,13 @@ function sceneWhichRob(tex,robs){
   }
   return res;
 }
+
+// 光（VU1 のプログラム calcBrightnessMainMdl2 を読んで確かめた。VU1 のデータ vu1Memory.bin の中）:
+//   0〜31 番: 面の光の設定（面の頭の bit18-22）ごとの (拡散, 環境, 光沢, 光沢の回数)。32 番: 光のベクトル（xyz）と旗（w）
+// 明るさの段階 B＝clamp(拡散×d＋環境＋光沢×s^n, 0, 127)、d＝clamp(光・法線, 0, 1)、s＝clamp(2d×法線z−光z, 0, 1)
+function sceneLight(vu1,sc){
+  if(!vu1||vu1.length<34*16) return {tab:Array.from({length:32},()=>[63.5,31.5,0,0]), L:sc?sc.light:[0,-1,0], flags:7, fromVu:false};
+  const dv=new DataView(vu1.buffer,vu1.byteOffset,vu1.byteLength), tab=[];
+  for(let q=0;q<32;q++) tab.push([dv.getFloat32(q*16,true),dv.getFloat32(q*16+4,true),dv.getFloat32(q*16+8,true),dv.getUint32(q*16+12,true)]);
+  return {tab, L:[0,1,2].map(i=>dv.getFloat32(32*16+i*4,true)), flags:dv.getUint32(32*16+12,true), fromVu:true};
+}

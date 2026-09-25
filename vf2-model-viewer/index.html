@@ -1066,9 +1066,19 @@ function sceneWhichRob(tex,robs){
   }
   return res;
 }
+
+// 光（VU1 のプログラム calcBrightnessMainMdl2 を読んで確かめた。VU1 のデータ vu1Memory.bin の中）:
+//   0〜31 番: 面の光の設定（面の頭の bit18-22）ごとの (拡散, 環境, 光沢, 光沢の回数)。32 番: 光のベクトル（xyz）と旗（w）
+// 明るさの段階 B＝clamp(拡散×d＋環境＋光沢×s^n, 0, 127)、d＝clamp(光・法線, 0, 1)、s＝clamp(2d×法線z−光z, 0, 1)
+function sceneLight(vu1,sc){
+  if(!vu1||vu1.length<34*16) return {tab:Array.from({length:32},()=>[63.5,31.5,0,0]), L:sc?sc.light:[0,-1,0], flags:7, fromVu:false};
+  const dv=new DataView(vu1.buffer,vu1.byteOffset,vu1.byteLength), tab=[];
+  for(let q=0;q<32;q++) tab.push([dv.getFloat32(q*16,true),dv.getFloat32(q*16+4,true),dv.getFloat32(q*16+8,true),dv.getUint32(q*16+12,true)]);
+  return {tab, L:[0,1,2].map(i=>dv.getFloat32(32*16+i*4,true)), flags:dv.getUint32(32*16+12,true), fromVu:true};
+}
 // 場面の2人（と背景）を、描くための頂点の配列にする（WebGL でも node の台本でも使う）。
-// 頂点ごとに 21 個の数: 位置3（カメラの座標）・法線3・色 RAM の 5bit×3・テクスチャの loc2・org2・size2・テクスチャ（0 なし・1 あり・2 あり＋値 15 を抜く）・ページ・パレット番号・面の頭の bit10-11 と bit17-22（(h>>10&3)|((h>>17&63)<<2)）・明るさの係数2（環境・拡散）
-const BUILD_STRIDE=21;
+// 頂点ごとに 24 個の数: 位置3（カメラの座標）・法線3・色 RAM の 5bit×3・テクスチャの loc2・org2・size2・テクスチャ（0 なし・1 あり・2 あり＋値 15 を抜く）・ページ・パレット番号・面の頭の bit10-11 と bit17-22（(h>>10&3)|((h>>17&63)<<2)）・光の表の値4（拡散・環境・光沢・光沢の回数）・特別扱い（光の設定 10〜12 は 1）
+const BUILD_STRIDE=24;
 // models: {0: 1P のモデル, 1: 2P のモデル, stage: ステージのモデル}（どれも Map 番号→モデル）。
 // opt.which: "body"（影以外）か "shadow"（影だけ）。opt.players: [1P を出すか, 2P を出すか]。opt.stage: 背景を出すか（false で出さない）
 function sceneMesh(sc,col,models,opt={}){
@@ -1090,7 +1100,7 @@ function sceneMesh(sc,col,models,opt={}){
       const n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=Math.hypot(...n)||1; for(let i=0;i<3;i++) n[i]/=l;
       const c16=cram.getUint16((p.attr[3]>>6&1023)*2,true), c5=[c16&31,c16>>5&31,c16>>10&31];
       let tx=null; if(p.attr[0]>>14&1) tx=texCoords(p.attr,p.uv);
-      const lk=BUILD_LIGHT[p.h>>18&31]||BUILD_LIGHT_ALL;
+      const ls=p.h>>18&31, lt=opt.light?opt.light.tab[ls]:[63.5,31.5,0,0], lk=[lt[0],lt[1],lt[2],(lt[3]&7&(opt.light?opt.light.flags:0))?1:0,ls>=10&&ls<=12?1:0];
       const vert=k=>{ out.push(...q[k],...n,...c5);
         if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,(p.attr[0]>>13&1)?2:1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0);
         out.push((p.h>>10&3)|((p.h>>17&63)<<2),...lk) };
@@ -1099,12 +1109,19 @@ function sceneMesh(sc,col,models,opt={}){
   }
   return {data:new Float32Array(out), count:out.length/BUILD_STRIDE, missing:[...missing], shadows};
 }
-// 明るさ（0〜63）＝パレットの値（テクスチャなしは 36）×(環境＋拡散×max(0, 法線・光))。法線は頂点の並びから、光は命令 10 の向き。
-// 環境・拡散の係数は、面の頭の bit18-22（面ごとの光の設定。ゲームの値）ごとに、5つの写しの写真の画素（キャラと背景、約 67 万）に当てはめたもの（light.mjs）。
-// 設定 31（光の影響を受けない。パレット 1 の値 49〜56 がそのまま色の変換表の特別な欄＝木の緑などを指す）は 1.0 に固定。
-// 当てはめに使わなかった写しで、写真とのずれが全体の係数より減るのを確かめた（04・05: 5.72→3.96、背景込みの 05: 7.99→6.91）。ゲームの本当の計算（VU1）は読んでいない
-const BUILD_LIGHT={2:[1.33,0],3:[0.7,0.57],4:[0.56,1.08],5:[0.67,1.01],6:[0.47,1.4],7:[1.03,0.84],10:[1.25,0.57],11:[0.72,1.09],16:[1.43,0.14],19:[0.35,0.49],21:[1.21,0],28:[1.66,0],31:[1,0]}, BUILD_LIGHT_ALL=[1.12,0.02], BUILD_FLAT=36;
-function buildLuma(texVal,dot,lk){ const k=lk[0]+lk[1]*Math.max(0,dot); return Math.max(0,Math.min(63,Math.floor((texVal<0?BUILD_FLAT:texVal)*k))) }
+// 明るさ（0〜63）。VU1 のプログラム（calcBrightnessMainMdl2・m2CalcCont・m2mdlQuadPoly…m2mdlTex）を読んで写したもの:
+//   B＝clamp(拡散×d＋環境＋光沢×s^8, 0, 127)（d・s は scene.js の sceneLight の説明）→ L＝曲線[h1 の番号][B]（g_geo+0x2040＋番号×128）
+//   テクスチャあり: 光の設定が 10〜12 か L＜48 なら L×(テクスチャの値×17)×8/2048、それ以外は 48＋テクスチャの値（色の変換表の特別な欄）
+//   テクスチャなし: L。光沢の回数は s^8 と近似（7つの写しでは結果に影響しなかった）
+// 7つの写しで、写真とのずれが当てはめた式より減る（light.mjs。当てはめに使わなかった 06 で 11.45→8.78）
+function buildBright(n,lk,light){
+  const L=light.L, d=Math.max(0,Math.min(1,L[0]*n[0]+L[1]*n[1]+L[2]*n[2])), s=Math.max(0,Math.min(1,2*d*n[2]-L[2]));
+  return Math.floor(Math.max(0,Math.min(127,lk[0]*d+lk[1]+(lk[3]?lk[2]*Math.pow(s,8):0))));
+}
+function buildLuma(curveVal,tex,special){
+  if(tex<0) return Math.min(63,curveVal);
+  const v=special||curveVal<48?Math.floor(curveVal*tex*17*8/2048):48+tex; return Math.max(0,Math.min(63,v));
+}
 // OBJ ファイル（展開後のモデルの一覧）の候補から、そのプレイヤーが描いた番号をいちばん多く含むものを選ぶ
 // （1P の表にはステージの部品も入っているので「全部」は求めない。同じ数なら先の候補＝1色目）。skip の番号は数えない
 function sceneChooseModels(sc,player,candidates,skip){
@@ -1113,36 +1130,36 @@ function sceneChooseModels(sc,player,candidates,skip){
     if(n>0&&(!best||n>best.n)) best={name:c.name,map,n} }
   return best;
 }
-// WebGL で描く。明るさは build.js の buildLuma と同じ式（pose.mjs も同じ）:
-//   テクスチャあり: パレット[番号][テクスチャの 4bit]×(環境＋拡散×max(0,法線・光))、テクスチャなし: 36×(同じ)
-//   色＝色の変換表[チャンネル][色 RAM の 5bit][明るさ]。影は黒の半透明で、体と背景のあとに描く
+// WebGL で描く。明るさは build.js の buildBright・buildLuma と同じ式（VU1 のプログラムを写したもの。pose.mjs も同じ）。
+// 色＝色の変換表[チャンネル][色 RAM の 5bit][明るさ]。光はゲームのカメラの座標で計算する（回して見ても場面に固定）。影は黒の半透明で最後に描く
 const VGL_VS=`
-attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol; attribute vec2 aLoc; attribute vec4 aOrgSize; attribute vec3 aMisc; attribute vec2 aLk;
+attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol; attribute vec2 aLoc; attribute vec4 aOrgSize; attribute vec3 aMisc; attribute vec4 aLk; attribute float aSpecial;
 uniform mat4 uView; uniform vec2 uFocal; uniform vec3 uLight;
-varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vDot; varying vec2 vLk;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial;
 void main(){
-  vec4 p=uView*vec4(aPos,1.0); vec3 n=normalize(mat3(uView)*aNrm);
-  vDot=dot(n,uLight);
-  vLk=aLk; vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc;
+  vec4 p=uView*vec4(aPos,1.0);
+  float d=clamp(dot(uLight,aNrm),0.0,1.0), s=clamp(2.0*d*aNrm.z-uLight.z,0.0,1.0);
+  vB=floor(clamp(aLk.x*d+aLk.y+(aLk.w>0.5?aLk.z*pow(s,8.0):0.0),0.0,127.0));
+  vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc; vSpecial=aSpecial;
   // 奥行き 0.05〜100 を -1〜1 に
   gl_Position=vec4(uFocal.x*p.x, uFocal.y*p.y, (p.z*100.05-10.0)/99.95, p.z);
 }`;
 const VGL_FS=`
 precision highp float;
-uniform sampler2D uTex, uClut, uXlat; uniform vec3 uLumaK; uniform float uShadow, uCut;
-varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vDot; varying vec2 vLk;
+uniform sampler2D uTex, uClut, uXlat; uniform float uShadow, uCut;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial;
 float xl(float row,float luma){ return texture2D(uXlat,vec2((luma+0.5)/64.0,(row+0.5)/96.0)).r; }
 void main(){
   if(uShadow>0.5){ gl_FragColor=vec4(0.0,0.0,0.0,0.45); return; }
-  float k=vLk.x+vLk.y*max(0.0,vDot), luma;
+  float L=floor(texture2D(uClut,vec2((vB+0.5)/128.0,(vMisc.z+0.5)/256.0)).r*255.0+0.5), luma;
   if(vMisc.x>0.5){
     vec2 t=vOrgSize.xy+mod(vLoc,vOrgSize.zw);
     float x=floor(t.x)+vMisc.y*512.0, y=floor(t.y);
     float tx=floor(texture2D(uTex,vec2((x+0.5)/1024.0,(y+0.5)/1024.0)).r*255.0/17.0+0.5);
     if(abs(tx-uCut)<0.5||(vMisc.x>1.5&&tx>14.5)) discard;   // 値 15 は、属性 h0 の bit13 が立った面では透明（推測。写真で木が抜けるのを確かめた）
-    luma=texture2D(uClut,vec2((tx+0.5)/16.0,(vMisc.z+0.5)/256.0)).r*255.0*k;
-  } else luma=uLumaK.z*k;
-  luma=clamp(floor(luma),0.0,63.0);
+    luma=(vSpecial>0.5||L<48.0)?floor(L*tx*17.0*8.0/2048.0):48.0+tx;
+  } else luma=L;
+  luma=clamp(luma,0.0,63.0);
   gl_FragColor=vec4(xl(vCol.r,luma),xl(32.0+vCol.g,luma),xl(64.0+vCol.b,luma),1.0);
 }`;
 let vglCut=+(new URLSearchParams(location.search).get("cut")??-1);
@@ -1165,8 +1182,7 @@ function vglNew(canvas){
       for(let page=0;page<2;page++) for(let y=0;y<1024;y++) for(let x=0;x<512;x+=2){
         const b=col.tex[(page<<18)+y*256+(x>>1)], o=y*1024+page*512+x; t[o]=(b&15)*17; t[o+1]=(b>>4)*17 }
       lum("tex",0,1024,1024,t);
-      const c=new Uint8Array(16*256); for(let p=0;p<256;p++) for(let k=0;k<16;k++) c[p*16+k]=col.clut[p*128+k*4];
-      lum("clut",1,16,256,c);
+      lum("clut",1,128,256,col.clut.slice(0,128*256));   // 曲線（明るさの段階 B → L）。番号ごとに 128 段
       lum("xlat",2,64,96,col.xlat.slice(0,64*96));
     },
     // body＝体と背景、shadow＝影
@@ -1177,13 +1193,13 @@ function vglNew(canvas){
       if(!counts[0]&&!counts[1]) return; gl.enable(gl.DEPTH_TEST); gl.useProgram(pr);
       const u=n=>gl.getUniformLocation(pr,n);
       gl.uniformMatrix4fv(u("uView"),false,view); gl.uniform2fv(u("uFocal"),focal); gl.uniform3fv(u("uLight"),light);
-      gl.uniform3f(u("uLumaK"),0.0,0.0,BUILD_FLAT); gl.uniform1f(u("uCut"),vglCut);
+      gl.uniform1f(u("uCut"),vglCut);
       gl.uniform1i(u("uTex"),0); gl.uniform1i(u("uClut"),1); gl.uniform1i(u("uXlat"),2);
       const F=4, S=BUILD_STRIDE*F;
       for(let i=0;i<2;i++){ if(!counts[i]) continue;
         gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]);
         const at=(n,k,o)=>{ const l=gl.getAttribLocation(pr,n); if(l<0) return; gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,k,gl.FLOAT,false,S,o*F) };
-        at("aPos",3,0); at("aNrm",3,3); at("aCol",3,6); at("aLoc",2,9); at("aOrgSize",4,11); at("aMisc",3,15); at("aLk",2,19);
+        at("aPos",3,0); at("aNrm",3,3); at("aCol",3,6); at("aLoc",2,9); at("aOrgSize",4,11); at("aMisc",3,15); at("aLk",4,19); at("aSpecial",1,23);
         gl.uniform1f(u("uShadow"),i);
         if(i){ gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false) }
         gl.drawArrays(gl.TRIANGLES,0,counts[i]);
@@ -1193,7 +1209,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て
-const VERSION="0.3.0";
+const VERSION="0.4.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -1217,7 +1233,7 @@ async function show(){
   const st=APP.states[APP.cur]; if(!st||!APP.disc) return;
   try{
     status("読み込み中…");
-    if(!st.mem){ st.mem=await st.zip.get("eeMemory.bin")(); const sh=st.zip.get("Screenshot.png"); if(sh) st.shot=URL.createObjectURL(new Blob([await sh()],{type:"image/png"})) }
+    if(!st.mem){ st.mem=await st.zip.get("eeMemory.bin")(); const v1=st.zip.get("vu1Memory.bin"); st.vu1=v1?await v1():null; const sh=st.zip.get("Screenshot.png"); if(sh) st.shot=URL.createObjectURL(new Blob([await sh()],{type:"image/png"})) }
     const sc=sceneRead(st.mem), col=sceneColors(st.mem), who=sceneWhichRob(col.tex,await readRobs());
     const models={}, names=[];
     for(const pl of [0,1]){
@@ -1231,7 +1247,7 @@ async function show(){
     for(const n of stageNames) stc.push({name:n,models:await readObj(n)});
     const st2=sceneChooseModels(sc,0,stc,models[0]?new Set(models[0].keys()):null);
     models.stage=st2?st2.map:null; names.push(st2?st2.name.replace(".CMP",""):"なし");
-    APP.scene={sc,col,models,names};
+    APP.scene={sc,col,models,names,light:sceneLight(st.vu1,sc)};
     APP.gl.setColors(col); rebuild(); resetView();
     $("shot").src=st.shot||""; $("shot").hidden=!st.shot; $("empty").hidden=true; $("hint").hidden=false;
     status("");
@@ -1239,7 +1255,7 @@ async function show(){
 }
 function rebuild(){
   const S=APP.scene; if(!S) return;
-  const o={players:[$("c-p1").checked,$("c-p2").checked],stage:$("c-stage").checked};
+  const o={players:[$("c-p1").checked,$("c-p2").checked],stage:$("c-stage").checked,light:S.light};
   const body=sceneMesh(S.sc,S.col,S.models,{...o,which:"body"}), shadow=$("c-shadow").checked?sceneMesh(S.sc,S.col,S.models,{...o,which:"shadow"}):null;
   APP.gl.setMesh(body,shadow);
   $("info").textContent=`1P ${S.names[0]}・2P ${S.names[1]}・背景 ${S.names[2]}　部品 ${S.sc.draws.length} 個（うち影 ${body.shadows}）　三角形 ${(body.count+(shadow?shadow.count:0))/3}`+(body.missing.length?`　ファイルに無い番号 ${body.missing.length} 個`:"");
@@ -1264,8 +1280,7 @@ function draw(){
   const V=new Float32Array([R[0],R[1],R[2],0, R[3],R[4],R[5],0, R[6],R[7],R[8],0, t[0]+APP.pan[0],t[1]+APP.pan[1],t[2],1]);
   // ゲームの画面（496×384 を 622×412 に広げて見せている）と同じ写り方。この欄の縦横比は 622:412
   const f=APP.scene.sc.focal, focal=[f[0]*APP.zoom*2/496, f[1]*APP.zoom*2/384];
-  const L=APP.scene.sc.light, ll=Math.hypot(...L)||1, Ln=L.map(v=>v/ll), Lr=[0,1,2].map(i=>R[i]*Ln[0]+R[3+i]*Ln[1]+R[6+i]*Ln[2]);
-  APP.gl.draw(V,focal,Lr);
+  APP.gl.draw(V,focal,APP.scene.light.L);   // 光はゲームのカメラの座標のまま（法線も回す前のもの）
 }
 function hookInput(){
   const v=$("viewer"), pts=new Map(); let last=null, pinch=null;

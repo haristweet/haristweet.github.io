@@ -30,13 +30,13 @@ for(let t=0;t<mesh.count;t+=3){
     if(tex){ const lx=w0*V[0][9]+w1*V[1][9]+w2*V[2][9], ly=w0*V[0][10]+w1*V[1][10]+w2*V[2][10];
       const ox=V[0][11],oy=V[0][12],sw=V[0][13],shh=V[0][14],page=V[0][16]; pal=V[0][17]; const pal_x=0;
       const X=Math.floor(ox+((lx%sw)+sw)%sw), Y=Math.floor(oy+((ly%shh)+shh)%shh), tx=g("texRam")(col.tex,page,X,Y); tl=col.clut[pal*128+tx*4]; traw=tx; if(V[0][15]>1.5&&tx===15) continue }
-    rec[i]={dot,c5,tl,traw,pal,hb:V[0][18]};
+    rec[i]={dot,c5,tl,traw,pal,hb:V[0][18],n:[V[0][3],V[0][4],V[0][5]]};
   }
 }
 // 写真の色 → 明るさ（その面の色 RAM の行で、いちばん近い列）
 const out=[];
 for(let i=0;i<W*H;i++){ const r=rec[i]; if(!r) continue; const s=i*3, sp=[shot.px[s],shot.px[s+1],shot.px[s+2]];
   let best=[1e9,0]; for(let l=0;l<64;l++){ const q=xl(r.c5,l), e=Math.abs(q[0]-sp[0])+Math.abs(q[1]-sp[1])+Math.abs(q[2]-sp[2]); if(e<best[0]) best=[e,l] }
-  out.push([+r.dot.toFixed(3),r.tl,best[1],best[0],r.c5.join(","),r.traw,r.pal,r.hb,i%W,(i/W)|0,sp.join(",")]) }
+  out.push([+r.dot.toFixed(3),r.tl,best[1],best[0],r.c5.join(","),r.traw,r.pal,r.hb,i%W,(i/W)|0,sp.join(","),r.n.map(v=>+v.toFixed(4))]) }
 fs.writeFileSync(path.join(here,"out/light_"+path.basename(dir)+".json"),JSON.stringify(out));
 console.log("画素",out.length,"光",Ln.map(v=>v.toFixed(3)).join(","));
