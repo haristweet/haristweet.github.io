@@ -57,14 +57,15 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
 <div class="ctrl">
   <label><input type="checkbox" id="c-p1" checked> 1P</label>
   <label><input type="checkbox" id="c-p2" checked> 2P</label>
-  <label><input type="checkbox" id="c-shadow"> 影（まだ写真と合わない）</label>
+  <label><input type="checkbox" id="c-shadow" checked> 影</label>
+  <label><input type="checkbox" id="c-stage" checked> 背景</label>
   <label><input type="checkbox" id="c-overlay"> ゲームの画面と重ねる</label>
   <button id="b-reset">ゲームの視点に戻す</button>
   <button id="b-png">PNG で保存</button>
 </div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
-<p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさ（光の当たり方）はまだ近い値です。</p>
+<p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさは、写真と照らして当てはめた近い式です（ゲームの本当の計算はまだ読んでいません）。背景はステージのモデルのうち、そのコマで描いた部品です（空や遠景の絵は出ません）。</p>
 <p id="ver"></p></details>
 </main>
 <script>

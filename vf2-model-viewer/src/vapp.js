@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.1.0";
+const VERSION="0.2.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -25,13 +25,18 @@ async function show(){
     status("読み込み中…");
     if(!st.mem){ st.mem=await st.zip.get("eeMemory.bin")(); const sh=st.zip.get("Screenshot.png"); if(sh) st.shot=URL.createObjectURL(new Blob([await sh()],{type:"image/png"})) }
     const sc=sceneRead(st.mem), col=sceneColors(st.mem), who=sceneWhichRob(col.tex,await readRobs());
-    const models=[], names=[];
+    const models={}, names=[];
     for(const pl of [0,1]){
       const code=who[pl]>=0?SC_ROB[who[pl]]:null;
       let ch=sceneChooseModels(sc,pl,await candidatesFor(code));
       if(!ch&&code) ch=sceneChooseModels(sc,pl,await candidatesFor(null));
-      models.push(ch?ch.map:null); names.push(ch?ch.name.replace(".CMP",""):"（見つからない）");
+      models[pl]=ch?ch.map:null; names.push(ch?ch.name.replace(".CMP",""):"（見つからない）");
     }
+    // 背景: 1P の表のうちキャラのファイルに無い番号を、いちばん多く含む OBJ_STAGE*
+    const stageNames=[...APP.disc.keys()].filter(n=>/^OBJ_STAGE\d+\.CMP$/.test(n)).sort(), stc=[];
+    for(const n of stageNames) stc.push({name:n,models:await readObj(n)});
+    const st2=sceneChooseModels(sc,0,stc,models[0]?new Set(models[0].keys()):null);
+    models.stage=st2?st2.map:null; names.push(st2?st2.name.replace(".CMP",""):"なし");
     APP.scene={sc,col,models,names};
     APP.gl.setColors(col); rebuild(); resetView();
     $("shot").src=st.shot||""; $("shot").hidden=!st.shot; $("empty").hidden=true; $("hint").hidden=false;
@@ -40,9 +45,10 @@ async function show(){
 }
 function rebuild(){
   const S=APP.scene; if(!S) return;
-  const mesh=sceneMesh(S.sc,S.col,S.models,{shadow:$("c-shadow").checked,players:[$("c-p1").checked,$("c-p2").checked]});
-  APP.gl.setMesh(mesh);
-  $("info").textContent=`1P ${S.names[0]}・2P ${S.names[1]}　部品 ${S.sc.draws.length} 個（うち影 ${mesh.shadows}）　三角形 ${mesh.count/3}`+(mesh.missing.length?`　ファイルに無い番号 ${mesh.missing.length} 個（背景など）`:"");
+  const o={players:[$("c-p1").checked,$("c-p2").checked],stage:$("c-stage").checked};
+  const body=sceneMesh(S.sc,S.col,S.models,{...o,which:"body"}), shadow=$("c-shadow").checked?sceneMesh(S.sc,S.col,S.models,{...o,which:"shadow"}):null;
+  APP.gl.setMesh(body,shadow);
+  $("info").textContent=`1P ${S.names[0]}・2P ${S.names[1]}・背景 ${S.names[2]}　部品 ${S.sc.draws.length} 個（うち影 ${body.shadows}）　三角形 ${(body.count+(shadow?shadow.count:0))/3}`+(body.missing.length?`　ファイルに無い番号 ${body.missing.length} 個`:"");
   draw();
 }
 // 視点: ゲームのカメラの座標のまま、2人の真ん中を中心に回す
@@ -56,7 +62,7 @@ function resetView(){ APP.rot=[0,0]; APP.zoom=1; APP.pan=[0,0]; draw() }
 function draw(){
   const cv=$("cv"), r=cv.getBoundingClientRect(), dpr=Math.min(2,devicePixelRatio||1);
   cv.width=Math.round(r.width*dpr); cv.height=Math.round(r.height*dpr);
-  if(!APP.scene){ APP.gl.draw(new Float32Array(16),[1,1],[0,0,1],1); return }
+  if(!APP.scene){ APP.gl.draw(new Float32Array(16),[1,1],[0,0,1]); return }
   const [cx,cy,cz]=center(), [a,b]=APP.rot, ca=Math.cos(a), sa=Math.sin(a), cb=Math.cos(b), sb=Math.sin(b);
   // R = 縦の回転(b) × 横の回転(a)。p' = R(p − c) + c
   const R=[ca,sb*sa,-cb*sa, 0,cb,sb, sa,-sb*ca,cb*ca];   // 列優先 3×3
@@ -65,7 +71,7 @@ function draw(){
   // ゲームの画面（496×384 を 622×412 に広げて見せている）と同じ写り方。この欄の縦横比は 622:412
   const f=APP.scene.sc.focal, focal=[f[0]*APP.zoom*2/496, f[1]*APP.zoom*2/384];
   const L=APP.scene.sc.light, ll=Math.hypot(...L)||1, Ln=L.map(v=>v/ll), Lr=[0,1,2].map(i=>R[i]*Ln[0]+R[3+i]*Ln[1]+R[6+i]*Ln[2]);
-  APP.gl.draw(V,focal,Lr,1.2);
+  APP.gl.draw(V,focal,Lr);
 }
 function hookInput(){
   const v=$("viewer"), pts=new Map(); let last=null, pinch=null;
@@ -100,7 +106,7 @@ function init(){
     if(APP.cur<0) APP.cur=0; $("n-state").textContent=APP.states.length+" 個"; $("step-state").classList.add("done"); listStates();
     if(APP.disc) show(); else status("次に 1 のディスクのイメージを選んでください");
   };
-  for(const id of ["c-p1","c-p2","c-shadow"]) $(id).onchange=rebuild;
+  for(const id of ["c-p1","c-p2","c-shadow","c-stage"]) $(id).onchange=rebuild;
   $("c-overlay").onchange=e=>$("viewer").classList.toggle("overlay",e.target.checked);
   $("b-reset").onclick=resetView;
   $("b-png").onclick=()=>{ draw(); $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=(APP.states[APP.cur]?.name||"vf2").replace(/\.p2s$/i,"")+".png"; a.click() }) };
