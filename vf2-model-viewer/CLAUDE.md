@@ -34,7 +34,7 @@ node browser.mjs     # Playwright。何も無し → 写しだけ → 両方、�
 node sheet.mjs disc/bin/OBJ_AKI1.CMP out/aki1.png [列数] [ヨー度] [ピッチ度] [番号,…] [欄の大きさ]
 ```
 1ファイルの全モデルを決まった角度で並べる。
-版を上げるたびに `./shots.sh`（キャラごとの一覧を out/shots に作り直し、前回を out/prev に残す）→ `node dash.mjs`
+版を上げるたびに `./shots.sh`（キャラごとの一覧・写しの場面・顔の一覧 faces.png を out/shots に作り直し、前回を out/prev に残す）→ `node dash.mjs`
 （out/dash.html。いまの状態・札の数・今回と前回の絵・分かったことの色分け）。dash.html はゲームの絵を含むのでリポジトリに入れず、ユーザーには直接送る。
 表の色＝法線が画面の向こう、青＝こちら（今は法線が内向きらしく、見える面はほぼ青）
 
@@ -111,7 +111,9 @@ node sheet.mjs disc/bin/OBJ_AKI1.CMP out/aki1.png [列数] [ヨー度] [ピッ�
 - 【数字】この式（build.js の buildBright・buildLuma）で、7つの写しの写真とのずれが当てはめの式より減る（light.mjs）
 - 【確定】m2mdlSetSameZval: 1つの部品の面はみな同じ Z で、ファイルの順に塗る（面の頭の bit2 は全部 0）。だから貼りもの（属性 h1 の上位バイト≠0。目・眉は光の設定 31）が肌に勝つ。
   ページは貼りものの面の奥行きを 0.00002×z だけ手前にずらして真似る（vgl.js。ずらす量は【推測】）
-- 【絵】顔の寄り: `node faceshot.mjs disc/states/06_akira_akira out/face.png 0 412 15`（1P の頭 412 を4方向から）。v0.4.1 でページのアキラ・パイの顔も確認
+- 【絵】顔の一覧: `node faces.mjs [out/faces.png]` はページそのもので、7つの写し×2人の頭（貼りものを持つ部品のうち高い所にあるもの。カメラの座標は y が上）を4方向から撮って並べる。
+  v0.4.2 で 10 人（デュラル以外）の顔が出るのを確認。ウルフの顔の赤い筋はゲームの写真にもある（隈取り）
+- 【絵】顔の寄り（ページを通さない）: `node faceshot.mjs disc/states/06_akira_akira out/face.png 0 412 15`（1P の頭 412 を4方向から）。v0.4.1 でページのアキラ・パイの顔も確認
 - 【推測】光沢の回数（w の下位3bit）の扱いは VU の実行の遅れが絡むので s^8 と近似。7つの写しでは結果に影響しなかった
 
 ## 推測・未確定
