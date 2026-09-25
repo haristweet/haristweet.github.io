@@ -369,7 +369,7 @@ function memCharacters(buf,base,opt){
     const want=memCmd5Count(md.bytes,md.off0);
     const rb=memBonesFrom(buf,base,tb,Object.assign({},o,{want:want||undefined}));
     out.push({k,who:k===0?"1P":k===1?"2P":`${k+1}体目`,
-              tableB:tb,tableC:tc,part0:p0,model:md,cmd5:want,bones:rb});
+              tableB:tb,tableC:tc,part0:p0,model:md,cmd5:want,bones:rb,hand:memHandBlend(buf,md)});
   }
   return out;
 }
@@ -380,6 +380,45 @@ function memRotOk(list){
   return !!list&&list.length>0&&list.every(b=>{ const m=b.m, k=b.one||4096;
     for(let r=0;r<3;r++){ const L=Math.hypot(m[r*3],m[r*3+1],m[r*3+2])/k; if(!(L>0.9&&L<1.1)) return false }
     return true });
+}
+// ============================================================
+//  いま使っている手の形。描く命令の並びに
+//    0x10, X, 形A, 形B, 形C
+//  が手ごとにあり、手の形は「形A と 形B を X/4096 で混ぜたもの」（写し10組・20体で確認）。
+//  X＝0 なら形A そのまま。形C はいつも形3（混ぜた結果の置き場所ではない）
+//  返すのは {組の番号: {a, b, t}}（a・b は組の中で何番目か、0 から）
+// ============================================================
+function memHandBlend(buf,md){
+  if(!md||!md.bytes) return null;
+  const d=md.bytes, offs=t1ObjectOffsets(d); if(!offs.group) return null;
+  const at=new Map(), cnt={};
+  offs.forEach((p,i)=>{ const g=offs.group[i]; if(!g) return; cnt[g]=(cnt[g]||0); at.set((md.at+p)>>>0,{g,i:cnt[g]++}) });
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength), out={};
+  for(let o=0;o+20<=buf.length;o+=4){
+    if(dv.getUint32(o,true)!==0x10) continue;
+    const X=dv.getUint32(o+4,true); if(X>4096) continue;
+    const A=at.get(dv.getUint32(o+8,true)), B=at.get(dv.getUint32(o+12,true)), C=at.get(dv.getUint32(o+16,true));
+    if(!A||!B||!C||A.g!==B.g||A.g!==C.g||out[A.g]) continue;
+    out[A.g]={a:A.i,b:B.i,t:X/4096};
+  }
+  return Object.keys(out).length?out:null;
+}
+// 手の形を混ぜたモデルを作る。組ごとに1つ目の部品の頂点と法線を、形A と 形B を混ぜた値で置き換える
+// （4つの形は頂点の数・面・色が同じ。1つ目の部品が既定で描かれる）
+function memApplyHandBlend(bytes,hand){
+  if(!hand) return bytes;
+  const d=new Uint8Array(bytes), dv=new DataView(d.buffer), offs=t1ObjectOffsets(d); if(!offs.group) return bytes;
+  const by={}; offs.forEach((p,i)=>{ const g=offs.group[i]; if(!g) return; const o=readT1Object(d,p); if(o&&o.ok) (by[g]=by[g]||[]).push(o) });
+  for(const [g,h] of Object.entries(hand)){
+    const L=by[g]; if(!L) continue; const A=L[h.a], B=L[h.b], D=L[0];
+    if(!A||!B||!D||A.nv!==D.nv||B.nv!==D.nv) continue;
+    const mix=(ptrA,ptrB,ptrD,n)=>{ const v=[];
+      for(let i=0;i<n*4;i++){ const a=dv.getInt16(ptrA+i*2,true), b=dv.getInt16(ptrB+i*2,true); v.push(Math.round(a+(b-a)*h.t)) }
+      v.forEach((x,i)=>dv.setInt16(ptrD+i*2,x,true)) };
+    mix(A.base+A.vertPtr,B.base+B.vertPtr,D.base+D.vertPtr,D.nv);
+    if(A.nn===D.nn&&B.nn===D.nn) mix(A.base+A.normPtr,B.base+B.normPtr,D.base+D.normPtr,D.nn);
+  }
+  return d;
 }
 function memCharBones(buf,base,c,opt){
   const o=opt||{};

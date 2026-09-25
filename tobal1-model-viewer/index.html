@@ -323,7 +323,7 @@ const state={
   galling:false,
   galWhy:null,     // 一覧で読めなかったモデルの理由   // モデルを並べている最中か
   t1Part:-1,          // ファイルの中のどのモデルを出すか（-1＝いちばん大きいもの）
-  t1Slot:0,           // 差し替えの組から何番目を出すか（0＝各組の1つ目＝顔と手が付く）
+  t1Slot:-10,         // 差し替えの組から何番目を出すか（-10＝写しと同じ手。0〜3＝手の形 1〜4）
                       // 付ける骨が決まったので、既定で出す。
                       // ゲームは別の回に描くが、ビューアでは1体として見たい
   vram:null,          // VRAM の写し（テクスチャ）
@@ -1634,9 +1634,10 @@ function t1GroupIsDecal(list,d){
 function t1PickParts(objs,slot,d){
   const body=objs.filter(o=>!o.group);
   if(!body.length) return objs;                 // 組が付いていなければ、そのまま
-  if(slot==null||slot===-1||slot<-2) return body;   // 「出さない」なら本体だけ
+  if(slot==null||slot===-1||(slot<-2&&slot!==-10)) return body;   // 「出さない」なら本体だけ
   const decalOnly=slot===-2;
-  const pick=decalOnly?0:slot>=100?slot-100:slot;
+  // -10 は「写しと同じ手」。混ぜた手は1つ目の部品に入れてあるので、1つ目を選ぶ
+  const pick=decalOnly||slot===-10?0:slot>=100?slot-100:slot;
   const by=new Map();
   for(const o of objs){ if(!o.group) continue;
     const a=by.get(o.group)||[]; a.push(o); by.set(o.group,a) }
@@ -4643,7 +4644,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.55.0";
+const VERSION="v4.56.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5262,6 +5263,7 @@ function updateHud(){
     +(inf.t1Segs?`　骨の区切り ${inf.t1Segs}`:"")
     +(inf.t1BonesUsed?`　骨 ${inf.t1BonesUsed} を当てている`:""));
   if(inf.t1BoneSkip) L.push(inf.t1BoneSkip.trim());
+  if(inf.t1Hand) L.push(inf.t1Hand.trim());
   if(inf.t1NoColor) L.push(inf.t1NoColor.trim());
   if(inf.t1Color) L.push(inf.t1Color.trim());
   for(const x of (inf.t1ColorLines||[]).slice(0,2)) L.push(x);
@@ -5287,7 +5289,7 @@ function digestLines(){
   if(inf&&e){
     L.push("");
     L.push(`選んでいるファイル: #${e.no} sector ${e.sector}`);
-    for(const k of ["ramChar","t1ColHow","t1Tex","texFrom","t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
+    for(const k of ["ramChar","t1Hand","t1ColHow","t1Tex","texFrom","t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
     for(const x of inf.t1ColorLines||[]) L.push("    "+x);
     if(inf.t1OpArgs&&inf.t1OpArgs.length){
       L.push("  まだ意味の分かっていない命令の中身（骨のずらし量を探している）:");
@@ -5997,7 +5999,11 @@ async function selectRamChar(k){
     const bb=c.savedBones||memCharBones(state.ramBuf,state.ramBase,c);   // 保存したキャラは骨も保存してある
     state.ramBones=bb;
     t1SetBones(bb&&bb.list&&bb.list.length?bb.list:null,!!(bb&&bb.list&&bb.list.length));
-    const {mesh,info}=buildModel(c.model.bytes);
+    // 手は写しと同じ形（形A と 形B を混ぜたもの）にする。選び口で形 1〜4 も選べる
+    const useBlend=state.t1Slot===-10&&c.hand;
+    const {mesh,info}=buildModel(useBlend?memApplyHandBlend(c.model.bytes,c.hand):c.model.bytes);
+    if(c.hand) info.t1Hand="  写しの手の形: "+Object.entries(c.hand).map(([g,h])=>`${g==="1"?"右手":"左手"} 形${h.a+1}`+(h.t?`→形${h.b+1} を ${Math.round(h.t*100)}%`:" そのまま")).join("　")
+      +(useBlend?"（この形で描いています）":"（いまは選び口の形で描いています）");
     if(state.vram&&typeof t1SetVram==="function") t1SetVram(state.vram);
     info.ramChar=`  写しの中の ${c.who}: モデル ${hex(c.model.at)}（${c.model.len} B）`
       +`　骨 ${c.bones.list.length}本　本体の命令5 ${c.cmd5}回`
@@ -6028,7 +6034,7 @@ function showRamPartner(k,mesh,bb){
     const b2=memCharBones(state.ramBuf,state.ramBase,c);
     if(!b2||!b2.list||!b2.list.length) return;
     t1SetBones(b2.list,true);
-    const m2=buildModel(c.model.bytes).mesh;
+    const m2=buildModel(state.t1Slot===-10&&c.hand?memApplyHandBlend(c.model.bytes,c.hand):c.model.bytes).mesh;
     upload(m2,false,1);
     // 2人とも入るようにカメラを合わせ、2人を結ぶ線の真横から見る
     const P=new Float32Array(mesh.pos.length+m2.pos.length); P.set(mesh.pos); P.set(m2.pos,mesh.pos.length);
@@ -6059,7 +6065,9 @@ function fillT1Slot(inf){
   const n=inf&&inf.t1SlotMax||0;
   if(n<1){ box.hidden=true; return }
   box.hidden=false;
-  sel.innerHTML=Array.from({length:n},(_,i)=>`<option value="${i}">手の形 ${i+1}${i?"":"（既定）"}</option>`).join("")
+  const ram=state.ramSel>=0&&state.ramChars&&state.ramChars[state.ramSel];
+  sel.innerHTML=`<option value="-10">${ram&&ram.hand?"写しと同じ手（既定）":"既定（手の形 1）"}</option>`
+    +Array.from({length:n},(_,i)=>`<option value="${i}">手の形 ${i+1}</option>`).join("")
     +'<option value="-2">手を出さない（顔の貼りものだけ）</option>'
     +'<option value="-1">出さない（本体だけ）</option>';
   const v=state.t1Slot>=100?state.t1Slot-100:state.t1Slot;
@@ -6113,7 +6121,7 @@ async function saveRamChars(){
     const bb=memCharBones(state.ramBuf,state.ramBase,c);
     await savedDo("readwrite",s=>s.add({name:name.trim()||c.who,who:c.who,saved:Date.now(),
       model:new Uint8Array(c.model.bytes),at:c.model.at,len:c.model.len,cmd5:c.cmd5,
-      bones:c.bones.list,bb:bb?{list:bb.list,at:bb.at,sc:bb.sc,view:bb.view}:null,vram}));
+      bones:c.bones.list,bb:bb?{list:bb.list,at:bb.at,sc:bb.sc,view:bb.view}:null,vram,hand:c.hand||null}));
     n++;
   }
   if(st) st.textContent=n?`${n}人を保存しました。次からは「保存したキャラクター」から選べます`:"";
@@ -6134,7 +6142,7 @@ async function selectSaved(id){
   state.savedId=id; state.fromSaved=true;
   // 写しの人と同じ形にして、同じ道（selectRamChar）で描く
   const c={who:r.who,label:r.name,cmd5:r.cmd5,model:{bytes:r.model,at:r.at,len:r.len},
-           bones:{list:r.bones,ptrs:[]},savedBones:r.bb};
+           bones:{list:r.bones,ptrs:[]},savedBones:r.bb,hand:r.hand||null};
   state.ramChars=[c]; state.ramBuf=null;
   state.vram=r.vram?t1VramRGBA(r.vram):null; t1SetVram(state.vram);
   fillRamChar();
@@ -6947,7 +6955,7 @@ function memCharacters(buf,base,opt){
     const want=memCmd5Count(md.bytes,md.off0);
     const rb=memBonesFrom(buf,base,tb,Object.assign({},o,{want:want||undefined}));
     out.push({k,who:k===0?"1P":k===1?"2P":`${k+1}体目`,
-              tableB:tb,tableC:tc,part0:p0,model:md,cmd5:want,bones:rb});
+              tableB:tb,tableC:tc,part0:p0,model:md,cmd5:want,bones:rb,hand:memHandBlend(buf,md)});
   }
   return out;
 }
@@ -6958,6 +6966,45 @@ function memRotOk(list){
   return !!list&&list.length>0&&list.every(b=>{ const m=b.m, k=b.one||4096;
     for(let r=0;r<3;r++){ const L=Math.hypot(m[r*3],m[r*3+1],m[r*3+2])/k; if(!(L>0.9&&L<1.1)) return false }
     return true });
+}
+// ============================================================
+//  いま使っている手の形。描く命令の並びに
+//    0x10, X, 形A, 形B, 形C
+//  が手ごとにあり、手の形は「形A と 形B を X/4096 で混ぜたもの」（写し10組・20体で確認）。
+//  X＝0 なら形A そのまま。形C はいつも形3（混ぜた結果の置き場所ではない）
+//  返すのは {組の番号: {a, b, t}}（a・b は組の中で何番目か、0 から）
+// ============================================================
+function memHandBlend(buf,md){
+  if(!md||!md.bytes) return null;
+  const d=md.bytes, offs=t1ObjectOffsets(d); if(!offs.group) return null;
+  const at=new Map(), cnt={};
+  offs.forEach((p,i)=>{ const g=offs.group[i]; if(!g) return; cnt[g]=(cnt[g]||0); at.set((md.at+p)>>>0,{g,i:cnt[g]++}) });
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength), out={};
+  for(let o=0;o+20<=buf.length;o+=4){
+    if(dv.getUint32(o,true)!==0x10) continue;
+    const X=dv.getUint32(o+4,true); if(X>4096) continue;
+    const A=at.get(dv.getUint32(o+8,true)), B=at.get(dv.getUint32(o+12,true)), C=at.get(dv.getUint32(o+16,true));
+    if(!A||!B||!C||A.g!==B.g||A.g!==C.g||out[A.g]) continue;
+    out[A.g]={a:A.i,b:B.i,t:X/4096};
+  }
+  return Object.keys(out).length?out:null;
+}
+// 手の形を混ぜたモデルを作る。組ごとに1つ目の部品の頂点と法線を、形A と 形B を混ぜた値で置き換える
+// （4つの形は頂点の数・面・色が同じ。1つ目の部品が既定で描かれる）
+function memApplyHandBlend(bytes,hand){
+  if(!hand) return bytes;
+  const d=new Uint8Array(bytes), dv=new DataView(d.buffer), offs=t1ObjectOffsets(d); if(!offs.group) return bytes;
+  const by={}; offs.forEach((p,i)=>{ const g=offs.group[i]; if(!g) return; const o=readT1Object(d,p); if(o&&o.ok) (by[g]=by[g]||[]).push(o) });
+  for(const [g,h] of Object.entries(hand)){
+    const L=by[g]; if(!L) continue; const A=L[h.a], B=L[h.b], D=L[0];
+    if(!A||!B||!D||A.nv!==D.nv||B.nv!==D.nv) continue;
+    const mix=(ptrA,ptrB,ptrD,n)=>{ const v=[];
+      for(let i=0;i<n*4;i++){ const a=dv.getInt16(ptrA+i*2,true), b=dv.getInt16(ptrB+i*2,true); v.push(Math.round(a+(b-a)*h.t)) }
+      v.forEach((x,i)=>dv.setInt16(ptrD+i*2,x,true)) };
+    mix(A.base+A.vertPtr,B.base+B.vertPtr,D.base+D.vertPtr,D.nv);
+    if(A.nn===D.nn&&B.nn===D.nn) mix(A.base+A.normPtr,B.base+B.normPtr,D.base+D.normPtr,D.nn);
+  }
+  return d;
 }
 function memCharBones(buf,base,c,opt){
   const o=opt||{};

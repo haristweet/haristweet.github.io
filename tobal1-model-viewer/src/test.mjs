@@ -2474,5 +2474,15 @@ console.log("\n[58] テクスチャで塗る／元の形のまま書き出す");
   ok("  高さは指定の mm（glTF はメートル）", Math.abs(P.max[1]-0.1)<1e-6, P.max[1]);
 }
 
+console.log("\n[59] 写しと同じ手（-10）");
+{
+  const objs=[{base:0},{base:1,group:1},{base:2,group:1},{base:3,group:2},{base:4,group:2}];
+  const p=t1PickParts(objs,-10,null);
+  ok("「写しと同じ手」は各組の1つ目を選ぶ（混ぜた手はそこに入れる）", p.length===3&&p[1].base===1&&p[2].base===3, p.map(o=>o.base).join(","));
+  ok("  「本体だけ」は今までどおり", t1PickParts(objs,-1,null).length===1, "");
+  ok("  手の形 3 を選べる", t1PickParts(objs,2,null)[1].base===2, "");
+  ok("  混ぜ具合が無ければ、モデルはそのまま", memApplyHandBlend(new Uint8Array([1,2,3]),null).length===3, "");
+}
+
 console.log(`\n${pass} ok / ${fail} fail`);
 process.exit(fail?1:0);

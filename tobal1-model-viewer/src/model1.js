@@ -84,9 +84,10 @@ function t1GroupIsDecal(list,d){
 function t1PickParts(objs,slot,d){
   const body=objs.filter(o=>!o.group);
   if(!body.length) return objs;                 // 組が付いていなければ、そのまま
-  if(slot==null||slot===-1||slot<-2) return body;   // 「出さない」なら本体だけ
+  if(slot==null||slot===-1||(slot<-2&&slot!==-10)) return body;   // 「出さない」なら本体だけ
   const decalOnly=slot===-2;
-  const pick=decalOnly?0:slot>=100?slot-100:slot;
+  // -10 は「写しと同じ手」。混ぜた手は1つ目の部品に入れてあるので、1つ目を選ぶ
+  const pick=decalOnly||slot===-10?0:slot>=100?slot-100:slot;
   const by=new Map();
   for(const o of objs){ if(!o.group) continue;
     const a=by.get(o.group)||[]; a.push(o); by.set(o.group,a) }

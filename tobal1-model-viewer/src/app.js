@@ -1,4 +1,4 @@
-const VERSION="v4.55.0";
+const VERSION="v4.56.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -617,6 +617,7 @@ function updateHud(){
     +(inf.t1Segs?`　骨の区切り ${inf.t1Segs}`:"")
     +(inf.t1BonesUsed?`　骨 ${inf.t1BonesUsed} を当てている`:""));
   if(inf.t1BoneSkip) L.push(inf.t1BoneSkip.trim());
+  if(inf.t1Hand) L.push(inf.t1Hand.trim());
   if(inf.t1NoColor) L.push(inf.t1NoColor.trim());
   if(inf.t1Color) L.push(inf.t1Color.trim());
   for(const x of (inf.t1ColorLines||[]).slice(0,2)) L.push(x);
@@ -642,7 +643,7 @@ function digestLines(){
   if(inf&&e){
     L.push("");
     L.push(`選んでいるファイル: #${e.no} sector ${e.sector}`);
-    for(const k of ["ramChar","t1ColHow","t1Tex","texFrom","t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
+    for(const k of ["ramChar","t1Hand","t1ColHow","t1Tex","texFrom","t1Parts","t1RealBone","t1Size","t1Read","t1Color"]) if(inf[k]&&typeof inf[k]==="string") L.push(inf[k]);
     for(const x of inf.t1ColorLines||[]) L.push("    "+x);
     if(inf.t1OpArgs&&inf.t1OpArgs.length){
       L.push("  まだ意味の分かっていない命令の中身（骨のずらし量を探している）:");
@@ -1352,7 +1353,11 @@ async function selectRamChar(k){
     const bb=c.savedBones||memCharBones(state.ramBuf,state.ramBase,c);   // 保存したキャラは骨も保存してある
     state.ramBones=bb;
     t1SetBones(bb&&bb.list&&bb.list.length?bb.list:null,!!(bb&&bb.list&&bb.list.length));
-    const {mesh,info}=buildModel(c.model.bytes);
+    // 手は写しと同じ形（形A と 形B を混ぜたもの）にする。選び口で形 1〜4 も選べる
+    const useBlend=state.t1Slot===-10&&c.hand;
+    const {mesh,info}=buildModel(useBlend?memApplyHandBlend(c.model.bytes,c.hand):c.model.bytes);
+    if(c.hand) info.t1Hand="  写しの手の形: "+Object.entries(c.hand).map(([g,h])=>`${g==="1"?"右手":"左手"} 形${h.a+1}`+(h.t?`→形${h.b+1} を ${Math.round(h.t*100)}%`:" そのまま")).join("　")
+      +(useBlend?"（この形で描いています）":"（いまは選び口の形で描いています）");
     if(state.vram&&typeof t1SetVram==="function") t1SetVram(state.vram);
     info.ramChar=`  写しの中の ${c.who}: モデル ${hex(c.model.at)}（${c.model.len} B）`
       +`　骨 ${c.bones.list.length}本　本体の命令5 ${c.cmd5}回`
@@ -1383,7 +1388,7 @@ function showRamPartner(k,mesh,bb){
     const b2=memCharBones(state.ramBuf,state.ramBase,c);
     if(!b2||!b2.list||!b2.list.length) return;
     t1SetBones(b2.list,true);
-    const m2=buildModel(c.model.bytes).mesh;
+    const m2=buildModel(state.t1Slot===-10&&c.hand?memApplyHandBlend(c.model.bytes,c.hand):c.model.bytes).mesh;
     upload(m2,false,1);
     // 2人とも入るようにカメラを合わせ、2人を結ぶ線の真横から見る
     const P=new Float32Array(mesh.pos.length+m2.pos.length); P.set(mesh.pos); P.set(m2.pos,mesh.pos.length);
@@ -1414,7 +1419,9 @@ function fillT1Slot(inf){
   const n=inf&&inf.t1SlotMax||0;
   if(n<1){ box.hidden=true; return }
   box.hidden=false;
-  sel.innerHTML=Array.from({length:n},(_,i)=>`<option value="${i}">手の形 ${i+1}${i?"":"（既定）"}</option>`).join("")
+  const ram=state.ramSel>=0&&state.ramChars&&state.ramChars[state.ramSel];
+  sel.innerHTML=`<option value="-10">${ram&&ram.hand?"写しと同じ手（既定）":"既定（手の形 1）"}</option>`
+    +Array.from({length:n},(_,i)=>`<option value="${i}">手の形 ${i+1}</option>`).join("")
     +'<option value="-2">手を出さない（顔の貼りものだけ）</option>'
     +'<option value="-1">出さない（本体だけ）</option>';
   const v=state.t1Slot>=100?state.t1Slot-100:state.t1Slot;
@@ -1468,7 +1475,7 @@ async function saveRamChars(){
     const bb=memCharBones(state.ramBuf,state.ramBase,c);
     await savedDo("readwrite",s=>s.add({name:name.trim()||c.who,who:c.who,saved:Date.now(),
       model:new Uint8Array(c.model.bytes),at:c.model.at,len:c.model.len,cmd5:c.cmd5,
-      bones:c.bones.list,bb:bb?{list:bb.list,at:bb.at,sc:bb.sc,view:bb.view}:null,vram}));
+      bones:c.bones.list,bb:bb?{list:bb.list,at:bb.at,sc:bb.sc,view:bb.view}:null,vram,hand:c.hand||null}));
     n++;
   }
   if(st) st.textContent=n?`${n}人を保存しました。次からは「保存したキャラクター」から選べます`:"";
@@ -1489,7 +1496,7 @@ async function selectSaved(id){
   state.savedId=id; state.fromSaved=true;
   // 写しの人と同じ形にして、同じ道（selectRamChar）で描く
   const c={who:r.who,label:r.name,cmd5:r.cmd5,model:{bytes:r.model,at:r.at,len:r.len},
-           bones:{list:r.bones,ptrs:[]},savedBones:r.bb};
+           bones:{list:r.bones,ptrs:[]},savedBones:r.bb,hand:r.hand||null};
   state.ramChars=[c]; state.ramBuf=null;
   state.vram=r.vram?t1VramRGBA(r.vram):null; t1SetVram(state.vram);
   fillRamChar();
