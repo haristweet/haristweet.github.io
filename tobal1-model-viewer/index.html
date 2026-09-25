@@ -79,6 +79,10 @@ canvas:active{cursor:grabbing}
 .drop code{background:#ebe7df;padding:1px 5px;border-radius:4px;font-size:12px}
 .drop .pick{display:inline-block;margin-top:6px;background:var(--accent);color:#fff;border-radius:7px;padding:8px 16px;cursor:pointer;font-weight:600}
 .drop.over .card{outline:3px dashed var(--accent);outline-offset:6px}
+.mem-pick{display:block;text-align:center;background:var(--accent);color:#fff;border-radius:8px;padding:12px 14px;cursor:pointer;font-weight:700;font-size:14px}
+.print-grid{display:grid;gap:6px;margin-top:6px}
+.print-grid input[type=number]{width:6em}
+.mem-top{border:2px solid var(--accent);border-radius:10px;padding:10px 12px}
 .err{color:#b91c1c;font-size:13px;margin-top:8px;white-space:pre-wrap}
 [hidden]{display:none!important}
 .tabbar,.sheet-close{display:none}
@@ -127,6 +131,51 @@ canvas:active{cursor:grabbing}
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
+    <div data-tab="file" class="mem-top"><p class="label">RAM・VRAM ダンプ（対戦中の写し）</p>
+      <label class="pick mem-pick">RAM・VRAM ダンプを選ぶ（2つ同時に選べます）<input id="memfile" type="file" multiple hidden></label>
+      <p class="note"><b>VRAM ダンプ（1,048,576バイト）</b>も、ここに入れてください。キャラクターの模様（胸の紋章、ブーツの三角など）はテクスチャで、その絵は VRAM にあります。RAM ダンプには入っていません。両方入れると模様まで出ます。</p>
+      <div id="ramchar-box" hidden style="margin-top:8px">
+        <p class="label">写しの中にいた人</p>
+        <select id="ramchar" aria-label="写しの中にいた人"></select>
+        <label style="display:block;margin-top:6px"><input type="checkbox" id="ramboth"> 2人とも出す（ゲームと同じ立ち位置で並べる）</label>
+        <button class="btn" id="saved-add" style="margin-top:6px">この写しの人をブラウザに保存</button>
+        <div class="note" id="saved-status"></div>
+        <p class="note">ディスクのファイルではなく、<b>写しに載っているモデルそのもの</b>を出しています。骨もモデルも同じ1つの写しの中にあるので、突き合わせが要りません。別の場面で取った2つの写しを比べたところ、ポーズは変わってもモデルは1バイトも変わりませんでした。</p>
+      </div>
+      <p class="note"><b>骨の行列は、ディスクにも実行ファイルにも入っていません。</b>描く直前にゲームが渡すもので、動いている最中にしか存在しません。だから、動かして止めて、その瞬間のメモリを取ります。<br>
+      <b>取り方（DuckStation）</b><br>
+      1. 設定 → 高度な設定 で「デバッグメニューを表示」をオンにする<br>
+      2. ゲームを起動し、メニューバーの <b>デバッグ → CPU デバッガ</b> を開く<br>
+      3. ツールバーの「＋」で、アドレス <b>8001F464</b>・種類「実行」のブレークポイントを追加する<br>
+      4. 再開して、<b>キャラクターが画面に出ている場面</b>まで進める。そこで止まります<br>
+      5. 止まったまま、<b>デバッグ → RAM ダンプ…</b>（2,097,152 バイトのファイルができます）<br>
+      6. そのファイルをここで選ぶ<br>
+      止める番地は <b>8001F464</b> にしてください。0x8001F44C だと、その手前の分岐で「骨が無いときは素通り」するので、表が空のまま止まります。<br>
+      セーブステートでも読めますが、描き終わったあとの瞬間だと表が空になっています。圧縮は <b>Deflate</b> か <b>なし</b> にしてください（既定の zstd はブラウザがほどけません）。</p>
+      <div class="note" id="mem-status"></div>
+    </div>
+    <div data-tab="file" id="saved-box" hidden><p class="label">保存したキャラクター</p>
+      <select id="savedchar" aria-label="保存したキャラクター"></select>
+      <button class="btn" id="saved-del" style="margin-top:6px">選んでいるものを消す</button>
+      <p class="note">写しから保存したキャラクターです。RAM・VRAM を読み込み直さなくても、ここから選ぶだけで出せます。データはこの端末のブラウザの中にだけあります。</p>
+    </div>
+    <div data-tab="file" id="print-box"><p class="label">3Dプリント用に書き出す</p>
+      <p class="note">いま表示している形を、印刷サービスに出せる<b>閉じた形</b>に作り直します（升目に置いて太らせ、表面を作り直す）。細かい所は少し丸くなります。</p>
+      <div class="print-grid">
+        <label>背の高さ（mm）<input type="number" id="pr-height" value="100" min="10" max="500" step="5"></label>
+        <label>細かさ <select id="pr-res"><option value="120">粗い（速い）</option><option value="160" selected>ふつう</option><option value="220">細かい（重い）</option></select></label>
+        <label>最小の厚み（mm）<input type="number" id="pr-thick" value="1" min="0.3" max="5" step="0.1"></label>
+        <label><input type="checkbox" id="pr-base" checked> 台座を付ける</label>
+        <label><input type="checkbox" id="pr-hollow"> 中を空洞にする（殻 <input type="number" id="pr-shell" value="2" min="1" max="10" step="0.5" style="width:4em"> mm）</label>
+      </div>
+      <button class="btn wide" id="pr-make" style="margin-top:6px">閉じた形を作る（画面で確かめる）</button>
+      <div class="note" id="pr-status"></div>
+      <div class="print-grid" id="pr-save-row" hidden>
+        <button class="btn" id="pr-stl">STL で保存（単色）</button>
+        <button class="btn" id="pr-3mf">3MF で保存（色つき）</button>
+        <button class="btn" id="pr-back">元の表示に戻す</button>
+      </div>
+    </div>
     <div data-tab="file"><p class="label">読み込み元</p>
       <p class="note known" id="known-note" hidden></p>
       <div class="seg" id="src-seg"><button data-v="table" aria-pressed="true">アーカイブ</button><button data-v="scan" aria-pressed="false" title="アーカイブの中を直接さらってファイルの先頭を探す">直接さらう</button><button data-v="iso" aria-pressed="false" title="ディスクの中のファイルをそのまま並べる">ディスク</button></div>
@@ -156,34 +205,6 @@ canvas:active{cursor:grabbing}
       <p class="note" id="texnote">キャラクターの<b>体</b>には貼り先（UV）がなく、頂点の色だけで塗られています。テクスチャは<b>顔のパーツ（目・口）</b>や背景・文字に使われていて、体とは別に描かれます。「すべて並べて見る」で見比べられます。</p>
       <button class="btn wide" id="texsave" style="margin-top:6px">この一覧を画像で保存</button>
       <div id="texgrid" class="texgrid"></div>
-    </div>
-    <div data-tab="file" id="saved-box" hidden><p class="label">保存したキャラクター</p>
-      <select id="savedchar" aria-label="保存したキャラクター"></select>
-      <button class="btn" id="saved-del" style="margin-top:6px">選んでいるものを消す</button>
-      <p class="note">写しから保存したキャラクターです。RAM・VRAM を読み込み直さなくても、ここから選ぶだけで出せます。データはこの端末のブラウザの中にだけあります。</p>
-    </div>
-    <div data-tab="file"><p class="label">メモリの写し（本物の骨）</p>
-      <label class="pick" style="display:inline-block">RAM ダンプ・VRAM ダンプを選ぶ<input id="memfile" type="file" hidden></label>
-      <p class="note"><b>VRAM ダンプ（1,048,576バイト）</b>も、ここに入れてください。キャラクターの模様（胸の紋章、ブーツの三角など）はテクスチャで、その絵は VRAM にあります。RAM ダンプには入っていません。両方入れると模様まで出ます。</p>
-      <div id="ramchar-box" hidden style="margin-top:8px">
-        <p class="label">写しの中にいた人</p>
-        <select id="ramchar" aria-label="写しの中にいた人"></select>
-        <label style="display:block;margin-top:6px"><input type="checkbox" id="ramboth"> 2人とも出す（ゲームと同じ立ち位置で並べる）</label>
-        <button class="btn" id="saved-add" style="margin-top:6px">この写しの人をブラウザに保存</button>
-        <div class="note" id="saved-status"></div>
-        <p class="note">ディスクのファイルではなく、<b>写しに載っているモデルそのもの</b>を出しています。骨もモデルも同じ1つの写しの中にあるので、突き合わせが要りません。別の場面で取った2つの写しを比べたところ、ポーズは変わってもモデルは1バイトも変わりませんでした。</p>
-      </div>
-      <p class="note"><b>骨の行列は、ディスクにも実行ファイルにも入っていません。</b>描く直前にゲームが渡すもので、動いている最中にしか存在しません。だから、動かして止めて、その瞬間のメモリを取ります。<br>
-      <b>取り方（DuckStation）</b><br>
-      1. 設定 → 高度な設定 で「デバッグメニューを表示」をオンにする<br>
-      2. ゲームを起動し、メニューバーの <b>デバッグ → CPU デバッガ</b> を開く<br>
-      3. ツールバーの「＋」で、アドレス <b>8001F464</b>・種類「実行」のブレークポイントを追加する<br>
-      4. 再開して、<b>キャラクターが画面に出ている場面</b>まで進める。そこで止まります<br>
-      5. 止まったまま、<b>デバッグ → RAM ダンプ…</b>（2,097,152 バイトのファイルができます）<br>
-      6. そのファイルをここで選ぶ<br>
-      止める番地は <b>8001F464</b> にしてください。0x8001F44C だと、その手前の分岐で「骨が無いときは素通り」するので、表が空のまま止まります。<br>
-      セーブステートでも読めますが、描き終わったあとの瞬間だと表が空になっています。圧縮は <b>Deflate</b> か <b>なし</b> にしてください（既定の zstd はブラウザがほどけません）。</p>
-      <div class="note" id="mem-status"></div>
     </div>
     <div data-tab="file" id="t1slot-box" hidden><p class="label">顔の貼りもの・手の差し替え</p>
       <select id="t1slot" aria-label="差し替えの部品"></select>
@@ -265,6 +286,9 @@ canvas:active{cursor:grabbing}
         <p>ゲームのデータはこのページに一切含まれていません。読み込んだファイルはブラウザの中だけで読み取り、どこにも送信しません。</p>
         <p>このビューアはトバルNo.1の中身を実行時に探しにいきます。うまく出てこないときは「解析」の内容をそのまま作者に送ってください。</p>
         <label class="pick">ファイルを選ぶ<input id="file" type="file" multiple hidden></label>
+        <p style="margin-top:14px"><b>ディスク無しで見る：</b>対戦中に取った RAM ダンプと VRAM ダンプを<b>2つ同時に</b>選べば、そのキャラクターが出ます。</p>
+        <label class="pick">RAM・VRAM ダンプから見る<input id="memfile2" type="file" multiple hidden></label>
+        <button class="pick" id="saved-open" hidden style="border:0;font:inherit;margin-left:6px">保存したキャラクターを見る</button>
         <div class="err" id="err"></div>
       </div>
     </div>
@@ -3925,6 +3949,321 @@ const T1_NAMES={
 // 一覧が全部出るようになり、かつ範囲が 8755〜9484 に区切られているから。
 function t1NameOf(sector){ return T1_NAMES[sector]||"" }
 // ============================================================
+//  3Dプリント用に閉じた形を作る
+// ============================================================
+// ============================================================
+//  3Dプリント用に、閉じた形を作り直す
+//
+//  PS1 のモデルは画面に映すための作りで、部品ごとに穴があき、面が重なり、
+//  顔の貼りものは厚みが 0。印刷サービスは「水が漏れない閉じた形」を求めるので、
+//  元の面をつなぎ直すのではなく、形を丸ごと作り直す。
+//    1. 升目（ボクセル）に置き、面が通る升に印を付ける（色も覚える）
+//    2. 印を太らせる（最小の厚み）。薄い所に厚みが付き、小さな穴がふさがる
+//    3. 外から塗りつぶし、外に届かなかった所を全部「中身」にする
+//    4. （選べば）台座を足す／中を空洞にする
+//    5. 表面を作り直す（四面体で切る方式。あいまいな場合が無いので、必ず閉じる）
+//  出てきた形は、辺がどれもちょうど2枚の面に逆向きで使われている（閉じていて向きがそろう）。
+//  それを数えて確かめる（printCheck）
+// ============================================================
+
+// 画面に描いている面の色を、印刷用に1点ずつ取る。
+// シェーダと同じ引き方（4bit/8bit はパレット経由）。光の当たり具合は入れない
+function printTexel(V,u,v,tp,t1){
+  if(!V) return null;
+  const word=(x,y)=>{ x|=0; y|=0; if(x<0||y<0||x>=1024||y>=512) return 0; const i=(y*1024+x)*4; return V[i]|(V[i+1]<<8) };
+  const mode=Math.round(tp); u=Math.floor(u); v=Math.floor(v);
+  let w;
+  if(mode<1) return null;
+  if(mode<5){ w=word(t1[0]+(u>>2),t1[1]+v); w=(w>>((u&3)*4))&15; w=word(t1[2]+w,t1[3]) }
+  else if(mode<9){ w=word(t1[0]+(u>>1),t1[1]+v); w=(w>>((u&1)*8))&255; w=word(t1[2]+w,t1[3]) }
+  else w=word(t1[0]+u,t1[1]+v);
+  if(!w) return -1;                                   // 透けている
+  return [(w&31)/31,((w>>5)&31)/31,((w>>10)&31)/31];
+}
+
+// meshes: [{pos,col,t0,t1,vram}]（画面の層と同じ形。座標は Y が上）
+// o: {height:mm, res:升の数（いちばん長い辺）, thick:最小の厚み mm, base:台座, baseH:台座の厚み mm,
+//     hollow:中を空洞, shell:殻の厚み mm}
+async function printBuild(meshes,o,progress){
+  const tick=async m=>{ if(progress) await progress(m) };
+  o=Object.assign({height:100,res:160,thick:1,base:true,baseH:3,hollow:false,shell:2},o||{});
+  // ---- 大きさを mm にそろえる ----
+  let mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+  for(const m of meshes){ const P=m.pos; for(let i=0;i<P.length;i+=3) for(let a=0;a<3;a++){ if(P[i+a]<mn[a])mn[a]=P[i+a]; if(P[i+a]>mx[a])mx[a]=P[i+a] } }
+  if(!(mx[1]>mn[1])) throw new Error("形がありません");
+  const s=o.height/(mx[1]-mn[1]);                     // 元の単位 → mm
+  const size=[0,1,2].map(a=>(mx[a]-mn[a])*s);
+  const baseH=o.base?Math.max(0.5,o.baseH):0;
+  const vox=Math.max(size[0],size[1]+baseH,size[2])/o.res;   // 升1つの大きさ（mm）
+  const r=Math.max(1,Math.round(o.thick/2/vox));      // 太らせる升の数（両側で最小の厚みになる）
+  const pad=r+3, padXZ=pad+(o.base?Math.ceil(4/vox)+1:0);   // 台座は足もとより 4mm 広い
+  const nx=Math.ceil(size[0]/vox)+2*padXZ+2, ny=Math.ceil((size[1]+baseH)/vox)+2*pad+2, nz=Math.ceil(size[2]/vox)+2*padXZ+2;
+  const N=nx*ny*nz; if(N>40e6) throw new Error("升が多すぎます（細かさを下げてください）");
+  const ox=padXZ, oy=pad+Math.ceil(baseH/vox), oz=padXZ;   // 元の最小の点が来る升
+  const at=(x,y,z)=>x+nx*(y+ny*z);
+  // mm の座標（原点はモデルのいちばん下・左・奥。台座はその下）
+  const toG=(P,i)=>[(P[i]-mn[0])*s/vox+ox,(P[i+1]-mn[1])*s/vox+oy,(P[i+2]-mn[2])*s/vox+oz];
+
+  // ---- 1. 面が通る升に印を付ける。色も覚える（貼りものの色を優先） ----
+  await tick("面を升目に置いています…");
+  const mark=new Uint8Array(N);                       // 0=空 1=体 2=貼りもの（色が勝つ）
+  const cr=new Uint8Array(N), cg=new Uint8Array(N), cb=new Uint8Array(N);
+  for(const m of meshes){
+    const P=m.pos, C=m.col, T0=m.t0, T1=m.t1, V=m.vram;
+    const nt=P.length/9;
+    for(let t=0;t<nt;t++){
+      const a=toG(P,t*9), b=toG(P,t*9+3), c=toG(P,t*9+6);
+      const tex=T0&&T0[t*9+2]>0.5&&V;
+      const L=Math.max(Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]),Math.hypot(c[0]-a[0],c[1]-a[1],c[2]-a[2]),Math.hypot(c[0]-b[0],c[1]-b[1],c[2]-b[2]));
+      const n=Math.max(1,Math.ceil(L*2));             // 升の半分より細かく刻む
+      for(let i=0;i<=n;i++) for(let j=0;j<=n-i;j++){
+        const u=i/n, v=j/n, w=1-u-v;
+        const x=Math.floor(a[0]*w+b[0]*u+c[0]*v), y=Math.floor(a[1]*w+b[1]*u+c[1]*v), z=Math.floor(a[2]*w+b[2]*u+c[2]*v);
+        if(x<0||y<0||z<0||x>=nx||y>=ny||z>=nz) continue;
+        let col=[C[t*9]*w+C[t*9+3]*u+C[t*9+6]*v,C[t*9+1]*w+C[t*9+4]*u+C[t*9+7]*v,C[t*9+2]*w+C[t*9+5]*u+C[t*9+8]*v], lv=1;
+        if(tex){
+          const tu=T0[t*9]*w+T0[t*9+3]*u+T0[t*9+6]*v, tv=T0[t*9+1]*w+T0[t*9+4]*u+T0[t*9+7]*v;
+          const tx=printTexel(V,tu,tv,T0[t*9+2],[T1[t*12],T1[t*12+1],T1[t*12+2],T1[t*12+3]]);
+          if(tx===-1) continue;                        // 透けている所は形にも色にもしない
+          if(tx){ col=tx.map((q,k)=>Math.min(1,q*col[k]*255/128)); lv=2 }
+        }
+        const k=at(x,y,z);
+        if(mark[k]>lv) continue;
+        mark[k]=lv; cr[k]=col[0]*255; cg[k]=col[1]*255; cb[k]=col[2]*255;
+      }
+    }
+    await tick("面を升目に置いています…");
+  }
+
+  // ---- 台座（足もとを囲む板）。上の面は足の裏に少しめり込ませてつなぐ ----
+  if(o.base){
+    await tick("台座を足しています…");
+    let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; const yTop=oy+Math.max(1,Math.round(1.5/vox));
+    for(let z=0;z<nz;z++) for(let y=oy;y<=yTop;y++) for(let x=0;x<nx;x++) if(mark[at(x,y,z)]){ if(x<x0)x0=x; if(x>x1)x1=x; if(z<z0)z0=z; if(z>z1)z1=z }
+    if(x1>=x0){
+      const m=Math.round(4/vox), cx=(x0+x1)/2, cz=(z0+z1)/2, rx=(x1-x0)/2+m, rz=(z1-z0)/2+m;
+      const y0=oy-Math.max(1,Math.round(baseH/vox));
+      for(let z=0;z<nz;z++) for(let x=0;x<nx;x++){
+        const q=((x-cx)/rx)**2+((z-cz)/rz)**2; if(q>1) continue;       // だ円の板
+        for(let y=y0;y<=oy;y++){ const k=at(x,y,z); if(mark[k]) continue; mark[k]=1; cr[k]=cg[k]=cb[k]=150 }
+      }
+    }
+  }
+
+  // ---- 2. 太らせる（r 升ぶん）。色もいっしょに広げる ----
+  await tick("最小の厚みまで太らせています…");
+  let cur=mark;
+  for(let it=0;it<r;it++){
+    const nxt=new Uint8Array(cur);
+    for(let z=1;z<nz-1;z++) for(let y=1;y<ny-1;y++) for(let x=1;x<nx-1;x++){
+      const k=at(x,y,z); if(cur[k]) continue;
+      for(const d of [1,-1,nx,-nx,nx*ny,-nx*ny]){ const q=k+d; if(cur[q]){ nxt[k]=1; cr[k]=cr[q]; cg[k]=cg[q]; cb[k]=cb[q]; break } }
+    }
+    cur=nxt; await tick("最小の厚みまで太らせています…");
+  }
+
+  // ---- 3. 外から塗りつぶす。外に届かなかった所が中身 ----
+  await tick("中身を決めています…");
+  const out=new Uint8Array(N), st=new Int32Array(N); let sp=0;
+  const push=k=>{ if(!out[k]&&!cur[k]){ out[k]=1; st[sp++]=k } };
+  for(let z=0;z<nz;z++) for(let y=0;y<ny;y++){ push(at(0,y,z)); push(at(nx-1,y,z)) }
+  for(let z=0;z<nz;z++) for(let x=0;x<nx;x++){ push(at(x,0,z)); push(at(x,ny-1,z)) }
+  for(let y=0;y<ny;y++) for(let x=0;x<nx;x++){ push(at(x,y,0)); push(at(x,y,nz-1)) }
+  while(sp){ const k=st[--sp], x=k%nx, y=((k/nx)|0)%ny, z=(k/(nx*ny))|0;
+    if(x>0)push(k-1); if(x<nx-1)push(k+1); if(y>0)push(k-nx); if(y<ny-1)push(k+nx); if(z>0)push(k-nx*ny); if(z<nz-1)push(k+nx*ny) }
+  const solid=new Uint8Array(N); for(let k=0;k<N;k++) solid[k]=out[k]?0:1;
+  // いちばん外側の升は必ず空にする（端に触れると、そこで面が閉じない）
+  for(let z=0;z<nz;z++) for(let y=0;y<ny;y++) for(let x=0;x<nx;x++)
+    if(x===0||y===0||z===0||x===nx-1||y===ny-1||z===nz-1) solid[at(x,y,z)]=0;
+
+  // ---- 4. 中を空洞にする（外からの距離が殻の厚みより深い所を抜く） ----
+  let hollowed=0;
+  if(o.hollow){
+    await tick("中を空洞にしています…");
+    const dist=new Int32Array(N).fill(-1), q=new Int32Array(N); let h=0,t=0;
+    for(let k=0;k<N;k++) if(!solid[k]){ dist[k]=0; q[t++]=k }
+    while(h<t){ const k=q[h++], x=k%nx, y=((k/nx)|0)%ny, z=(k/(nx*ny))|0, dk=dist[k]+1;
+      for(const [ok,d] of [[x>0,-1],[x<nx-1,1],[y>0,-nx],[y<ny-1,nx],[z>0,-nx*ny],[z<nz-1,nx*ny]]){
+        if(!ok) continue; const j=k+d; if(dist[j]<0){ dist[j]=dk; q[t++]=j } } }
+    const kk=Math.max(2,Math.round(o.shell/vox));
+    for(let k=0;k<N;k++) if(solid[k]&&dist[k]>kk){ solid[k]=0; hollowed++ }
+  }
+
+  // 塊の数（6方向でつながるもの）。宙に浮いた部品があると 2 以上になる
+  const parts=printComponents(solid,nx,ny,nz);
+
+  // ---- 5. 表面を作り直す ----
+  await tick("表面を作り直しています…");
+  // 升の値を少しぼかして（3×3×3 の平均）面をなめらかにする。値は k/27 なので 0.5 ちょうどにはならない
+  const f=new Float32Array(N);
+  { const tmp=new Float32Array(N), tmp2=new Float32Array(N);
+    for(let k=0;k<N;k++) tmp[k]=solid[k];
+    for(let z=0;z<nz;z++) for(let y=0;y<ny;y++) for(let x=0;x<nx;x++){ const k=at(x,y,z); tmp2[k]=tmp[k]+(x>0?tmp[k-1]:0)+(x<nx-1?tmp[k+1]:0) }
+    for(let z=0;z<nz;z++) for(let y=0;y<ny;y++) for(let x=0;x<nx;x++){ const k=at(x,y,z); tmp[k]=tmp2[k]+(y>0?tmp2[k-nx]:0)+(y<ny-1?tmp2[k+nx]:0) }
+    for(let z=0;z<nz;z++) for(let y=0;y<ny;y++) for(let x=0;x<nx;x++){ const k=at(x,y,z); f[k]=(tmp[k]+(z>0?tmp[k-nx*ny]:0)+(z<nz-1?tmp[k+nx*ny]:0))/27 }
+  }
+  const surf=printTetSurface(f,nx,ny,nz,0.5);
+  // 点の色：内側の升のうち、色の付いたいちばん近いもの
+  const vc=new Uint8Array(surf.verts.length);
+  const findCol=(x,y,z)=>{
+    for(let R=0;R<=3;R++) for(let dz=-R;dz<=R;dz++) for(let dy=-R;dy<=R;dy++) for(let dx=-R;dx<=R;dx++){
+      if(Math.max(Math.abs(dx),Math.abs(dy),Math.abs(dz))!==R) continue;
+      const X=x+dx,Y=y+dy,Z=z+dz; if(X<0||Y<0||Z<0||X>=nx||Y>=ny||Z>=nz) continue;
+      const k=at(X,Y,Z); if(cur[k]) return [cr[k],cg[k],cb[k]] }
+    return [150,150,150] };
+  for(let i=0;i<surf.verts.length;i+=3){
+    const c=findCol(Math.round(surf.verts[i]),Math.round(surf.verts[i+1]),Math.round(surf.verts[i+2]));
+    vc[i]=c[0]; vc[i+1]=c[1]; vc[i+2]=c[2];
+  }
+  // 升の座標 → mm（台座の下を 0 に）
+  const verts=new Float32Array(surf.verts.length);
+  const y0mm=(oy-(o.base?Math.max(1,Math.round(baseH/vox)):0))*vox;
+  for(let i=0;i<verts.length;i+=3){ verts[i]=(surf.verts[i]-ox)*vox; verts[i+1]=surf.verts[i+1]*vox-y0mm; verts[i+2]=(surf.verts[i+2]-oz)*vox }
+  await tick("確かめています…");
+  const chk=printCheck(verts,surf.tris);
+  return {verts,tris:surf.tris,colors:vc,vox,thick:2*r*vox,parts,hollowed,size:[size[0],size[1]+baseH,size[2]],check:chk,opt:o};
+}
+
+// 6方向でつながった塊の数
+function printComponents(solid,nx,ny,nz){
+  const N=solid.length, seen=new Uint8Array(N), st=new Int32Array(N); let n=0;
+  for(let k0=0;k0<N;k0++){ if(!solid[k0]||seen[k0]) continue; n++; let sp=0; st[sp++]=k0; seen[k0]=1;
+    while(sp){ const k=st[--sp], x=k%nx, y=((k/nx)|0)%ny, z=(k/(nx*ny))|0;
+      for(const [ok,d] of [[x>0,-1],[x<nx-1,1],[y>0,-nx],[y<ny-1,nx],[z>0,-nx*ny],[z<nz-1,nx*ny]]){
+        if(!ok) continue; const j=k+d; if(solid[j]&&!seen[j]){ seen[j]=1; st[sp++]=j } } } }
+  return n;
+}
+
+// 四面体で切る方式の表面（立方体を主対角線のまわりの6つの四面体に分ける）。
+// 隣の立方体と面の分け方がそろうので、できた面は必ずつながって閉じる
+function printTetSurface(f,nx,ny,nz,iso){
+  const C=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];
+  const TET=[[0,5,1,6],[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6]];
+  const verts=[], tris=[], emap=new Map();
+  const gi=(x,y,z)=>x+nx*(y+ny*z);
+  const vert=(a,b,pa,pb,fa,fb)=>{
+    const key=a<b?a*67108864+b:b*67108864+a;
+    let v=emap.get(key); if(v!=null) return v;
+    const t=(iso-fa)/(fb-fa);
+    v=verts.length/3; verts.push(pa[0]+(pb[0]-pa[0])*t,pa[1]+(pb[1]-pa[1])*t,pa[2]+(pb[2]-pa[2])*t);
+    emap.set(key,v); return v };
+  const P=new Array(8), G=new Array(8), F=new Array(8);
+  for(let z=0;z<nz-1;z++) for(let y=0;y<ny-1;y++) for(let x=0;x<nx-1;x++){
+    let any=0, all=1;
+    for(let c=0;c<8;c++){ const q=C[c], g=gi(x+q[0],y+q[1],z+q[2]); G[c]=g; F[c]=f[g]; if(F[c]>iso) any=1; else all=0 }
+    if(!any||all) continue;
+    for(let c=0;c<8;c++){ const q=C[c]; P[c]=[x+q[0],y+q[1],z+q[2]] }
+    for(const T of TET){
+      const ins=T.filter(c=>F[c]>iso), outs=T.filter(c=>F[c]<=iso);
+      if(!ins.length||!outs.length) continue;
+      const tri=(a,b,c)=>{
+        // 外向きにそろえる：法線が内側の点から外側の点へ向くように
+        const pa=verts.slice(a*3,a*3+3), pb=verts.slice(b*3,b*3+3), pc=verts.slice(c*3,c*3+3);
+        const u=[pb[0]-pa[0],pb[1]-pa[1],pb[2]-pa[2]], w=[pc[0]-pa[0],pc[1]-pa[1],pc[2]-pa[2]];
+        const n=[u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]];
+        const mi=[0,1,2].map(k=>ins.reduce((s,c)=>s+P[c][k],0)/ins.length), mo=[0,1,2].map(k=>outs.reduce((s,c)=>s+P[c][k],0)/outs.length);
+        if(n[0]*(mo[0]-mi[0])+n[1]*(mo[1]-mi[1])+n[2]*(mo[2]-mi[2])<0) tris.push(a,c,b); else tris.push(a,b,c) };
+      const e=(i,o)=>vert(G[i],G[o],P[i],P[o],F[i],F[o]);
+      if(ins.length===1){ const i=ins[0]; tri(e(i,outs[0]),e(i,outs[1]),e(i,outs[2])) }
+      else if(ins.length===3){ const o=outs[0]; tri(e(ins[0],o),e(ins[1],o),e(ins[2],o)) }
+      else { const [i0,i1]=ins, [o0,o1]=outs;
+        const a=e(i0,o0), b=e(i0,o1), c=e(i1,o1), d=e(i1,o0);
+        tri(a,b,c); tri(a,c,d) }
+    }
+  }
+  return {verts:new Float32Array(verts),tris:new Uint32Array(tris)};
+}
+
+// 閉じているかを数える。辺ごとに「向きつきで1回ずつ、逆向きで1回ずつ」なら閉じていて向きもそろう
+function printCheck(verts,tris){
+  const E=new Map(); let bad=0, deg=0;
+  const nv=verts.length/3;
+  for(let t=0;t<tris.length;t+=3){
+    const a=tris[t],b=tris[t+1],c=tris[t+2];
+    if(a===b||b===c||a===c){ deg++; continue }
+    for(const [p,q] of [[a,b],[b,c],[c,a]]){ const k=p*nv+q; E.set(k,(E.get(k)||0)+1) }
+  }
+  let open=0, over=0;
+  for(const [k,n] of E){ if(n>1) over++; const p=Math.floor(k/nv), q=k%nv; if(!E.has(q*nv+p)) open++ }
+  bad=open+over;
+  // 体積（mm³）。外向きなら正
+  let vol=0;
+  for(let t=0;t<tris.length;t+=3){
+    const a=tris[t]*3,b=tris[t+1]*3,c=tris[t+2]*3;
+    vol+=(verts[a]*(verts[b+1]*verts[c+2]-verts[b+2]*verts[c+1])-verts[a+1]*(verts[b]*verts[c+2]-verts[b+2]*verts[c])+verts[a+2]*(verts[b]*verts[c+1]-verts[b+1]*verts[c]))/6;
+  }
+  return {closed:bad===0&&deg===0,open,over,degenerate:deg,volume:vol,tris:tris.length/3,verts:nv};
+}
+
+// ---- 書き出し ----
+function printSTL(r){
+  const n=r.tris.length/3, buf=new ArrayBuffer(84+n*50), dv=new DataView(buf);
+  const head="tobal1-model-viewer print (mm)"; for(let i=0;i<head.length;i++) dv.setUint8(i,head.charCodeAt(i));
+  dv.setUint32(80,n,true);
+  const V=r.verts;
+  for(let t=0;t<n;t++){
+    const o=84+t*50, a=r.tris[t*3]*3, b=r.tris[t*3+1]*3, c=r.tris[t*3+2]*3;
+    const u=[V[b]-V[a],V[b+1]-V[a+1],V[b+2]-V[a+2]], w=[V[c]-V[a],V[c+1]-V[a+1],V[c+2]-V[a+2]];
+    let nn=[u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]]; const L=Math.hypot(...nn)||1; nn=nn.map(q=>q/L);
+    // STL は Z が上の決まりが多いので、Y 上 → Z 上に回して書く（x, -z, y）
+    const put=(off,x,y,z)=>{ dv.setFloat32(off,x,true); dv.setFloat32(off+4,-z,true); dv.setFloat32(off+8,y,true) };
+    put(o,nn[0],nn[1],nn[2]); put(o+12,V[a],V[a+1],V[a+2]); put(o+24,V[b],V[b+1],V[b+2]); put(o+36,V[c],V[c+1],V[c+2]);
+  }
+  return new Uint8Array(buf);
+}
+// 3MF（色つき）。色は点ごと（5bit ずつに丸めて数を抑える）。Z が上
+function print3MFModel(r){
+  const cols=new Map(), ci=new Int32Array(r.verts.length/3), list=[];
+  const hx=v=>v.toString(16).padStart(2,"0");
+  for(let i=0;i<ci.length;i++){
+    const q=k=>Math.min(255,(r.colors[i*3+k]>>3)*8+4);
+    const key=("#"+hx(q(0))+hx(q(1))+hx(q(2))).toUpperCase();
+    let j=cols.get(key); if(j==null){ j=list.length; cols.set(key,j); list.push(key) } ci[i]=j;
+  }
+  const V=r.verts, out=[];
+  out.push('<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="ja-JP" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="http://schemas.microsoft.com/3dmanufacturing/material/2015/02">\n<resources>\n<m:colorgroup id="2">\n');
+  for(const c of list) out.push(`<m:color color="${c}"/>\n`);
+  out.push('</m:colorgroup>\n<object id="1" type="model" pid="2" pindex="0"><mesh><vertices>\n');
+  const f=v=>(Math.round(v*1000)/1000).toString();
+  for(let i=0;i<V.length;i+=3) out.push(`<vertex x="${f(V[i])}" y="${f(-V[i+2])}" z="${f(V[i+1])}"/>\n`);
+  out.push('</vertices><triangles>\n');
+  for(let t=0;t<r.tris.length;t+=3){ const a=r.tris[t],b=r.tris[t+1],c=r.tris[t+2];
+    out.push(`<triangle v1="${a}" v2="${b}" v3="${c}" pid="2" p1="${ci[a]}" p2="${ci[b]}" p3="${ci[c]}"/>\n`) }
+  out.push('</triangles></mesh></object>\n</resources>\n<build><item objectid="1"/></build>\n</model>\n');
+  return out.join("");
+}
+// 小さな ZIP 書き（3MF の入れ物）。deflate が使えれば縮める
+const PRINT_CRC=(()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[n]=c>>>0 } return t })();
+function printCrc(d){ let c=0xFFFFFFFF; for(let i=0;i<d.length;i++) c=PRINT_CRC[(c^d[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0 }
+async function printZip(files){
+  const enc=new TextEncoder(), parts=[], cen=[]; let off=0;
+  for(const [name,data0] of files){
+    const data=typeof data0==="string"?enc.encode(data0):data0, nm=enc.encode(name), crc=printCrc(data);
+    let body=data, method=0;
+    if(typeof CompressionStream!=="undefined"&&data.length>1024){
+      try{ const cs=new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+        body=new Uint8Array(await new Response(cs).arrayBuffer()); method=8 }catch(_){ body=data; method=0 } }
+    const h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true); h.setUint16(4,20,true); h.setUint16(8,method,true);
+    h.setUint32(14,crc,true); h.setUint32(18,body.length,true); h.setUint32(22,data.length,true); h.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(h.buffer),nm,body);
+    const c=new DataView(new ArrayBuffer(46));
+    c.setUint32(0,0x02014b50,true); c.setUint16(4,20,true); c.setUint16(6,20,true); c.setUint16(10,method,true);
+    c.setUint32(16,crc,true); c.setUint32(20,body.length,true); c.setUint32(24,data.length,true); c.setUint16(28,nm.length,true); c.setUint32(42,off,true);
+    cen.push(new Uint8Array(c.buffer),nm);
+    off+=30+nm.length+body.length;
+  }
+  const csz=cen.reduce((s,a)=>s+a.length,0), e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true); e.setUint16(8,files.length,true); e.setUint16(10,files.length,true); e.setUint32(12,csz,true); e.setUint32(16,off,true);
+  return new Blob([...parts,...cen,new Uint8Array(e.buffer)]);
+}
+async function print3MF(r){
+  return printZip([
+    ["[Content_Types].xml",'<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>'],
+    ["_rels/.rels",'<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>'],
+    ["3D/3dmodel.model",print3MFModel(r)]]);
+}
+// ============================================================
 //  WebGL
 // ============================================================
 const canvas=document.getElementById("gl");
@@ -4003,7 +4342,7 @@ function upload(mesh,fit=true,li=0){
   if(fit) fitView(P);
   if(mesh.vram&&L.vram!==mesh.vram){ gl.bindTexture(gl.TEXTURE_2D,L.tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1024,512,0,gl.RGBA,gl.UNSIGNED_BYTE,mesh.vram); L.vram=mesh.vram }
   for(const [k,data] of [["p",P],["n",N],["c",mesh.col],["t0",mesh.t0],["t1",mesh.t1]]){gl.bindBuffer(gl.ARRAY_BUFFER,L.bufs[k]);gl.bufferData(gl.ARRAY_BUFFER,data,gl.DYNAMIC_DRAW)}
-  L.count=P.length/3; L.mn=mn; L.mx=mx; if(li===0) triCount=L.count;
+  L.count=P.length/3; L.mn=mn; L.mx=mx; L.mesh=mesh; if(li===0) triCount=L.count;
 }
 function persp(f,a,n,fa){const t=1/Math.tan(f/2);return[t/a,0,0,0, 0,t,0,0, 0,0,(fa+n)/(n-fa),-1, 0,0,2*fa*n/(n-fa),0]}
 function mul4(a,b){const r=new Array(16).fill(0);for(let i=0;i<4;i++)for(let j=0;j<4;j++)for(let k=0;k<4;k++)r[j*4+i]+=a[k*4+i]*b[j*4+k];return r}
@@ -4130,7 +4469,7 @@ canvas.addEventListener("pointerup",e=>{
 });
 if(matchMedia("(pointer:coarse)").matches) document.getElementById("hint").textContent="1本指で回転 ・ 2本指で移動と拡大 ・ ダブルタップで戻す";
 addEventListener("resize",draw);
-const VERSION="v4.53.0";
+const VERSION="v4.54.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -5071,8 +5410,7 @@ async function start(files){
     if(state.tables.length){ busy("ファイル表の候補を確かめています…"); await scoreTables(state.tables) }
     state.tableIdx=0;
     state.source=state.tables.length?"table":"iso";
-    $("drop").hidden=true; $("side").hidden=false; $("hint").hidden=false; $("shot-box").hidden=false; $("bg-box").hidden=false;
-    document.body.classList.add("loaded"); applyLayout();
+    showMainUI();
     const known=knownDisc(state.src.exeName);
     $("known-note").textContent=known?`${known.title} のディスクです。${known.note}`:"";
     $("known-note").hidden=!known;
@@ -5410,8 +5748,23 @@ $("texpick").onchange=async e=>{
 // head.html に直書きしていたので、v4.29〜v4.32 のあいだ「v4.28.0」と
 // 出たままだった。新しい版を上げたのに古いと見える、いちばん困る間違い方
 { const r=$("rev"); if(r) r.textContent=VERSION+" ・ 非公式" }
-$("memfile").onchange=async e=>{
-  const f=e.target.files&&e.target.files[0]; if(!f) return;
+// RAM と VRAM は2つ同時に選べる。大きさで見分け、RAM（2MB）を先に読む
+async function loadMemFiles(files){
+  const fs=[...(files||[])].sort((a,b)=>b.size-a.size);
+  for(const f of fs) await loadMemFile(f);
+  if(fs.length) openTab("file");
+}
+$("memfile").onchange=e=>loadMemFiles(e.target.files);
+$("memfile2").onchange=e=>{ showMainUI(); loadMemFiles(e.target.files) };
+$("saved-open").onclick=async()=>{ showMainUI(); openTab("file");
+  const list=await fillSaved(); if(list.length) await selectSaved(list[0].id) };
+// ディスクを読まずに（写しや保存したキャラクターだけで）画面を出す
+function showMainUI(){
+  $("drop").hidden=true; $("side").hidden=false; $("hint").hidden=false; $("shot-box").hidden=false; $("bg-box").hidden=false;
+  document.body.classList.add("loaded"); applyLayout();
+}
+async function loadMemFile(f){
+  if(!f) return;
   const st=$("mem-status");
   st.textContent=`${f.name}（${fmtSize(f.size)}）を読んでいます…`;
   try{
@@ -5445,7 +5798,7 @@ $("memfile").onchange=async e=>{
   }catch(err){ console.error(err); state.mem=["メモリの写しを読めませんでした: "+err.message];
     st.textContent="読めませんでした: "+err.message }
   updateReport(); openTab("info");
-};
+}
 // ============================================================
 //  写しの中の人を出す
 //
@@ -5596,6 +5949,7 @@ async function fillSaved(){
   const box=$("saved-box"), sel=$("savedchar"); if(!box||!sel) return [];
   let list=[]; try{ list=await savedAll() }catch(err){ box.hidden=true; return [] }
   box.hidden=!list.length;
+  { const b=$("saved-open"); if(b) b.hidden=!list.length; }
   sel.innerHTML='<option value="">選んでください</option>'
     +list.map(r=>`<option value="${r.id}">${r.name.replace(/[<&>"]/g,"")}${r.vram?"":"（模様なし）"}</option>`).join("");
   if(state.savedId!=null&&list.some(r=>r.id===state.savedId)) sel.value=String(state.savedId);
@@ -6591,6 +6945,48 @@ $("shot").onclick=()=>{
   g.drawImage(canvas,r.x,r.y,r.w,r.h,0,0,r.w,r.h);
   out.toBlob(b=>saveBlob(b,fileBase(true)+".png"),"image/png");
 };
+// ---- 3Dプリント用に書き出す（画面の操作） ----
+// 画面に出ている層（1人、または「2人とも出す」なら2人）を、そのまま閉じた形に作り直す
+{ const val=id=>$(id), num=(id,d)=>{ const v=+val(id).value; return isFinite(v)&&v>0?v:d };
+  let last=null, src=null;   // src: 作り直す前の形（作り直した形を表示している間も、元の形から作る）
+  const status=L=>{ $("pr-status").innerHTML=L.join("<br>") };
+  $("pr-make").onclick=async()=>{
+    const shown=layers.filter(L=>L.count&&L.mesh&&!L.mesh.isPrint).map(L=>L.mesh);
+    const meshes=shown.length?shown:(src||[]); src=meshes;
+    if(!meshes.length){ status(["先にキャラクターを表示してください"]); return }
+    const o={height:num("pr-height",100),res:+val("pr-res").value||160,thick:num("pr-thick",1),
+             base:val("pr-base").checked,baseH:3,hollow:val("pr-hollow").checked,shell:num("pr-shell",2)};
+    let r;
+    try{ r=await printBuild(meshes,o,async m=>{ busy(m); await idle() }) }
+    catch(err){ busy(""); status(["作れませんでした: "+err.message]); return }
+    busy("");
+    last=r;
+    // 画面で確かめられるように、作り直した形をそのまま描く
+    const n=r.tris.length, pos=new Float32Array(n*3), col=new Float32Array(n*3);
+    for(let i=0;i<n;i++){ const v=r.tris[i]; pos.set(r.verts.subarray(v*3,v*3+3),i*3); col[i*3]=r.colors[v*3]/255; col[i*3+1]=r.colors[v*3+1]/255; col[i*3+2]=r.colors[v*3+2]/255 }
+    const mesh={pos,col,t0:new Float32Array(n*3),t1:new Float32Array(n*4),sm:new Uint8Array(n/3),nrm:null,isPrint:true};
+    layers[1].count=0; upload(mesh); draw();
+    const c=r.check, mb=(84+50*c.tris)/1048576;
+    const L=[
+      c.closed?"✅ 閉じた形になりました（辺はどれも2枚の面で、向きもそろっています）"
+              :`⚠ 閉じていない所があります（開いた辺 ${c.open}・重なった辺 ${c.over}・つぶれた面 ${c.degenerate}）`,
+      `大きさ 幅 ${r.size[0].toFixed(1)} × 奥行き ${r.size[2].toFixed(1)} × 高さ ${r.size[1].toFixed(1)} mm　体積 ${(c.volume/1000).toFixed(1)} cm³`,
+      `三角形 ${c.tris.toLocaleString()}　升 ${r.vox.toFixed(2)} mm　最小の厚み 約 ${r.thick.toFixed(2)} mm`,
+      `STL の大きさ 約 ${mb.toFixed(1)} MB`+(mb>20?"　⚠ 20MB を超えています（細かさを下げてください）":""),
+    ];
+    if(r.parts>1) L.push(`⚠ 塊が ${r.parts} 個に分かれています（宙に浮いた部品があります。台座を付けるか、ポーズを変えてください）`);
+    if(o.hollow) L.push("⚠ 中は空洞ですが、液や粉を抜く穴は開けていません。サービスの条件を確かめてください");
+    status(L);
+    $("pr-save-row").hidden=false;
+  };
+  const name=()=>{ const c=state.ramSel>=0&&state.ramChars&&state.ramChars[state.ramSel];
+    const b=c?"tobal1_"+(c.label||`${state.ramName||"ram"}_${c.who}`)+(state.ramBoth&&!state.fromSaved?"_2人":""):fileBase(true);
+    return (b+`_${Math.round(num("pr-height",100))}mm`).replace(/[\\/:*?"<>|\s]/g,"_") };
+  $("pr-stl").onclick=()=>{ if(last) saveBlob(new Blob([printSTL(last)],{type:"model/stl"}),name()+".stl") };
+  $("pr-3mf").onclick=async()=>{ if(!last) return; busy("3MF を作っています…"); await idle();
+    const b=await print3MF(last); busy(""); saveBlob(new Blob([b],{type:"model/3mf"}),name()+".3mf") };
+  $("pr-back").onclick=()=>{ $("pr-save-row").hidden=true; status([]); last=null; src=null; redrawCurrent() };
+}
 // ============================================================
 //  読み込みの入口
 // ============================================================

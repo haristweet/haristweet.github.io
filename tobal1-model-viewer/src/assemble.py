@@ -12,6 +12,7 @@ order=[('pre.js',None),
  ('fit.js',None),
  ('vram1.js',None),
  ('model1.js',None),
+ ('print.js','3Dプリント用に閉じた形を作る'),
  ('gl.js','WebGL'),
  ('app.js',None),
  ('survey2.js',None),
@@ -20,6 +21,7 @@ order=[('pre.js',None),
  ('tex1.js',None),
  ('save.js','保存'),
  ('shot.js',None),
+ ('printui.js',None),
  ('tail.js',None)]
 import os
 listed={f for f,_ in order}

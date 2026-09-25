@@ -1,6 +1,6 @@
 import fs from "fs";
 const read=f=>fs.readFileSync(f,"utf8");
-let code=[ "skel.js","pack.js","table.js","mips.js","model.js","fit.js","vram1.js","model1.js","bone.js","mem.js","tex1.js","survey2.js" ].map(read).join("\n")
+let code=[ "skel.js","pack.js","table.js","mips.js","model.js","fit.js","vram1.js","model1.js","bone.js","mem.js","tex1.js","survey2.js","print.js" ].map(read).join("\n")
   + "\nconst state={rig:'t2'};\nconst hex=(n,w=8)=>'0x'+(n>>>0).toString(16).toUpperCase().padStart(w,'0');\n"
   + "const FLAT_W=new Proxy({},{get:()=>({R:I3,T:[0,0,0]})});\n"
   + read("_buildModel.js") + "\n" + read("_scoreTables.js") + "\n" + read("_arcpick.js") + "\n"
@@ -2401,6 +2401,46 @@ console.log("\n[56] 骨の組は回転かどうかで決める（ポーズでは
   ok("回転の行列なら通す（横になっていて背が低くても）", memRotOk([I,I,I]), "");
   ok("  長さが 1.0 から外れた行があれば通さない", !memRotOk([I,bad]), "");
   ok("  空なら通さない", !memRotOk([]), "");
+}
+
+console.log("\n[57] 3Dプリント用に閉じた形を作る");
+{
+  // 三角形の並び（画面の層と同じ形）を作る
+  const mk=(quads)=>{ const pos=[];
+    for(const q of quads){ pos.push(...q[0],...q[1],...q[2],...q[0],...q[2],...q[3]) }
+    const n=pos.length/3; return {pos:new Float32Array(pos),col:new Float32Array(n*3).fill(0.5),t0:new Float32Array(n*3),t1:new Float32Array(n*4),vram:null} };
+  const box=(x,y,z,w,h,d,top=true)=>{ const X=x+w,Y=y+h,Z=z+d; const q=[
+    [[x,y,z],[X,y,z],[X,y,Z],[x,y,Z]],[[x,y,z],[x,Y,z],[X,Y,z],[X,y,z]],[[x,y,Z],[X,y,Z],[X,Y,Z],[x,Y,Z]],
+    [[x,y,z],[x,y,Z],[x,Y,Z],[x,Y,z]],[[X,y,z],[X,Y,z],[X,Y,Z],[X,y,Z]]]; if(top) q.push([[x,Y,z],[x,Y,Z],[X,Y,Z],[X,Y,z]]); return q };
+  const run=async(m,o)=>printBuild([m],Object.assign({height:40,res:40,thick:1,base:false},o));
+  const a=await run(mk(box(0,0,0,100,100,100,false)));         // 上の面が無い箱（開いている）
+  ok("開いた箱でも、閉じた形になる", a.check.closed, JSON.stringify(a.check));
+  ok("  体積が正（面が外向き）", a.check.volume>0, a.check.volume);
+  ok("  大きく開いた口はふさがず、コップの形のまま（体積は詰まった箱より小さい）", a.check.volume<40*40*40*0.6, Math.round(a.check.volume));
+  // 上の面に細い隙間（1%）がある箱：隙間は太らせでふさがり、中まで詰まる
+  const gap=box(0,0,0,100,100,100,false); gap.push([[0,100,0],[0,100,100],[99,100,100],[99,100,0]]);
+  const g=await run(mk(gap));
+  ok("  細い隙間の箱は、中まで詰まる（40mm 角に近い体積）", g.check.closed&&g.check.volume>40*40*40*0.85&&g.check.volume<40*40*40*1.3, Math.round(g.check.volume));
+  ok("  塊は1つ", a.parts===1, a.parts);
+  const b=await run(mk([[[0,50,0],[100,50,0],[100,50,100],[0,50,100]],[[0,0,0],[1,0,0],[1,100,0],[0,100,0]]]),{thick:2});   // 厚み 0 の板
+  ok("厚み 0 の板に厚みが付いて閉じる", b.check.closed&&b.check.volume>0, JSON.stringify(b.check));
+  const c=await run(mk([...box(0,0,0,40,100,40),...box(200,0,0,40,100,40)]));   // 離れた2つ
+  ok("離れた2つの箱は、塊が2つと数える", c.parts===2&&c.check.closed, c.parts);
+  const d=await run(mk([...box(0,0,0,40,100,40),...box(200,0,0,40,100,40)]),{base:true,baseH:3});
+  ok("  台座を付けると1つにつながる", d.parts===1&&d.check.closed, d.parts);
+  ok("  台座のぶん背が伸びる（40mm ＋ 3mm）", Math.abs(d.size[1]-43)<0.01, d.size[1]);
+  const one=await run(mk(box(0,0,0,40,100,40)),{base:true,baseH:3});
+  ok("  1つでも台座が升目の端にかからず、閉じている", one.check.closed&&one.parts===1, JSON.stringify(one.check));
+  const e=await run(mk(box(0,0,0,100,100,100)),{hollow:true,shell:3,res:60});
+  ok("中を空洞にしても閉じている", e.check.closed&&e.hollowed>0, JSON.stringify({closed:e.check.closed,hollowed:e.hollowed}));
+  const full=await run(mk(box(0,0,0,100,100,100)),{res:60});
+  ok("  空洞にすると体積が減る（閉じた箱と比べて）", e.check.volume<full.check.volume*0.7, `${Math.round(e.check.volume)} / ${Math.round(full.check.volume)}`);
+  const stl=printSTL(a), dv=new DataView(stl.buffer);
+  ok("STL は 84 + 50×面 バイト", stl.length===84+50*a.check.tris&&dv.getUint32(80,true)===a.check.tris, stl.length);
+  const x=print3MFModel(a);
+  ok("3MF の中身に単位 mm と色の組がある", /unit="millimeter"/.test(x)&&/<m:colorgroup id="2">/.test(x)&&/<triangle v1=/.test(x), x.slice(0,80));
+  const z=await print3MF(a); const zb=new Uint8Array(await z.arrayBuffer());
+  ok("3MF は ZIP（PK で始まる）", zb[0]===0x50&&zb[1]===0x4b, zb.slice(0,4));
 }
 
 console.log(`\n${pass} ok / ${fail} fail`);

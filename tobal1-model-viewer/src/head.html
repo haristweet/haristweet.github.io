@@ -79,6 +79,10 @@ canvas:active{cursor:grabbing}
 .drop code{background:#ebe7df;padding:1px 5px;border-radius:4px;font-size:12px}
 .drop .pick{display:inline-block;margin-top:6px;background:var(--accent);color:#fff;border-radius:7px;padding:8px 16px;cursor:pointer;font-weight:600}
 .drop.over .card{outline:3px dashed var(--accent);outline-offset:6px}
+.mem-pick{display:block;text-align:center;background:var(--accent);color:#fff;border-radius:8px;padding:12px 14px;cursor:pointer;font-weight:700;font-size:14px}
+.print-grid{display:grid;gap:6px;margin-top:6px}
+.print-grid input[type=number]{width:6em}
+.mem-top{border:2px solid var(--accent);border-radius:10px;padding:10px 12px}
 .err{color:#b91c1c;font-size:13px;margin-top:8px;white-space:pre-wrap}
 [hidden]{display:none!important}
 .tabbar,.sheet-close{display:none}
@@ -127,6 +131,51 @@ canvas:active{cursor:grabbing}
 <main>
   <aside id="side" hidden>
     <div class="sheet-close" aria-hidden="true"></div>
+    <div data-tab="file" class="mem-top"><p class="label">RAM・VRAM ダンプ（対戦中の写し）</p>
+      <label class="pick mem-pick">RAM・VRAM ダンプを選ぶ（2つ同時に選べます）<input id="memfile" type="file" multiple hidden></label>
+      <p class="note"><b>VRAM ダンプ（1,048,576バイト）</b>も、ここに入れてください。キャラクターの模様（胸の紋章、ブーツの三角など）はテクスチャで、その絵は VRAM にあります。RAM ダンプには入っていません。両方入れると模様まで出ます。</p>
+      <div id="ramchar-box" hidden style="margin-top:8px">
+        <p class="label">写しの中にいた人</p>
+        <select id="ramchar" aria-label="写しの中にいた人"></select>
+        <label style="display:block;margin-top:6px"><input type="checkbox" id="ramboth"> 2人とも出す（ゲームと同じ立ち位置で並べる）</label>
+        <button class="btn" id="saved-add" style="margin-top:6px">この写しの人をブラウザに保存</button>
+        <div class="note" id="saved-status"></div>
+        <p class="note">ディスクのファイルではなく、<b>写しに載っているモデルそのもの</b>を出しています。骨もモデルも同じ1つの写しの中にあるので、突き合わせが要りません。別の場面で取った2つの写しを比べたところ、ポーズは変わってもモデルは1バイトも変わりませんでした。</p>
+      </div>
+      <p class="note"><b>骨の行列は、ディスクにも実行ファイルにも入っていません。</b>描く直前にゲームが渡すもので、動いている最中にしか存在しません。だから、動かして止めて、その瞬間のメモリを取ります。<br>
+      <b>取り方（DuckStation）</b><br>
+      1. 設定 → 高度な設定 で「デバッグメニューを表示」をオンにする<br>
+      2. ゲームを起動し、メニューバーの <b>デバッグ → CPU デバッガ</b> を開く<br>
+      3. ツールバーの「＋」で、アドレス <b>8001F464</b>・種類「実行」のブレークポイントを追加する<br>
+      4. 再開して、<b>キャラクターが画面に出ている場面</b>まで進める。そこで止まります<br>
+      5. 止まったまま、<b>デバッグ → RAM ダンプ…</b>（2,097,152 バイトのファイルができます）<br>
+      6. そのファイルをここで選ぶ<br>
+      止める番地は <b>8001F464</b> にしてください。0x8001F44C だと、その手前の分岐で「骨が無いときは素通り」するので、表が空のまま止まります。<br>
+      セーブステートでも読めますが、描き終わったあとの瞬間だと表が空になっています。圧縮は <b>Deflate</b> か <b>なし</b> にしてください（既定の zstd はブラウザがほどけません）。</p>
+      <div class="note" id="mem-status"></div>
+    </div>
+    <div data-tab="file" id="saved-box" hidden><p class="label">保存したキャラクター</p>
+      <select id="savedchar" aria-label="保存したキャラクター"></select>
+      <button class="btn" id="saved-del" style="margin-top:6px">選んでいるものを消す</button>
+      <p class="note">写しから保存したキャラクターです。RAM・VRAM を読み込み直さなくても、ここから選ぶだけで出せます。データはこの端末のブラウザの中にだけあります。</p>
+    </div>
+    <div data-tab="file" id="print-box"><p class="label">3Dプリント用に書き出す</p>
+      <p class="note">いま表示している形を、印刷サービスに出せる<b>閉じた形</b>に作り直します（升目に置いて太らせ、表面を作り直す）。細かい所は少し丸くなります。</p>
+      <div class="print-grid">
+        <label>背の高さ（mm）<input type="number" id="pr-height" value="100" min="10" max="500" step="5"></label>
+        <label>細かさ <select id="pr-res"><option value="120">粗い（速い）</option><option value="160" selected>ふつう</option><option value="220">細かい（重い）</option></select></label>
+        <label>最小の厚み（mm）<input type="number" id="pr-thick" value="1" min="0.3" max="5" step="0.1"></label>
+        <label><input type="checkbox" id="pr-base" checked> 台座を付ける</label>
+        <label><input type="checkbox" id="pr-hollow"> 中を空洞にする（殻 <input type="number" id="pr-shell" value="2" min="1" max="10" step="0.5" style="width:4em"> mm）</label>
+      </div>
+      <button class="btn wide" id="pr-make" style="margin-top:6px">閉じた形を作る（画面で確かめる）</button>
+      <div class="note" id="pr-status"></div>
+      <div class="print-grid" id="pr-save-row" hidden>
+        <button class="btn" id="pr-stl">STL で保存（単色）</button>
+        <button class="btn" id="pr-3mf">3MF で保存（色つき）</button>
+        <button class="btn" id="pr-back">元の表示に戻す</button>
+      </div>
+    </div>
     <div data-tab="file"><p class="label">読み込み元</p>
       <p class="note known" id="known-note" hidden></p>
       <div class="seg" id="src-seg"><button data-v="table" aria-pressed="true">アーカイブ</button><button data-v="scan" aria-pressed="false" title="アーカイブの中を直接さらってファイルの先頭を探す">直接さらう</button><button data-v="iso" aria-pressed="false" title="ディスクの中のファイルをそのまま並べる">ディスク</button></div>
@@ -156,34 +205,6 @@ canvas:active{cursor:grabbing}
       <p class="note" id="texnote">キャラクターの<b>体</b>には貼り先（UV）がなく、頂点の色だけで塗られています。テクスチャは<b>顔のパーツ（目・口）</b>や背景・文字に使われていて、体とは別に描かれます。「すべて並べて見る」で見比べられます。</p>
       <button class="btn wide" id="texsave" style="margin-top:6px">この一覧を画像で保存</button>
       <div id="texgrid" class="texgrid"></div>
-    </div>
-    <div data-tab="file" id="saved-box" hidden><p class="label">保存したキャラクター</p>
-      <select id="savedchar" aria-label="保存したキャラクター"></select>
-      <button class="btn" id="saved-del" style="margin-top:6px">選んでいるものを消す</button>
-      <p class="note">写しから保存したキャラクターです。RAM・VRAM を読み込み直さなくても、ここから選ぶだけで出せます。データはこの端末のブラウザの中にだけあります。</p>
-    </div>
-    <div data-tab="file"><p class="label">メモリの写し（本物の骨）</p>
-      <label class="pick" style="display:inline-block">RAM ダンプ・VRAM ダンプを選ぶ<input id="memfile" type="file" hidden></label>
-      <p class="note"><b>VRAM ダンプ（1,048,576バイト）</b>も、ここに入れてください。キャラクターの模様（胸の紋章、ブーツの三角など）はテクスチャで、その絵は VRAM にあります。RAM ダンプには入っていません。両方入れると模様まで出ます。</p>
-      <div id="ramchar-box" hidden style="margin-top:8px">
-        <p class="label">写しの中にいた人</p>
-        <select id="ramchar" aria-label="写しの中にいた人"></select>
-        <label style="display:block;margin-top:6px"><input type="checkbox" id="ramboth"> 2人とも出す（ゲームと同じ立ち位置で並べる）</label>
-        <button class="btn" id="saved-add" style="margin-top:6px">この写しの人をブラウザに保存</button>
-        <div class="note" id="saved-status"></div>
-        <p class="note">ディスクのファイルではなく、<b>写しに載っているモデルそのもの</b>を出しています。骨もモデルも同じ1つの写しの中にあるので、突き合わせが要りません。別の場面で取った2つの写しを比べたところ、ポーズは変わってもモデルは1バイトも変わりませんでした。</p>
-      </div>
-      <p class="note"><b>骨の行列は、ディスクにも実行ファイルにも入っていません。</b>描く直前にゲームが渡すもので、動いている最中にしか存在しません。だから、動かして止めて、その瞬間のメモリを取ります。<br>
-      <b>取り方（DuckStation）</b><br>
-      1. 設定 → 高度な設定 で「デバッグメニューを表示」をオンにする<br>
-      2. ゲームを起動し、メニューバーの <b>デバッグ → CPU デバッガ</b> を開く<br>
-      3. ツールバーの「＋」で、アドレス <b>8001F464</b>・種類「実行」のブレークポイントを追加する<br>
-      4. 再開して、<b>キャラクターが画面に出ている場面</b>まで進める。そこで止まります<br>
-      5. 止まったまま、<b>デバッグ → RAM ダンプ…</b>（2,097,152 バイトのファイルができます）<br>
-      6. そのファイルをここで選ぶ<br>
-      止める番地は <b>8001F464</b> にしてください。0x8001F44C だと、その手前の分岐で「骨が無いときは素通り」するので、表が空のまま止まります。<br>
-      セーブステートでも読めますが、描き終わったあとの瞬間だと表が空になっています。圧縮は <b>Deflate</b> か <b>なし</b> にしてください（既定の zstd はブラウザがほどけません）。</p>
-      <div class="note" id="mem-status"></div>
     </div>
     <div data-tab="file" id="t1slot-box" hidden><p class="label">顔の貼りもの・手の差し替え</p>
       <select id="t1slot" aria-label="差し替えの部品"></select>
@@ -265,6 +286,9 @@ canvas:active{cursor:grabbing}
         <p>ゲームのデータはこのページに一切含まれていません。読み込んだファイルはブラウザの中だけで読み取り、どこにも送信しません。</p>
         <p>このビューアはトバルNo.1の中身を実行時に探しにいきます。うまく出てこないときは「解析」の内容をそのまま作者に送ってください。</p>
         <label class="pick">ファイルを選ぶ<input id="file" type="file" multiple hidden></label>
+        <p style="margin-top:14px"><b>ディスク無しで見る：</b>対戦中に取った RAM ダンプと VRAM ダンプを<b>2つ同時に</b>選べば、そのキャラクターが出ます。</p>
+        <label class="pick">RAM・VRAM ダンプから見る<input id="memfile2" type="file" multiple hidden></label>
+        <button class="pick" id="saved-open" hidden style="border:0;font:inherit;margin-left:6px">保存したキャラクターを見る</button>
         <div class="err" id="err"></div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-const VERSION="v4.53.0";
+const VERSION="v4.54.0";
 // ============================================================
 //  一覧と表示
 // ============================================================
@@ -939,8 +939,7 @@ async function start(files){
     if(state.tables.length){ busy("ファイル表の候補を確かめています…"); await scoreTables(state.tables) }
     state.tableIdx=0;
     state.source=state.tables.length?"table":"iso";
-    $("drop").hidden=true; $("side").hidden=false; $("hint").hidden=false; $("shot-box").hidden=false; $("bg-box").hidden=false;
-    document.body.classList.add("loaded"); applyLayout();
+    showMainUI();
     const known=knownDisc(state.src.exeName);
     $("known-note").textContent=known?`${known.title} のディスクです。${known.note}`:"";
     $("known-note").hidden=!known;
@@ -1278,8 +1277,23 @@ $("texpick").onchange=async e=>{
 // head.html に直書きしていたので、v4.29〜v4.32 のあいだ「v4.28.0」と
 // 出たままだった。新しい版を上げたのに古いと見える、いちばん困る間違い方
 { const r=$("rev"); if(r) r.textContent=VERSION+" ・ 非公式" }
-$("memfile").onchange=async e=>{
-  const f=e.target.files&&e.target.files[0]; if(!f) return;
+// RAM と VRAM は2つ同時に選べる。大きさで見分け、RAM（2MB）を先に読む
+async function loadMemFiles(files){
+  const fs=[...(files||[])].sort((a,b)=>b.size-a.size);
+  for(const f of fs) await loadMemFile(f);
+  if(fs.length) openTab("file");
+}
+$("memfile").onchange=e=>loadMemFiles(e.target.files);
+$("memfile2").onchange=e=>{ showMainUI(); loadMemFiles(e.target.files) };
+$("saved-open").onclick=async()=>{ showMainUI(); openTab("file");
+  const list=await fillSaved(); if(list.length) await selectSaved(list[0].id) };
+// ディスクを読まずに（写しや保存したキャラクターだけで）画面を出す
+function showMainUI(){
+  $("drop").hidden=true; $("side").hidden=false; $("hint").hidden=false; $("shot-box").hidden=false; $("bg-box").hidden=false;
+  document.body.classList.add("loaded"); applyLayout();
+}
+async function loadMemFile(f){
+  if(!f) return;
   const st=$("mem-status");
   st.textContent=`${f.name}（${fmtSize(f.size)}）を読んでいます…`;
   try{
@@ -1313,7 +1327,7 @@ $("memfile").onchange=async e=>{
   }catch(err){ console.error(err); state.mem=["メモリの写しを読めませんでした: "+err.message];
     st.textContent="読めませんでした: "+err.message }
   updateReport(); openTab("info");
-};
+}
 // ============================================================
 //  写しの中の人を出す
 //
@@ -1464,6 +1478,7 @@ async function fillSaved(){
   const box=$("saved-box"), sel=$("savedchar"); if(!box||!sel) return [];
   let list=[]; try{ list=await savedAll() }catch(err){ box.hidden=true; return [] }
   box.hidden=!list.length;
+  { const b=$("saved-open"); if(b) b.hidden=!list.length; }
   sel.innerHTML='<option value="">選んでください</option>'
     +list.map(r=>`<option value="${r.id}">${r.name.replace(/[<&>"]/g,"")}${r.vram?"":"（模様なし）"}</option>`).join("");
   if(state.savedId!=null&&list.some(r=>r.id===state.savedId)) sel.value=String(state.savedId);

@@ -366,6 +366,13 @@ if(fs.existsSync("dump3.bin")){
     console.log(`--- 格子 ---\n画素 ${a0} → 出すと ${a1} → 切ると ${a2}`);
     if(!(a1>a0)) errs.push("格子を出しても何も描かれない");
     if(a2!==a0) errs.push("格子を切っても元に戻らない"); }
+  // 3Dプリント用に閉じた形を作る（細かさは粗いで速く）
+  { await pg3.evaluate(()=>{ document.getElementById("pr-res").value="120"; document.getElementById("pr-make").click() });
+    await pg3.waitForFunction(()=>document.getElementById("pr-status").textContent.length>0,null,{timeout:120000});
+    const t=await pg3.evaluate(()=>document.getElementById("pr-status").innerText);
+    console.log("--- 3Dプリント ---\n"+t);
+    if(!/閉じた形になりました/.test(t)) errs.push("3Dプリント用の形が閉じていない: "+t.split("\n")[0]);
+    await pg3.evaluate(()=>document.getElementById("pr-back").click()); await pg3.waitForTimeout(900); }
   // 差し替えの部品を1つ出す
   await pg3.selectOption("#t1slot","0");
   await pg3.waitForTimeout(800);
