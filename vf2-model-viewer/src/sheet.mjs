@@ -1,7 +1,7 @@
 // 絵で確かめる台本（教訓1）。モデルのファイル1つの全部品を、決まった角度で並べて PNG にする。
 //   node sheet.mjs disc/bin/OBJ_AKI1.CMP out/aki1.png [列数] [ヨー度] [ピッチ度] [番号,番号…] [欄の大きさ]
 // 部品ごとに大きさを合わせて描く（部品どうしの大きさは比べられない）。欄の左上の数はモデル番号
-import fs from "fs"; import vm from "vm"; import zlib from "zlib"; import path from "path";
+import fs from "fs"; import vm from "vm"; import path from "path"; import {pngEncode} from "./png.mjs";
 const here=path.dirname(new URL(import.meta.url).pathname), ctx={}; vm.createContext(ctx);
 for(const f of ["cricmp.js","obj.js","raster.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
 const [,,inp,outp,colsArg,yawArg,pitchArg,idsArg,cellArg]=process.argv;
@@ -30,11 +30,6 @@ models.forEach((m,k)=>{
   }
   ctx.rasterText(R,ox+4,oy+4,m.id,[150,150,140],2);
 });
-const {W,H,px}=R, raw=Buffer.alloc((W*3+1)*H);
-for(let y=0;y<H;y++){ raw[y*(W*3+1)]=0; Buffer.from(px.buffer,y*W*3,W*3).copy(raw,y*(W*3+1)+1) }
-const crc=b=>{ let c=~0; for(const x of b){ c^=x; for(let k=0;k<8;k++) c=c>>>1^(0xedb88320&-(c&1)) } return ~c>>>0 };
-const chunk=(t,d)=>{ const b=Buffer.alloc(12+d.length); b.writeUInt32BE(d.length,0); b.write(t,4); d.copy(b,8); b.writeUInt32BE(crc(b.subarray(4,8+d.length)),8+d.length); return b };
-const ih=Buffer.alloc(13); ih.writeUInt32BE(W,0); ih.writeUInt32BE(H,4); ih[8]=8; ih[9]=2;
 fs.mkdirSync(path.dirname(outp),{recursive:true});
-fs.writeFileSync(outp,Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk("IHDR",ih),chunk("IDAT",zlib.deflateSync(raw)),chunk("IEND",Buffer.alloc(0))]));
+fs.writeFileSync(outp,pngEncode(R.W,R.H,R.px));
 console.log(outp, models.length, "モデル");
