@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VF2 モデルビューア</title>
+<meta name="description" content="PS2『SEGA AGES 2500 バーチャファイター2』のディスクとセーブステートから、対戦中の2人をそのまま取り出して見る">
+<style>
+:root{--bg:#f4f2ee;--card:#fff;--fg:#1f1e1b;--mut:#6b6860;--line:#dedad2;--acc:#2d6aa3;--bad:#b3392f;--stage:#2a2926}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1917;--card:#24231f;--fg:#ecebe6;--mut:#a09d94;--line:#3a3833;--acc:#79aee0;--bad:#ec7a6f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Hiragino Sans",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 14px}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 12px}
+@media (max-width:640px){.steps{grid-template-columns:1fr}}
+.step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.step b{display:block;margin:0 0 2px}.step small{color:var(--mut);display:block;margin:0 0 8px}
+.step.done{border-color:var(--acc)}
+.step label.btn{display:inline-block;background:var(--acc);color:#fff;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600}
+.step input[type=file]{display:none}
+.step .name{margin-left:8px;font-size:13px;color:var(--mut);overflow-wrap:anywhere}
+#states{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+#states button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:99px;padding:3px 10px;cursor:pointer;font:inherit;font-size:13px}
+#states button.on{border-color:var(--acc);color:var(--acc);font-weight:600}
+#status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
+.viewer{position:relative;background:var(--stage);border-radius:10px;overflow:hidden;aspect-ratio:622/412;touch-action:none;user-select:none}
+.viewer canvas{position:absolute;inset:0;width:100%;height:100%}
+/* 写真（640×480）のうち、ゲームの絵がある x 9〜630・y 34〜445 をこの欄にぴったり合わせる */
+.viewer img{position:absolute;left:-1.447%;top:-8.252%;width:102.894%;height:116.505%;opacity:0;transition:opacity .2s}
+.viewer [hidden]{display:none!important}
+.viewer.overlay img{opacity:.55}
+.viewer .hint{position:absolute;left:12px;bottom:10px;color:#cfccc4;font-size:12px;pointer-events:none}
+.viewer .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a8a49a;text-align:center;padding:20px}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:10px 0}
+.ctrl label{white-space:nowrap}
+.ctrl button{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:5px 12px;cursor:pointer;font:inherit}
+#info{color:var(--mut);font-size:13px;margin:6px 0 0}
+details{margin:16px 0 0;color:var(--mut);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<h1>バーチャファイター2 モデルビューア</h1>
+<p class="sub">PS2『SEGA AGES 2500 Vol.16 バーチャファイター2』のディスクと、対戦中のセーブステート（PCSX2）から、ゲームがそのコマで描いた2人をそのまま取り出して見ます。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
+<div class="steps">
+  <div class="step" id="step-disc"><b>1. ディスクのイメージ</b><small>.bin（2352）・.iso、または中の BIN.CVM。モデルの形はここから読みます</small>
+    <label class="btn">選ぶ<input type="file" id="f-disc" accept=".bin,.iso,.cvm,.img"></label><span class="name" id="n-disc">まだ</span></div>
+  <div class="step" id="step-state"><b>2. セーブステート</b><small>PCSX2 の .p2s（対戦中のもの。いくつでも）。姿勢と色はここから読みます</small>
+    <label class="btn">選ぶ<input type="file" id="f-state" accept=".p2s" multiple></label><span class="name" id="n-state">まだ</span><div id="states"></div></div>
+</div>
+<div id="status"></div>
+<div class="viewer" id="viewer"><img id="shot" alt="" hidden><canvas id="cv"></canvas>
+  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます</div>
+  <div class="hint" id="hint" hidden>ドラッグで回す・ホイールかピンチで寄る</div></div>
+<div class="ctrl">
+  <label><input type="checkbox" id="c-p1" checked> 1P</label>
+  <label><input type="checkbox" id="c-p2" checked> 2P</label>
+  <label><input type="checkbox" id="c-shadow"> 影（まだ写真と合わない）</label>
+  <label><input type="checkbox" id="c-overlay"> ゲームの画面と重ねる</label>
+  <button id="b-reset">ゲームの視点に戻す</button>
+  <button id="b-png">PNG で保存</button>
+</div>
+<div id="info"></div>
+<details><summary>しくみ</summary>
+<p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさ（光の当たり方）はまだ近い値です。</p>
+<p id="ver"></p></details>
+</main>
+<script>

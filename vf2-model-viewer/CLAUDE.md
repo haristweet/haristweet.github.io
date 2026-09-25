@@ -7,7 +7,17 @@ PS2『SEGA AGES 2500 Vol.16 バーチャファイター2』（SLPM_625.47）の�
 
 - 作業: セーブステート5つ（01〜05、PCSX2 v2.8.2、構えている場面）で、ゲームの命令の列から2人を組み、テクスチャと色も付けられた（pose.mjs）
 - 頼んでいること: 投げ・倒れ・2色目の場面のセーブステート（あとで。いまの5つで先に進める）
-- 次にやること: ビューアのページ（セーブステートを読み込むと2人が色付きで出て回せる）。明るさ（光の計算）は後で
+- 次にやること: ビューアのページ v0.1.0 を公開した。残り: 明るさ（光の計算）・影の描き方・背景（ステージ）・投げ／倒れ／2色目の写しでの確認
+
+## ページ（`index.html`、版は `src/vapp.js` の VERSION、履歴は CHANGELOG.md）
+
+```
+cd vf2-model-viewer/src
+sh check.sh          # 組み立て（assemble.py が head.html と .js を連結）→ 単体試験（node test.mjs。disc/ にデータがあれば本物で）→ ../index.html
+node browser.mjs     # Playwright。何も無し → 写しだけ → 両方、の順にたどり、PC とスマホの幅で撮る（out/b_*.png）
+```
+- ソース: zstd.js（fzstd 0.1.1、MIT）・p2s.js・vdisc.js・cricmp.js・obj.js・tex.js・scene.js・build.js・vgl.js・vapp.js・head.html
+- キャラのファイルは、テクスチャの一致（sceneWhichRob）でキャラを決め、描いた番号をいちばん多く含む OBJ_xxx1/2 を選ぶ（1P の表にはステージの部品も入る）
 
 ## データの置き場所（リポジトリに入れない）
 

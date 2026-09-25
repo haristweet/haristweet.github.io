@@ -23,7 +23,9 @@ function texCoords(attr,uv){
   let X=(h2&63)*32, Y=(h2>>6&63)*32-1024; if(X>=1024){ X-=1024; Y+=1024 }
   const mu=Math.min(...uv.map(a=>a[0])), mv=Math.min(...uv.map(a=>a[1]));
   const ku=Math.floor((mu+7)/su)*su, kv=Math.floor((mv+7)/sv)*sv;
-  return {page:h2>>12&1, st:uv.map(([u,v])=>[((u+10-ku)/8+Y)/4, (v+10-kv)/8+X])};
+  // org＝ページ内の原点、size＝ページ内の大きさ（横は 1/4）、loc＝原点からの位置（大きさを越えた分は描くときに折り返す）
+  const loc=uv.map(([u,v])=>[(u+10-ku)/32, (v+10-kv)/8]);
+  return {page:h2>>12&1, org:[Y/4,X], size:[su/32,sv/8], loc, st:loc.map(([a,b])=>[a+Y/4,b+X])};
 }
 // テクスチャ用メモリ（g_geo+0xa040 の 512KB）から 4bit を読む
 function texRam(ram,page,px,py){

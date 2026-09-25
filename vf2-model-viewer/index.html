@@ -1,0 +1,1280 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VF2 モデルビューア</title>
+<meta name="description" content="PS2『SEGA AGES 2500 バーチャファイター2』のディスクとセーブステートから、対戦中の2人をそのまま取り出して見る">
+<style>
+:root{--bg:#f4f2ee;--card:#fff;--fg:#1f1e1b;--mut:#6b6860;--line:#dedad2;--acc:#2d6aa3;--bad:#b3392f;--stage:#2a2926}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1917;--card:#24231f;--fg:#ecebe6;--mut:#a09d94;--line:#3a3833;--acc:#79aee0;--bad:#ec7a6f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Hiragino Sans",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 14px}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 12px}
+@media (max-width:640px){.steps{grid-template-columns:1fr}}
+.step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.step b{display:block;margin:0 0 2px}.step small{color:var(--mut);display:block;margin:0 0 8px}
+.step.done{border-color:var(--acc)}
+.step label.btn{display:inline-block;background:var(--acc);color:#fff;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600}
+.step input[type=file]{display:none}
+.step .name{margin-left:8px;font-size:13px;color:var(--mut);overflow-wrap:anywhere}
+#states{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+#states button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:99px;padding:3px 10px;cursor:pointer;font:inherit;font-size:13px}
+#states button.on{border-color:var(--acc);color:var(--acc);font-weight:600}
+#status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
+.viewer{position:relative;background:var(--stage);border-radius:10px;overflow:hidden;aspect-ratio:622/412;touch-action:none;user-select:none}
+.viewer canvas{position:absolute;inset:0;width:100%;height:100%}
+/* 写真（640×480）のうち、ゲームの絵がある x 9〜630・y 34〜445 をこの欄にぴったり合わせる */
+.viewer img{position:absolute;left:-1.447%;top:-8.252%;width:102.894%;height:116.505%;opacity:0;transition:opacity .2s}
+.viewer [hidden]{display:none!important}
+.viewer.overlay img{opacity:.55}
+.viewer .hint{position:absolute;left:12px;bottom:10px;color:#cfccc4;font-size:12px;pointer-events:none}
+.viewer .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a8a49a;text-align:center;padding:20px}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:10px 0}
+.ctrl label{white-space:nowrap}
+.ctrl button{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:5px 12px;cursor:pointer;font:inherit}
+#info{color:var(--mut);font-size:13px;margin:6px 0 0}
+details{margin:16px 0 0;color:var(--mut);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<h1>バーチャファイター2 モデルビューア</h1>
+<p class="sub">PS2『SEGA AGES 2500 Vol.16 バーチャファイター2』のディスクと、対戦中のセーブステート（PCSX2）から、ゲームがそのコマで描いた2人をそのまま取り出して見ます。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
+<div class="steps">
+  <div class="step" id="step-disc"><b>1. ディスクのイメージ</b><small>.bin（2352）・.iso、または中の BIN.CVM。モデルの形はここから読みます</small>
+    <label class="btn">選ぶ<input type="file" id="f-disc" accept=".bin,.iso,.cvm,.img"></label><span class="name" id="n-disc">まだ</span></div>
+  <div class="step" id="step-state"><b>2. セーブステート</b><small>PCSX2 の .p2s（対戦中のもの。いくつでも）。姿勢と色はここから読みます</small>
+    <label class="btn">選ぶ<input type="file" id="f-state" accept=".p2s" multiple></label><span class="name" id="n-state">まだ</span><div id="states"></div></div>
+</div>
+<div id="status"></div>
+<div class="viewer" id="viewer"><img id="shot" alt="" hidden><canvas id="cv"></canvas>
+  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます</div>
+  <div class="hint" id="hint" hidden>ドラッグで回す・ホイールかピンチで寄る</div></div>
+<div class="ctrl">
+  <label><input type="checkbox" id="c-p1" checked> 1P</label>
+  <label><input type="checkbox" id="c-p2" checked> 2P</label>
+  <label><input type="checkbox" id="c-shadow"> 影（まだ写真と合わない）</label>
+  <label><input type="checkbox" id="c-overlay"> ゲームの画面と重ねる</label>
+  <button id="b-reset">ゲームの視点に戻す</button>
+  <button id="b-png">PNG で保存</button>
+</div>
+<div id="info"></div>
+<details><summary>しくみ</summary>
+<p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさ（光の当たり方）はまだ近い値です。</p>
+<p id="ver"></p></details>
+</main>
+<script>
+
+// fzstd 0.1.1（https://github.com/101arrowz/fzstd）— zstd の展開。セーブステート（.p2s）の中身に使う
+/*
+MIT License
+
+Copyright (c) 2020 Arjun Barrett
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.*/
+const fzstd=(()=>{
+// Some numerical data is initialized as -1 even when it doesn't need initialization to help the JIT infer types
+// aliases for shorter compressed code (most minifers don't do this)
+var ab = ArrayBuffer, u8 = Uint8Array, u16 = Uint16Array, i16 = Int16Array, u32 = Uint32Array, i32 = Int32Array;
+var slc = function (v, s, e) {
+    if (u8.prototype.slice)
+        return u8.prototype.slice.call(v, s, e);
+    if (s == null || s < 0)
+        s = 0;
+    if (e == null || e > v.length)
+        e = v.length;
+    var n = new u8(e - s);
+    n.set(v.subarray(s, e));
+    return n;
+};
+var fill = function (v, n, s, e) {
+    if (u8.prototype.fill)
+        return u8.prototype.fill.call(v, n, s, e);
+    if (s == null || s < 0)
+        s = 0;
+    if (e == null || e > v.length)
+        e = v.length;
+    for (; s < e; ++s)
+        v[s] = n;
+    return v;
+};
+var cpw = function (v, t, s, e) {
+    if (u8.prototype.copyWithin)
+        return u8.prototype.copyWithin.call(v, t, s, e);
+    if (s == null || s < 0)
+        s = 0;
+    if (e == null || e > v.length)
+        e = v.length;
+    while (s < e) {
+        v[t++] = v[s++];
+    }
+};
+/**
+ * Codes for errors generated within this library
+ */
+var ZstdErrorCode = {
+    InvalidData: 0,
+    WindowSizeTooLarge: 1,
+    InvalidBlockType: 2,
+    FSEAccuracyTooHigh: 3,
+    DistanceTooFarBack: 4,
+    UnexpectedEOF: 5
+};
+// error codes
+var ec = [
+    'invalid zstd data',
+    'window size too large (>2046MB)',
+    'invalid block type',
+    'FSE accuracy too high',
+    'match distance too far back',
+    'unexpected EOF'
+];
+var err = function (ind, msg, nt) {
+    var e = new Error(msg || ec[ind]);
+    e.code = ind;
+    if (Error.captureStackTrace)
+        Error.captureStackTrace(e, err);
+    if (!nt)
+        throw e;
+    return e;
+};
+var rb = function (d, b, n) {
+    var i = 0, o = 0;
+    for (; i < n; ++i)
+        o |= d[b++] << (i << 3);
+    return o;
+};
+var b4 = function (d, b) { return (d[b] | (d[b + 1] << 8) | (d[b + 2] << 16) | (d[b + 3] << 24)) >>> 0; };
+// read Zstandard frame header
+var rzfh = function (dat, w) {
+    var n3 = dat[0] | (dat[1] << 8) | (dat[2] << 16);
+    if (n3 == 0x2FB528 && dat[3] == 253) {
+        // Zstandard
+        var flg = dat[4];
+        //    single segment       checksum             dict flag     frame content flag
+        var ss = (flg >> 5) & 1, cc = (flg >> 2) & 1, df = flg & 3, fcf = flg >> 6;
+        if (flg & 8)
+            err(0);
+        // byte
+        var bt = 6 - ss;
+        // dict bytes
+        var db = df == 3 ? 4 : df;
+        // dictionary id
+        var di = rb(dat, bt, db);
+        bt += db;
+        // frame size bytes
+        var fsb = fcf ? (1 << fcf) : ss;
+        // frame source size
+        var fss = rb(dat, bt, fsb) + ((fcf == 1) && 256);
+        // window size
+        var ws = fss;
+        if (!ss) {
+            // window descriptor
+            var wb = 1 << (10 + (dat[5] >> 3));
+            ws = wb + (wb >> 3) * (dat[5] & 7);
+        }
+        if (ws > 2145386496)
+            err(1);
+        var buf = new u8((w == 1 ? (fss || ws) : w ? 0 : ws) + 12);
+        buf[0] = 1, buf[4] = 4, buf[8] = 8;
+        return {
+            b: bt + fsb,
+            y: 0,
+            l: 0,
+            d: di,
+            w: (w && w != 1) ? w : buf.subarray(12),
+            e: ws,
+            o: new i32(buf.buffer, 0, 3),
+            u: fss,
+            c: cc,
+            m: Math.min(131072, ws)
+        };
+    }
+    else if (((n3 >> 4) | (dat[3] << 20)) == 0x184D2A5) {
+        // skippable
+        return b4(dat, 4) + 8;
+    }
+    err(0);
+};
+// most significant bit for nonzero
+var msb = function (val) {
+    var bits = 0;
+    for (; (1 << bits) <= val; ++bits)
+        ;
+    return bits - 1;
+};
+// read finite state entropy
+var rfse = function (dat, bt, mal) {
+    // table pos
+    var tpos = (bt << 3) + 4;
+    // accuracy log
+    var al = (dat[bt] & 15) + 5;
+    if (al > mal)
+        err(3);
+    // size
+    var sz = 1 << al;
+    // probabilities symbols  repeat   index   high threshold
+    var probs = sz, sym = -1, re = -1, i = -1, ht = sz;
+    // optimization: single allocation is much faster
+    var buf = new ab(512 + (sz << 2));
+    var freq = new i16(buf, 0, 256);
+    // same view as freq
+    var dstate = new u16(buf, 0, 256);
+    var nstate = new u16(buf, 512, sz);
+    var bb1 = 512 + (sz << 1);
+    var syms = new u8(buf, bb1, sz);
+    var nbits = new u8(buf, bb1 + sz);
+    while (sym < 255 && probs > 0) {
+        var bits = msb(probs + 1);
+        var cbt = tpos >> 3;
+        // mask
+        var msk = (1 << (bits + 1)) - 1;
+        var val = ((dat[cbt] | (dat[cbt + 1] << 8) | (dat[cbt + 2] << 16)) >> (tpos & 7)) & msk;
+        // mask (1 fewer bit)
+        var msk1fb = (1 << bits) - 1;
+        // max small value
+        var msv = msk - probs - 1;
+        // small value
+        var sval = val & msk1fb;
+        if (sval < msv)
+            tpos += bits, val = sval;
+        else {
+            tpos += bits + 1;
+            if (val > msk1fb)
+                val -= msv;
+        }
+        freq[++sym] = --val;
+        if (val == -1) {
+            probs += val;
+            syms[--ht] = sym;
+        }
+        else
+            probs -= val;
+        if (!val) {
+            do {
+                // repeat byte
+                var rbt = tpos >> 3;
+                re = ((dat[rbt] | (dat[rbt + 1] << 8)) >> (tpos & 7)) & 3;
+                tpos += 2;
+                sym += re;
+            } while (re == 3);
+        }
+    }
+    if (sym > 255 || probs)
+        err(0);
+    var sympos = 0;
+    // sym step (coprime with sz - formula from zstd source)
+    var sstep = (sz >> 1) + (sz >> 3) + 3;
+    // sym mask
+    var smask = sz - 1;
+    for (var s = 0; s <= sym; ++s) {
+        var sf = freq[s];
+        if (sf < 1) {
+            dstate[s] = -sf;
+            continue;
+        }
+        // This is split into two loops in zstd to avoid branching, but as JS is higher-level that is unnecessary
+        for (i = 0; i < sf; ++i) {
+            syms[sympos] = s;
+            do {
+                sympos = (sympos + sstep) & smask;
+            } while (sympos >= ht);
+        }
+    }
+    // After spreading symbols, should be zero again
+    if (sympos)
+        err(0);
+    for (i = 0; i < sz; ++i) {
+        // next state
+        var ns = dstate[syms[i]]++;
+        // num bits
+        var nb = nbits[i] = al - msb(ns);
+        nstate[i] = (ns << nb) - sz;
+    }
+    return [(tpos + 7) >> 3, {
+            b: al,
+            s: syms,
+            n: nbits,
+            t: nstate
+        }];
+};
+// read huffman
+var rhu = function (dat, bt) {
+    //  index  weight count
+    var i = 0, wc = -1;
+    //    buffer             header byte
+    var buf = new u8(292), hb = dat[bt];
+    // huffman weights
+    var hw = buf.subarray(0, 256);
+    // rank count
+    var rc = buf.subarray(256, 268);
+    // rank index
+    var ri = new u16(buf.buffer, 268);
+    // NOTE: at this point bt is 1 less than expected
+    if (hb < 128) {
+        // end byte, fse decode table
+        var _a = rfse(dat, bt + 1, 6), ebt = _a[0], fdt = _a[1];
+        bt += hb;
+        var epos = ebt << 3;
+        // last byte
+        var lb = dat[bt];
+        if (!lb)
+            err(0);
+        //  state1   state2   state1 bits   state2 bits
+        var st1 = 0, st2 = 0, btr1 = fdt.b, btr2 = btr1;
+        // fse pos
+        // pre-increment to account for original deficit of 1
+        var fpos = (++bt << 3) - 8 + msb(lb);
+        for (;;) {
+            fpos -= btr1;
+            if (fpos < epos)
+                break;
+            var cbt = fpos >> 3;
+            st1 += ((dat[cbt] | (dat[cbt + 1] << 8)) >> (fpos & 7)) & ((1 << btr1) - 1);
+            hw[++wc] = fdt.s[st1];
+            fpos -= btr2;
+            if (fpos < epos)
+                break;
+            cbt = fpos >> 3;
+            st2 += ((dat[cbt] | (dat[cbt + 1] << 8)) >> (fpos & 7)) & ((1 << btr2) - 1);
+            hw[++wc] = fdt.s[st2];
+            btr1 = fdt.n[st1];
+            st1 = fdt.t[st1];
+            btr2 = fdt.n[st2];
+            st2 = fdt.t[st2];
+        }
+        if (++wc > 255)
+            err(0);
+    }
+    else {
+        wc = hb - 127;
+        for (; i < wc; i += 2) {
+            var byte = dat[++bt];
+            hw[i] = byte >> 4;
+            hw[i + 1] = byte & 15;
+        }
+        ++bt;
+    }
+    // weight exponential sum
+    var wes = 0;
+    for (i = 0; i < wc; ++i) {
+        var wt = hw[i];
+        // bits must be at most 11, same as weight
+        if (wt > 11)
+            err(0);
+        wes += wt && (1 << (wt - 1));
+    }
+    // max bits
+    var mb = msb(wes) + 1;
+    // table size
+    var ts = 1 << mb;
+    // remaining sum
+    var rem = ts - wes;
+    // must be power of 2
+    if (rem & (rem - 1))
+        err(0);
+    hw[wc++] = msb(rem) + 1;
+    for (i = 0; i < wc; ++i) {
+        var wt = hw[i];
+        ++rc[hw[i] = wt && (mb + 1 - wt)];
+    }
+    // huf buf
+    var hbuf = new u8(ts << 1);
+    //    symbols                      num bits
+    var syms = hbuf.subarray(0, ts), nb = hbuf.subarray(ts);
+    ri[mb] = 0;
+    for (i = mb; i > 0; --i) {
+        var pv = ri[i];
+        fill(nb, i, pv, ri[i - 1] = pv + rc[i] * (1 << (mb - i)));
+    }
+    if (ri[0] != ts)
+        err(0);
+    for (i = 0; i < wc; ++i) {
+        var bits = hw[i];
+        if (bits) {
+            var code = ri[bits];
+            fill(syms, i, code, ri[bits] = code + (1 << (mb - bits)));
+        }
+    }
+    return [bt, {
+            n: nb,
+            b: mb,
+            s: syms
+        }];
+};
+// Tables generated using this:
+// https://gist.github.com/101arrowz/a979452d4355992cbf8f257cbffc9edd
+// default literal length table
+var dllt = /*#__PURE__*/ rfse(/*#__PURE__*/ new u8([
+    81, 16, 99, 140, 49, 198, 24, 99, 12, 33, 196, 24, 99, 102, 102, 134, 70, 146, 4
+]), 0, 6)[1];
+// default match length table
+var dmlt = /*#__PURE__*/ rfse(/*#__PURE__*/ new u8([
+    33, 20, 196, 24, 99, 140, 33, 132, 16, 66, 8, 33, 132, 16, 66, 8, 33, 68, 68, 68, 68, 68, 68, 68, 68, 36, 9
+]), 0, 6)[1];
+// default offset code table
+var doct = /*#__PURE__ */ rfse(/*#__PURE__*/ new u8([
+    32, 132, 16, 66, 102, 70, 68, 68, 68, 68, 36, 73, 2
+]), 0, 5)[1];
+// bits to baseline
+var b2bl = function (b, s) {
+    var len = b.length, bl = new i32(len);
+    for (var i = 0; i < len; ++i) {
+        bl[i] = s;
+        s += 1 << b[i];
+    }
+    return bl;
+};
+// literal length bits
+var llb = /*#__PURE__ */ new u8(( /*#__PURE__ */new i32([
+    0, 0, 0, 0, 16843009, 50528770, 134678020, 202050057, 269422093
+])).buffer, 0, 36);
+// literal length baseline
+var llbl = /*#__PURE__ */ b2bl(llb, 0);
+// match length bits
+var mlb = /*#__PURE__ */ new u8(( /*#__PURE__ */new i32([
+    0, 0, 0, 0, 0, 0, 0, 0, 16843009, 50528770, 117769220, 185207048, 252579084, 16
+])).buffer, 0, 53);
+// match length baseline
+var mlbl = /*#__PURE__ */ b2bl(mlb, 3);
+// decode huffman stream
+var dhu = function (dat, out, hu) {
+    var len = dat.length, ss = out.length, lb = dat[len - 1], msk = (1 << hu.b) - 1, eb = -hu.b;
+    if (!lb)
+        err(0);
+    var st = 0, btr = hu.b, pos = (len << 3) - 8 + msb(lb) - btr, i = -1;
+    for (; pos > eb && i < ss;) {
+        var cbt = pos >> 3;
+        var val = (dat[cbt] | (dat[cbt + 1] << 8) | (dat[cbt + 2] << 16)) >> (pos & 7);
+        st = ((st << btr) | val) & msk;
+        out[++i] = hu.s[st];
+        pos -= (btr = hu.n[st]);
+    }
+    if (pos != eb || i + 1 != ss)
+        err(0);
+};
+// decode huffman stream 4x
+// TODO: use workers to parallelize
+var dhu4 = function (dat, out, hu) {
+    var bt = 6;
+    var ss = out.length, sz1 = (ss + 3) >> 2, sz2 = sz1 << 1, sz3 = sz1 + sz2;
+    dhu(dat.subarray(bt, bt += dat[0] | (dat[1] << 8)), out.subarray(0, sz1), hu);
+    dhu(dat.subarray(bt, bt += dat[2] | (dat[3] << 8)), out.subarray(sz1, sz2), hu);
+    dhu(dat.subarray(bt, bt += dat[4] | (dat[5] << 8)), out.subarray(sz2, sz3), hu);
+    dhu(dat.subarray(bt), out.subarray(sz3), hu);
+};
+// read Zstandard block
+var rzb = function (dat, st, out) {
+    var _a;
+    var bt = st.b;
+    //    byte 0        block type
+    var b0 = dat[bt], btype = (b0 >> 1) & 3;
+    st.l = b0 & 1;
+    var sz = (b0 >> 3) | (dat[bt + 1] << 5) | (dat[bt + 2] << 13);
+    // end byte for block
+    var ebt = (bt += 3) + sz;
+    if (btype == 1) {
+        if (bt >= dat.length)
+            return;
+        st.b = bt + 1;
+        if (out) {
+            fill(out, dat[bt], st.y, st.y += sz);
+            return out;
+        }
+        return fill(new u8(sz), dat[bt]);
+    }
+    if (ebt > dat.length)
+        return;
+    if (btype == 0) {
+        st.b = ebt;
+        if (out) {
+            out.set(dat.subarray(bt, ebt), st.y);
+            st.y += sz;
+            return out;
+        }
+        return slc(dat, bt, ebt);
+    }
+    if (btype == 2) {
+        //    byte 3        lit btype     size format
+        var b3 = dat[bt], lbt = b3 & 3, sf = (b3 >> 2) & 3;
+        // lit src size  lit cmp sz 4 streams
+        var lss = b3 >> 4, lcs = 0, s4 = 0;
+        if (lbt < 2) {
+            if (sf & 1)
+                lss |= (dat[++bt] << 4) | ((sf & 2) && (dat[++bt] << 12));
+            else
+                lss = b3 >> 3;
+        }
+        else {
+            s4 = sf;
+            if (sf < 2)
+                lss |= ((dat[++bt] & 63) << 4), lcs = (dat[bt] >> 6) | (dat[++bt] << 2);
+            else if (sf == 2)
+                lss |= (dat[++bt] << 4) | ((dat[++bt] & 3) << 12), lcs = (dat[bt] >> 2) | (dat[++bt] << 6);
+            else
+                lss |= (dat[++bt] << 4) | ((dat[++bt] & 63) << 12), lcs = (dat[bt] >> 6) | (dat[++bt] << 2) | (dat[++bt] << 10);
+        }
+        ++bt;
+        // add literals to end - can never overlap with backreferences because unused literals always appended
+        var buf = out ? out.subarray(st.y, st.y + st.m) : new u8(st.m);
+        // starting point for literals
+        var spl = buf.length - lss;
+        if (lbt == 0)
+            buf.set(dat.subarray(bt, bt += lss), spl);
+        else if (lbt == 1)
+            fill(buf, dat[bt++], spl);
+        else {
+            // huffman table
+            var hu = st.h;
+            if (lbt == 2) {
+                var hud = rhu(dat, bt);
+                // subtract description length
+                lcs += bt - (bt = hud[0]);
+                st.h = hu = hud[1];
+            }
+            else if (!hu)
+                err(0);
+            (s4 ? dhu4 : dhu)(dat.subarray(bt, bt += lcs), buf.subarray(spl), hu);
+        }
+        // num sequences
+        var ns = dat[bt++];
+        if (ns) {
+            if (ns == 255)
+                ns = (dat[bt++] | (dat[bt++] << 8)) + 0x7F00;
+            else if (ns > 127)
+                ns = ((ns - 128) << 8) | dat[bt++];
+            // symbol compression modes
+            var scm = dat[bt++];
+            if (scm & 3)
+                err(0);
+            var dts = [dmlt, doct, dllt];
+            for (var i = 2; i > -1; --i) {
+                var md = (scm >> ((i << 1) + 2)) & 3;
+                if (md == 1) {
+                    // rle buf
+                    var rbuf = new u8([0, 0, dat[bt++]]);
+                    dts[i] = {
+                        s: rbuf.subarray(2, 3),
+                        n: rbuf.subarray(0, 1),
+                        t: new u16(rbuf.buffer, 0, 1),
+                        b: 0
+                    };
+                }
+                else if (md == 2) {
+                    // accuracy log 8 for offsets, 9 for others
+                    _a = rfse(dat, bt, 9 - (i & 1)), bt = _a[0], dts[i] = _a[1];
+                }
+                else if (md == 3) {
+                    if (!st.t)
+                        err(0);
+                    dts[i] = st.t[i];
+                }
+            }
+            var _b = st.t = dts, mlt = _b[0], oct = _b[1], llt = _b[2];
+            var lb = dat[ebt - 1];
+            if (!lb)
+                err(0);
+            var spos = (ebt << 3) - 8 + msb(lb) - llt.b, cbt = spos >> 3, oubt = 0;
+            var lst = ((dat[cbt] | (dat[cbt + 1] << 8)) >> (spos & 7)) & ((1 << llt.b) - 1);
+            cbt = (spos -= oct.b) >> 3;
+            var ost = ((dat[cbt] | (dat[cbt + 1] << 8)) >> (spos & 7)) & ((1 << oct.b) - 1);
+            cbt = (spos -= mlt.b) >> 3;
+            var mst = ((dat[cbt] | (dat[cbt + 1] << 8)) >> (spos & 7)) & ((1 << mlt.b) - 1);
+            for (++ns; --ns;) {
+                var llc = llt.s[lst];
+                var lbtr = llt.n[lst];
+                var mlc = mlt.s[mst];
+                var mbtr = mlt.n[mst];
+                var ofc = oct.s[ost];
+                var obtr = oct.n[ost];
+                cbt = (spos -= ofc) >> 3;
+                var ofp = 1 << ofc;
+                var off = ofp + (((dat[cbt] | (dat[cbt + 1] << 8) | (dat[cbt + 2] << 16) | (dat[cbt + 3] << 24)) >>> (spos & 7)) & (ofp - 1));
+                cbt = (spos -= mlb[mlc]) >> 3;
+                var ml = mlbl[mlc] + (((dat[cbt] | (dat[cbt + 1] << 8) | (dat[cbt + 2] << 16)) >> (spos & 7)) & ((1 << mlb[mlc]) - 1));
+                cbt = (spos -= llb[llc]) >> 3;
+                var ll = llbl[llc] + (((dat[cbt] | (dat[cbt + 1] << 8) | (dat[cbt + 2] << 16)) >> (spos & 7)) & ((1 << llb[llc]) - 1));
+                cbt = (spos -= lbtr) >> 3;
+                lst = llt.t[lst] + (((dat[cbt] | (dat[cbt + 1] << 8)) >> (spos & 7)) & ((1 << lbtr) - 1));
+                cbt = (spos -= mbtr) >> 3;
+                mst = mlt.t[mst] + (((dat[cbt] | (dat[cbt + 1] << 8)) >> (spos & 7)) & ((1 << mbtr) - 1));
+                cbt = (spos -= obtr) >> 3;
+                ost = oct.t[ost] + (((dat[cbt] | (dat[cbt + 1] << 8)) >> (spos & 7)) & ((1 << obtr) - 1));
+                if (off > 3) {
+                    st.o[2] = st.o[1];
+                    st.o[1] = st.o[0];
+                    st.o[0] = off -= 3;
+                }
+                else {
+                    var idx = off - (ll != 0);
+                    if (idx) {
+                        off = idx == 3 ? st.o[0] - 1 : st.o[idx];
+                        if (idx > 1)
+                            st.o[2] = st.o[1];
+                        st.o[1] = st.o[0];
+                        st.o[0] = off;
+                    }
+                    else
+                        off = st.o[0];
+                }
+                for (var i = 0; i < ll; ++i) {
+                    buf[oubt + i] = buf[spl + i];
+                }
+                oubt += ll, spl += ll;
+                var stin = oubt - off;
+                if (stin < 0) {
+                    var len = -stin;
+                    var bs = st.e + stin;
+                    if (len > ml)
+                        len = ml;
+                    for (var i = 0; i < len; ++i) {
+                        buf[oubt + i] = st.w[bs + i];
+                    }
+                    oubt += len, ml -= len, stin = 0;
+                }
+                for (var i = 0; i < ml; ++i) {
+                    buf[oubt + i] = buf[stin + i];
+                }
+                oubt += ml;
+            }
+            if (oubt != spl) {
+                while (spl < buf.length) {
+                    buf[oubt++] = buf[spl++];
+                }
+            }
+            else
+                oubt = buf.length;
+            if (out)
+                st.y += oubt;
+            else
+                buf = slc(buf, 0, oubt);
+        }
+        else if (out) {
+            st.y += lss;
+            if (spl) {
+                for (var i = 0; i < lss; ++i) {
+                    buf[i] = buf[spl + i];
+                }
+            }
+        }
+        else if (spl)
+            buf = slc(buf, spl);
+        st.b = ebt;
+        return buf;
+    }
+    err(2);
+};
+// concat
+var cct = function (bufs, ol) {
+    if (bufs.length == 1)
+        return bufs[0];
+    var buf = new u8(ol);
+    for (var i = 0, b = 0; i < bufs.length; ++i) {
+        var chk = bufs[i];
+        buf.set(chk, b);
+        b += chk.length;
+    }
+    return buf;
+};
+/**
+ * Decompresses Zstandard data
+ * @param dat The input data
+ * @param buf The output buffer. If unspecified, the function will allocate
+ *            exactly enough memory to fit the decompressed data. If your
+ *            data has multiple frames and you know the output size, specifying
+ *            it will yield better performance.
+ * @returns The decompressed data
+ */
+function decompress(dat, buf) {
+    var bufs = [], nb = +!buf;
+    var bt = 0, ol = 0;
+    for (; dat.length;) {
+        var st = rzfh(dat, nb || buf);
+        if (typeof st == 'object') {
+            if (nb) {
+                buf = null;
+                if (st.w.length == st.u) {
+                    bufs.push(buf = st.w);
+                    ol += st.u;
+                }
+            }
+            else {
+                bufs.push(buf);
+                st.e = 0;
+            }
+            for (; !st.l;) {
+                var blk = rzb(dat, st, buf);
+                if (!blk)
+                    err(5);
+                if (buf)
+                    st.e = st.y;
+                else {
+                    bufs.push(blk);
+                    ol += blk.length;
+                    cpw(st.w, 0, blk.length);
+                    st.w.set(blk, st.w.length - blk.length);
+                }
+            }
+            bt = st.b + (st.c * 4);
+        }
+        else
+            bt = st;
+        dat = dat.subarray(bt);
+    }
+    return cct(bufs, ol);
+}
+/**
+ * Decompressor for Zstandard streamed data
+ */
+var Decompress = /*#__PURE__*/ (function () {
+    /**
+     * Creates a Zstandard decompressor
+     * @param ondata The handler for stream data
+     */
+    function Decompress(ondata) {
+        this.ondata = ondata;
+        this.c = [];
+        this.l = 0;
+        this.z = 0;
+    }
+    /**
+     * Pushes data to be decompressed
+     * @param chunk The chunk of data to push
+     * @param final Whether or not this is the last chunk in the stream
+     */
+    Decompress.prototype.push = function (chunk, final) {
+        if (typeof this.s == 'number') {
+            var sub = Math.min(chunk.length, this.s);
+            chunk = chunk.subarray(sub);
+            this.s -= sub;
+        }
+        var sl = chunk.length;
+        var ncs = sl + this.l;
+        if (!this.s) {
+            if (final) {
+                if (!ncs) {
+                    this.ondata(new u8(0), true);
+                    return;
+                }
+                // min for frame + one block
+                if (ncs < 5)
+                    err(5);
+            }
+            else if (ncs < 18) {
+                this.c.push(chunk);
+                this.l = ncs;
+                return;
+            }
+            if (this.l) {
+                this.c.push(chunk);
+                chunk = cct(this.c, ncs);
+                this.c = [];
+                this.l = 0;
+            }
+            if (typeof (this.s = rzfh(chunk)) == 'number')
+                return this.push(chunk, final);
+        }
+        if (typeof this.s != 'number') {
+            if (ncs < (this.z || 3)) {
+                if (final)
+                    err(5);
+                this.c.push(chunk);
+                this.l = ncs;
+                return;
+            }
+            if (this.l) {
+                this.c.push(chunk);
+                chunk = cct(this.c, ncs);
+                this.c = [];
+                this.l = 0;
+            }
+            if (!this.z && ncs < (this.z = (chunk[this.s.b] & 2) ? 4 : 3 + ((chunk[this.s.b] >> 3) | (chunk[this.s.b + 1] << 5) | (chunk[this.s.b + 2] << 13)))) {
+                if (final)
+                    err(5);
+                this.c.push(chunk);
+                this.l = ncs;
+                return;
+            }
+            else
+                this.z = 0;
+            for (;;) {
+                var blk = rzb(chunk, this.s);
+                if (!blk) {
+                    if (final)
+                        err(5);
+                    var adc = chunk.subarray(this.s.b);
+                    this.s.b = 0;
+                    this.c.push(adc), this.l += adc.length;
+                    return;
+                }
+                else {
+                    this.ondata(blk, false);
+                    cpw(this.s.w, 0, blk.length);
+                    this.s.w.set(blk, this.s.w.length - blk.length);
+                }
+                if (this.s.l) {
+                    var rest = chunk.subarray(this.s.b);
+                    this.s = this.s.c * 4;
+                    this.push(rest, final);
+                    return;
+                }
+            }
+        }
+        else if (final)
+            err(5);
+    };
+    return Decompress;
+}());
+return {decompress,Decompress};
+})();
+// PCSX2 のセーブステート（.p2s）を読む。中身は zip で、各ファイルは zstd（形式番号 93）か無圧縮（0）か deflate（8）。
+// 返り値: Map(名前 → () => Promise<Uint8Array>)
+async function p2sOpen(buf){
+  const u8=buf instanceof Uint8Array?buf:new Uint8Array(buf), dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
+  let e=u8.length-22; while(e>=0&&dv.getUint32(e,true)!==0x06054b50) e--;
+  if(e<0) throw new Error("zip の形をしていない（.p2s ではない？）");
+  const n=dv.getUint16(e+10,true); let p=dv.getUint32(e+16,true); const out=new Map();
+  for(let k=0;k<n;k++){
+    if(dv.getUint32(p,true)!==0x02014b50) throw new Error("zip の目次が壊れている");
+    const method=dv.getUint16(p+10,true), csize=dv.getUint32(p+20,true), size=dv.getUint32(p+24,true);
+    const nl=dv.getUint16(p+28,true), xl=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true), loc=dv.getUint32(p+42,true);
+    const name=new TextDecoder().decode(u8.subarray(p+46,p+46+nl));
+    out.set(name,async()=>{
+      const d0=loc+30+dv.getUint16(loc+26,true)+dv.getUint16(loc+28,true), raw=u8.subarray(d0,d0+csize);
+      if(method===0) return raw;
+      if(method===93) return fzstd.decompress(raw,new Uint8Array(size));
+      if(method===8){ const s=new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw")); return new Uint8Array(await new Response(s).arrayBuffer()) }
+      throw new Error("知らない圧縮の形式 "+method+"（"+name+"）");
+    });
+    p+=46+nl+xl+cl;
+  }
+  return out;
+}
+// ディスクのイメージ（.bin＝2352 バイト/セクタ、.iso＝2048）か、中の BIN.CVM を、File のまま必要な所だけ読む。
+// BIN.CVM は CRI ROFS（頭 "CVMH"、中は ISO9660）。返り値: Map(名前 → () => Promise<Uint8Array>)
+async function vdSlice(file,off,len){ return new Uint8Array(await file.slice(off,off+len).arrayBuffer()) }
+function vdWalk(readSec,root){   // ISO9660 のファイルを全部たどる。readSec(lba,count)→Promise<Uint8Array>
+  const out=[];
+  const walk=async(lba,size,pre)=>{
+    const d=await readSec(lba,Math.ceil(size/2048)), dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+    for(let p=0;p<d.length;){
+      const L=d[p]; if(!L){ p=(Math.floor(p/2048)+1)*2048; continue }
+      const el=dv.getUint32(p+2,true), es=dv.getUint32(p+10,true), fl=d[p+25], nl=d[p+32];
+      const nm=String.fromCharCode(...d.subarray(p+33,p+33+nl)).split(";")[0];
+      if(nl===1&&d[p+33]<2){ p+=L; continue }
+      if(fl&2) await walk(el,es,pre+nm+"/"); else out.push({name:pre+nm,lba:el,size:es});
+      p+=L;
+    }
+  };
+  return walk(root[0],root[1],"").then(()=>out);
+}
+async function vdRootOf(pvd){ const dv=new DataView(pvd.buffer,pvd.byteOffset,pvd.byteLength); return [dv.getUint32(156+2,true),dv.getUint32(156+10,true)] }
+async function discOpen(file){
+  const head=await vdSlice(file,0,0x10000), files=new Map();
+  const isCD=(o)=>head[o]===1&&String.fromCharCode(...head.subarray(o+1,o+6))==="CD001";
+  let cvm=null;
+  if(String.fromCharCode(...head.subarray(0,4))==="CVMH") cvm=file;
+  else {
+    let sec,base;
+    const probe=await vdSlice(file,16*2352,2352);
+    if(String.fromCharCode(...probe.subarray(25,30))==="CD001"){ sec=2352; base=24 }
+    else if(String.fromCharCode(...(await vdSlice(file,16*2048+1,5)))==="CD001"){ sec=2048; base=0 }
+    else throw new Error("ディスクのイメージ（.bin/.iso）か BIN.CVM ではない");
+    const readSec=async(lba,n)=>{ const raw=await vdSlice(file,lba*sec,n*sec); if(sec===2048) return raw;
+      const o=new Uint8Array(n*2048); for(let i=0;i<n;i++) o.set(raw.subarray(i*sec+base,i*sec+base+2048),i*2048); return o };
+    const list=await vdWalk(readSec,await vdRootOf(await readSec(16,1)));
+    const e=list.find(f=>f.name.toUpperCase()==="BIN.CVM");
+    if(!e) throw new Error("ディスクの中に BIN.CVM が無い（バーチャファイター2 の PS2 版ではない？）");
+    cvm=new Blob([await readSec(e.lba,Math.ceil(e.size/2048))]).slice(0,e.size);
+  }
+  const ch=await vdSlice(cvm,0,0x20000); let at=-1;
+  for(let i=0;i<ch.length-6;i++) if(ch[i]===1&&ch[i+1]===0x43&&ch[i+2]===0x44&&ch[i+3]===0x30&&ch[i+4]===0x30&&ch[i+5]===0x31){ at=i; break }
+  if(at<0) throw new Error("BIN.CVM の中に ISO9660 が見つからない");
+  const base=at-16*2048, readSec=(lba,n)=>vdSlice(cvm,base+lba*2048,n*2048);
+  for(const f of await vdWalk(readSec,await vdRootOf(await readSec(16,1))))
+    files.set(f.name,()=>vdSlice(cvm,base+f.lba*2048,f.size));
+  return files;
+}
+// CRICMP 2.10 の展開（本体 SLPM_625.47 の 0x1547c0・0x154e80 を写したもの）。u8: Uint8Array → Uint8Array
+function cricmpUnpack(u8){
+  const dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
+  if(String.fromCharCode(...u8.subarray(0,6))!=="CRICMP") throw new Error("CRICMP ではない");
+  const size=dv.getUint32(0x14,true), ver=parseFloat(String.fromCharCode(...u8.subarray(8,12)).replace(/\0.*/,""));
+  let p=dv.getUint32(0x18,true)+2, n;
+  if(ver>2){ n=dv.getUint32(p,false); p+=4 } else { n=dv.getUint16(p,false); p+=2 }
+  const out=new Uint8Array(size+0x20000); let o=0;
+  const group=items=>{
+    const flags=dv.getUint16(p,false); p+=2;
+    for(let i=0;i<items;i++){
+      const w=dv.getUint16(p,false); p+=2;
+      if(flags>>i&1){ out[o++]=w>>8; out[o++]=w&255 }
+      else if(!(w&0xf000)){ const b=out[o-1]; for(let k=w+3;k>0;k--) out[o++]=b }
+      else { const off=w&0xfff; for(let k=(w>>12)+2;k>0;k--){ out[o]=out[o-off]; o++ } }
+    }
+  };
+  for(let k=0;k<n;k++) group(16);
+  const trim=dv.getInt8(p), rest=u8[p+1]; p+=2;
+  if(rest>0) group(rest);
+  if(trim>0) o-=trim;
+  if(o!==size) throw new Error(`展開の大きさが合わない ${o} ≠ ${size}`);
+  return out.slice(0,o);
+}
+// OBJ_*.CMP（展開後）のモデル。1ファイル＝[数][モデル…]、モデル＝[番号][塊×4]、塊＝[長さ][中身]。
+// 塊0: 面ごとの属性 8B、塊1: 同じ形の表（用途未確定）、塊2: 面ごとの UV 4組（16bit×2×4）、塊3: 面の記録 40B
+function objModels(u8){
+  const dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength), n=dv.getUint32(0,true), out=[];
+  let p=4;
+  for(let k=0;k<n;k++){
+    const id=dv.getUint32(p,true), ch=[]; p+=4;
+    for(let c=0;c<4;c++){ const L=dv.getUint32(p,true); ch.push(u8.subarray(p+4,p+4+L)); p+=4+L }
+    out.push({id,ch});
+  }
+  if(p!==u8.length) throw new Error(`モデルの区切りが合わない ${p} ≠ ${u8.length}`);
+  return out;
+}
+// 面の記録: +0 頭（bit0-1 形 0=終わり 1=四角 2=三角、bit8-9 つなぎ方）、+4 法線、+0x10 頂点A、+0x1c 頂点B。
+// 手元の2点 P0,P1 と A,B で面 (P0,P1,B,A) を作る。つなぎ方 0=描かずに P0=A,P1=B、2=P0=A,P1=B、1=P1=A、3=P0=B
+// （本体 SLPM_625.47 の 0x1c9cc0 を写したもの）
+// 面ごとの属性（塊0 の 8B＝16bit×4）と UV（塊2、1/8 画素）も返す。
+// 属性の位置は面の頭の bit12-16（符号付き）×8B ずつ進む。UV は描いた面ごとに四角 16B・三角 12B、
+// つなぎ方 0 の記録も（最初の1つを除き）1つぶん進む（本体 0x1c6380）
+function objPolys(g,A,U){
+  const dv=new DataView(g.buffer,g.byteOffset,g.byteLength), out=[];
+  const av=A&&new DataView(A.buffer,A.byteOffset,A.byteLength), uvv=U&&new DataView(U.buffer,U.byteOffset,U.byteLength);
+  let P0=null, P1=null, ai=0, fp=0, drawn=false;
+  const v=o=>[dv.getFloat32(o,true),dv.getFloat32(o+4,true),dv.getFloat32(o+8,true)];
+  for(let r=0;r+40<=g.length;r+=40){
+    const h=dv.getUint32(r,true), kind=h&3, link=h>>8&3, step=kind===1?16:12;
+    if(!kind) break;
+    const n=v(r+4), A_=v(r+16), B=v(r+28);
+    if(!link){ P0=A_; P1=B; if(drawn) fp+=step }
+    else {
+      const p={h,n,v:kind===2?[P0,P1,A_]:[P0,P1,B,A_]};
+      if(av){ p.attr=[0,2,4,6].map(k=>av.getUint16(ai*8+k,true)) }
+      if(uvv){ const uv=[]; for(let j=0;j<(kind===1?4:3);j++) uv.push([uvv.getUint16(fp+j*4,true),uvv.getUint16(fp+j*4+2,true)]);
+        // UV の並びは (P1,P0,A,B)（写しの中の変換済みモデルの ST と照らして確かめた）。頂点の順 (P0,P1,B,A) に合わせる
+        p.uv=kind===1?[uv[1],uv[0],uv[3],uv[2]]:[uv[1],uv[0],uv[2]] }
+      out.push(p); drawn=true; fp+=step;
+      if(link===2){ P0=A_; P1=B } else if(link===1) P1=A_; else P0=B;
+    }
+    const d=h>>12&31; ai+=d>=16?d-32:d;
+  }
+  return out;
+}
+// テクスチャのシート（本体のテクスチャ用メモリ g_geo+0xa040 と同じ並び）。1024×512 の 4bit が2ページ、1行 512B。
+// TEX_ROB.MRG の1人ぶん（展開 98304B）は、128B の行 r をシートの行 r>>1・横 (r&1)*512 画素に置く（本体 sysGeoWriteRobTex）。
+// 1P（player 0）はページ1、2P はページ0
+function texSheetNew(){ return new Uint8Array(0x80000) }
+function texPutRob(sheet,rob,player){
+  const base=(player^1)<<18;
+  for(let r=0;r<768;r++) sheet.set(rob.subarray(r*128,r*128+128),base+r*256);
+}
+function texNibble(sheet,page,X,Y){
+  X&=1023; Y&=511;
+  const b=sheet[(page<<18)+Y*512+(X>>1)];
+  return X&1?b>>4:b&15;
+}
+
+// 面の UV（1/8 画素）から、テクスチャ用メモリの画素の位置を出す（本体 0x1c6380・0x1c6e40 を写し、写しの ST と一致を確かめた）。
+// 属性 h0: bit0-2 縦の大きさ・bit3-5 横の大きさ（32..2048）。h2: 下位6bit×32＝原点X（T 側）、次の6bit×32−1024＝原点Y（S 側）、
+// 原点X≥1024 なら X−=1024・Y+=1024。bit12＝ページ。UV は +10 して、面の中の最小値が大きさの外なら大きさの倍数ぶん戻す。
+// テクスチャ用メモリの1ページ＝幅 512・高さ 1024 の 4bit（1行 256B）。S*1024＝ページ*512＋(u'/8+Y)/4？ ではなく
+// ページ内の横 px＝(u'/8+原点Y)/4、縦 py＝v'/8+原点X（GS の S,T を 1024 倍したもの）
+const TEX_SZ=[32,64,128,256,512,1024,2048,2048];
+function texCoords(attr,uv){
+  const [h0,,h2]=attr, su=TEX_SZ[h0>>3&7]*8, sv=TEX_SZ[h0&7]*8;
+  let X=(h2&63)*32, Y=(h2>>6&63)*32-1024; if(X>=1024){ X-=1024; Y+=1024 }
+  const mu=Math.min(...uv.map(a=>a[0])), mv=Math.min(...uv.map(a=>a[1]));
+  const ku=Math.floor((mu+7)/su)*su, kv=Math.floor((mv+7)/sv)*sv;
+  // org＝ページ内の原点、size＝ページ内の大きさ（横は 1/4）、loc＝原点からの位置（大きさを越えた分は描くときに折り返す）
+  const loc=uv.map(([u,v])=>[(u+10-ku)/32, (v+10-kv)/8]);
+  return {page:h2>>12&1, org:[Y/4,X], size:[su/32,sv/8], loc, st:loc.map(([a,b])=>[a+Y/4,b+X])};
+}
+// テクスチャ用メモリ（g_geo+0xa040 の 512KB）から 4bit を読む
+function texRam(ram,page,px,py){
+  px=Math.floor(px)&511; py=Math.floor(py)&1023;
+  const b=ram[(page<<18)+py*256+(px>>1)];
+  return px&1?b>>4:b&15;
+}
+// セーブステートの主メモリ（eeMemory.bin、32MB）から、そのコマの場面を読む（教訓3: ゲーム自身の値だけを使う）。
+// 本体 SLPM_625.47 の名前の表: g_geo 0x135a000、g_objTbl 0x1fc8760（2人×5125 語、モデル番号→変換済みモデルの番地）
+const SC_GEO=0x135a000, SC_OBJTBL=0x1fc8760;
+// ジオメトライザへの命令の列を読む。焦点距離の命令 0x04800000 から1つずつ読み、「終わり」（番号 15）で止める。
+// 命令＝上位 bit23〜の番号（下位 23bit は 0）。引数の語数: 物体1=4・枠3=6・モード7=1・8=1・焦点9=2・光10=3・行列11=12・12=3・LOD22=1。
+// bit31 の立った語は別の所を呼ぶ1語。物体の4つ目の引数を g_objTbl で逆に引くとモデル番号と 1P/2P
+function sceneRead(mem){
+  const W32=new Uint32Array(mem.buffer,mem.byteOffset,mem.length>>2), F32=new Float32Array(mem.buffer,mem.byteOffset,mem.length>>2);
+  const inv=new Map(), T=SC_OBJTBL>>2;
+  for(let i=0;i<10250;i++){ const v=W32[T+i]; if(v&&!inv.has(v)) inv.set(v,{player:(i/5125)|0,id:i%5125}) }
+  const LEN={0:0,1:4,3:6,7:1,8:1,9:2,10:3,11:12,12:3,22:1};
+  let start=-1; for(let j=0xf50000>>2;j<0xfa0000>>2;j++) if(W32[j]===0x04800000){ start=j; break }
+  if(start<0) throw new Error("命令の列が見つからない（対戦中のセーブステートではない？）");
+  const draws=[], focal=[F32[start+1],F32[start+2]]; let mat=null, light=null, n=0;
+  for(let j=start;;){
+    if(++n>100000) throw new Error("命令の列が終わらない");
+    const w=W32[j];
+    if(w>>>31){ j++; continue }
+    const op=w>>>23;
+    if(op===15) break;
+    if(w&0x7fffff||!(op in LEN)) throw new Error("命令の列に知らない語 "+w.toString(16)+"（"+(j*4).toString(16)+"）");
+    if(op===11) mat=Array.from(F32.subarray(j+1,j+13));
+    if(op===10&&!light) light=Array.from(F32.subarray(j+1,j+4));
+    if(op===1){ const o=inv.get(W32[j+4]); if(o&&mat) draws.push({player:o.player,id:o.id,m:mat}) }
+    j+=1+LEN[op];
+  }
+  return {draws,focal,light:light||[0,-1,0]};
+}
+// 場面の色とテクスチャの材料（すべて g_geo の中）
+//   テクスチャ用メモリ +0xa040（512KB。1ページ＝幅 512・高さ 1024 の 4bit、1行 256B。1P はページ1）
+//   面の色 RAM +0x40（16bit×1024、R が下位5bit）、色の変換表 +0x840・+0x1040・+0x1840（R・G・B、各 32行×64）
+//   パレット（テクスチャの明るさの表）+0x2040（128B×番号）
+function sceneColors(mem){
+  const g=mem.subarray(SC_GEO,SC_GEO+0xa040+0x80000);
+  return {tex:g.subarray(0xa040,0xa040+0x80000), cram:g.subarray(0x40,0x840), xlat:g.subarray(0x840,0x2040), clut:g.subarray(0x2040,0x2040+0x8000)};
+}
+// どのキャラのテクスチャが置かれているか（TEX_ROB.MRG の番号）。ページごとに 768 行を比べて、いちばん一致するもの
+const SC_ROB=["AKI","JAC","SAR","KAG","LAU","JEF","PAI","WOL","SUI","DUR","TOU"];
+function sceneWhichRob(tex,robs){
+  const res=[];
+  for(const page of [1,0]){   // 1P, 2P の順
+    let best=[-1,0];
+    robs.forEach((r,i)=>{ let same=0;
+      for(let k=0;k<768;k+=8){ let ok=true; const a=(page<<18)+k*256, b=k*128; for(let x=0;x<128;x+=4) if(tex[a+x]!==r[b+x]){ ok=false; break } if(ok) same++ }
+      if(same>best[1]) best=[i,same] });
+    res.push(best[1]>=48?best[0]:-1);
+  }
+  return res;
+}
+// 場面の2人を、描くための頂点の配列にする（WebGL でも node の試験でも使う）。
+// 頂点ごとに 18 個の数: 位置3（カメラの座標）・法線3・色 RAM の 5bit×3・テクスチャの loc2・org2・size2・あり/なし・ページ・パレット番号
+const BUILD_STRIDE=18;
+function sceneMesh(sc,col,models,opt={}){
+  const out=[], missing=new Set(); let shadows=0;
+  const cram=new DataView(col.cram.buffer,col.cram.byteOffset,col.cram.byteLength);
+  for(const d of sc.draws){
+    const e=models[d.player]&&models[d.player].get(d.id); if(!e){ missing.add(d.id); continue }
+    const m=d.m, det=m[0]*(m[4]*m[8]-m[5]*m[7])-m[1]*(m[3]*m[8]-m[5]*m[6])+m[2]*(m[3]*m[7]-m[4]*m[6]);
+    const shadow=Math.abs(det)<0.05;   // 床に潰した影（行列の縦がほぼ 0。01 の写しで 343〜354 など）
+    if(shadow){ shadows++; if(!opt.shadow) continue }
+    if(opt.players&&!opt.players[d.player]) continue;
+    const T=v=>[v[0]*m[0]+v[1]*m[3]+v[2]*m[6]+m[9], v[0]*m[1]+v[1]*m[4]+v[2]*m[7]+m[10], v[0]*m[2]+v[1]*m[5]+v[2]*m[8]+m[11]];
+    // 属性の表は 1P が塊0、2P が塊1
+    for(const p of objPolys(e.ch[3],e.ch[d.player?1:0],e.ch[2])){
+      const q=p.v.map(T), a=q[1].map((x,i)=>x-q[0][i]), b=q[2].map((x,i)=>x-q[0][i]);
+      const n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=Math.hypot(...n)||1; for(let i=0;i<3;i++) n[i]/=l;
+      const c16=cram.getUint16((p.attr[3]>>6&1023)*2,true), c5=[c16&31,c16>>5&31,c16>>10&31];
+      let tx=null; if(p.attr[0]>>14&1) tx=texCoords(p.attr,p.uv);
+      const vert=k=>{ out.push(...q[k],...n,...c5);
+        if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0) };
+      for(let i=1;i+1<q.length;i++){ vert(0); vert(i); vert(i+1) }
+    }
+  }
+  return {data:new Float32Array(out), count:out.length/BUILD_STRIDE, missing:[...missing], shadows};
+}
+// キャラの OBJ ファイル（展開後のモデルの一覧）から、そのプレイヤーが描いた番号をいちばん多く含むものを選ぶ
+// （1P の表にはステージの部品も入っているので「全部」は求めない。同じ数なら先の候補＝1色目）
+function sceneChooseModels(sc,player,candidates){
+  const need=new Set(sc.draws.filter(d=>d.player===player).map(d=>d.id)); let best=null;
+  for(const c of candidates){ const map=new Map(c.models.map(m=>[m.id,m])); let n=0; for(const id of need) if(map.has(id)) n++;
+    if(n>0&&(!best||n>best.n)) best={name:c.name,map,n} }
+  return best;
+}
+// WebGL で描く。色は pose.mjs（写真と照らした式）と同じ:
+//   テクスチャあり: 明るさ＝パレット[番号][テクスチャの 4bit]×(0.6+0.4×陰)×1.2、テクスチャなし: 明るさ＝63×陰
+//   色＝色の変換表[チャンネル][色 RAM の 5bit][明るさ]
+const VGL_VS=`
+attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol; attribute vec2 aLoc; attribute vec4 aOrgSize; attribute vec3 aMisc;
+uniform mat4 uView; uniform vec2 uFocal; uniform vec3 uLight;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vShade;
+void main(){
+  vec4 p=uView*vec4(aPos,1.0); vec3 n=normalize(mat3(uView)*aNrm);
+  vShade=abs(dot(n,uLight));
+  vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc;
+  // 奥行き 0.05〜100 を -1〜1 に
+  gl_Position=vec4(uFocal.x*p.x, uFocal.y*p.y, (p.z*100.05-10.0)/99.95, p.z);
+}`;
+const VGL_FS=`
+precision highp float;
+uniform sampler2D uTex, uClut, uXlat; uniform float uLumaK;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vShade;
+float xl(float row,float luma){ return texture2D(uXlat,vec2((luma+0.5)/64.0,(row+0.5)/96.0)).r; }
+void main(){
+  float sh=0.35+0.65*vShade, luma;
+  if(vMisc.x>0.5){
+    vec2 t=vOrgSize.xy+mod(vLoc,vOrgSize.zw);
+    float x=floor(t.x)+vMisc.y*512.0, y=floor(t.y);
+    float tx=floor(texture2D(uTex,vec2((x+0.5)/1024.0,(y+0.5)/1024.0)).r*255.0/17.0+0.5);
+    luma=texture2D(uClut,vec2((tx+0.5)/16.0,(vMisc.z+0.5)/256.0)).r*255.0*(0.6+0.4*sh)*uLumaK;
+  } else luma=63.0*sh;
+  luma=clamp(floor(luma),0.0,63.0);
+  gl_FragColor=vec4(xl(vCol.r,luma),xl(32.0+vCol.g,luma),xl(64.0+vCol.b,luma),1.0);
+}`;
+function vglNew(canvas){
+  const gl=canvas.getContext("webgl",{antialias:true,preserveDrawingBuffer:true,alpha:true});
+  if(!gl) throw new Error("このブラウザは WebGL に対応していない");
+  const sh=(t,src)=>{ const s=gl.createShader(t); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s };
+  const pr=gl.createProgram(); gl.attachShader(pr,sh(gl.VERTEX_SHADER,VGL_VS)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,VGL_FS)); gl.linkProgram(pr);
+  if(!gl.getProgramParameter(pr,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  const buf=gl.createBuffer(), tex={};
+  const lum=(name,unit,w,h,data)=>{ let t=tex[name]; if(!t){ t=tex[name]=gl.createTexture() }
+    gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,w,h,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,data);
+    for(const p of [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D,p,gl.NEAREST);
+    for(const p of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D,p,gl.CLAMP_TO_EDGE) };
+  let count=0;
+  return {
+    // 色とテクスチャの材料（sceneColors の結果）を GPU に置く
+    setColors(col){
+      const t=new Uint8Array(1024*1024);
+      for(let page=0;page<2;page++) for(let y=0;y<1024;y++) for(let x=0;x<512;x+=2){
+        const b=col.tex[(page<<18)+y*256+(x>>1)], o=y*1024+page*512+x; t[o]=(b&15)*17; t[o+1]=(b>>4)*17 }
+      lum("tex",0,1024,1024,t);
+      const c=new Uint8Array(16*256); for(let p=0;p<256;p++) for(let k=0;k<16;k++) c[p*16+k]=col.clut[p*128+k*4];
+      lum("clut",1,16,256,c);
+      lum("xlat",2,64,96,col.xlat.slice(0,64*96));
+    },
+    setMesh(mesh){ gl.bindBuffer(gl.ARRAY_BUFFER,buf); gl.bufferData(gl.ARRAY_BUFFER,mesh.data,gl.STATIC_DRAW); count=mesh.count },
+    // view: 4×4（列優先）、focal: [x,y]（クリップ座標の倍率）
+    draw(view,focal,light,lumaK){
+      const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+      if(!count) return; gl.enable(gl.DEPTH_TEST); gl.useProgram(pr); gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+      const F=4, S=BUILD_STRIDE*F, at=(n,k,o)=>{ const l=gl.getAttribLocation(pr,n); if(l<0) return; gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,k,gl.FLOAT,false,S,o*F) };
+      at("aPos",3,0); at("aNrm",3,3); at("aCol",3,6); at("aLoc",2,9); at("aOrgSize",4,11); at("aMisc",3,15);
+      const u=n=>gl.getUniformLocation(pr,n);
+      gl.uniformMatrix4fv(u("uView"),false,view); gl.uniform2fv(u("uFocal"),focal); gl.uniform3fv(u("uLight"),light); gl.uniform1f(u("uLumaK"),lumaK);
+      gl.uniform1i(u("uTex"),0); gl.uniform1i(u("uClut"),1); gl.uniform1i(u("uXlat"),2);
+      gl.drawArrays(gl.TRIANGLES,0,count);
+    }
+  };
+}
+// 画面の組み立て
+const VERSION="0.1.0";
+const $=id=>document.getElementById(id);
+const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
+function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
+async function readRobs(){
+  if(APP.robs) return APP.robs;
+  const mrg=await APP.disc.get("TEX_ROB.MRG")(), dv=new DataView(mrg.buffer,mrg.byteOffset,mrg.byteLength), n=dv.getUint32(0,true), out=[];
+  for(let i=0;i<n;i++){ const o=dv.getUint32(4+i*4,true), e=i+1<n?dv.getUint32(8+i*4,true):mrg.length; out.push(cricmpUnpack(mrg.subarray(o,e))) }
+  return APP.robs=out;
+}
+async function readObj(name){
+  if(!APP.objCache.has(name)){ const f=APP.disc.get(name); if(!f) return null; APP.objCache.set(name,objModels(cricmpUnpack(await f()))) }
+  return APP.objCache.get(name);
+}
+// キャラの OBJ ファイルの候補: テクスチャで分かったキャラの 1色目・2色目。分からなければ全部
+async function candidatesFor(code){
+  const names=[...APP.disc.keys()].filter(n=>/^OBJ_[A-Z]{3}\d\.CMP$/.test(n)&&!/STAGE/.test(n));
+  const pick=code?names.filter(n=>n.startsWith("OBJ_"+code)):names;
+  const out=[]; for(const n of pick.sort()) out.push({name:n,models:await readObj(n)}); return out;
+}
+async function show(){
+  const st=APP.states[APP.cur]; if(!st||!APP.disc) return;
+  try{
+    status("読み込み中…");
+    if(!st.mem){ st.mem=await st.zip.get("eeMemory.bin")(); const sh=st.zip.get("Screenshot.png"); if(sh) st.shot=URL.createObjectURL(new Blob([await sh()],{type:"image/png"})) }
+    const sc=sceneRead(st.mem), col=sceneColors(st.mem), who=sceneWhichRob(col.tex,await readRobs());
+    const models=[], names=[];
+    for(const pl of [0,1]){
+      const code=who[pl]>=0?SC_ROB[who[pl]]:null;
+      let ch=sceneChooseModels(sc,pl,await candidatesFor(code));
+      if(!ch&&code) ch=sceneChooseModels(sc,pl,await candidatesFor(null));
+      models.push(ch?ch.map:null); names.push(ch?ch.name.replace(".CMP",""):"（見つからない）");
+    }
+    APP.scene={sc,col,models,names};
+    APP.gl.setColors(col); rebuild(); resetView();
+    $("shot").src=st.shot||""; $("shot").hidden=!st.shot; $("empty").hidden=true; $("hint").hidden=false;
+    status("");
+  }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
+}
+function rebuild(){
+  const S=APP.scene; if(!S) return;
+  const mesh=sceneMesh(S.sc,S.col,S.models,{shadow:$("c-shadow").checked,players:[$("c-p1").checked,$("c-p2").checked]});
+  APP.gl.setMesh(mesh);
+  $("info").textContent=`1P ${S.names[0]}・2P ${S.names[1]}　部品 ${S.sc.draws.length} 個（うち影 ${mesh.shadows}）　三角形 ${mesh.count/3}`+(mesh.missing.length?`　ファイルに無い番号 ${mesh.missing.length} 個（背景など）`:"");
+  draw();
+}
+// 視点: ゲームのカメラの座標のまま、2人の真ん中を中心に回す
+function center(){
+  // ファイルにあったキャラの部品（影を除く）の位置の平均
+  const S=APP.scene; let s=[0,0,0],n=0;
+  for(const x of S.sc.draws){ const m=x.m; if(Math.abs(m[4])<0.05||!S.models[x.player]||!S.models[x.player].has(x.id)) continue; s[0]+=m[9]; s[1]+=m[10]; s[2]+=m[11]; n++ }
+  return n?s.map(v=>v/n):[0,0,4];
+}
+function resetView(){ APP.rot=[0,0]; APP.zoom=1; APP.pan=[0,0]; draw() }
+function draw(){
+  const cv=$("cv"), r=cv.getBoundingClientRect(), dpr=Math.min(2,devicePixelRatio||1);
+  cv.width=Math.round(r.width*dpr); cv.height=Math.round(r.height*dpr);
+  if(!APP.scene){ APP.gl.draw(new Float32Array(16),[1,1],[0,0,1],1); return }
+  const [cx,cy,cz]=center(), [a,b]=APP.rot, ca=Math.cos(a), sa=Math.sin(a), cb=Math.cos(b), sb=Math.sin(b);
+  // R = 縦の回転(b) × 横の回転(a)。p' = R(p − c) + c
+  const R=[ca,sb*sa,-cb*sa, 0,cb,sb, sa,-sb*ca,cb*ca];   // 列優先 3×3
+  const t=[0,1,2].map(i=>[cx,cy,cz][i]-(R[i]*cx+R[3+i]*cy+R[6+i]*cz));
+  const V=new Float32Array([R[0],R[1],R[2],0, R[3],R[4],R[5],0, R[6],R[7],R[8],0, t[0]+APP.pan[0],t[1]+APP.pan[1],t[2],1]);
+  // ゲームの画面（496×384 を 622×412 に広げて見せている）と同じ写り方。この欄の縦横比は 622:412
+  const f=APP.scene.sc.focal, focal=[f[0]*APP.zoom*2/496, f[1]*APP.zoom*2/384];
+  const L=APP.scene.sc.light, ll=Math.hypot(...L)||1, Ln=L.map(v=>v/ll), Lr=[0,1,2].map(i=>R[i]*Ln[0]+R[3+i]*Ln[1]+R[6+i]*Ln[2]);
+  APP.gl.draw(V,focal,Lr,1.2);
+}
+function hookInput(){
+  const v=$("viewer"), pts=new Map(); let last=null, pinch=null;
+  v.addEventListener("pointerdown",e=>{ v.setPointerCapture(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]); last=[e.clientX,e.clientY] });
+  v.addEventListener("pointermove",e=>{
+    if(!pts.has(e.pointerId)) return; pts.set(e.pointerId,[e.clientX,e.clientY]);
+    if(pts.size===2){ const [p,q]=[...pts.values()], d=Math.hypot(p[0]-q[0],p[1]-q[1]); if(pinch) APP.zoom=Math.max(.3,Math.min(8,APP.zoom*d/pinch)); pinch=d; draw(); return }
+    if(!last) return; const dx=e.clientX-last[0], dy=e.clientY-last[1]; last=[e.clientX,e.clientY];
+    APP.rot[0]+=dx*0.01; APP.rot[1]=Math.max(-1.5,Math.min(1.5,APP.rot[1]+dy*0.01)); draw();
+  });
+  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch=null; last=pts.size?[...pts.values()][0]:null };
+  v.addEventListener("pointerup",up); v.addEventListener("pointercancel",up);
+  v.addEventListener("wheel",e=>{ e.preventDefault(); APP.zoom=Math.max(.3,Math.min(8,APP.zoom*Math.exp(-e.deltaY*0.001))); draw() },{passive:false});
+  addEventListener("resize",draw);
+}
+function listStates(){
+  const box=$("states"); box.innerHTML="";
+  APP.states.forEach((s,i)=>{ const b=document.createElement("button"); b.textContent=s.name.replace(/\.p2s$/i,""); if(i===APP.cur) b.className="on";
+    b.onclick=()=>{ APP.cur=i; listStates(); show() }; box.appendChild(b) });
+}
+function init(){
+  $("ver").textContent="版 "+VERSION;
+  try{ APP.gl=vglNew($("cv")) }catch(e){ status(e.message,true); return }
+  hookInput(); draw();
+  $("f-disc").onchange=async e=>{ const f=e.target.files[0]; if(!f) return;
+    try{ status("ディスクを読み込み中…"); APP.disc=await discOpen(f); APP.robs=null; APP.objCache.clear();
+      $("n-disc").textContent=f.name; $("step-disc").classList.add("done"); status(""); if(APP.cur>=0) show(); else status("次に 2 のセーブステートを選んでください") }
+    catch(err){ status("ディスクを読めなかった: "+err.message,true) } };
+  $("f-state").onchange=async e=>{
+    for(const f of e.target.files){ try{ APP.states.push({name:f.name,zip:await p2sOpen(await f.arrayBuffer())}) }catch(err){ status(f.name+" を読めなかった: "+err.message,true) } }
+    if(!APP.states.length) return;
+    if(APP.cur<0) APP.cur=0; $("n-state").textContent=APP.states.length+" 個"; $("step-state").classList.add("done"); listStates();
+    if(APP.disc) show(); else status("次に 1 のディスクのイメージを選んでください");
+  };
+  for(const id of ["c-p1","c-p2","c-shadow"]) $(id).onchange=rebuild;
+  $("c-overlay").onchange=e=>$("viewer").classList.toggle("overlay",e.target.checked);
+  $("b-reset").onclick=resetView;
+  $("b-png").onclick=()=>{ draw(); $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=(APP.states[APP.cur]?.name||"vf2").replace(/\.p2s$/i,"")+".png"; a.click() }) };
+}
+init();
+</script>
+</body>
+</html>
