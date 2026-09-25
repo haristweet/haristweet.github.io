@@ -14,17 +14,29 @@ function objModels(u8){
 // 面の記録: +0 頭（bit0-1 形 0=終わり 1=四角 2=三角、bit8-9 つなぎ方）、+4 法線、+0x10 頂点A、+0x1c 頂点B。
 // 手元の2点 P0,P1 と A,B で面 (P0,P1,B,A) を作る。つなぎ方 0=描かずに P0=A,P1=B、2=P0=A,P1=B、1=P1=A、3=P0=B
 // （本体 SLPM_625.47 の 0x1c9cc0 を写したもの）
-function objPolys(g){
+// 面ごとの属性（塊0 の 8B＝16bit×4）と UV（塊2、1/8 画素）も返す。
+// 属性の位置は面の頭の bit12-16（符号付き）×8B ずつ進む。UV は描いた面ごとに四角 16B・三角 12B、
+// つなぎ方 0 の記録も（最初の1つを除き）1つぶん進む（本体 0x1c6380）
+function objPolys(g,A,U){
   const dv=new DataView(g.buffer,g.byteOffset,g.byteLength), out=[];
-  let P0=null, P1=null;
+  const av=A&&new DataView(A.buffer,A.byteOffset,A.byteLength), uvv=U&&new DataView(U.buffer,U.byteOffset,U.byteLength);
+  let P0=null, P1=null, ai=0, fp=0, drawn=false;
   const v=o=>[dv.getFloat32(o,true),dv.getFloat32(o+4,true),dv.getFloat32(o+8,true)];
   for(let r=0;r+40<=g.length;r+=40){
-    const h=dv.getUint32(r,true), kind=h&3, link=h>>8&3;
+    const h=dv.getUint32(r,true), kind=h&3, link=h>>8&3, step=kind===1?16:12;
     if(!kind) break;
-    const n=v(r+4), A=v(r+16), B=v(r+28);
-    if(!link){ P0=A; P1=B; continue }
-    out.push({h,n,v:kind===2?[P0,P1,A]:[P0,P1,B,A]});
-    if(link===2){ P0=A; P1=B } else if(link===1) P1=A; else P0=B;
+    const n=v(r+4), A_=v(r+16), B=v(r+28);
+    if(!link){ P0=A_; P1=B; if(drawn) fp+=step }
+    else {
+      const p={h,n,v:kind===2?[P0,P1,A_]:[P0,P1,B,A_]};
+      if(av){ p.attr=[0,2,4,6].map(k=>av.getUint16(ai*8+k,true)) }
+      if(uvv){ const uv=[]; for(let j=0;j<(kind===1?4:3);j++) uv.push([uvv.getUint16(fp+j*4,true),uvv.getUint16(fp+j*4+2,true)]);
+        // 頂点の順 (P0,P1,B,A) に合わせる（UV の並びは記録の順 P0,P1,A,B と仮定）
+        p.uv=kind===1?[uv[0],uv[1],uv[3],uv[2]]:uv }
+      out.push(p); drawn=true; fp+=step;
+      if(link===2){ P0=A_; P1=B } else if(link===1) P1=A_; else P0=B;
+    }
+    const d=h>>12&31; ai+=d>=16?d-32:d;
   }
   return out;
 }

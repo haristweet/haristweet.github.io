@@ -30,3 +30,19 @@ function rasterText(R,x,y,s,col,k=2){
     x+=6*k;
   }
 }
+// 三角形を、頂点ごとの (s,t) を線形に補間して sample(s,t)→[r,g,b] で塗る。k は明るさ
+function rasterTriTex(R,a,b,c,ta,tb,tc,sample,k){
+  const {W,H,px,z}=R;
+  const x0=Math.max(0,Math.floor(Math.min(a[0],b[0],c[0]))), x1=Math.min(W-1,Math.ceil(Math.max(a[0],b[0],c[0])));
+  const y0=Math.max(0,Math.floor(Math.min(a[1],b[1],c[1]))), y1=Math.min(H-1,Math.ceil(Math.max(a[1],b[1],c[1])));
+  const d=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+  if(Math.abs(d)<1e-9) return;
+  for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
+    const px_=x+.5, py=y+.5;
+    const w1=((px_-a[0])*(c[1]-a[1])-(py-a[1])*(c[0]-a[0]))/d, w2=((b[0]-a[0])*(py-a[1])-(b[1]-a[1])*(px_-a[0]))/d, w0=1-w1-w2;
+    if(w0<-1e-6||w1<-1e-6||w2<-1e-6) continue;
+    const zz=w0*a[2]+w1*b[2]+w2*c[2], i=y*W+x;
+    if(zz<z[i]){ z[i]=zz; const col=sample(w0*ta[0]+w1*tb[0]+w2*tc[0], w0*ta[1]+w1*tb[1]+w2*tc[1]);
+      px[i*3]=Math.min(255,col[0]*k); px[i*3+1]=Math.min(255,col[1]*k); px[i*3+2]=Math.min(255,col[2]*k) }
+  }
+}
