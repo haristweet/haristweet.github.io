@@ -31,8 +31,8 @@ function objPolys(g,A,U){
       const p={h,n,v:kind===2?[P0,P1,A_]:[P0,P1,B,A_]};
       if(av){ p.attr=[0,2,4,6].map(k=>av.getUint16(ai*8+k,true)) }
       if(uvv){ const uv=[]; for(let j=0;j<(kind===1?4:3);j++) uv.push([uvv.getUint16(fp+j*4,true),uvv.getUint16(fp+j*4+2,true)]);
-        // 頂点の順 (P0,P1,B,A) に合わせる（UV の並びは記録の順 P0,P1,A,B と仮定）
-        p.uv=kind===1?[uv[0],uv[1],uv[3],uv[2]]:uv }
+        // UV の並びは (P1,P0,A,B)（写しの中の変換済みモデルの ST と照らして確かめた）。頂点の順 (P0,P1,B,A) に合わせる
+        p.uv=kind===1?[uv[1],uv[0],uv[3],uv[2]]:[uv[1],uv[0],uv[2]] }
       out.push(p); drawn=true; fp+=step;
       if(link===2){ P0=A_; P1=B } else if(link===1) P1=A_; else P0=B;
     }
