@@ -77,10 +77,17 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <button id="b-reset">ゲームの視点に戻す</button>
   <button id="b-png">PNG で保存</button>
 </div>
+<div class="discview" id="motview" hidden><b>技を出す</b>
+  <select id="m-pl" aria-label="どちらのキャラ"><option value="0">1P</option><option value="1">2P</option></select>
+  <span class="parts">技 <button id="m-prev" aria-label="前の技">◀</button> <input id="m-num" type="number" min="1" max="1359" style="width:5.5em" aria-label="技の番号"> <button id="m-next" aria-label="次の技">▶</button></span>
+  <span class="parts">コマ <input id="m-frame" type="range" min="1" max="1" value="1" style="width:12em;vertical-align:middle" aria-label="コマ"> <span id="m-fn">-</span></span>
+  <button id="m-play">▶ 再生</button> <button id="m-back">写しに戻す</button>
+  <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形・髪の揺れはその写しのまま。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま</small></div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさは、ゲームの VU1 のプログラムと同じ式です。背景はステージのモデルのうち、そのコマで描いた部品です。空と遠景は、アーケードの2Dのタイルの面をゲームと同じずらし方で画面に貼ります（視点を回しても動きません）。</p>
 <p>アーケードのロムを選ぶと、アーケードのプログラム（i960）のテクスチャを展開する処理を、ページの中の小さなエミュレーターでそのまま動かして、キャラのテクスチャを Model 2 の細かさで作ります。PS2 版のテクスチャは、これを縦横入れ替えて 4 行に 1 行だけ残したものです（11 人とも一致を確かめた）。</p>
+<p>技を出すときは、写しに残っているアーケードの作業用メモリから始めて、アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をページの中の小さなエミュレーターでそのまま動かします。アーケードでは計算用のチップ（TGP）がする計算は、PS2 本体がその代わりに持っている関数を、PS2 の CPU の小さなエミュレーターで動かします。できた 16 個の関節に、写しの部品を付け直して描きます。</p>
 <p>ディスクだけで見るときは、色の材料もディスクから取ります。ただし色の変換表はステージごとにゲームが作るもので、ディスクには無いので、おおよその値で代わりにしています。</p>
 <p id="ver"></p></details>
 </main>
@@ -1467,6 +1474,390 @@ function arcSceneSheets(rom,chars,stageN){
   chars.forEach((c,i)=>{ const k=ARC_CHARS.indexOf(c); if(k<0) return; L.loadSet(2*k+1,i); L.loadSet(2*k+2,i) });
   return L;
 }
+// PS2 の EE（R5900）の小さなエミュレーター。本体のコプロ代わりの関数（cpr*）を、セーブステートの主メモリの上でそのまま動かすためのもの。
+// 整数（64bit は2語で持つ。lq/sq・pcpyud のため4語）・COP1（単精度）・VU0 のマクロ命令だけ
+const f32=Math.fround;
+const FB=new Float32Array(1), UB=new Uint32Array(FB.buffer);
+const u2f=u=>{ UB[0]=u; return FB[0] }, f2u=f=>{ FB[0]=f; return UB[0] };
+class EE {
+  constructor(mem){ // mem: Uint8Array（32MB）
+    this.m=mem; this.dv=new DataView(mem.buffer,mem.byteOffset,mem.byteLength);
+    this.g=new Uint32Array(32*4); this.hi=[0,0]; this.lo=[0,0];
+    this.f=new Float32Array(32); this.fcc=false; this.acc=0;
+    this.vf=new Float32Array(32*4); this.vf[3]=1; this.vi=new Uint16Array(16); this.Q=0; this.I=0; this.vacc=new Float32Array(4);
+    this.steps=0; this.unk={};
+  }
+  a(A){ A>>>=0; if(A>=0x20000000&&A<0x22000000) A-=0x20000000; else if(A>=0x30000000&&A<0x32000000) A-=0x30000000; else if(A>=0x70000000&&A<0x70004000) A=0x1fc0000+(A-0x70000000); return A&0x1ffffff }   // スクラッチパッドは空いていそうな所に置く
+  r8(A){ return this.m[this.a(A)] } r16(A){ return this.dv.getUint16(this.a(A),true) } r32(A){ return this.dv.getUint32(this.a(A),true) }
+  w8(A,v){ this.m[this.a(A)]=v } w16(A,v){ this.dv.setUint16(this.a(A),v,true) } w32(A,v){ this.dv.setUint32(this.a(A),v>>>0,true) }
+  set32(r,v){ if(!r) return; const G=this.g; G[r*4]=v>>>0; G[r*4+1]=(v|0)<0?0xffffffff:0 }   // 32bit の結果は符号を広げる
+  set64(r,lo,hi){ if(!r) return; this.g[r*4]=lo>>>0; this.g[r*4+1]=hi>>>0 }
+  // 関数 pc を ra＝止まる番地 で呼ぶ
+  call(pc, args=[], sp=0x1ff0000){
+    const G=this.g; for(let i=0;i<args.length;i++) this.set32(4+i,args[i]);
+    this.set32(29,sp); this.set32(31,0xfffffff0); this.set32(28,0x25da70);
+    this.run(pc);
+    return G[2*4];
+  }
+  run(pc){
+    const G=this.g, V=this.vf;
+    let npc=pc+4, delay=false;
+    const S=(r)=>G[r*4]|0, U=(r)=>G[r*4]>>>0;
+    for(;;){
+      if(pc===0xfffffff0) return;
+      if(++this.steps>5e7) throw new Error("命令が多すぎる");
+      const w=this.r32(pc), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31, sa=(w>>>6)&31, imm=(w<<16)>>16, uimm=w&0xffff;
+      let next=npc, target=-1, likely=false, taken=false;
+      const br=(c,l)=>{ taken=c; likely=l; target=(npc+(imm<<2))>>>0 };
+      switch(op){
+        case 0x00: { // SPECIAL
+          const fn=w&63;
+          switch(fn){
+            case 0x00: this.set32(rd,U(rt)<<sa); break;
+            case 0x02: this.set32(rd,U(rt)>>>sa); break;
+            case 0x03: this.set32(rd,S(rt)>>sa); break;
+            case 0x04: this.set32(rd,U(rt)<<(U(rs)&31)); break;
+            case 0x06: this.set32(rd,U(rt)>>>(U(rs)&31)); break;
+            case 0x07: this.set32(rd,S(rt)>>(U(rs)&31)); break;
+            case 0x08: target=U(rs); taken=true; break;
+            case 0x09: { const t=U(rs); this.set32(rd||31,npc+4); target=t; taken=true; break }
+            case 0x0a: if(G[rt*4]===0&&G[rt*4+1]===0) this.g64copy(rd,rs); break;   // movz
+            case 0x0b: if(G[rt*4]!==0||G[rt*4+1]!==0) this.g64copy(rd,rs); break;   // movn
+            case 0x0f: break; // sync
+            case 0x10: this.set64(rd,this.hi[0],this.hi[1]); break; case 0x12: this.set64(rd,this.lo[0],this.lo[1]); break;
+            case 0x11: this.hi=[G[rs*4],G[rs*4+1]]; break; case 0x13: this.lo=[G[rs*4],G[rs*4+1]]; break;
+            case 0x14: { const v=this.get64(rt)<<BigInt(U(rs)&63); this.put64(rd,v); break }
+            case 0x16: { const v=BigInt.asUintN(64,this.get64(rt))>>BigInt(U(rs)&63); this.put64(rd,v); break }
+            case 0x17: { const v=BigInt.asIntN(64,this.get64(rt))>>BigInt(U(rs)&63); this.put64(rd,v); break }
+            case 0x18: { const p=BigInt(S(rs))*BigInt(S(rt)); this.setHL(p); if(rd) this.set32(rd,this.lo[0]); break }
+            case 0x19: { const p=BigInt(U(rs))*BigInt(U(rt)); this.setHL(p); if(rd) this.set32(rd,this.lo[0]); break }
+            case 0x1a: { const a=S(rs), b=S(rt); if(b){ this.lo=this.sx(Math.trunc(a/b)); this.hi=this.sx(a%b) } break }
+            case 0x1b: { const a=U(rs), b=U(rt); if(b){ this.lo=this.sx(Math.floor(a/b)|0); this.hi=this.sx((a%b)|0) } break }
+            case 0x20: case 0x21: this.set32(rd,U(rs)+U(rt)); break;
+            case 0x22: case 0x23: this.set32(rd,U(rs)-U(rt)); break;
+            case 0x24: this.set64(rd,G[rs*4]&G[rt*4],G[rs*4+1]&G[rt*4+1]); break;
+            case 0x25: this.set64(rd,G[rs*4]|G[rt*4],G[rs*4+1]|G[rt*4+1]); break;
+            case 0x26: this.set64(rd,G[rs*4]^G[rt*4],G[rs*4+1]^G[rt*4+1]); break;
+            case 0x27: this.set64(rd,~(G[rs*4]|G[rt*4]),~(G[rs*4+1]|G[rt*4+1])); break;
+            case 0x2a: this.set32(rd,BigInt.asIntN(64,this.get64(rs))<BigInt.asIntN(64,this.get64(rt))?1:0); break;
+            case 0x2b: this.set32(rd,this.get64(rs)<this.get64(rt)?1:0); break;
+            case 0x2c: case 0x2d: this.put64(rd,this.get64(rs)+this.get64(rt)); break;
+            case 0x2e: case 0x2f: this.put64(rd,this.get64(rs)-this.get64(rt)); break;
+            case 0x38: this.put64(rd,this.get64(rt)<<BigInt(sa)); break;
+            case 0x3a: this.put64(rd,BigInt.asUintN(64,this.get64(rt))>>BigInt(sa)); break;
+            case 0x3b: this.put64(rd,BigInt.asIntN(64,this.get64(rt))>>BigInt(sa)); break;
+            case 0x3c: this.put64(rd,this.get64(rt)<<BigInt(sa+32)); break;
+            case 0x3e: this.put64(rd,BigInt.asUintN(64,this.get64(rt))>>BigInt(sa+32)); break;
+            case 0x3f: this.put64(rd,BigInt.asIntN(64,this.get64(rt))>>BigInt(sa+32)); break;
+            default: throw new Error("SPECIAL "+fn.toString(16)+" at "+pc.toString(16));
+          }
+          break;
+        }
+        case 0x01: { // REGIMM
+          const a=BigInt.asIntN(64,this.get64(rs));
+          switch(rt){ case 0: br(a<0n,false); break; case 1: br(a>=0n,false); break; case 2: br(a<0n,true); break; case 3: br(a>=0n,true); break;
+            case 0x11: this.set32(31,npc+4); br(a>=0n,false); break; case 0x10: this.set32(31,npc+4); br(a<0n,false); break;
+            default: throw new Error("REGIMM "+rt+" at "+pc.toString(16)) }
+          break;
+        }
+        case 0x02: target=((npc&0xf0000000)|((w&0x3ffffff)<<2))>>>0; taken=true; break;
+        case 0x03: this.set32(31,npc+4); target=((npc&0xf0000000)|((w&0x3ffffff)<<2))>>>0; taken=true; break;
+        case 0x04: br(this.eq(rs,rt),false); break; case 0x05: br(!this.eq(rs,rt),false); break;
+        case 0x06: br(BigInt.asIntN(64,this.get64(rs))<=0n,false); break; case 0x07: br(BigInt.asIntN(64,this.get64(rs))>0n,false); break;
+        case 0x14: br(this.eq(rs,rt),true); break; case 0x15: br(!this.eq(rs,rt),true); break;
+        case 0x16: br(BigInt.asIntN(64,this.get64(rs))<=0n,true); break; case 0x17: br(BigInt.asIntN(64,this.get64(rs))>0n,true); break;
+        case 0x08: case 0x09: this.set32(rt,U(rs)+imm); break;
+        case 0x18: case 0x19: this.put64(rt,this.get64(rs)+BigInt(imm)); break;
+        case 0x0a: this.set32(rt,BigInt.asIntN(64,this.get64(rs))<BigInt(imm)?1:0); break;
+        case 0x0b: this.set32(rt,this.get64(rs)<BigInt.asUintN(64,BigInt(imm))?1:0); break;
+        case 0x0c: this.set64(rt,G[rs*4]&uimm,0); break;
+        case 0x0d: this.set64(rt,G[rs*4]|uimm,G[rs*4+1]); break;
+        case 0x0e: this.set64(rt,G[rs*4]^uimm,G[rs*4+1]); break;
+        case 0x0f: this.set32(rt,uimm<<16); break;
+        case 0x20: this.set32(rt,(this.r8(U(rs)+imm)<<24)>>24); break;
+        case 0x24: this.set32(rt,this.r8(U(rs)+imm)); break;
+        case 0x21: this.set32(rt,(this.r16(U(rs)+imm)<<16)>>16); break;
+        case 0x25: this.set32(rt,this.r16(U(rs)+imm)); break;
+        case 0x23: this.set32(rt,this.r32(U(rs)+imm)); break;
+        case 0x27: this.set64(rt,this.r32(U(rs)+imm),0); break;
+        case 0x37: { const A=U(rs)+imm; this.set64(rt,this.r32(A),this.r32(A+4)); break }
+        case 0x1e: { const A=(U(rs)+imm)&~15; if(rt) for(let k=0;k<4;k++) G[rt*4+k]=this.r32(A+4*k); break }   // lq
+        case 0x1f: { const A=(U(rs)+imm)&~15; for(let k=0;k<4;k++) this.w32(A+4*k,G[rt*4+k]); break }   // sq
+        case 0x28: this.w8(U(rs)+imm,G[rt*4]&255); break;
+        case 0x29: this.w16(U(rs)+imm,G[rt*4]&0xffff); break;
+        case 0x2b: this.w32(U(rs)+imm,G[rt*4]); break;
+        case 0x3f: { const A=U(rs)+imm; this.w32(A,G[rt*4]); this.w32(A+4,G[rt*4+1]); break }
+        case 0x22: case 0x26: { // lwl / lwr
+          const A=(U(rs)+imm)>>>0, al=A&~3, sh=A&3, mw=this.r32(al), old=G[rt*4];
+          let v; if(op===0x22){ v=((mw<<(8*(3-sh)))|(old&(sh===3?0:(0xffffffff>>>(8*(sh+1))))))>>>0 } else { v=((mw>>>(8*sh))|(sh?(old&((0xffffffff<<(8*(4-sh)))>>>0)):0))>>>0 }
+          if(op===0x26&&sh!==0) G[rt*4]=v; else this.set32(rt,v); break }
+        case 0x2c: case 0x2d: { // sdl / sdr
+          const A=(U(rs)+imm)>>>0, al=A&~7, sh=A&7, v=this.get64(rt);
+          let mw=(BigInt(this.r32(al+4))<<32n)|BigInt(this.r32(al));
+          if(op===0x2c){ const n=BigInt(8*(7-sh)), mask=sh===7?0n:((1n<<64n)-1n)<<BigInt(8*(sh+1)); mw=(mw&mask)|(BigInt.asUintN(64,v)>>n) }
+          else { const n=BigInt(8*sh), mask=sh===0?0n:((1n<<BigInt(8*sh))-1n); mw=(mw&mask)|BigInt.asUintN(64,v<<n) }
+          mw=BigInt.asUintN(64,mw); this.w32(al,Number(mw&0xffffffffn)); this.w32(al+4,Number(mw>>32n)); break }
+        case 0x1a: case 0x1b: { // ldl / ldr
+          const A=(U(rs)+imm)>>>0, al=A&~7, sh=A&7, mw=(BigInt(this.r32(al+4))<<32n)|BigInt(this.r32(al)), old=BigInt.asUintN(64,this.get64(rt));
+          let v; if(op===0x1a){ const n=BigInt(8*(7-sh)); const keep=sh===7?0n:((1n<<BigInt(8*(7-sh)))-1n); v=BigInt.asUintN(64,mw<<n)|(old&keep) }
+          else { const n=BigInt(8*sh); const keep=sh===0?0n:(((1n<<64n)-1n)<<BigInt(8*(8-sh)))&((1n<<64n)-1n); v=(mw>>n)|(old&keep) }
+          this.put64(rt,v); break }
+        case 0x2f: break; // cache
+        case 0x31: this.f[rt]=u2f(this.r32(U(rs)+imm)); break;   // lwc1
+        case 0x39: this.w32(U(rs)+imm,f2u(this.f[rt])); break;   // swc1
+        case 0x36: { const A=(U(rs)+imm)&~15; for(let k=0;k<4;k++) V[rt*4+k]=u2f(this.r32(A+4*k)); if(!rt){V[0]=V[1]=V[2]=0;V[3]=1} break }   // lqc2
+        case 0x3e: { const A=(U(rs)+imm)&~15; for(let k=0;k<4;k++) this.w32(A+4*k,f2u(V[rt*4+k])); break }   // sqc2
+        case 0x11: this.cop1(w,pc,br); break;
+        case 0x12: this.cop2(w,pc,br); break;
+        case 0x1c: this.mmi(w,pc); break;
+        default: throw new Error("op "+op.toString(16)+" at "+pc.toString(16)+" w="+w.toString(16));
+      }
+      if(target>=0||likely){
+        if(taken){ // 遅延スロットを実行してから飛ぶ
+          pc=npc; npc=target; continue;
+        } else if(likely){ pc=npc+4; npc=pc+4; continue }
+      }
+      pc=npc; npc=pc+4;
+      if(this.pendingTarget!==undefined){}
+    }
+  }
+  g64copy(d,s){ if(d){ this.g[d*4]=this.g[s*4]; this.g[d*4+1]=this.g[s*4+1] } }
+  get64(r){ return BigInt.asIntN(64,(BigInt(this.g[r*4+1])<<32n)|BigInt(this.g[r*4])) }
+  put64(r,v){ v=BigInt.asUintN(64,v); this.set64(r,Number(v&0xffffffffn),Number(v>>32n)) }
+  eq(a,b){ return this.g[a*4]===this.g[b*4]&&this.g[a*4+1]===this.g[b*4+1] }
+  sx(v){ return [v>>>0,(v|0)<0?0xffffffff:0] }
+  setHL(p){ const lo=Number(BigInt.asIntN(32,p)), hi=Number(BigInt.asIntN(32,p>>32n)); this.lo=this.sx(lo); this.hi=this.sx(hi) }
+  cop1(w,pc,br){
+    const fmt=(w>>>21)&31, ft=(w>>>16)&31, fs=(w>>>11)&31, fd=(w>>>6)&31, fn=w&63, F=this.f;
+    if(fmt===0){ this.set32(ft,f2u(F[fs])); return }            // mfc1
+    if(fmt===4){ F[fs]=u2f(this.g[ft*4]); return }             // mtc1
+    if(fmt===2||fmt===6) return;                                // cfc1/ctc1
+    if(fmt===8){ const t=(w>>>16)&1, l=(w>>>17)&1; br(t?this.fcc:!this.fcc,!!l); return }
+    if(fmt===16){
+      switch(fn){
+        case 0: F[fd]=f32(F[fs]+F[ft]); return; case 1: F[fd]=f32(F[fs]-F[ft]); return;
+        case 2: F[fd]=f32(F[fs]*F[ft]); return; case 3: F[fd]=f32(F[fs]/F[ft]); return;
+        case 4: F[fd]=f32(Math.sqrt(Math.abs(F[ft]))); return; case 5: F[fd]=Math.abs(F[fs]); return;
+        case 6: F[fd]=F[fs]; return; case 7: F[fd]=-F[fs]; return;
+        case 0x16: F[fd]=f32(F[fs]/Math.sqrt(Math.abs(F[ft]))); return;
+        case 0x18: this.acc=f32(F[fs]+F[ft]); return; case 0x19: this.acc=f32(F[fs]-F[ft]); return; case 0x1a: this.acc=f32(F[fs]*F[ft]); return;
+        case 0x1c: F[fd]=this.acc=f32(this.acc+f32(F[fs]*F[ft])); return; case 0x1d: F[fd]=this.acc=f32(this.acc-f32(F[fs]*F[ft])); return;
+        case 0x1e: this.acc=f32(this.acc+f32(F[fs]*F[ft])); return; case 0x1f: this.acc=f32(this.acc-f32(F[fs]*F[ft])); return;
+        case 0x24: { const v=F[fs]; FB[0]=0; const i=Math.trunc(v); UB[0]=(i|0)>>>0; F[fd]=FB[0]; return }   // cvt.w.s
+        case 0x28: F[fd]=Math.max(F[fs],F[ft]); return; case 0x29: F[fd]=Math.min(F[fs],F[ft]); return;
+        case 0x30: this.fcc=false; return; case 0x32: this.fcc=F[fs]===F[ft]; return;
+        case 0x34: this.fcc=F[fs]<F[ft]; return; case 0x36: this.fcc=F[fs]<=F[ft]; return;
+      }
+    }
+    if(fmt===20&&fn===0x20){ FB[0]=F[fs]; F[fd]=f32(UB[0]|0); return }   // cvt.s.w
+    throw new Error("COP1 fmt "+fmt+" fn "+fn.toString(16)+" at "+pc.toString(16));
+  }
+  mmi(w,pc){
+    const rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31, sa=(w>>>6)&31, fn=w&63, G=this.g;
+    if(fn===0x29&&sa===14){ // pcpyud
+      if(rd){ const a=[G[rs*4+2],G[rs*4+3],G[rt*4+2],G[rt*4+3]]; for(let k=0;k<4;k++) G[rd*4+k]=a[k] } return }
+    if(fn===0x09&&sa===14){ // pcpyld
+      if(rd){ const a=[G[rt*4],G[rt*4+1],G[rs*4],G[rs*4+1]]; for(let k=0;k<4;k++) G[rd*4+k]=a[k] } return }
+    if(fn===0x08&&sa===18){ if(rd){ const a=[G[rt*4],G[rs*4],G[rt*4+1],G[rs*4+1]]; for(let k=0;k<4;k++) G[rd*4+k]=a[k] } return }   // pextlw
+    if(fn===0x28&&sa===18){ if(rd){ const a=[G[rt*4+2],G[rs*4+2],G[rt*4+3],G[rs*4+3]]; for(let k=0;k<4;k++) G[rd*4+k]=a[k] } return }   // pextuw
+    if(fn===0x29&&sa===18){ if(rd) for(let k=0;k<4;k++) G[rd*4+k]=G[rs*4+k]|G[rt*4+k]; return }   // por
+    if(fn===0x09&&sa===18){ if(rd) for(let k=0;k<4;k++) G[rd*4+k]=G[rs*4+k]&G[rt*4+k]; return }   // pand
+    if(fn===0x18){ const p=BigInt(this.g[rs*4]|0)*BigInt(this.g[rt*4]|0); this.setHL(p); if(rd) this.set32(rd,this.lo[0]); return }   // mult1 近似
+    throw new Error("MMI fn "+fn.toString(16)+" sa "+sa+" at "+pc.toString(16));
+  }
+  cop2(w,pc,br){
+    const V=this.vf, G=this.g, rs=(w>>>21)&31;
+    if(!((w>>>25)&1)){
+      const rt=(w>>>16)&31, rd=(w>>>11)&31;
+      switch(rs){
+        case 1: if(rt) for(let k=0;k<4;k++) G[rt*4+k]=f2u(V[rd*4+k]); return;   // qmfc2
+        case 5: if(rd) for(let k=0;k<4;k++) V[rd*4+k]=u2f(G[rt*4+k]); return;   // qmtc2
+        case 2: { let v=0; if(rd<16) v=this.vi[rd]; else if(rd===22) v=f2u(this.Q); else if(rd===21) v=f2u(this.I); this.set32(rt,v); return }   // cfc2
+        case 6: { const v=G[rt*4]; if(rd<16){ if(rd) this.vi[rd]=v&0xffff } else if(rd===22) this.Q=u2f(v); else if(rd===21) this.I=u2f(v); return }   // ctc2
+        case 8: { const t=(w>>>16)&1, l=(w>>>17)&1; br(t?false:true,!!l); return }   // bc2f/t（VU0 はいつも止まっている）
+      }
+      throw new Error("COP2 rs "+rs+" at "+pc.toString(16));
+    }
+    const dest=(w>>>21)&15, ft=(w>>>16)&31, fs=(w>>>11)&31, fd=(w>>>6)&31, fn=w&63;
+    const D=[(dest>>3)&1,(dest>>2)&1,(dest>>1)&1,dest&1];
+    const rd=(r,k)=>r===0?(k===3?1:0):V[r*4+k];
+    const wr=(r,vals)=>{ if(!r) return; for(let k=0;k<4;k++) if(D[k]) V[r*4+k]=f32(vals[k]) };
+    const wacc=vals=>{ for(let k=0;k<4;k++) if(D[k]) this.vacc[k]=f32(vals[k]) };
+    const vs=r=>[0,1,2,3].map(k=>rd(r,k));
+    const bc=w&3;
+    if(fn<0x3c){
+      const a=vs(fs), b=vs(ft), bb=[0,1,2,3].map(()=>rd(ft,bc)), A=this.vacc;
+      const mul=(x,y)=>x.map((v,k)=>f32(v*y[k]));
+      switch(fn>>2){
+        case 0: wr(fd,a.map((v,k)=>v+bb[k])); return;                 // vaddbc
+        case 1: wr(fd,a.map((v,k)=>v-bb[k])); return;                 // vsubbc
+        case 2: wr(fd,mul(a,bb).map((v,k)=>A[k]+v)); return;          // vmaddbc
+        case 3: wr(fd,mul(a,bb).map((v,k)=>A[k]-v)); return;          // vmsubbc
+        case 4: wr(fd,a.map((v,k)=>Math.max(v,bb[k]))); return;
+        case 5: wr(fd,a.map((v,k)=>Math.min(v,bb[k]))); return;
+        case 6: wr(fd,mul(a,bb)); return;                             // vmulbc
+      }
+      switch(fn){
+        case 0x1c: wr(fd,a.map(v=>v*this.Q)); return;
+        case 0x1e: wr(fd,a.map(v=>v*this.I)); return;
+        case 0x20: wr(fd,a.map(v=>v+this.Q)); return;
+        case 0x21: wr(fd,a.map((v,k)=>A[k]+f32(v*this.Q))); return;
+        case 0x22: wr(fd,a.map(v=>v+this.I)); return;
+        case 0x24: wr(fd,a.map(v=>v-this.Q)); return;
+        case 0x26: wr(fd,a.map(v=>v-this.I)); return;
+        case 0x28: wr(fd,a.map((v,k)=>v+b[k])); return;
+        case 0x29: wr(fd,mul(a,b).map((v,k)=>A[k]+v)); return;
+        case 0x2a: wr(fd,mul(a,b)); return;
+        case 0x2b: wr(fd,a.map((v,k)=>Math.max(v,b[k]))); return;
+        case 0x2c: wr(fd,a.map((v,k)=>v-b[k])); return;
+        case 0x2d: wr(fd,mul(a,b).map((v,k)=>A[k]-v)); return;
+        case 0x2e: { const r=[A[0]-f32(a[1]*b[2]),A[1]-f32(a[2]*b[0]),A[2]-f32(a[0]*b[1])]; if(fd) for(let k=0;k<3;k++) V[fd*4+k]=f32(r[k]); return }   // vopmsub
+        case 0x2f: wr(fd,a.map((v,k)=>Math.min(v,b[k]))); return;
+        case 0x30: this.vi[fd&15]=(this.vi[fs&15]+this.vi[ft&15])&0xffff; return;
+        case 0x31: this.vi[fd&15]=(this.vi[fs&15]-this.vi[ft&15])&0xffff; return;
+        case 0x32: { const im=((w>>>6)&31)<<27>>27; if(ft&15) this.vi[ft&15]=(this.vi[fs&15]+im)&0xffff; return }
+      }
+      throw new Error("VU0 "+fn.toString(16)+" at "+pc.toString(16));
+    }
+    const op2=(((w>>>6)&31)<<2)|(w&3), a=vs(fs), b=vs(ft), bb=[0,1,2,3].map(()=>rd(ft,bc)), A=this.vacc;
+    const mul=(x,y)=>x.map((v,k)=>f32(v*y[k]));
+    switch(op2>>2){
+      case 0: wacc(a.map((v,k)=>v+bb[k])); return;
+      case 1: wacc(a.map((v,k)=>v-bb[k])); return;
+      case 2: wacc(mul(a,bb).map((v,k)=>A[k]+v)); return;
+      case 3: wacc(mul(a,bb).map((v,k)=>A[k]-v)); return;
+      case 6: wacc(mul(a,bb)); return;
+    }
+    switch(op2){
+      case 0x10: case 0x11: case 0x12: case 0x13: { const sc=[1,16,4096,32768][op2-0x10]; wr(ft,[0,1,2,3].map(k=>this.itof(fs,k)/sc)); return }
+      case 0x14: case 0x15: case 0x16: case 0x17: { const sc=[1,16,4096,32768][op2-0x14]; if(!ft) return; for(let k=0;k<4;k++) if(D[k]){ const i=Math.trunc(rd(fs,k)*sc); FB[0]=0; UB[0]=(Math.max(-2147483648,Math.min(2147483647,i))|0)>>>0; V[ft*4+k]=FB[0] } return }
+      case 0x1c: wacc(a.map(v=>v*this.Q)); return;
+      case 0x1d: wr(ft,a.map(Math.abs)); return;
+      case 0x1e: wacc(a.map(v=>v*this.I)); return;
+      case 0x28: wacc(a.map((v,k)=>v+b[k])); return;
+      case 0x29: wacc(mul(a,b).map((v,k)=>A[k]+v)); return;
+      case 0x2a: wacc(mul(a,b)); return;
+      case 0x2c: wacc(a.map((v,k)=>v-b[k])); return;
+      case 0x2d: wacc(mul(a,b).map((v,k)=>A[k]-v)); return;
+      case 0x2e: { this.vacc[0]=f32(a[1]*b[2]); this.vacc[1]=f32(a[2]*b[0]); this.vacc[2]=f32(a[0]*b[1]); return }   // vopmula
+      case 0x2f: return; // vnop
+      case 0x30: wr(ft,a); return;   // vmove
+      case 0x31: wr(ft,[a[1],a[2],a[3],a[0]]); return;   // vmr32
+      case 0x38: { const fsf=(w>>>21)&3, ftf=(w>>>23)&3; this.Q=f32(rd(fs,fsf)/rd(ft,ftf)); return }   // vdiv
+      case 0x39: { const ftf=(w>>>23)&3; this.Q=f32(Math.sqrt(Math.abs(rd(ft,ftf)))); return }
+      case 0x3a: { const fsf=(w>>>21)&3, ftf=(w>>>23)&3; this.Q=f32(rd(fs,fsf)/Math.sqrt(Math.abs(rd(ft,ftf)))); return }
+      case 0x3b: return; // vwaitq
+      case 0x3c: this.vi[ft&15]=f2u(rd(fs,(w>>>21)&3))&0xffff; return;   // vmtir
+      case 0x3d: { const v=(this.vi[fs&15]<<16)>>16; FB[0]=0; UB[0]=v>>>0; const f=FB[0]; wr(ft,[f,f,f,f]); return }   // vmfir
+    }
+    throw new Error("VU0 special2 "+op2.toString(16)+" at "+pc.toString(16));
+  }
+  itof(r,k){ FB[0]=this.vf[r*4+k]; return UB[0]|0 }
+}
+// 技（動き）: セーブステートの i960 の RAM から、アーケードのプログラムで好きな技・コマの姿勢を計算し、写しの部品をその関節に付け直す。
+// i960 は arcade.js の I960、TGP（コプロ）は PS2 本体の代わりの関数（cpr*。表 0x207a50）を ee.js の EE でそのまま動かす（CLAUDE.md「技（動き）の計算」）
+const MOT_GP=0x25da70, MOT_CPR=0x207a50, MOT_WORK=0x1069240, MOT_VMEM=0x1fc37c0;
+const MOT_MOTTBL=0x2120004;   // 技の番号 → 動きのデータ（先頭の 16bit がコマ数）
+// prog: i960 のプログラム（512KB）、eeMem: 写しの主メモリ（写してから使う）、mainData: (o)=>byte（main_data の o バイト目。無ければ写しに載っているページから）
+function motEngine(prog, eeMem, mainData){
+  const ee=new EE(new Uint8Array(eeMem));
+  const ram=ee.m.subarray(MOT_WORK+0x500000,MOT_WORK+0x600000), ram2=ee.m.subarray(0x1469240+0x200000,0x1469240+0x240000);
+  const vmem=o=>{ const p=ee.dv.getUint32(MOT_VMEM+(o>>>12)*4,true); return p?ee.m[(p&0x1ffffff)+(o&0xfff)]:0 };
+  const md=mainData||vmem;
+  const argb=ee.r32(MOT_GP-0x7d90), outb=ee.r32(MOT_GP-0x7d9c), cr=ee.r32(MOT_GP-0x7d8c);
+  const cop={cur:null,out:[]};
+  const copCall=(fn,args)=>{ const f=ee.r32(MOT_CPR+fn*16), nr=ee.r32(MOT_CPR+fn*16+8)>>2; args.forEach((v,k)=>ee.w32(argb+4*k,v)); ee.call(f); for(let k=0;k<nr;k++) cop.out.push(ee.r32(outb+4*k)) };
+  // FIFO（i960 の 0x880000〜）: 命令の語（下位8bit が関数の番号）→ 引数 → 答えを読む（16bit で読むこともある）
+  const copW=v=>{ if(!cop.cur) cop.cur={fn:v&0xff,args:[]}; else cop.cur.args.push(v); const c=cop.cur; if(c.args.length>=ee.r32(MOT_CPR+c.fn*16+4)){ cop.cur=null; copCall(c.fn,c.args) } };
+  const copR=()=>cop.out.length?cop.out.shift():0;
+  const r8=A=>{ A>>>=0;
+    if(A<0x80000) return prog[A];
+    if(A>=0x500000&&A<0x600000) return ram[A-0x500000];
+    if(A>=0x200000&&A<0x240000) return ram2[A-0x200000];
+    if(A>=0x2000000&&A<0x3000000) return md(A-0x2000000);
+    return 0 };
+  const isF=A=>A>=0x880000&&A<0x890000, isC=A=>A>=0x900000&&A<0x910000;   // TGP の FIFO・データ RAM（PS2 の [gp−0x7d8c]）
+  const mem={ r8,
+    r16(A){ A>>>=0; if(isF(A)) return copR()&0xffff; if(isC(A)) return ee.r16(cr+A-0x900000); return r8(A)|r8(A+1)<<8 },
+    r32(A){ A>>>=0; if(isF(A)) return copR(); if(isC(A)) return ee.r32(cr+A-0x900000); return (r8(A)|r8(A+1)<<8|r8(A+2)<<16|r8(A+3)<<24)>>>0 },
+    w8(A,v){ A>>>=0; if(A>=0x500000&&A<0x600000) ram[A-0x500000]=v; else if(A>=0x200000&&A<0x240000) ram2[A-0x200000]=v },
+    w16(A,v){ this.w8(A,v&255); this.w8(A+1,v>>>8&255) },
+    w32(A,v){ A>>>=0; if(isF(A)) return copW(v>>>0); if(isC(A)) return ee.w32(cr+A-0x900000,v); for(let k=0;k<4;k++) this.w8(A+k,(v>>>(8*k))&255) } };
+  const cpu=new I960({readUInt32LE:a=>(prog[a]|prog[a+1]<<8|prog[a+2]<<16|prog[a+3]<<24)>>>0}, mem);
+  const g7=pl=>mem.r32(pl?0x500808:0x500804);
+  const run=(pl,addrs,m)=>{ for(const a of addrs){ const R=cpu.r; R[1]=R[31]=0x5f8000; R[23]=g7(pl); R[27]=0x880000; R[28]=0x4000; R[16]=m||0; cpu.run(a) } };
+  // 関節の行列の置き場（cprMtxStUnitMat: [g7+4] の bit0 が 1 なら [gp−0x7db0]、それ以外は [gp−0x7dac]）。64B×16、12 個（行 x,y,z の像と位置）に直す
+  const unitBase=pl=>ee.r32(MOT_GP-((mem.r8(g7(pl)+4)&1)?0x7db0:0x7dac));
+  const units=pl=>{ const b=unitBase(pl), F=k=>{ const u=ee.r32(b+k); return new Float32Array(new Uint32Array([u]).buffer)[0] }; return [...Array(16)].map((_,j)=>[0,4,8,16,20,24,32,36,40,48,52,56].map(o=>F(j*64+o))) };
+  const md32=A=>(md(A-0x2000000)|md(A-0x2000000+1)<<8|md(A-0x2000000+2)<<16|md(A-0x2000000+3)<<24)>>>0;
+  return {
+    mem, cpu, ee, units,
+    info:pl=>({motion:mem.r16(g7(pl)+0x1a8), frame:mem.r16(g7(pl)+0x1aa), length:mem.r16(g7(pl)+0x800)}),
+    // 技 m のコマ数（表に無ければ 0）
+    motionLength(m){ if(m<1||m>1359) return 0; const p=md32(MOT_MOTTBL+m*4); if(p<0x2000000||p>=0x3000000) return 0; return md(p-0x2000000)|md(p-0x2000000+1)<<8 },
+    // 技 m を始める（0x3acb8 の流れのうち準備: 0x1a1e4・0x26ef0。前の技からのつなぎ 0x27130 は smooth のときだけ）
+    start(pl,m,smooth=false){ const G=g7(pl); mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,1); run(pl,smooth?[0x1a1e4,0x26ef0,0x27130]:[0x1a1e4,0x26ef0],m) },
+    // コマ f の姿勢（0x27ce0 → 0x28184 コマのデータ、0x16504 関節の行列）
+    frame(pl,f){ const G=g7(pl); mem.w16(G+0x1aa,f); run(pl,[0x27ce0,0x16504],mem.r16(G+0x1a8)); return units(pl) },
+  };
+}
+
+// 行列（12 個。行ベクトルの形: 点 p → p·R＋t。R の行＝x,y,z の像）
+const motMul=(a,b)=>{ const r=[]; for(let i=0;i<3;i++) for(let j=0;j<3;j++) r[i*3+j]=a[i*3]*b[j]+a[i*3+1]*b[3+j]+a[i*3+2]*b[6+j]; for(let j=0;j<3;j++) r[9+j]=a[9]*b[j]+a[10]*b[3+j]+a[11]*b[6+j]+b[9+j]; return r };
+const motInv=a=>{ // 回転は直交とみなす
+  const r=[a[0],a[3],a[6],a[1],a[4],a[7],a[2],a[5],a[8]]; return [...r,-(a[9]*r[0]+a[10]*r[3]+a[11]*r[6]),-(a[9]*r[1]+a[10]*r[4]+a[11]*r[7]),-(a[9]*r[2]+a[10]*r[5]+a[11]*r[8])] };
+const motInvG=a=>{ // 一般の 3×3＋位置（影のように潰れていないもの）
+  const [m0,m1,m2,m3,m4,m5,m6,m7,m8]=a, d=m0*(m4*m8-m5*m7)-m1*(m3*m8-m5*m6)+m2*(m3*m7-m4*m6);
+  const r=[(m4*m8-m5*m7)/d,(m2*m7-m1*m8)/d,(m1*m5-m2*m4)/d,(m5*m6-m3*m8)/d,(m0*m8-m2*m6)/d,(m2*m3-m0*m5)/d,(m3*m7-m4*m6)/d,(m1*m6-m0*m7)/d,(m0*m4-m1*m3)/d];
+  return [...r,-(a[9]*r[0]+a[10]*r[3]+a[11]*r[6]),-(a[9]*r[1]+a[10]*r[4]+a[11]*r[7]),-(a[9]*r[2]+a[10]*r[5]+a[11]*r[8])] };
+const motDist=(a,b)=>{ let m=0; for(let i=0;i<a.length;i++) m=Math.max(m,Math.abs(a[i]-b[i])); return m };
+const motDet=a=>a[0]*(a[4]*a[8]-a[5]*a[7])-a[1]*(a[3]*a[8]-a[5]*a[6])+a[2]*(a[3]*a[7]-a[4]*a[6]);
+const MOT_I=[1,0,0,0,1,0,0,0,1];
+
+// 写しの部品を関節に付ける。V＝カメラ（背景の部品の行列＝いちばん多く出てくる行列）。
+// 体の部品は関節の行列そのまま（写し16 で 17 個ともずれ 0）。影（潰れた行列）は 世界＝関節·P（P は床へ潰す行列、全部の影で共通）。
+// それ以外（髪など）は、いちばん近い関節からのずれ（rel）をそのまま持って付いていく
+// Us: 関節の候補（写しの命令の列は関節の行列より 2 コマほど遅れているので、今のコマから数コマ前まで。いちばん多く体が付くものを使う）
+function motAttach(sc, pl, Us){
+  if(!Array.isArray(Us[0][0])) Us=[Us];
+  let best=null; for(const U of Us){ const a=motAttach1(sc,pl,U); if(!best||a.parts.filter(p=>p.body).length>best.parts.filter(p=>p.body).length) best=a } return best;
+}
+function motAttach1(sc, pl, U){
+  let V=null, nv=0; for(const d of sc.draws){ let n=0; for(const e of sc.draws) if(motDist(e.m,d.m)<1e-4) n++; if(n>nv){ nv=n; V=d.m } }
+  const iV=motInvG(V), out=[], shadows=[], mirrors=[];
+  sc.draws.forEach((d,i)=>{ if(d.player!==pl||d.id<0&&!d.dyn||motDist(d.m,V)<1e-4) return;   // 背景（1P の表に入っている）は除く
+    const W=motMul(d.m,iV);
+    if(Math.min(...U.map(u=>Math.hypot(u[9]-W[9],u[10]-W[10],u[11]-W[11])))>1.5) return;
+    if(Math.abs(motDet(d.m))<0.05){ shadows.push({i,W}); return }   // build.js と同じ見分け方
+    if(motDet(d.m)<-0.05){ mirrors.push({i,W}); return }   // 床への映り込み（行列式が負。写し16・17）
+    let bk=0, be=1e9; for(let k=0;k<16;k++){ const rel=motMul(W,motInv(U[k])); const e=motDist(rel.slice(0,9),MOT_I)+Math.hypot(rel[9],rel[10],rel[11]); if(e<be){ be=e; bk=k } }
+    if(be>=0.6){ be=1e9; for(let k=0;k<16;k++){ const e=Math.hypot(U[k][9]-W[9],U[k][10]-W[10],U[k][11]-W[11]); if(e<be){ be=e; bk=k } } out.push({i,k:bk,rel:motMul(W,motInv(U[bk]))}); return }   // 髪など: いちばん近い関節
+    out.push({i,k:bk,rel:[...MOT_I,0,0,0],body:true});
+  });
+  // 映り込み: 世界＝関節·F（F は床で折り返す行列で全部に共通）。F＝inv(U_k)·W をすべての組で作り、いちばん多く一致するもの
+  if(mirrors.length){
+    const cand=[]; for(const s of mirrors) for(let k=0;k<16;k++) cand.push(motMul(motInv(U[k]),s.W));
+    let F=null, nf=0; for(const c of cand){ let n=0; for(const e of cand) if(motDist(e,c)<0.01) n++; if(n>nf){ nf=n; F=c } }
+    for(const s of mirrors){ let bk=0,be=1e9; for(let k=0;k<16;k++){ const e=motDist(motMul(motInv(U[k]),s.W),F); if(e<be){ be=e; bk=k } }
+      if(be<0.05) out.push({i:s.i,k:bk,mirror:F}); else { let bj=0,bd=1e9; for(let k=0;k<16;k++){ const e=Math.hypot(U[k][9]-s.W[9],U[k][10]-s.W[10],U[k][11]-s.W[11]); if(e<bd){ bd=e; bj=k } } out.push({i:s.i,k:bj,rel:motMul(s.W,motInvG(U[bj]))}) } }
+  }
+  // 影: ゲームの影の部品は体の部品と向きの決め方が違い、関節の行列を床へ潰した形では合わない（写し16）。技を出すときは影の部品を消し、
+  // 体の部品を光の向きで床（元の影の高さ）へ投げたもので代わりにする（ゲームの影そのものではない）
+  const Vr=V, L=sc.light, Lw=[0,1,2].map(j=>L[0]*Vr[j*3]+L[1]*Vr[j*3+1]+L[2]*Vr[j*3+2]);   // カメラの向き → 世界（R は直交。v_world＝v_cam·Rᵀ）
+  const h=shadows.length?shadows.reduce((a,s)=>a+s.W[10],0)/shadows.length:null;
+  const shadowP=h===null||Math.abs(Lw[1])<1e-3?null:[1,0,0,-Lw[0]/Lw[1],0,-Lw[2]/Lw[1],0,0,1,h*Lw[0]/Lw[1],h,h*Lw[2]/Lw[1]];
+  return {V,parts:out,shadowParts:shadows.map(s=>s.i),shadowP};
+}
+// 新しい関節 U2 で、写しの命令の列（sc）の pl の部品の行列を置き直した列を返す
+function motApply(sc, att, U2){
+  const draws=sc.draws.slice();
+  for(const p of att.parts){ const d=draws[p.i]; draws[p.i]={...d,m:motMul(p.mirror?motMul(U2[p.k],p.mirror):motMul(p.rel,U2[p.k]),att.V)} }
+  if(att.shadowP) for(const p of att.parts) if(p.body) draws.push({...draws[p.i],m:motMul(motMul(motMul(p.rel,U2[p.k]),att.shadowP),att.V)});
+  const hide=new Set(att.shadowParts);
+  return {...sc,draws:draws.filter((d,i)=>!hide.has(i))};
+}
+// アーケードのロム（arcRom）の main_data を1バイトずつ読む
+function motRomData(rom){ const half=k=>{ const c=rom.chips[k>>21][k&1], j=(k>>1)&0xfffff; return c[2*j]|c[2*j+1]<<8 }; return o=>o<0x1000000?(half(o>>1)>>(8*(o&1)))&255:0 }
 // WebGL で描く。明るさは build.js の buildBright・buildLuma と同じ式（VU1 のプログラムを写したもの。pose.mjs も同じ）。
 // 色＝色の変換表[チャンネル][色 RAM の 5bit][明るさ]。光はゲームのカメラの座標で計算する（回して見ても場面に固定）。影は黒の半透明で最後に描く
 const VGL_VS=`
@@ -1631,7 +2022,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て
-const VERSION="0.11.0";
+const VERSION="0.12.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -1666,7 +2057,7 @@ async function showDisc(){
     const models=new Map((await readObj(name)).map(m=>[m.id,m])), rob=(await readRobs())[SC_ROB.indexOf(name.slice(4,7))], ids=[...models.keys()].sort((a,b)=>a-b);
     if(APP.dv?.name!==name) APP.dv={name,ids,k:-1};
     const only=APP.dv.k<0?null:ids[APP.dv.k], col=dvColors(APP.dvBase.fix,APP.dvBase.ic,rob,APP.dvBase.dfl), sc=dvScene(models,only);
-    APP.mode="disc"; APP.cur=-1; listStates();
+    APP.mode="disc"; APP.cur=-1; listStates(); motStop(); APP.mot=null; $("motview").hidden=true;
     APP.scene={sc,col,models:{0:models,1:null,stage:null},names:[name.replace(".CMP",""),"なし","なし"],light:sceneLight(null,sc)};
     APP.gl.setColors(col); APP.gl.setBack(null); APP.gl.setArc(null); rebuild(); resetView();
     if(only!=null){ APP.rot=[0.6,0.3]; draw() }   // 1つだけのときは斜めから（真横だと薄い部品が見えない）
@@ -1696,9 +2087,11 @@ async function show(){
     for(const n of stageNames) stc.push({name:n,models:await readObj(n)});
     const st2=sceneChooseModels(sc,0,stc,models[0]?new Set(models[0].keys()):null);
     models.stage=st2?st2.map:null; names.push(st2?st2.name.replace(".CMP",""):"なし");
-    APP.scene={sc,col,models,names,light:sceneLight(st.vu1,sc),rob:[who[0]>=0?SC_ROB[who[0]]:null,who[1]>=0?SC_ROB[who[1]]:null]};
+    motStop(); APP.mot=null;
+    APP.scene={sc,sc0:sc,col,models,names,light:sceneLight(st.vu1,sc),rob:[who[0]>=0?SC_ROB[who[0]]:null,who[1]>=0?SC_ROB[who[1]]:null]};
     APP.gl.setColors(col); APP.gl.setBack(scrBack(scrRead(st.mem))); applyArc(); rebuild(); resetView();
     $("shot").src=st.shot||""; $("shot").hidden=!st.shot; $("empty").hidden=true; $("hint").hidden=false;
+    motShowUI(st);
     status("");
   }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
 }
@@ -1714,8 +2107,9 @@ function rebuild(){
 // 視点: ゲームのカメラの座標のまま、2人の真ん中を中心に回す
 function center(){
   // ファイルにあったキャラの部品（影を除く）の位置の平均
+  // 技を出しているあいだも写しの位置を中心にする（再生中に視点が動かないように）
   const S=APP.scene; let s=[0,0,0],n=0;
-  for(const x of S.sc.draws){ const m=x.m; if(Math.abs(m[4])<0.05||!S.models[x.player]||!S.models[x.player].has(x.id)) continue; s[0]+=m[9]; s[1]+=m[10]; s[2]+=m[11]; n++ }
+  for(const x of (S.sc0||S.sc).draws){ const m=x.m; if(Math.abs(m[4])<0.05||!S.models[x.player]||!S.models[x.player].has(x.id)) continue; s[0]+=m[9]; s[1]+=m[10]; s[2]+=m[11]; n++ }
   return n?s.map(v=>v/n):[0,0,4];
 }
 function resetView(){ APP.rot=[0,0]; APP.zoom=1; APP.pan=[0,0]; draw() }
@@ -1788,6 +2182,39 @@ function listStates(){
   APP.states.forEach((s,i)=>{ const b=document.createElement("button"); b.textContent=s.name.replace(/\.p2s$/i,""); if(i===APP.cur) b.className="on";
     b.onclick=()=>{ APP.cur=i; listStates(); show() }; box.appendChild(b) });
 }
+// 技を出す（motion.js）。エンジンは写しごとに最初に触ったときに作る（写しの主メモリを写して使う）
+function motG7Info(mem,pl){ const d=new DataView(mem.buffer,mem.byteOffset,mem.byteLength), W=MOT_WORK, g7=d.getUint32(W+(pl?0x500808:0x500804),true); return {motion:d.getUint16(W+g7+0x1a8,true),frame:d.getUint16(W+g7+0x1aa,true)} }
+function motShowUI(st){ $("motview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
+async function motEnsure(){
+  const st=APP.states[APP.cur]; if(!st||!APP.scene) return null;
+  if(APP.mot&&APP.mot.st===st) return APP.mot;
+  status("技の計算の用意…");
+  const prog=APP.arcRom?APP.arcRom.prog:(APP.dvBase?.ic||await readDec("IC12_15.CMP"));
+  const eng=motEngine(prog,st.mem,APP.arcRom?motRomData(APP.arcRom):null), sc=APP.scene.sc0, att=[];
+  // 写しの部品を関節に付ける。命令の列は関節の行列より 2 コマほど遅れているので、数コマ前までを候補にする
+  for(const pl of [0,1]){ const f=eng.info(pl).frame, Us=[eng.units(pl)]; for(const d of [1,2,3]) Us.push(eng.frame(pl,Math.max(1,f-d))); att.push(motAttach(sc,pl,Us)) }
+  status("");
+  return APP.mot={st,eng,att,pl:0,m:0,f:1,len:0,play:false};
+}
+async function motSet(m,f){
+  try{
+    const M=await motEnsure(); if(!M) return; const pl=+$("m-pl").value;
+    if(M.pl!==pl){ M.pl=pl; M.m=0 }
+    if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.len=len; M.eng.start(pl,m); $("m-frame").max=len; status("") }
+    M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len;
+    const S=APP.scene; S.sc=motApply(S.sc0,M.att[pl],M.eng.frame(pl,M.f)); rebuild();
+  }catch(e){ console.error(e); motStop(); status("技を計算できなかった: "+e.message,true) }
+}
+function motStop(){ if(APP.mot) APP.mot.play=false; $("m-play").textContent="▶ 再生" }
+function motPlay(){
+  const M=APP.mot; if(!M||!M.m){ motSet(+$("m-num").value,1).then(()=>{ if(APP.mot&&APP.mot.m) motPlay() }); return }
+  if(M.play){ motStop(); return }
+  M.play=true; $("m-play").textContent="■ 止める"; let t0=performance.now(), f0=M.f>=M.len?1:M.f;
+  const tick=now=>{ if(!M.play||APP.mot!==M) return; const f=f0+Math.floor((now-t0)*60/1000);   // ゲームは 1 秒 60 コマ
+    if(f>M.len){ t0=now; f0=1 } if(f!==M.f) motSet(M.m,f>M.len?1:f); requestAnimationFrame(tick) };
+  requestAnimationFrame(tick);
+}
+function motBack(){ motStop(); if(APP.mot) APP.mot.m=0; if(APP.scene){ APP.scene.sc=APP.scene.sc0; rebuild() } const st=APP.states[APP.cur]; if(st) motShowUI(st) }
 function init(){
   $("ver").textContent="版 "+VERSION; $("ver-h").textContent="v"+VERSION;
   try{ APP.gl=vglNew($("cv")) }catch(e){ status(e.message,true); return }
@@ -1816,6 +2243,11 @@ function init(){
   $("b-prev").onclick=()=>stepPart(-1); $("b-next").onclick=()=>stepPart(1); $("b-all").onclick=()=>stepPart(0);
   $("c-overlay").onchange=e=>$("viewer").classList.toggle("overlay",e.target.checked);
   $("b-reset").onclick=resetView;
+  $("m-num").onchange=()=>{ motStop(); motSet(+$("m-num").value,1) };
+  $("m-prev").onclick=()=>{ motStop(); motSet(Math.max(1,+$("m-num").value-1),1) }; $("m-next").onclick=()=>{ motStop(); motSet(Math.min(1359,+$("m-num").value+1),1) };
+  $("m-frame").oninput=()=>{ motStop(); motSet(APP.mot&&APP.mot.m?APP.mot.m:+$("m-num").value,+$("m-frame").value) };
+  $("m-play").onclick=motPlay; $("m-back").onclick=motBack;
+  $("m-pl").onchange=()=>{ motBack() };
   $("b-png").onclick=()=>{ draw(); $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=(APP.mode==="disc"?APP.scene?.names[0]:APP.states[APP.cur]?.name||"vf2").replace(/\.p2s$/i,"")+"_v"+VERSION+".png"; a.click() }) };
 }
 init();

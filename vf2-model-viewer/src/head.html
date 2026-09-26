@@ -77,10 +77,17 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <button id="b-reset">ゲームの視点に戻す</button>
   <button id="b-png">PNG で保存</button>
 </div>
+<div class="discview" id="motview" hidden><b>技を出す</b>
+  <select id="m-pl" aria-label="どちらのキャラ"><option value="0">1P</option><option value="1">2P</option></select>
+  <span class="parts">技 <button id="m-prev" aria-label="前の技">◀</button> <input id="m-num" type="number" min="1" max="1359" style="width:5.5em" aria-label="技の番号"> <button id="m-next" aria-label="次の技">▶</button></span>
+  <span class="parts">コマ <input id="m-frame" type="range" min="1" max="1" value="1" style="width:12em;vertical-align:middle" aria-label="コマ"> <span id="m-fn">-</span></span>
+  <button id="m-play">▶ 再生</button> <button id="m-back">写しに戻す</button>
+  <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形・髪の揺れはその写しのまま。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま</small></div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさは、ゲームの VU1 のプログラムと同じ式です。背景はステージのモデルのうち、そのコマで描いた部品です。空と遠景は、アーケードの2Dのタイルの面をゲームと同じずらし方で画面に貼ります（視点を回しても動きません）。</p>
 <p>アーケードのロムを選ぶと、アーケードのプログラム（i960）のテクスチャを展開する処理を、ページの中の小さなエミュレーターでそのまま動かして、キャラのテクスチャを Model 2 の細かさで作ります。PS2 版のテクスチャは、これを縦横入れ替えて 4 行に 1 行だけ残したものです（11 人とも一致を確かめた）。</p>
+<p>技を出すときは、写しに残っているアーケードの作業用メモリから始めて、アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をページの中の小さなエミュレーターでそのまま動かします。アーケードでは計算用のチップ（TGP）がする計算は、PS2 本体がその代わりに持っている関数を、PS2 の CPU の小さなエミュレーターで動かします。できた 16 個の関節に、写しの部品を付け直して描きます。</p>
 <p>ディスクだけで見るときは、色の材料もディスクから取ります。ただし色の変換表はステージごとにゲームが作るもので、ディスクには無いので、おおよその値で代わりにしています。</p>
 <p id="ver"></p></details>
 </main>

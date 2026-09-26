@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.11.0";
+const VERSION="0.12.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -34,7 +34,7 @@ async function showDisc(){
     const models=new Map((await readObj(name)).map(m=>[m.id,m])), rob=(await readRobs())[SC_ROB.indexOf(name.slice(4,7))], ids=[...models.keys()].sort((a,b)=>a-b);
     if(APP.dv?.name!==name) APP.dv={name,ids,k:-1};
     const only=APP.dv.k<0?null:ids[APP.dv.k], col=dvColors(APP.dvBase.fix,APP.dvBase.ic,rob,APP.dvBase.dfl), sc=dvScene(models,only);
-    APP.mode="disc"; APP.cur=-1; listStates();
+    APP.mode="disc"; APP.cur=-1; listStates(); motStop(); APP.mot=null; $("motview").hidden=true;
     APP.scene={sc,col,models:{0:models,1:null,stage:null},names:[name.replace(".CMP",""),"なし","なし"],light:sceneLight(null,sc)};
     APP.gl.setColors(col); APP.gl.setBack(null); APP.gl.setArc(null); rebuild(); resetView();
     if(only!=null){ APP.rot=[0.6,0.3]; draw() }   // 1つだけのときは斜めから（真横だと薄い部品が見えない）
@@ -64,9 +64,11 @@ async function show(){
     for(const n of stageNames) stc.push({name:n,models:await readObj(n)});
     const st2=sceneChooseModels(sc,0,stc,models[0]?new Set(models[0].keys()):null);
     models.stage=st2?st2.map:null; names.push(st2?st2.name.replace(".CMP",""):"なし");
-    APP.scene={sc,col,models,names,light:sceneLight(st.vu1,sc),rob:[who[0]>=0?SC_ROB[who[0]]:null,who[1]>=0?SC_ROB[who[1]]:null]};
+    motStop(); APP.mot=null;
+    APP.scene={sc,sc0:sc,col,models,names,light:sceneLight(st.vu1,sc),rob:[who[0]>=0?SC_ROB[who[0]]:null,who[1]>=0?SC_ROB[who[1]]:null]};
     APP.gl.setColors(col); APP.gl.setBack(scrBack(scrRead(st.mem))); applyArc(); rebuild(); resetView();
     $("shot").src=st.shot||""; $("shot").hidden=!st.shot; $("empty").hidden=true; $("hint").hidden=false;
+    motShowUI(st);
     status("");
   }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
 }
@@ -82,8 +84,9 @@ function rebuild(){
 // 視点: ゲームのカメラの座標のまま、2人の真ん中を中心に回す
 function center(){
   // ファイルにあったキャラの部品（影を除く）の位置の平均
+  // 技を出しているあいだも写しの位置を中心にする（再生中に視点が動かないように）
   const S=APP.scene; let s=[0,0,0],n=0;
-  for(const x of S.sc.draws){ const m=x.m; if(Math.abs(m[4])<0.05||!S.models[x.player]||!S.models[x.player].has(x.id)) continue; s[0]+=m[9]; s[1]+=m[10]; s[2]+=m[11]; n++ }
+  for(const x of (S.sc0||S.sc).draws){ const m=x.m; if(Math.abs(m[4])<0.05||!S.models[x.player]||!S.models[x.player].has(x.id)) continue; s[0]+=m[9]; s[1]+=m[10]; s[2]+=m[11]; n++ }
   return n?s.map(v=>v/n):[0,0,4];
 }
 function resetView(){ APP.rot=[0,0]; APP.zoom=1; APP.pan=[0,0]; draw() }
@@ -156,6 +159,39 @@ function listStates(){
   APP.states.forEach((s,i)=>{ const b=document.createElement("button"); b.textContent=s.name.replace(/\.p2s$/i,""); if(i===APP.cur) b.className="on";
     b.onclick=()=>{ APP.cur=i; listStates(); show() }; box.appendChild(b) });
 }
+// 技を出す（motion.js）。エンジンは写しごとに最初に触ったときに作る（写しの主メモリを写して使う）
+function motG7Info(mem,pl){ const d=new DataView(mem.buffer,mem.byteOffset,mem.byteLength), W=MOT_WORK, g7=d.getUint32(W+(pl?0x500808:0x500804),true); return {motion:d.getUint16(W+g7+0x1a8,true),frame:d.getUint16(W+g7+0x1aa,true)} }
+function motShowUI(st){ $("motview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
+async function motEnsure(){
+  const st=APP.states[APP.cur]; if(!st||!APP.scene) return null;
+  if(APP.mot&&APP.mot.st===st) return APP.mot;
+  status("技の計算の用意…");
+  const prog=APP.arcRom?APP.arcRom.prog:(APP.dvBase?.ic||await readDec("IC12_15.CMP"));
+  const eng=motEngine(prog,st.mem,APP.arcRom?motRomData(APP.arcRom):null), sc=APP.scene.sc0, att=[];
+  // 写しの部品を関節に付ける。命令の列は関節の行列より 2 コマほど遅れているので、数コマ前までを候補にする
+  for(const pl of [0,1]){ const f=eng.info(pl).frame, Us=[eng.units(pl)]; for(const d of [1,2,3]) Us.push(eng.frame(pl,Math.max(1,f-d))); att.push(motAttach(sc,pl,Us)) }
+  status("");
+  return APP.mot={st,eng,att,pl:0,m:0,f:1,len:0,play:false};
+}
+async function motSet(m,f){
+  try{
+    const M=await motEnsure(); if(!M) return; const pl=+$("m-pl").value;
+    if(M.pl!==pl){ M.pl=pl; M.m=0 }
+    if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.len=len; M.eng.start(pl,m); $("m-frame").max=len; status("") }
+    M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len;
+    const S=APP.scene; S.sc=motApply(S.sc0,M.att[pl],M.eng.frame(pl,M.f)); rebuild();
+  }catch(e){ console.error(e); motStop(); status("技を計算できなかった: "+e.message,true) }
+}
+function motStop(){ if(APP.mot) APP.mot.play=false; $("m-play").textContent="▶ 再生" }
+function motPlay(){
+  const M=APP.mot; if(!M||!M.m){ motSet(+$("m-num").value,1).then(()=>{ if(APP.mot&&APP.mot.m) motPlay() }); return }
+  if(M.play){ motStop(); return }
+  M.play=true; $("m-play").textContent="■ 止める"; let t0=performance.now(), f0=M.f>=M.len?1:M.f;
+  const tick=now=>{ if(!M.play||APP.mot!==M) return; const f=f0+Math.floor((now-t0)*60/1000);   // ゲームは 1 秒 60 コマ
+    if(f>M.len){ t0=now; f0=1 } if(f!==M.f) motSet(M.m,f>M.len?1:f); requestAnimationFrame(tick) };
+  requestAnimationFrame(tick);
+}
+function motBack(){ motStop(); if(APP.mot) APP.mot.m=0; if(APP.scene){ APP.scene.sc=APP.scene.sc0; rebuild() } const st=APP.states[APP.cur]; if(st) motShowUI(st) }
 function init(){
   $("ver").textContent="版 "+VERSION; $("ver-h").textContent="v"+VERSION;
   try{ APP.gl=vglNew($("cv")) }catch(e){ status(e.message,true); return }
@@ -184,6 +220,11 @@ function init(){
   $("b-prev").onclick=()=>stepPart(-1); $("b-next").onclick=()=>stepPart(1); $("b-all").onclick=()=>stepPart(0);
   $("c-overlay").onchange=e=>$("viewer").classList.toggle("overlay",e.target.checked);
   $("b-reset").onclick=resetView;
+  $("m-num").onchange=()=>{ motStop(); motSet(+$("m-num").value,1) };
+  $("m-prev").onclick=()=>{ motStop(); motSet(Math.max(1,+$("m-num").value-1),1) }; $("m-next").onclick=()=>{ motStop(); motSet(Math.min(1359,+$("m-num").value+1),1) };
+  $("m-frame").oninput=()=>{ motStop(); motSet(APP.mot&&APP.mot.m?APP.mot.m:+$("m-num").value,+$("m-frame").value) };
+  $("m-play").onclick=motPlay; $("m-back").onclick=motBack;
+  $("m-pl").onchange=()=>{ motBack() };
   $("b-png").onclick=()=>{ draw(); $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=(APP.mode==="disc"?APP.scene?.names[0]:APP.states[APP.cur]?.name||"vf2").replace(/\.p2s$/i,"")+"_v"+VERSION+".png"; a.click() }) };
 }
 init();
