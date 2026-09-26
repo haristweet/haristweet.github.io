@@ -16,18 +16,24 @@ void main(){
 }`;
 const VGL_FS=`
 precision highp float;
-uniform sampler2D uTex, uClut, uXlat; uniform float uShadow, uCut;
+uniform sampler2D uTex, uClut, uXlat; uniform float uShadow, uCut, uBilin;
 varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial;
+// テクスチャの値（0〜15）。loc は面の中のテクセルの位置で、テクスチャの大きさで折り返す
+float texv(vec2 loc){
+  vec2 t=vOrgSize.xy+mod(loc,vOrgSize.zw);
+  return floor(texture2D(uTex,vec2((floor(t.x)+vMisc.y*512.0+0.5)/1024.0,(floor(t.y)+0.5)/1024.0)).r*255.0/17.0+0.5);
+}
 float xl(float row,float luma){ return texture2D(uXlat,vec2((luma+0.5)/64.0,(row+0.5)/96.0)).r; }
 void main(){
   if(uShadow>0.5){ gl_FragColor=vec4(0.0,0.0,0.0,0.45); return; }
   float L=floor(texture2D(uClut,vec2((vB+0.5)/128.0,(vMisc.z+0.5)/256.0)).r*255.0+0.5), luma;
   if(vMisc.x>0.5){
-    vec2 t=vOrgSize.xy+mod(vLoc,vOrgSize.zw);
-    float x=floor(t.x)+vMisc.y*512.0, y=floor(t.y);
-    float tx=floor(texture2D(uTex,vec2((x+0.5)/1024.0,(y+0.5)/1024.0)).r*255.0/17.0+0.5);
+    float tx=texv(vLoc);
     if(abs(tx-uCut)<0.5||(vMisc.x>1.5&&tx>14.5)) discard;   // 値 15 は、属性 h0 の bit13 が立った面では透明（推測。写真で木が抜けるのを確かめた）
-    luma=(vSpecial>0.5||L<48.0)?floor(L*tx*17.0*8.0/2048.0):48.0+tx;
+    // なめらか: ゲームは GS にバイリニアで引かせている（ゲームが描いた画面がぼけている）。周りの4つのテクセルの値の重み付き平均
+    if(uBilin>0.5){ vec2 f=vLoc-0.5, b=floor(f), a=f-b;
+      tx=mix(mix(texv(b),texv(b+vec2(1.0,0.0)),a.x),mix(texv(b+vec2(0.0,1.0)),texv(b+vec2(1.0,1.0)),a.x),a.y); }
+    luma=(vSpecial>0.5||L<48.0)?floor(L*tx*17.0*8.0/2048.0):floor(48.0+tx+0.5);
   } else luma=L;
   luma=clamp(luma,0.0,63.0);
   gl_FragColor=vec4(xl(vCol.r,luma),xl(32.0+vCol.g,luma),xl(64.0+vCol.b,luma),1.0);
@@ -71,7 +77,7 @@ function vglNew(canvas){
     // body＝体と背景、shadow＝影
     setMesh(body,shadow){ [body,shadow].forEach((m,i)=>{ gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]); gl.bufferData(gl.ARRAY_BUFFER,m?m.data:new Float32Array(0),gl.STATIC_DRAW); counts[i]=m?m.count:0 }) },
     // view: 4×4（列優先）、focal: [x,y]（クリップ座標の倍率）
-    draw(view,focal,light,back){
+    draw(view,focal,light,back,opt={}){
       const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
       if(!counts[0]&&!counts[1]) return;
       for(let l=0;l<8;l++) gl.disableVertexAttribArray(l);
@@ -84,7 +90,7 @@ function vglNew(canvas){
       gl.enable(gl.DEPTH_TEST); gl.useProgram(pr);
       const u=n=>gl.getUniformLocation(pr,n);
       gl.uniformMatrix4fv(u("uView"),false,view); gl.uniform2fv(u("uFocal"),focal); gl.uniform3fv(u("uLight"),light);
-      gl.uniform1f(u("uCut"),vglCut);
+      gl.uniform1f(u("uCut"),vglCut); gl.uniform1f(u("uBilin"),opt.bilin?1:0);
       gl.uniform1i(u("uTex"),0); gl.uniform1i(u("uClut"),1); gl.uniform1i(u("uXlat"),2);
       const F=4, S=BUILD_STRIDE*F;
       for(let i=0;i<2;i++){ if(!counts[i]) continue;

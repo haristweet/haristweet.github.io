@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.6.0";
+const VERSION="0.7.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -97,7 +97,7 @@ function draw(){
   const V=new Float32Array([R[0],R[1],R[2],0, R[3],R[4],R[5],0, R[6],R[7],R[8],0, t[0]+APP.pan[0],t[1]+APP.pan[1],t[2],1]);
   // ゲームの画面（496×384 を 622×412 に広げて見せている）と同じ写り方。この欄の縦横比は 622:412
   const f=APP.scene.sc.focal, focal=[f[0]*APP.zoom*2/496, f[1]*APP.zoom*2/384];
-  APP.gl.draw(V,focal,APP.scene.light.L,$("c-sky").checked);   // 光はゲームのカメラの座標のまま（法線も回す前のもの）
+  APP.gl.draw(V,focal,APP.scene.light.L,$("c-sky").checked,{bilin:$("c-smooth").checked});   // 光はゲームのカメラの座標のまま（法線も回す前のもの）
 }
 function hookInput(){
   const v=$("viewer"), pts=new Map(); let last=null, pinch=null;
@@ -133,7 +133,7 @@ function init(){
     if(APP.disc) show(); else status("次に 1 のディスクのイメージを選んでください");
   };
   for(const id of ["c-p1","c-p2","c-shadow","c-stage"]) $(id).onchange=rebuild;
-  $("c-sky").onchange=draw;
+  $("c-sky").onchange=draw; $("c-smooth").onchange=draw;
   $("s-char").onchange=()=>{ APP.dv=null; showDisc() };
   $("b-prev").onclick=()=>stepPart(-1); $("b-next").onclick=()=>stepPart(1); $("b-all").onclick=()=>stepPart(0);
   $("c-overlay").onchange=e=>$("viewer").classList.toggle("overlay",e.target.checked);
