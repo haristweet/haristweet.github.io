@@ -1,6 +1,9 @@
 // セーブステートの主メモリ（eeMemory.bin、32MB）から、そのコマの場面を読む（教訓3: ゲーム自身の値だけを使う）。
 // 本体 SLPM_625.47 の名前の表: g_geo 0x135a000、g_objTbl 0x1fc8760（2人×5125 語、モデル番号→変換済みモデルの番地）
 const SC_GEO=0x135a000, SC_OBJTBL=0x1fc8760;
+// 毎コマ作り直す部品（腹の帯など。物体の命令の4つ目が ffffffff）: m2epiSetModel が 3つ目の引数 k（4＝1P・0x104＝2P）で
+// 形＝*g_pM2epiPolWork＋0x10e640＋(k−4)×4（ファイルと同じ 40B の並び）、属性＝sysGetThdPtr(2つ目)、UV＝sysGetTpdPtr(1つ目) を変換して描く
+const SC_POLWORK=0x255dd8, SC_THDTBL=0x20e6e0, SC_TPDTBL=0x20e840;
 // ジオメトライザへの命令の列を読む。焦点距離の命令 0x04800000 から1つずつ読み、「終わり」（番号 15）で止める。
 // 命令＝上位 bit23〜の番号（下位 23bit は 0）。引数の語数: 物体1=4・枠3=6・モード7=1・8=1・焦点9=2・光10=3・行列11=12・12=3・LOD22=1。
 // bit31 の立った語は別の所を呼ぶ1語。物体の4つ目の引数を g_objTbl で逆に引くとモデル番号と 1P/2P
@@ -21,10 +24,19 @@ function sceneRead(mem){
     if(w&0x7fffff||!(op in LEN)) throw new Error("命令の列に知らない語 "+w.toString(16)+"（"+(j*4).toString(16)+"）");
     if(op===11) mat=Array.from(F32.subarray(j+1,j+13));
     if(op===10&&!light) light=Array.from(F32.subarray(j+1,j+4));
-    if(op===1){ const o=inv.get(W32[j+4]); if(o&&mat) draws.push({player:o.player,id:o.id,m:mat}) }
+    if(op===1){ const o=inv.get(W32[j+4]); if(o&&mat) draws.push({player:o.player,id:o.id,m:mat});
+      else if(mat&&W32[j+4]===0xffffffff&&!(W32[j+3]>>>16)){ const dyn=sceneDyn(mem,W32,W32[j+1],W32[j+2],W32[j+3]); if(dyn) draws.push({player:W32[j+3]>>8&1,id:-1,m:mat,dyn}) } }
     j+=1+LEN[op];
   }
   return {draws,focal,light:light||[0,-1,0]};
+}
+// sysGetTpdPtr・sysGetThdPtr の表（i960 の番地, PS2 の番地 の組）を引く
+function sceneDynPtr(W32,tbl,key){ for(let i=0;W32[(tbl>>2)+i*2+1];i++) if(W32[(tbl>>2)+i*2]===key) return W32[(tbl>>2)+i*2+1]; return 0 }
+function sceneDyn(mem,W32,tpd,thd,k){
+  const work=W32[SC_POLWORK>>2], geo=work+0x10e640+(k-4)*4, uv=sceneDynPtr(W32,SC_TPDTBL,tpd), at=sceneDynPtr(W32,SC_THDTBL,thd);
+  if(!work||!uv||!at||geo+0x400>mem.length) return null;
+  const a=mem.slice(at,at+0x200);
+  return {ch:[a,a,mem.slice(uv,uv+0x400),mem.slice(geo,geo+0x400)]};
 }
 // 場面の色とテクスチャの材料（すべて g_geo の中）
 //   テクスチャ用メモリ +0xa040（512KB。1ページ＝幅 512・高さ 1024 の 4bit、1行 256B。1P はページ1）

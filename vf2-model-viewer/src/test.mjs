@@ -24,13 +24,17 @@ if(has("disc/vf2.bin")){
   if(has("disc/states")){
     const robs=[]; { const mrg=await files.get("TEX_ROB.MRG")(), dv=new DataView(mrg.buffer,mrg.byteOffset), n=dv.getUint32(0,true);
       for(let i=0;i<n;i++){ const o=dv.getUint32(4+i*4,true), e=i+1<n?dv.getUint32(8+i*4,true):mrg.length; robs.push(g("cricmpUnpack")(mrg.subarray(o,e))) } }
-    const expect={"01_akira_lau":["AKI","LAU",111],"02_pai_sarah":["PAI","SAR",108],"03_wolf_jeffry":["WOL","JEF",106],"04_kage_jacky":["KAG","JAC",121],"05_shun_lion":["SUI","TOU",112],"06_akira_akira":["AKI","AKI",118],"07_pai_pai":["PAI","PAI",108]};
+    // 部品の数は、毎コマ作り直す腹の帯（1人1つ）を含む
+    const expect={"01_akira_lau":["AKI","LAU",113],"02_pai_sarah":["PAI","SAR",110],"03_wolf_jeffry":["WOL","JEF",108],"04_kage_jacky":["KAG","JAC",123],"05_shun_lion":["SUI","TOU",114],"06_akira_akira":["AKI","AKI",120],"07_pai_pai":["PAI","PAI",110]};
     for(const [s,[p1,p2,nd]] of Object.entries(expect)){
       const f="disc/states/"+s+".p2s"; if(!has(f)) continue;
       await t("写し "+s+": 命令の列・キャラの見分け",async()=>{
         const z=await g("p2sOpen")(fs.readFileSync(f)), mem=await z.get("eeMemory.bin")();
         assert.equal(mem.length,32<<20);
         const sc=g("sceneRead")(mem); assert.equal(sc.draws.length,nd); assert.deepEqual(sc.focal,[600,600]);
+        // 腹の帯: 1P と 2P に1つずつ、面がある（ファイルの帯と同じ 16 面）
+        const dyn=sc.draws.filter(d=>d.dyn); assert.deepEqual(dyn.map(d=>d.player).sort(),[0,1]);
+        for(const d of dyn) assert.equal(g("objPolys")(d.dyn.ch[3],d.dyn.ch[0],d.dyn.ch[2]).length,16);
         const who=g("sceneWhichRob")(g("sceneColors")(mem).tex,robs).map(i=>g("SC_ROB")[i]);
         assert.deepEqual(who,[p1,p2]);
         const li=g("sceneLight")(await z.get("vu1Memory.bin")(),sc); assert.ok(li.fromVu); assert.equal(li.tab.length,32);

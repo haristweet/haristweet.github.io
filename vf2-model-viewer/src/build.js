@@ -7,7 +7,7 @@ function sceneMesh(sc,col,models,opt={}){
   const out=[], missing=new Set(); let shadows=0; const which=opt.which||"body";
   const cram=new DataView(col.cram.buffer,col.cram.byteOffset,col.cram.byteLength);
   for(const d of sc.draws){
-    let e=models[d.player]&&models[d.player].get(d.id), isStage=false;
+    let e=d.dyn||(models[d.player]&&models[d.player].get(d.id)), isStage=false;
     if(!e&&d.player===0&&models.stage){ e=models.stage.get(d.id); isStage=!!e }   // ステージの部品は 1P の表に入っている
     if(!e){ missing.add(d.id); continue }
     const m=d.m, det=m[0]*(m[4]*m[8]-m[5]*m[7])-m[1]*(m[3]*m[8]-m[5]*m[6])+m[2]*(m[3]*m[7]-m[4]*m[6]);
