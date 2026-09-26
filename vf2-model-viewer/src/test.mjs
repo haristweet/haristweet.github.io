@@ -30,7 +30,8 @@ if(has("disc/vf2.bin")){
       "08_wolf_wolf_cc":["WOL","WOL",93],"09_wolf_wolf_dd":["WOL","WOL",94],"10_shun_shun_ee":["SUI","SUI",104],"11_wolf_wolf_hh":["WOL","WOL",94],
       "12_wolftest":["WOL","WOL",94],"13_jeffrytest":["JEF","JEF",112],"14_jeffrytest2":["JEF","JEF",112],"15_wolftest2":["WOL","WOL",94],
       "16_jacky_jacky_gg":["JAC","JAC",112],"17_jacky_somersault":["JAC","JAC",120],"18_jacky_lau":["JAC","LAU",114],"19_jacky_sarah":["JAC","SAR",102],
-      "20_akira_lion":["AKI","TOU",111],"21_jacky_win":["JAC","SAR",105]};
+      "20_akira_lion":["AKI","TOU",111],"21_jacky_win":["JAC","SAR",105],
+      "22_shun_lau_ringout":["SUI","LAU",99],"23_akira_lion_ringout":["AKI","TOU",109],"24_kage_jeffry_beach":["KAG","JEF",146]};
     for(const [s,[p1,p2,nd]] of Object.entries(expect)){
       const f="disc/states/"+s+".p2s"; if(!has(f)) continue;
       await t("写し "+s+": 命令の列・キャラの見分け",async()=>{
