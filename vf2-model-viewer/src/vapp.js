@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.12.1";
+const VERSION="0.13.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -173,22 +173,35 @@ async function motEnsure(){
   status("");
   return APP.mot={st,eng,att,pl:0,m:0,f:1,len:0,play:false};
 }
-async function motSet(m,f){
+async function motSet(m,f,smooth=false){
   try{
     const M=await motEnsure(); if(!M) return; const pl=+$("m-pl").value;
     if(M.pl!==pl){ M.pl=pl; M.m=0 }
-    if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.len=len; M.eng.start(pl,m); $("m-frame").max=len; status("") }
+    if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.len=len; M.eng.start(pl,m,smooth); $("m-frame").max=len; status("") }
     M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len;
     const S=APP.scene; S.sc=motApply(S.sc0,M.att[pl],M.eng.frame(pl,M.f),M.eng.parts(pl)); rebuild();
   }catch(e){ console.error(e); motStop(); status("技を計算できなかった: "+e.message,true) }
 }
-function motStop(){ if(APP.mot) APP.mot.play=false; $("m-play").textContent="▶ 再生" }
-function motPlay(){
+function motStop(){ if(APP.mot){ APP.mot.play=false; APP.mot.random=false } $("m-play").textContent="▶ 再生"; $("m-rand").textContent="🎲 ランダムに連続" }
+// ランダムに連続: 技が終わるたびに 1〜1359 から次の技を選び、ゲームの「前の技からのつなぎ」（0x27130）でつなぐ
+function motPickRandom(M){ for(let n=0;n<200;n++){ const m=1+Math.floor(Math.random()*1359); if(M.eng.motionLength(m)>0) return m } return M.m||1 }
+async function motRandom(){
+  if(APP.mot&&APP.mot.random){ motStop(); return }
+  motStop(); const M=await motEnsure(); if(!M) return;
+  await motSet(motPickRandom(M),1,!!M.m); if(!M.m) return;
+  M.random=true; $("m-rand").textContent="■ 止める"; motPlay(true);
+}
+function motPlay(fromRandom){
   const M=APP.mot; if(!M||!M.m){ motSet(+$("m-num").value,1).then(()=>{ if(APP.mot&&APP.mot.m) motPlay() }); return }
-  if(M.play){ motStop(); return }
-  M.play=true; $("m-play").textContent="■ 止める"; let t0=performance.now(), f0=M.f>=M.len?1:M.f;
-  const tick=now=>{ if(!M.play||APP.mot!==M) return; const f=f0+Math.floor((now-t0)*60/1000);   // ゲームは 1 秒 60 コマ
-    if(f>M.len){ t0=now; f0=1 } if(f!==M.f) motSet(M.m,f>M.len?1:f); requestAnimationFrame(tick) };
+  if(M.play&&!fromRandom){ motStop(); return }
+  M.play=true; if(!M.random) $("m-play").textContent="■ 止める"; let t0=performance.now(), f0=M.f>=M.len?1:M.f, busy=false;
+  const tick=async now=>{ if(!M.play||APP.mot!==M) return;
+    if(!busy){ const f=f0+Math.floor((now-t0)*60/1000);   // ゲームは 1 秒 60 コマ
+      busy=true;
+      if(f>M.len){ t0=now; f0=1; await motSet(M.random?motPickRandom(M):M.m,1,M.random) }
+      else if(f!==M.f) await motSet(M.m,f);
+      busy=false }
+    requestAnimationFrame(tick) };
   requestAnimationFrame(tick);
 }
 function motBack(){ motStop(); if(APP.mot) APP.mot.m=0; if(APP.scene){ APP.scene.sc=APP.scene.sc0; rebuild() } const st=APP.states[APP.cur]; if(st) motShowUI(st) }
@@ -223,7 +236,7 @@ function init(){
   $("m-num").onchange=()=>{ motStop(); motSet(+$("m-num").value,1) };
   $("m-prev").onclick=()=>{ motStop(); motSet(Math.max(1,+$("m-num").value-1),1) }; $("m-next").onclick=()=>{ motStop(); motSet(Math.min(1359,+$("m-num").value+1),1) };
   $("m-frame").oninput=()=>{ motStop(); motSet(APP.mot&&APP.mot.m?APP.mot.m:+$("m-num").value,+$("m-frame").value) };
-  $("m-play").onclick=motPlay; $("m-back").onclick=motBack;
+  $("m-play").onclick=()=>motPlay(); $("m-rand").onclick=motRandom; $("m-back").onclick=motBack;
   $("m-pl").onchange=()=>{ motBack() };
   $("b-png").onclick=()=>{ draw(); $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=(APP.mode==="disc"?APP.scene?.names[0]:APP.states[APP.cur]?.name||"vf2").replace(/\.p2s$/i,"")+"_v"+VERSION+".png"; a.click() }) };
 }

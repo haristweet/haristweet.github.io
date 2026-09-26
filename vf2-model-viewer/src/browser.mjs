@@ -32,6 +32,10 @@ for(const [w,h,tag] of [[1100,900,"pc"],[390,844,"phone"]]){
     await p.locator("#viewer").screenshot({path:"out/b_pc_m2.png"}); await p.click("#m-play");
     console.log(tag,"再生:",f1,"→",f2,JSON.stringify(await p.textContent("#status")));
     await p.click("#m-back"); await p.waitForTimeout(300); console.log(tag,"戻す:",await p.textContent("#m-fn"));
+    // ランダムに連続: 技の番号が変わっていき、止められる
+    await p.click("#m-rand"); const seen=new Set(); for(let i=0;i<40&&seen.size<3;i++){ await p.waitForTimeout(250); seen.add(await p.inputValue("#m-num")) }
+    await p.locator("#viewer").screenshot({path:"out/b_pc_m3.png"}); await p.click("#m-rand"); const a1=await p.textContent("#m-fn"); await p.waitForTimeout(400);
+    console.log(tag,"ランダム:",[...seen].join(","),"止めたあと",a1,"→",await p.textContent("#m-fn"),await p.textContent("#m-rand"));
   }
   console.log(tag,"エラー",errs);
   await p.close();
