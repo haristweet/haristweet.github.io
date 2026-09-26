@@ -20,12 +20,14 @@ function sceneMesh(sc,col,models,opt={}){
     const mir=!shadow&&det<-0.05; if(mir&&mirror[0]<0) mirror[0]=out.length/BUILD_STRIDE;
     const T=v=>[v[0]*m[0]+v[1]*m[3]+v[2]*m[6]+m[9], v[0]*m[1]+v[1]*m[4]+v[2]*m[7]+m[10], v[0]*m[2]+v[1]*m[5]+v[2]*m[8]+m[11]];
     // 属性の表は 1P（とステージ）が塊0、2P が塊1
+    let over=0;   // 部品の中で何枚目の「重ねる面」か（透明ありのテクスチャの面と貼りもの。ゲームは部品の中をファイルの順に上塗りする）
     for(const p of objPolys(e.ch[3],e.ch[d.player?1:0],e.ch[2])){
       const q=p.v.map(T), a=q[1].map((x,i)=>x-q[0][i]), b=q[2].map((x,i)=>x-q[0][i]);
       const n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=(det<0?-1:1)*(Math.hypot(...n)||1); for(let i=0;i<3;i++) n[i]/=l;   // 映り込み（行列式が負）は頂点の並びが裏返るので法線を戻す
       const c16=cram.getUint16((p.attr[3]>>6&1023)*2,true), c5=[c16&31,c16>>5&31,c16>>10&31];
       let tx=null; if(p.attr[0]>>14&1) tx=texCoords(p.attr,p.uv);
-      const ls=p.h>>18&31, lt=opt.light?opt.light.tab[ls]:[63.5,31.5,0,0], lk=[lt[0],lt[1],lt[2],(lt[3]&7&(opt.light?opt.light.flags:0))?1:0,(ls>=10&&ls<=12?1:0)+((p.attr[1]>>8)?2:0)];
+      const ov=(p.attr[1]>>8)||(tx&&(p.attr[0]>>13&1))?++over:0;
+      const ls=p.h>>18&31, lt=opt.light?opt.light.tab[ls]:[63.5,31.5,0,0], lk=[lt[0],lt[1],lt[2],(lt[3]&7&(opt.light?opt.light.flags:0))?1:0,(ls>=10&&ls<=12?1:0)+(ov?2:0)+4*Math.min(ov,255)];
       const vert=k=>{ out.push(...q[k],...n,...c5);
         if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,(p.attr[0]>>13&1)?2:1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0);
         out.push((p.h>>10&3)|((p.h>>17&63)<<2),...lk) };

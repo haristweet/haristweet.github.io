@@ -9,10 +9,12 @@ void main(){
   float d=clamp(dot(uLight,aNrm),0.0,1.0), s=clamp(2.0*d*aNrm.z-uLight.z,0.0,1.0);
   vB=floor(clamp(aLk.x*d+aLk.y+(aLk.w>0.5?aLk.z*pow(s,8.0):0.0),0.0,127.0));
   vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc; vSpecial=mod(aSpecial,2.0);
+  float over=floor(aSpecial/4.0);   // 部品の中で何枚目の重ねる面か（build.js）
   // 奥行き 0.05〜100 を -1〜1 に
   gl_Position=vec4(uFocal.x*p.x, uFocal.y*p.y, (p.z*100.05-10.0)/99.95, p.z);
-  // 貼りもの（目や眉）は肌とほぼ同じ所にあるので、ごくわずか手前へ（ゲームは部品の中を描く順に重ね塗りする。VU1 の m2mdlSetSameZval）
-  if(aSpecial>1.5) gl_Position.z-=0.00002*p.z;
+  // 重ねる面（貼りもの＝目や眉、透明ありのテクスチャの面＝ウルフの隈取りなど）は肌とまったく同じ所にあるので、ごくわずか手前へ。
+  // ゲームは部品の中をファイルの順に上塗りする（VU1 の m2mdlSetSameZval）ので、後の面ほど少しずつ手前へ（深さの刻み 1 つ強ずつ）
+  if(mod(aSpecial,4.0)>1.5) gl_Position.z-=(0.00002+over*1.5e-7)*p.z;
 }`;
 const VGL_FS=`
 precision highp float;
@@ -23,6 +25,9 @@ varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc;
 // (横 py, 縦 4×px) を引く（PS2 の (px, py) はその 4 行に 1 行。arcade.js）
 // 折り返しは整数のテクセル番号で（mod に整数ちょうどを渡すと誤差で1つ先を読むことがある。なめらかのとき点々になった）
 vec2 wrapi(vec2 loc,vec2 sz){ vec2 li=floor(loc); return li-sz*floor((li+0.5)/sz); }
+// PS2 のテクスチャ: 座標は UV に +10 した値（横 10/32・縦 10/8 テクセル。PS2 版の変換済みモデルの ST と同じ）。区画の端ちょうどまでの面が
+// この分だけはみ出して、折り返すと反対の端（目や眉の濃い所）を読み、頬に線が出た。何番目の区画かは +10 を引いた位置で決め、はみ出しは端のテクセルで止める
+vec2 wrapb(vec2 loc,vec2 sz){ vec2 li=floor(loc), k=floor((loc-vec2(0.3125,1.25))/sz); return clamp(li-sz*k,vec2(0.0),sz-1.0); }
 // アーケードのテクスチャのミップマップの段（0＝元の大きさ）。小さい版はページで作る（vapp.js の arcMips。アーケードの RAM の小さい版は、ステージのセットを全部展開すると別のテクスチャとぶつかるので使わない）
 float gLev=0.0;
 float texA(vec2 loc){   // loc は段 gLev の単位。値＋128（ロムで作った所）のまま返す。段 1〜 で小さい版が無い所は 255
@@ -34,7 +39,7 @@ float texA(vec2 loc){   // loc は段 gLev の単位。値＋128（ロムで作�
 }
 float texv(vec2 loc){
   if(uArc>0.5){ float v=texA(loc); return v>127.5?v-128.0:v; }
-  vec2 t=vOrgSize.xy+wrapi(loc,vOrgSize.zw);
+  vec2 t=vOrgSize.xy+wrapb(loc,vOrgSize.zw);
   return floor(texture2D(uTex,vec2((t.x+vMisc.y*512.0+0.5)/1024.0,(t.y+0.5)/1024.0)).r*255.0/17.0+0.5);
 }
 float xl(float row,float luma){ return texture2D(uXlat,vec2((luma+0.5)/64.0,(row+0.5)/96.0)).r; }
@@ -42,7 +47,7 @@ void main(){
   if(uShadow>0.5){ gl_FragColor=vec4(0.0,0.0,0.0,0.45); return; }
   float L=floor(texture2D(uClut,vec2((vB+0.5)/128.0,(vMisc.z+0.5)/256.0)).r*255.0+0.5), luma;
   if(vMisc.x>0.5){
-    vec2 loc=uArc>0.5?vLoc*vec2(4.0,1.0):vLoc;
+    vec2 loc=uArc>0.5?vLoc*vec2(4.0,1.0)-1.25:vLoc;   // アーケード: MAME と同じく UV÷8（PS2 の座標の +10 の分を引く。引かないと端の面がはみ出して折り返し、頬に線が出た）
 #ifdef HAS_DERIV
     // 微分は if や discard より前に（画素ごとに通り方が違う所では値が決まらない。そこで取ると段がでたらめになり点々が出た）
     float rho=max(length(dFdx(loc)),length(dFdy(loc)));
