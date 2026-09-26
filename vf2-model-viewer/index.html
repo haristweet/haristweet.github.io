@@ -1426,6 +1426,12 @@ class I960 {
 }
 // ステージのテクスチャを作る（ページ 0・1 の両方。PS2 と同じく各ページの横 256〜383 に当たる所＝RAM の縦 1024〜1535）
 function arcStageSheets(rom,n){ const L=arcLoader(rom), s=ARC_STAGE_SETS[n]; if(s) L.loadSet(s,0); return L }
+// そのコマで使うテクスチャを、アーケードと同じく1つのテクスチャ RAM に展開する（ステージ→1P→2P。ミップマップの段もぶつからない。CLAUDE.md）
+function arcSceneSheets(rom,chars,stageN){
+  const L=arcLoader(rom), s=ARC_STAGE_SETS[stageN]; if(s) L.loadSet(s,0);
+  chars.forEach((c,i)=>{ const k=ARC_CHARS.indexOf(c); if(k<0) return; L.loadSet(2*k+1,i); L.loadSet(2*k+2,i) });
+  return L;
+}
 // WebGL で描く。明るさは build.js の buildBright・buildLuma と同じ式（VU1 のプログラムを写したもの。pose.mjs も同じ）。
 // 色＝色の変換表[チャンネル][色 RAM の 5bit][明るさ]。光はゲームのカメラの座標で計算する（回して見ても場面に固定）。影は黒の半透明で最後に描く
 const VGL_VS=`
@@ -1444,16 +1450,24 @@ void main(){
 }`;
 const VGL_FS=`
 precision highp float;
-uniform sampler2D uTex, uClut, uXlat, uTexA; uniform float uShadow, uCut, uBilin, uArc;
+uniform sampler2D uTex, uClut, uXlat, uTexA, uTexM; uniform float uShadow, uCut, uBilin, uArc, uMip, uMipForce;
 varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial;
 // テクスチャの値（0〜15）。loc は面の中のテクセルの位置で、テクスチャの大きさで折り返す
 // アーケードのテクスチャ（uArc）: loc は横が 4 倍の単位。Model 2 のテクスチャ RAM（横 1024・縦 2048、ページ2枚を横に並べた 2048×2048）の
 // (横 py, 縦 4×px) を引く（PS2 の (px, py) はその 4 行に 1 行。arcade.js）
 // 折り返しは整数のテクセル番号で（mod に整数ちょうどを渡すと誤差で1つ先を読むことがある。なめらかのとき点々になった）
 vec2 wrapi(vec2 loc,vec2 sz){ vec2 li=floor(loc); return li-sz*floor((li+0.5)/sz); }
+// アーケードのテクスチャのミップマップの段（0＝元の大きさ）。小さい版はページで作る（vapp.js の arcMips。アーケードの RAM の小さい版は、ステージのセットを全部展開すると別のテクスチャとぶつかるので使わない）
+float gLev=0.0;
+float texA(vec2 loc){   // loc は段 gLev の単位。値＋128（ロムで作った所）のまま返す。段 1〜 で小さい版が無い所は 255
+  float sc=exp2(gLev); vec2 sz=vOrgSize.zw*vec2(4.0,1.0)/sc, o=vOrgSize.xy*vec2(4.0,1.0), li=wrapi(loc,sz);
+  float x=floor(o.y/sc)+li.y, y=floor(o.x/sc)+li.x;   // 格納の座標（横 x＝o.y 側、縦 y＝o.x 側）を段の大きさで
+  if(gLev>0.5){ float w=1024.0/sc, oy=gLev<1.5?0.0:gLev<2.5?1024.0:1536.0;
+    float v=floor(texture2D(uTexM,vec2((vMisc.y*w+x+0.5)/2048.0,(oy+y+0.5)/2048.0)).r*255.0+0.5); return v>254.5?v:v+128.0; }
+  return floor(texture2D(uTexA,vec2((x+vMisc.y*1024.0+0.5)/2048.0,(y+0.5)/2048.0)).r*255.0+0.5);
+}
 float texv(vec2 loc){
-  if(uArc>0.5){ vec2 sz=vOrgSize.zw*vec2(4.0,1.0), t=vOrgSize.xy*vec2(4.0,1.0)+wrapi(loc,sz);
-    return floor(texture2D(uTexA,vec2((t.y+vMisc.y*1024.0+0.5)/2048.0,(t.x+0.5)/2048.0)).r*255.0/17.0+0.5); }
+  if(uArc>0.5){ float v=texA(loc); return v>127.5?v-128.0:v; }
   vec2 t=vOrgSize.xy+wrapi(loc,vOrgSize.zw);
   return floor(texture2D(uTex,vec2((t.x+vMisc.y*512.0+0.5)/1024.0,(t.y+0.5)/1024.0)).r*255.0/17.0+0.5);
 }
@@ -1463,6 +1477,16 @@ void main(){
   float L=floor(texture2D(uClut,vec2((vB+0.5)/128.0,(vMisc.z+0.5)/256.0)).r*255.0+0.5), luma;
   if(vMisc.x>0.5){
     vec2 loc=uArc>0.5?vLoc*vec2(4.0,1.0):vLoc;
+#ifdef HAS_DERIV
+    // 微分は if や discard より前に（画素ごとに通り方が違う所では値が決まらない。そこで取ると段がでたらめになり点々が出た）
+    float rho=max(length(dFdx(loc)),length(dFdy(loc)));
+    // アーケードのテクスチャ: 画面の1画素に入るテクセルの数で段を選ぶ。元の大きさの所がロムで展開した所のときだけ（ロムで展開したテクスチャには小さい版が必ずある。
+    // PS2 で埋めた所には無く、段の場所にたまたまロムの別のテクスチャがあるので、段の場所では判定しない）
+    if(uArc>0.5&&uMip>0.5&&texA(loc)>127.5){ float l=clamp(floor(log2(max(rho,1e-6))),0.0,3.0);
+      if(uMipForce>-0.5) l=uMipForce;   // 調べ用（URL の ?mip=段）
+      for(int k=0;k<3;k++){ if(l>0.5){ gLev=l; if(texA(loc/exp2(l))<254.5) break; l-=1.0; } }
+      gLev=l; loc/=exp2(l); }
+#endif
     float tx=texv(loc);
     bool cut=vMisc.x>1.5, ramp=vSpecial>0.5||L<48.0;
     bool mame=uArc>0.5&&uBilin>0.5&&cut;   // アーケードのテクスチャ＋なめらか: 透明は MAME どおり（下）。一番近いテクセルでは抜かない
@@ -1493,12 +1517,14 @@ void main(){
   luma=clamp(luma,0.0,63.0);
   gl_FragColor=vec4(xl(vCol.r,luma),xl(32.0+vCol.g,luma),xl(64.0+vCol.b,luma),1.0);
 }`;
-let vglCut=+(new URLSearchParams(location.search).get("cut")??-1);
+let vglCut=+(new URLSearchParams(location.search).get("cut")??-1), vglMip=+(new URLSearchParams(location.search).get("mip")??-1);
 function vglNew(canvas){
   const gl=canvas.getContext("webgl",{antialias:true,preserveDrawingBuffer:true,alpha:true});
   if(!gl) throw new Error("このブラウザは WebGL に対応していない");
   const sh=(t,src)=>{ const s=gl.createShader(t); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s };
-  const pr=gl.createProgram(); gl.attachShader(pr,sh(gl.VERTEX_SHADER,VGL_VS)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,VGL_FS)); gl.linkProgram(pr);
+  // 描画の微分（ミップマップの段を選ぶのに使う）。無いブラウザでは段は 0 のまま
+  const deriv=!!gl.getExtension("OES_standard_derivatives");
+  const pr=gl.createProgram(); gl.attachShader(pr,sh(gl.VERTEX_SHADER,VGL_VS)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,(deriv?"#extension GL_OES_standard_derivatives : enable\n#define HAS_DERIV 1\n":"")+VGL_FS)); gl.linkProgram(pr);
   if(!gl.getProgramParameter(pr,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
   const bufs=[gl.createBuffer(),gl.createBuffer()], counts=[0,0], tex={}; let mirror=null;
   // 空と遠景（MODEL2 の2Dの面。画面に貼るだけで、視点を回しても動かない）
@@ -1524,9 +1550,11 @@ function vglNew(canvas){
       lum("xlat",2,64,96,col.xlat.slice(0,64*96));
     },
     // アーケードのテクスチャ（ページ2枚。各 横 1024×縦 2048 の 4bit を1バイトずつ）。null で使わない
-    setArc(pages){ if(!pages){ hasArc=false; return } const t=new Uint8Array(2048*2048);
-      for(let p=0;p<2;p++) for(let y=0;y<2048;y++) for(let x=0;x<1024;x++) t[y*2048+p*1024+x]=pages[p][y*1024+x]*17;
-      lum("texA",4,2048,2048,t); hasArc=true },
+    // mips: ミップマップの小さい版（vapp.js の arcMips の並べ方）
+    setArc(pages,mips){ if(!pages){ hasArc=false; return } const t=new Uint8Array(2048*2048);
+      for(let p=0;p<2;p++) for(let y=0;y<2048;y++) for(let x=0;x<1024;x++) t[y*2048+p*1024+x]=pages[p][y*1024+x];
+      lum("texA",4,2048,2048,t);
+      lum("texM",5,2048,2048,mips||new Uint8Array(2048*2048).fill(255)); hasArc=true },
     // 空と遠景の絵（496×384 の RGBA。null で消す）
     setBack(rgba){ hasBack=!!rgba; if(!rgba) return; let t=tex.back; if(!t) t=tex.back=gl.createTexture();
       gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
@@ -1551,7 +1579,7 @@ function vglNew(canvas){
       gl.uniformMatrix4fv(u("uView"),false,view); gl.uniform2fv(u("uFocal"),focal); gl.uniform3fv(u("uLight"),light);
       gl.uniform1f(u("uCut"),vglCut); gl.uniform1f(u("uBilin"),opt.bilin?1:0);
       gl.uniform1i(u("uTex"),0); gl.uniform1i(u("uClut"),1); gl.uniform1i(u("uXlat"),2);
-      gl.uniform1f(u("uArc"),opt.arc&&hasArc?1:0); if(hasArc){ gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D,tex.texA) } gl.uniform1i(u("uTexA"),4);
+      gl.uniform1f(u("uArc"),opt.arc&&hasArc?1:0); gl.uniform1f(u("uMip"),opt.mip===false||vglMip===-2?0:1); gl.uniform1f(u("uMipForce"),vglMip); if(hasArc){ gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D,tex.texA); gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D,tex.texM) } gl.uniform1i(u("uTexA"),4); gl.uniform1i(u("uTexM"),5);
       const F=4, S=BUILD_STRIDE*F;
       for(let i=0;i<2;i++){ if(!counts[i]) continue;
         gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]);
@@ -1568,7 +1596,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て
-const VERSION="0.10.0";
+const VERSION="0.11.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -1698,15 +1726,27 @@ function applyArc(){
   const S=APP.scene, st=APP.states[APP.cur];
   if(!APP.arcRom||!S||APP.mode!=="state"||!st){ APP.gl.setArc(null); return }
   if(!st.arc){
-    // キャラ（S.rob＝[1P, 2P]）は RAM の縦 0〜1023（PS2 の横 0〜255）、ステージは縦 1024〜1535（PS2 の横 256〜383）。それぞれ別に展開して、その範囲だけ使う
-    const L=arcCharSheets(APP.arcRom,S.rob), sn=+((S.names[2]||"").match(/STAGE(\d+)/)||[])[1], LS=sn?arcStageSheets(APP.arcRom,sn):null, T=S.col.tex;
+    // 元の大きさ: キャラはキャラのセットだけ（RAM の縦 0〜1023）、ステージはステージのセットだけ（縦 1024〜1535）で、ロムが書いた所は値＋128。
+    // それ以外は PS2 のテクスチャを縦に 4 倍（ステージのセットは帯の外にも書くが、PS2 はそこに共通のテクスチャ TEX_DFL を置いている）
+    const sn=+((S.names[2]||"").match(/STAGE(\d+)/)||[])[1], LC=arcCharSheets(APP.arcRom,S.rob), LS=sn?arcStageSheets(APP.arcRom,sn):null, T=S.col.tex;
     st.arc=[0,1].map(p=>{ const o=new Uint8Array(1024*2048);
-      for(let y=0;y<2048;y++){ const src=y<1024?L:(y<1536&&LS)?LS:null;
+      for(let y=0;y<2048;y++){ const src=y<1024?LC:(y<1536&&LS)?LS:null;
         for(let x=0;x<1024;x++){ const h=(y>>1)*512+(x>>1);
-          if(src&&src.mask[p][h]) o[y*1024+x]=arcTexel(src.tex[p],x,y); else { const b=T[(p<<18)+x*256+(y>>3)]; o[y*1024+x]=(y>>2)&1?b>>4:b&15 } } }
+          if(src&&src.mask[p][h]) o[y*1024+x]=128|arcTexel(src.tex[p],x,y); else { const b=T[(p<<18)+x*256+(y>>3)]; o[y*1024+x]=(y>>2)&1?b>>4:b&15 } } }
       return o });
   }
-  APP.gl.setArc(st.arc);
+  if(!st.arcMip) st.arcMip=arcMips(st.arc);
+  APP.gl.setArc(st.arc,st.arcMip);
+}
+// ミップマップの小さい版（段 1〜3）を元の大きさの版から作る。格納の座標（横 1024・縦 2048）で 2^段 四方を平均（透明 15 が半分以上なら 15）。
+// ロムで作った所（値＋128）だけ。ほかは 255（小さい版なし）。並べ方（2048×2048）: 段1＝ページ p の (p×512＋x, y)、段2＝(p×256＋x, 1024＋y)、段3＝(p×128＋x, 1536＋y)
+function arcMips(pages){
+  const o=new Uint8Array(2048*2048).fill(255), place=[null,[512,0],[256,1024],[128,1536]];
+  for(const p of [0,1]) for(let l=1;l<=3;l++){ const sc=1<<l, W=1024>>l, H=2048>>l, [ox,oy]=[place[l][0]*p,place[l][1]];
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){ let n=0,tr=0,sum=0,ok=true;
+      for(let dy=0;dy<sc&&ok;dy++) for(let dx=0;dx<sc;dx++){ const v=pages[p][(y*sc+dy)*1024+x*sc+dx]; if(v<128){ ok=false; break } n++; if((v&15)===15) tr++; else sum+=v&15 }
+      if(ok) o[(oy+y)*2048+ox+x]=tr*2>=n?15:Math.round(sum/(n-tr)) } }
+  return o;
 }
 function listStates(){
   const box=$("states"); box.innerHTML="";

@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.10.0";
+const VERSION="0.11.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -129,15 +129,27 @@ function applyArc(){
   const S=APP.scene, st=APP.states[APP.cur];
   if(!APP.arcRom||!S||APP.mode!=="state"||!st){ APP.gl.setArc(null); return }
   if(!st.arc){
-    // キャラ（S.rob＝[1P, 2P]）は RAM の縦 0〜1023（PS2 の横 0〜255）、ステージは縦 1024〜1535（PS2 の横 256〜383）。それぞれ別に展開して、その範囲だけ使う
-    const L=arcCharSheets(APP.arcRom,S.rob), sn=+((S.names[2]||"").match(/STAGE(\d+)/)||[])[1], LS=sn?arcStageSheets(APP.arcRom,sn):null, T=S.col.tex;
+    // 元の大きさ: キャラはキャラのセットだけ（RAM の縦 0〜1023）、ステージはステージのセットだけ（縦 1024〜1535）で、ロムが書いた所は値＋128。
+    // それ以外は PS2 のテクスチャを縦に 4 倍（ステージのセットは帯の外にも書くが、PS2 はそこに共通のテクスチャ TEX_DFL を置いている）
+    const sn=+((S.names[2]||"").match(/STAGE(\d+)/)||[])[1], LC=arcCharSheets(APP.arcRom,S.rob), LS=sn?arcStageSheets(APP.arcRom,sn):null, T=S.col.tex;
     st.arc=[0,1].map(p=>{ const o=new Uint8Array(1024*2048);
-      for(let y=0;y<2048;y++){ const src=y<1024?L:(y<1536&&LS)?LS:null;
+      for(let y=0;y<2048;y++){ const src=y<1024?LC:(y<1536&&LS)?LS:null;
         for(let x=0;x<1024;x++){ const h=(y>>1)*512+(x>>1);
-          if(src&&src.mask[p][h]) o[y*1024+x]=arcTexel(src.tex[p],x,y); else { const b=T[(p<<18)+x*256+(y>>3)]; o[y*1024+x]=(y>>2)&1?b>>4:b&15 } } }
+          if(src&&src.mask[p][h]) o[y*1024+x]=128|arcTexel(src.tex[p],x,y); else { const b=T[(p<<18)+x*256+(y>>3)]; o[y*1024+x]=(y>>2)&1?b>>4:b&15 } } }
       return o });
   }
-  APP.gl.setArc(st.arc);
+  if(!st.arcMip) st.arcMip=arcMips(st.arc);
+  APP.gl.setArc(st.arc,st.arcMip);
+}
+// ミップマップの小さい版（段 1〜3）を元の大きさの版から作る。格納の座標（横 1024・縦 2048）で 2^段 四方を平均（透明 15 が半分以上なら 15）。
+// ロムで作った所（値＋128）だけ。ほかは 255（小さい版なし）。並べ方（2048×2048）: 段1＝ページ p の (p×512＋x, y)、段2＝(p×256＋x, 1024＋y)、段3＝(p×128＋x, 1536＋y)
+function arcMips(pages){
+  const o=new Uint8Array(2048*2048).fill(255), place=[null,[512,0],[256,1024],[128,1536]];
+  for(const p of [0,1]) for(let l=1;l<=3;l++){ const sc=1<<l, W=1024>>l, H=2048>>l, [ox,oy]=[place[l][0]*p,place[l][1]];
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){ let n=0,tr=0,sum=0,ok=true;
+      for(let dy=0;dy<sc&&ok;dy++) for(let dx=0;dx<sc;dx++){ const v=pages[p][(y*sc+dy)*1024+x*sc+dx]; if(v<128){ ok=false; break } n++; if((v&15)===15) tr++; else sum+=v&15 }
+      if(ok) o[(oy+y)*2048+ox+x]=tr*2>=n?15:Math.round(sum/(n-tr)) } }
+  return o;
 }
 function listStates(){
   const box=$("states"); box.innerHTML="";

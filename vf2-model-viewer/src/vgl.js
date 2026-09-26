@@ -16,16 +16,24 @@ void main(){
 }`;
 const VGL_FS=`
 precision highp float;
-uniform sampler2D uTex, uClut, uXlat, uTexA; uniform float uShadow, uCut, uBilin, uArc;
+uniform sampler2D uTex, uClut, uXlat, uTexA, uTexM; uniform float uShadow, uCut, uBilin, uArc, uMip, uMipForce;
 varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial;
 // テクスチャの値（0〜15）。loc は面の中のテクセルの位置で、テクスチャの大きさで折り返す
 // アーケードのテクスチャ（uArc）: loc は横が 4 倍の単位。Model 2 のテクスチャ RAM（横 1024・縦 2048、ページ2枚を横に並べた 2048×2048）の
 // (横 py, 縦 4×px) を引く（PS2 の (px, py) はその 4 行に 1 行。arcade.js）
 // 折り返しは整数のテクセル番号で（mod に整数ちょうどを渡すと誤差で1つ先を読むことがある。なめらかのとき点々になった）
 vec2 wrapi(vec2 loc,vec2 sz){ vec2 li=floor(loc); return li-sz*floor((li+0.5)/sz); }
+// アーケードのテクスチャのミップマップの段（0＝元の大きさ）。小さい版はページで作る（vapp.js の arcMips。アーケードの RAM の小さい版は、ステージのセットを全部展開すると別のテクスチャとぶつかるので使わない）
+float gLev=0.0;
+float texA(vec2 loc){   // loc は段 gLev の単位。値＋128（ロムで作った所）のまま返す。段 1〜 で小さい版が無い所は 255
+  float sc=exp2(gLev); vec2 sz=vOrgSize.zw*vec2(4.0,1.0)/sc, o=vOrgSize.xy*vec2(4.0,1.0), li=wrapi(loc,sz);
+  float x=floor(o.y/sc)+li.y, y=floor(o.x/sc)+li.x;   // 格納の座標（横 x＝o.y 側、縦 y＝o.x 側）を段の大きさで
+  if(gLev>0.5){ float w=1024.0/sc, oy=gLev<1.5?0.0:gLev<2.5?1024.0:1536.0;
+    float v=floor(texture2D(uTexM,vec2((vMisc.y*w+x+0.5)/2048.0,(oy+y+0.5)/2048.0)).r*255.0+0.5); return v>254.5?v:v+128.0; }
+  return floor(texture2D(uTexA,vec2((x+vMisc.y*1024.0+0.5)/2048.0,(y+0.5)/2048.0)).r*255.0+0.5);
+}
 float texv(vec2 loc){
-  if(uArc>0.5){ vec2 sz=vOrgSize.zw*vec2(4.0,1.0), t=vOrgSize.xy*vec2(4.0,1.0)+wrapi(loc,sz);
-    return floor(texture2D(uTexA,vec2((t.y+vMisc.y*1024.0+0.5)/2048.0,(t.x+0.5)/2048.0)).r*255.0/17.0+0.5); }
+  if(uArc>0.5){ float v=texA(loc); return v>127.5?v-128.0:v; }
   vec2 t=vOrgSize.xy+wrapi(loc,vOrgSize.zw);
   return floor(texture2D(uTex,vec2((t.x+vMisc.y*512.0+0.5)/1024.0,(t.y+0.5)/1024.0)).r*255.0/17.0+0.5);
 }
@@ -35,6 +43,16 @@ void main(){
   float L=floor(texture2D(uClut,vec2((vB+0.5)/128.0,(vMisc.z+0.5)/256.0)).r*255.0+0.5), luma;
   if(vMisc.x>0.5){
     vec2 loc=uArc>0.5?vLoc*vec2(4.0,1.0):vLoc;
+#ifdef HAS_DERIV
+    // 微分は if や discard より前に（画素ごとに通り方が違う所では値が決まらない。そこで取ると段がでたらめになり点々が出た）
+    float rho=max(length(dFdx(loc)),length(dFdy(loc)));
+    // アーケードのテクスチャ: 画面の1画素に入るテクセルの数で段を選ぶ。元の大きさの所がロムで展開した所のときだけ（ロムで展開したテクスチャには小さい版が必ずある。
+    // PS2 で埋めた所には無く、段の場所にたまたまロムの別のテクスチャがあるので、段の場所では判定しない）
+    if(uArc>0.5&&uMip>0.5&&texA(loc)>127.5){ float l=clamp(floor(log2(max(rho,1e-6))),0.0,3.0);
+      if(uMipForce>-0.5) l=uMipForce;   // 調べ用（URL の ?mip=段）
+      for(int k=0;k<3;k++){ if(l>0.5){ gLev=l; if(texA(loc/exp2(l))<254.5) break; l-=1.0; } }
+      gLev=l; loc/=exp2(l); }
+#endif
     float tx=texv(loc);
     bool cut=vMisc.x>1.5, ramp=vSpecial>0.5||L<48.0;
     bool mame=uArc>0.5&&uBilin>0.5&&cut;   // アーケードのテクスチャ＋なめらか: 透明は MAME どおり（下）。一番近いテクセルでは抜かない
@@ -65,12 +83,14 @@ void main(){
   luma=clamp(luma,0.0,63.0);
   gl_FragColor=vec4(xl(vCol.r,luma),xl(32.0+vCol.g,luma),xl(64.0+vCol.b,luma),1.0);
 }`;
-let vglCut=+(new URLSearchParams(location.search).get("cut")??-1);
+let vglCut=+(new URLSearchParams(location.search).get("cut")??-1), vglMip=+(new URLSearchParams(location.search).get("mip")??-1);
 function vglNew(canvas){
   const gl=canvas.getContext("webgl",{antialias:true,preserveDrawingBuffer:true,alpha:true});
   if(!gl) throw new Error("このブラウザは WebGL に対応していない");
   const sh=(t,src)=>{ const s=gl.createShader(t); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s };
-  const pr=gl.createProgram(); gl.attachShader(pr,sh(gl.VERTEX_SHADER,VGL_VS)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,VGL_FS)); gl.linkProgram(pr);
+  // 描画の微分（ミップマップの段を選ぶのに使う）。無いブラウザでは段は 0 のまま
+  const deriv=!!gl.getExtension("OES_standard_derivatives");
+  const pr=gl.createProgram(); gl.attachShader(pr,sh(gl.VERTEX_SHADER,VGL_VS)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,(deriv?"#extension GL_OES_standard_derivatives : enable\n#define HAS_DERIV 1\n":"")+VGL_FS)); gl.linkProgram(pr);
   if(!gl.getProgramParameter(pr,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
   const bufs=[gl.createBuffer(),gl.createBuffer()], counts=[0,0], tex={}; let mirror=null;
   // 空と遠景（MODEL2 の2Dの面。画面に貼るだけで、視点を回しても動かない）
@@ -96,9 +116,11 @@ function vglNew(canvas){
       lum("xlat",2,64,96,col.xlat.slice(0,64*96));
     },
     // アーケードのテクスチャ（ページ2枚。各 横 1024×縦 2048 の 4bit を1バイトずつ）。null で使わない
-    setArc(pages){ if(!pages){ hasArc=false; return } const t=new Uint8Array(2048*2048);
-      for(let p=0;p<2;p++) for(let y=0;y<2048;y++) for(let x=0;x<1024;x++) t[y*2048+p*1024+x]=pages[p][y*1024+x]*17;
-      lum("texA",4,2048,2048,t); hasArc=true },
+    // mips: ミップマップの小さい版（vapp.js の arcMips の並べ方）
+    setArc(pages,mips){ if(!pages){ hasArc=false; return } const t=new Uint8Array(2048*2048);
+      for(let p=0;p<2;p++) for(let y=0;y<2048;y++) for(let x=0;x<1024;x++) t[y*2048+p*1024+x]=pages[p][y*1024+x];
+      lum("texA",4,2048,2048,t);
+      lum("texM",5,2048,2048,mips||new Uint8Array(2048*2048).fill(255)); hasArc=true },
     // 空と遠景の絵（496×384 の RGBA。null で消す）
     setBack(rgba){ hasBack=!!rgba; if(!rgba) return; let t=tex.back; if(!t) t=tex.back=gl.createTexture();
       gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
@@ -123,7 +145,7 @@ function vglNew(canvas){
       gl.uniformMatrix4fv(u("uView"),false,view); gl.uniform2fv(u("uFocal"),focal); gl.uniform3fv(u("uLight"),light);
       gl.uniform1f(u("uCut"),vglCut); gl.uniform1f(u("uBilin"),opt.bilin?1:0);
       gl.uniform1i(u("uTex"),0); gl.uniform1i(u("uClut"),1); gl.uniform1i(u("uXlat"),2);
-      gl.uniform1f(u("uArc"),opt.arc&&hasArc?1:0); if(hasArc){ gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D,tex.texA) } gl.uniform1i(u("uTexA"),4);
+      gl.uniform1f(u("uArc"),opt.arc&&hasArc?1:0); gl.uniform1f(u("uMip"),opt.mip===false||vglMip===-2?0:1); gl.uniform1f(u("uMipForce"),vglMip); if(hasArc){ gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D,tex.texA); gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D,tex.texM) } gl.uniform1i(u("uTexA"),4); gl.uniform1i(u("uTexM"),5);
       const F=4, S=BUILD_STRIDE*F;
       for(let i=0;i<2;i++){ if(!counts[i]) continue;
         gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]);

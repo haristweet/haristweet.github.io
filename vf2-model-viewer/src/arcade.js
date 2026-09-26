@@ -176,3 +176,9 @@ class I960 {
 }
 // ステージのテクスチャを作る（ページ 0・1 の両方。PS2 と同じく各ページの横 256〜383 に当たる所＝RAM の縦 1024〜1535）
 function arcStageSheets(rom,n){ const L=arcLoader(rom), s=ARC_STAGE_SETS[n]; if(s) L.loadSet(s,0); return L }
+// そのコマで使うテクスチャを、アーケードと同じく1つのテクスチャ RAM に展開する（ステージ→1P→2P。ミップマップの段もぶつからない。CLAUDE.md）
+function arcSceneSheets(rom,chars,stageN){
+  const L=arcLoader(rom), s=ARC_STAGE_SETS[stageN]; if(s) L.loadSet(s,0);
+  chars.forEach((c,i)=>{ const k=ARC_CHARS.indexOf(c); if(k<0) return; L.loadSet(2*k+1,i); L.loadSet(2*k+2,i) });
+  return L;
+}
