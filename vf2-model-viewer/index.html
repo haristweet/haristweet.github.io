@@ -1766,7 +1766,12 @@ function motEngine(prog, eeMem, mainData){
   const md=mainData||vmem;
   const argb=ee.r32(MOT_GP-0x7d90), outb=ee.r32(MOT_GP-0x7d9c), cr=ee.r32(MOT_GP-0x7d8c);
   const cop={cur:null,out:[]};
-  const copCall=(fn,args)=>{ const f=ee.r32(MOT_CPR+fn*16), nr=ee.r32(MOT_CPR+fn*16+8)>>2; args.forEach((v,k)=>ee.w32(argb+4*k,v)); ee.call(f); for(let k=0;k<nr;k++) cop.out.push(ee.r32(outb+4*k)) };
+  // 描く処理を動かすとき: 関数 52（MovMatrix。今の行列を描く側へ送る）と 5（GetMatrix）で今の行列（VU0 の vf24〜27）を拾う
+  let capture=null;
+  const curMat=()=>{ const V=ee.vf, r=[]; for(const i of [24,25,26,27]) r.push(V[i*4],V[i*4+1],V[i*4+2]); return r };
+  const copCall=(fn,args)=>{ if(capture&&(fn===52||fn===5)){ capture.mat(curMat(),fn); if(fn===52){ cop.out.push(0); return } }
+    const f=ee.r32(MOT_CPR+fn*16), nr=ee.r32(MOT_CPR+fn*16+8)>>2; args.forEach((v,k)=>ee.w32(argb+4*k,v)); ee.call(f); for(let k=0;k<nr;k++) cop.out.push(ee.r32(outb+4*k)) };
+  const f2u=f=>new Uint32Array(new Float32Array([f]).buffer)[0];
   // FIFO（i960 の 0x880000〜）: 命令の語（下位8bit が関数の番号）→ 引数 → 答えを読む（16bit で読むこともある）
   const copW=v=>{ if(!cop.cur) cop.cur={fn:v&0xff,args:[]}; else cop.cur.args.push(v); const c=cop.cur; if(c.args.length>=ee.r32(MOT_CPR+c.fn*16+4)){ cop.cur=null; copCall(c.fn,c.args) } };
   const copR=()=>cop.out.length?cop.out.shift():0;
@@ -1804,6 +1809,16 @@ function motEngine(prog, eeMem, mainData){
       if(!cur[pl]||cur[pl].m!==m||f<=cur[pl].f&&cur[pl].f>0){ if(cur[pl]&&cur[pl].m===m) this.start(pl,m); else cur[pl]={m,f:0} }
       for(let k=cur[pl].f+1;k<=f;k++){ mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,k); if(k<mem.r16(G+0x800)) run(pl,[0x1ab74],m) }
       mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,f); cur[pl].f=f; run(pl,[0x27ce0,0x16504],m); return units(pl) },
+    // キャラを描く処理（0x1de6c〜 と同じ: 0x19ebc 見える部品・0x18ef8 体・0x61b88・0x62fac）を動かし、描いた部品と行列を返す。
+    // V＝カメラ（写しの背景の行列）を TGP の今の行列に入れてから呼ぶ。SetObj（0x7c60）に入った時の番号と、その中で送る行列を組にする
+    draw(pl,V,addrs=[0x19ebc,0x18ef8,0x61b88,0x62fac]){
+      const out=[]; let pend=null;
+      copCall(4,V.map(f2u)); cop.out.length=0;
+      capture={ mat(m,fn){ if(pend){ out.push({id:pend.id,player:pend.pl,m,fn,pc:pend.pc}); pend=null } } };
+      cpu.trace=pc=>{ if(pc===0x7c60||pc===0x7d14){ const R=cpu.r; pend={id:R[16],pl:R[17]&1,pc} } };
+      try{ for(const a of addrs){ const R=cpu.r; R[1]=R[31]=0x5f8000; R[23]=g7(pl); R[24]=g7(1-pl); R[26]=0x800000; R[27]=0x880000; R[28]=0x4000; R[29]=mem.r32(0x500814); R[30]=0; cpu.run(a) } }
+      finally{ capture=null; cpu.trace=null }
+      return out },
     // 関節ごとに描く部品の番号（構造体の +0x40 に 16 個。手（5・8）は +0x67c の表を +0x6c7・+0x6cd の手の形で引く。i960 の 0x18fe8〜・0x19e34）
     parts(pl){ const G=g7(pl), out=[]; for(let k=0;k<16;k++) out.push(mem.r32(G+0x40+k*4));
       const t=mem.r32(G+0x67c); if(t){ const r5=(mem.r32(G)>>6)&1?8:5; for(const k of [5,8]){ const tb=k===5?t:t+0x180, idx=(k===r5?mem.r8(G+0x6cd):mem.r8(G+0x6c7))&31, id=mem.r32(tb+idx*4); if(id) out[k]=id } }
