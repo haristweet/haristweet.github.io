@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.12.0";
+const VERSION="0.12.1";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -169,7 +169,7 @@ async function motEnsure(){
   const prog=APP.arcRom?APP.arcRom.prog:(APP.dvBase?.ic||await readDec("IC12_15.CMP"));
   const eng=motEngine(prog,st.mem,APP.arcRom?motRomData(APP.arcRom):null), sc=APP.scene.sc0, att=[];
   // 写しの部品を関節に付ける。命令の列は関節の行列より 2 コマほど遅れているので、数コマ前までを候補にする
-  for(const pl of [0,1]){ const f=eng.info(pl).frame, Us=[eng.units(pl)]; for(const d of [1,2,3]) Us.push(eng.frame(pl,Math.max(1,f-d))); att.push(motAttach(sc,pl,Us)) }
+  for(const pl of [0,1]){ const f=eng.info(pl).frame, ids=eng.parts(pl), Us=[eng.units(pl)]; for(const d of [1,2,3]) Us.push(eng.frame(pl,Math.max(1,f-d))); att.push(motAttach(sc,pl,Us,ids)) }
   status("");
   return APP.mot={st,eng,att,pl:0,m:0,f:1,len:0,play:false};
 }
@@ -179,7 +179,7 @@ async function motSet(m,f){
     if(M.pl!==pl){ M.pl=pl; M.m=0 }
     if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.len=len; M.eng.start(pl,m); $("m-frame").max=len; status("") }
     M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len;
-    const S=APP.scene; S.sc=motApply(S.sc0,M.att[pl],M.eng.frame(pl,M.f)); rebuild();
+    const S=APP.scene; S.sc=motApply(S.sc0,M.att[pl],M.eng.frame(pl,M.f),M.eng.parts(pl)); rebuild();
   }catch(e){ console.error(e); motStop(); status("技を計算できなかった: "+e.message,true) }
 }
 function motStop(){ if(APP.mot) APP.mot.play=false; $("m-play").textContent="▶ 再生" }

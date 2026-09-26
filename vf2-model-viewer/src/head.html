@@ -82,7 +82,7 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <span class="parts">技 <button id="m-prev" aria-label="前の技">◀</button> <input id="m-num" type="number" min="1" max="1359" style="width:5.5em" aria-label="技の番号"> <button id="m-next" aria-label="次の技">▶</button></span>
   <span class="parts">コマ <input id="m-frame" type="range" min="1" max="1" value="1" style="width:12em;vertical-align:middle" aria-label="コマ"> <span id="m-fn">-</span></span>
   <button id="m-play">▶ 再生</button> <button id="m-back">写しに戻す</button>
-  <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形・髪の揺れはその写しのまま。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま</small></div>
+  <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形は技の台本どおりに変わります（髪の揺れはその写しのまま）。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま</small></div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさは、ゲームの VU1 のプログラムと同じ式です。背景はステージのモデルのうち、そのコマで描いた部品です。空と遠景は、アーケードの2Dのタイルの面をゲームと同じずらし方で画面に貼ります（視点を回しても動きません）。</p>

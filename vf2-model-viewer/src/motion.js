@@ -33,6 +33,7 @@ function motEngine(prog, eeMem, mainData){
   // 関節の行列の置き場（cprMtxStUnitMat: [g7+4] の bit0 が 1 なら [gp−0x7db0]、それ以外は [gp−0x7dac]）。64B×16、12 個（行 x,y,z の像と位置）に直す
   const unitBase=pl=>ee.r32(MOT_GP-((mem.r8(g7(pl)+4)&1)?0x7db0:0x7dac));
   const units=pl=>{ const b=unitBase(pl), F=k=>{ const u=ee.r32(b+k); return new Float32Array(new Uint32Array([u]).buffer)[0] }; return [...Array(16)].map((_,j)=>[0,4,8,16,20,24,32,36,40,48,52,56].map(o=>F(j*64+o))) };
+  const cur=[null,null];
   const md32=A=>(md(A-0x2000000)|md(A-0x2000000+1)<<8|md(A-0x2000000+2)<<16|md(A-0x2000000+3)<<24)>>>0;
   return {
     mem, cpu, ee, units,
@@ -40,9 +41,17 @@ function motEngine(prog, eeMem, mainData){
     // 技 m のコマ数（表に無ければ 0）
     motionLength(m){ if(m<1||m>1359) return 0; const p=md32(MOT_MOTTBL+m*4); if(p<0x2000000||p>=0x3000000) return 0; return md(p-0x2000000)|md(p-0x2000000+1)<<8 },
     // 技 m を始める（0x3acb8 の流れのうち準備: 0x1a1e4・0x26ef0。前の技からのつなぎ 0x27130 は smooth のときだけ）
-    start(pl,m,smooth=false){ const G=g7(pl); mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,1); run(pl,smooth?[0x1a1e4,0x26ef0,0x27130]:[0x1a1e4,0x26ef0],m) },
-    // コマ f の姿勢（0x27ce0 → 0x28184 コマのデータ、0x16504 関節の行列）
-    frame(pl,f){ const G=g7(pl); mem.w16(G+0x1aa,f); run(pl,[0x27ce0,0x16504],mem.r16(G+0x1a8)); return units(pl) },
+    start(pl,m,smooth=false){ const G=g7(pl); mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,1); run(pl,smooth?[0x1a1e4,0x26ef0,0x27130]:[0x1a1e4,0x26ef0],m); cur[pl]={m,f:0} },
+    // コマ f の姿勢。技の台本（0x1ab74。手の形・効果音などをコマで変える）を 1 コマずつ進め（戻るときは始めから）、
+    // 0x27ce0 → 0x28184 コマのデータ、0x16504 関節の行列
+    frame(pl,f){ const G=g7(pl), m=mem.r16(G+0x1a8);
+      if(!cur[pl]||cur[pl].m!==m||f<=cur[pl].f&&cur[pl].f>0){ if(cur[pl]&&cur[pl].m===m) this.start(pl,m); else cur[pl]={m,f:0} }
+      for(let k=cur[pl].f+1;k<=f;k++){ mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,k); if(k<mem.r16(G+0x800)) run(pl,[0x1ab74],m) }
+      mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,f); cur[pl].f=f; run(pl,[0x27ce0,0x16504],m); return units(pl) },
+    // 関節ごとに描く部品の番号（構造体の +0x40 に 16 個。手（5・8）は +0x67c の表を +0x6c7・+0x6cd の手の形で引く。i960 の 0x18fe8〜・0x19e34）
+    parts(pl){ const G=g7(pl), out=[]; for(let k=0;k<16;k++) out.push(mem.r32(G+0x40+k*4));
+      const t=mem.r32(G+0x67c); if(t){ const r5=(mem.r32(G)>>6)&1?8:5; for(const k of [5,8]){ const tb=k===5?t:t+0x180, idx=(k===r5?mem.r8(G+0x6cd):mem.r8(G+0x6c7))&31, id=mem.r32(tb+idx*4); if(id) out[k]=id } }
+      return out },
   };
 }
 
@@ -62,11 +71,12 @@ const MOT_I=[1,0,0,0,1,0,0,0,1];
 // 体の部品は関節の行列そのまま（写し16 で 17 個ともずれ 0）。影（潰れた行列）は 世界＝関節·P（P は床へ潰す行列、全部の影で共通）。
 // それ以外（髪など）は、いちばん近い関節からのずれ（rel）をそのまま持って付いていく
 // Us: 関節の候補（写しの命令の列は関節の行列より 2 コマほど遅れているので、今のコマから数コマ前まで。いちばん多く体が付くものを使う）
-function motAttach(sc, pl, Us){
+// ids: 写しのときの関節ごとの部品の番号（engine.parts）。あればその番号の部品はその関節に付ける（ゲームと同じ）
+function motAttach(sc, pl, Us, ids){
   if(!Array.isArray(Us[0][0])) Us=[Us];
-  let best=null; for(const U of Us){ const a=motAttach1(sc,pl,U); if(!best||a.parts.filter(p=>p.body).length>best.parts.filter(p=>p.body).length) best=a } return best;
+  let best=null; for(const U of Us){ const a=motAttach1(sc,pl,U,ids); if(!best||a.parts.filter(p=>p.body).length>best.parts.filter(p=>p.body).length) best=a } best.ids=ids||null; return best;
 }
-function motAttach1(sc, pl, U){
+function motAttach1(sc, pl, U, ids){
   let V=null, nv=0; for(const d of sc.draws){ let n=0; for(const e of sc.draws) if(motDist(e.m,d.m)<1e-4) n++; if(n>nv){ nv=n; V=d.m } }
   const iV=motInvG(V), out=[], shadows=[], mirrors=[];
   sc.draws.forEach((d,i)=>{ if(d.player!==pl||d.id<0&&!d.dyn||motDist(d.m,V)<1e-4) return;   // 背景（1P の表に入っている）は除く
@@ -74,6 +84,7 @@ function motAttach1(sc, pl, U){
     if(Math.min(...U.map(u=>Math.hypot(u[9]-W[9],u[10]-W[10],u[11]-W[11])))>1.5) return;
     if(Math.abs(motDet(d.m))<0.05){ shadows.push({i,W}); return }   // build.js と同じ見分け方
     if(motDet(d.m)<-0.05){ mirrors.push({i,W}); return }   // 床への映り込み（行列式が負。写し16・17）
+    if(ids&&d.id>=0){ const k=ids.indexOf(d.id); if(k>=0){ out.push({i,k,rel:[...MOT_I,0,0,0],body:true}); return } }
     let bk=0, be=1e9; for(let k=0;k<16;k++){ const rel=motMul(W,motInv(U[k])); const e=motDist(rel.slice(0,9),MOT_I)+Math.hypot(rel[9],rel[10],rel[11]); if(e<be){ be=e; bk=k } }
     if(be>=0.6){ be=1e9; for(let k=0;k<16;k++){ const e=Math.hypot(U[k][9]-W[9],U[k][10]-W[10],U[k][11]-W[11]); if(e<be){ be=e; bk=k } } out.push({i,k:bk,rel:motMul(W,motInv(U[bk]))}); return }   // 髪など: いちばん近い関節
     out.push({i,k:bk,rel:[...MOT_I,0,0,0],body:true});
@@ -92,10 +103,10 @@ function motAttach1(sc, pl, U){
   const shadowP=h===null||Math.abs(Lw[1])<1e-3?null:[1,0,0,-Lw[0]/Lw[1],0,-Lw[2]/Lw[1],0,0,1,h*Lw[0]/Lw[1],h,h*Lw[2]/Lw[1]];
   return {V,parts:out,shadowParts:shadows.map(s=>s.i),shadowP};
 }
-// 新しい関節 U2 で、写しの命令の列（sc）の pl の部品の行列を置き直した列を返す
-function motApply(sc, att, U2){
+// 新しい関節 U2 で、写しの命令の列（sc）の pl の部品の行列を置き直した列を返す。ids（engine.parts）があれば手などの部品の番号も差し替える（att.ids＝写しのときの番号）
+function motApply(sc, att, U2, ids){
   const draws=sc.draws.slice();
-  for(const p of att.parts){ const d=draws[p.i]; draws[p.i]={...d,m:motMul(p.mirror?motMul(U2[p.k],p.mirror):motMul(p.rel,U2[p.k]),att.V)} }
+  for(const p of att.parts){ const d=draws[p.i], id=ids&&p.body&&ids[p.k]!==undefined&&d.id>=0&&att.ids&&d.id===att.ids[p.k]?ids[p.k]:d.id; draws[p.i]={...d,id,m:motMul(p.mirror?motMul(U2[p.k],p.mirror):motMul(p.rel,U2[p.k]),att.V)} }
   if(att.shadowP) for(const p of att.parts) if(p.body) draws.push({...draws[p.i],m:motMul(motMul(motMul(p.rel,U2[p.k]),att.shadowP),att.V)});
   const hide=new Set(att.shadowParts);
   return {...sc,draws:draws.filter((d,i)=>!hide.has(i))};
