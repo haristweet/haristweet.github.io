@@ -1,7 +1,7 @@
 // 単体試験。ページの .js を1つの文脈に読み、本物のデータ（disc/ にあれば）で確かめる。node test.mjs
 import fs from "fs"; import vm from "vm"; import assert from "assert";
 const ctx={console,TextDecoder,Blob,File,Response,DecompressionStream,Uint8Array}; vm.createContext(ctx);
-for(const f of ["zstd.js","p2s.js","cricmp.js","obj.js","tex.js","scene.js","m2scr.js","vdisc.js"]) vm.runInContext(fs.readFileSync(f,"utf8"),ctx,{filename:f});
+for(const f of ["zstd.js","p2s.js","cricmp.js","obj.js","tex.js","scene.js","build.js","m2scr.js","vdisc.js"]) vm.runInContext(fs.readFileSync(f,"utf8"),ctx,{filename:f});
 const g=n=>vm.runInContext(n,ctx);
 let ok=0; const t=async(name,fn)=>{ await fn(); ok++; console.log("  ok",name) };
 // 偽のデータでの試験（データが無くても回る）
@@ -51,6 +51,16 @@ if(has("disc/vf2.bin")){
         for(let x=0;x<496;x++) assert.equal(bk[x*4+3],255,"空の上端 x="+x);
       });
     }
+    if(has("disc/states/17_jacky_somersault.p2s")) await t("写し 17: 床への映り込み（行列式が負の部品）は OBJ_JAC1B・JAC2B にある",async()=>{
+      const z=await g("p2sOpen")(fs.readFileSync("disc/states/17_jacky_somersault.p2s")), sc=g("sceneRead")(await z.get("eeMemory.bin")());
+      const obj=async n=>({name:n,models:g("objModels")(g("cricmpUnpack")(await files.get(n)()))});
+      for(const [pl,a,b] of [[0,"OBJ_JAC1.CMP","OBJ_JAC1B.CMP"],[1,"OBJ_JAC2.CMP","OBJ_JAC2B.CMP"]]){
+        const ch=g("sceneAddCompanions")(g("sceneChooseModels")(sc,pl,[await obj(a)]),sc,pl,[await obj(b)]);
+        assert.deepEqual(ch.used,[b]);
+        const mir=sc.draws.filter(d=>d.player===pl&&!d.dyn&&(m=>m[0]*(m[4]*m[8]-m[5]*m[7])-m[1]*(m[3]*m[8]-m[5]*m[6])+m[2]*(m[3]*m[7]-m[4]*m[6]))(d.m)<-0.05);
+        assert.equal(mir.length,pl?4:6); for(const d of mir) assert.ok(ch.map.has(d.id));
+      }
+    });
   }
 }
 console.log(ok,"件 ok");

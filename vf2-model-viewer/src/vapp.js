@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.7.1";
+const VERSION="0.8.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -56,7 +56,8 @@ async function show(){
       const code=who[pl]>=0?SC_ROB[who[pl]]:null;
       let ch=sceneChooseModels(sc,pl,await candidatesFor(code));
       if(!ch&&code) ch=sceneChooseModels(sc,pl,await candidatesFor(null));
-      models[pl]=ch?ch.map:null; names.push(ch?ch.name.replace(".CMP",""):"（見つからない）");
+      if(ch){ const base=ch.name.replace(".CMP",""), comp=[]; for(const n of [...APP.disc.keys()].filter(n=>new RegExp("^"+base+"[A-Z]\\.CMP$").test(n)).sort()) comp.push({name:n,models:await readObj(n)}); ch=sceneAddCompanions(ch,sc,pl,comp) }
+      models[pl]=ch?ch.map:null; names.push(ch?ch.name.replace(".CMP","")+(ch.used&&ch.used.length?"＋"+ch.used.map(n=>n.replace(".CMP","").slice(-1)).join("＋"):""):"（見つからない）");
     }
     // 背景: 1P の表のうちキャラのファイルに無い番号を、いちばん多く含む OBJ_STAGE*
     const stageNames=[...APP.disc.keys()].filter(n=>/^OBJ_STAGE\d+\.CMP$/.test(n)).sort(), stc=[];

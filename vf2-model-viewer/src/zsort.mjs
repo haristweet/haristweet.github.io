@@ -10,7 +10,7 @@ const [,,dir,outp]=process.argv, mem=fs.readFileSync(path.join(dir,"eeMemory.bin
 const sc=g("sceneRead")(mem), col=g("sceneColors")(mem), light=g("sceneLight")(fs.readFileSync(path.join(dir,"vu1Memory.bin")),sc);
 const bin=path.join(here,"disc/bin"), load=re=>fs.readdirSync(bin).filter(f=>re.test(f)).sort().map(f=>({name:f,models:g("objModels")(g("cricmpUnpack")(new Uint8Array(fs.readFileSync(path.join(bin,f)))))}));
 const chars=load(/^OBJ_[A-Z]{3}\d\.CMP$/), stages=load(/^OBJ_STAGE\d+\.CMP$/);
-const models={}; for(const p of [0,1]){ const c=g("sceneChooseModels")(sc,p,chars); models[p]=c&&c.map }
+const models={}; for(const p of [0,1]){ let c=g("sceneChooseModels")(sc,p,chars); if(c) c=g("sceneAddCompanions")(c,sc,p,load(new RegExp("^"+c.name.replace(".CMP","")+"[A-Z]\\.CMP$"))); models[p]=c&&c.map }
 const st=g("sceneChooseModels")(sc,0,stages,models[0]?new Set(models[0].keys()):null); models.stage=st&&st.map;
 
 // ゲームの画面（GS のメモリ）
@@ -22,16 +22,18 @@ const W=512,H=448, frames=[0,0x80*32].map(bp=>{ const f=new Uint8Array(W*H*3); f
 
 // 三角形（面の番号・部品の番号つき）。手前 0.05 で切る
 // キャラとステージを分けて作り（ステージは裏向きも描く）、つなげる
-const S=g("BUILD_STRIDE"); const partOf=[], partZ=[];
-const mC=(()=>{ const parts=[]; let n=0; for(const d of sc.draws){ const m=g("sceneMesh")({...sc,draws:[d]},col,models,{which:"body",stage:false,light}); if(!m.count) continue; parts.push(m); for(let k=0;k<m.count;k++) partOf.push(partZ.length); partZ.push(d.m[11]); n+=m.data.length }
-  const data=new Float32Array(n); let o=0; for(const m of parts){ data.set(m.data,o); o+=m.data.length } return {data,count:n/S} })(), mS=g("sceneMesh")(sc,col,models,{which:"body",stage:true,players:[false,false],light});
-const D=new Float32Array(mC.data.length+mS.data.length); D.set(mC.data); D.set(mS.data,mC.data.length); const mesh={count:mC.count+mS.count}, NC=mC.count;
+const S=g("BUILD_STRIDE"); const partOf=[], partZ=[], isCh=[], isMir=[];
+// 命令の列の順に部品ごとに作る（ゲームは組の順に描く。映り込みは奥行きを書かない＝ページの vgl.js と同じ）
+const mesh=(()=>{ const parts=[]; let n=0; for(const d of sc.draws){ const m=g("sceneMesh")({...sc,draws:[d]},col,models,{which:"body",stage:true,light}); if(!m.count) continue;
+    const ch=!!(d.dyn||(models[d.player]&&models[d.player].has(d.id))), mir=!!m.mirror; parts.push(m); for(let k=0;k<m.count;k++){ partOf.push(ch?partZ.length:-1); isCh.push(ch); isMir.push(mir) } partZ.push(d.m[11]); n+=m.data.length }
+  const data=new Float32Array(n); let o=0; for(const m of parts){ data.set(m.data,o); o+=m.data.length } return {data,count:n/S} })();
+const D=mesh.data;
 function tris(OX,OY){
   const out=[]; let part=-1, lastM=null, poly=-1, lastKey="";
   for(let t=0;t<mesh.count;t+=3){
     const V0=[0,1,2].map(k=>Array.from(D.subarray((t+k)*S,(t+k+1)*S)));
     let pl=V0; if(pl.some(v=>v[2]<0.05)){ const o=[]; for(let i=0;i<3;i++){ const A=pl[i],B=pl[(i+1)%3],ia=A[2]>=0.05,ib=B[2]>=0.05; if(ia) o.push(A); if(ia!==ib){ const k=(0.05-A[2])/(B[2]-A[2]); o.push(A.map((x,j)=>x+(B[j]-x)*k)) } } pl=o; if(pl.length<3) continue }
-    for(let i=1;i+1<pl.length;i++) out.push({V:[pl[0],pl[i],pl[i+1]],t,orig:V0,ch:t<NC,part:t<NC?partOf[t]:-1});
+    for(let i=1;i+1<pl.length;i++) out.push({V:[pl[0],pl[i],pl[i+1]],t,orig:V0,ch:isCh[t],mir:isMir[t],part:partOf[t]});
   }
   return out.map(o=>({...o,P:o.V.map(v=>[OX+248+600*v[0]/v[2],OY+192-600*v[1]/v[2],v[2]])}));
 }
@@ -68,7 +70,7 @@ function render(T,mode,key,cull){
       if(w0<0||w1<0||w2<0) continue; const i=y*W+x;
       // テクスチャは奥行きを考えて（1/z で重みを付けて）引く
       const p0=w0/a[2], p1=w1/b[2], p2=w2/c[2], ps=p0+p1+p2, u0=p0/ps, u1=p1/ps, u2=p2/ps;
-      if(mode==="pixel"){ const z=w0*a[2]+w1*b[2]+w2*c[2]; if(z>=zb[i]) continue; const s=shade(o,u0,u1,u2); if(!s) continue; zb[i]=z; px.set(s,i*3); cov[i]=1; if(REC) REC[i]=LASTSH.concat([z]) }
+      if(mode==="pixel"){ const z=w0*a[2]+w1*b[2]+w2*c[2]; if(z>=zb[i]&&!o.mir) continue; const s=shade(o,u0,u1,u2); if(!s) continue; if(!o.mir) zb[i]=z; px.set(s,i*3); cov[i]=1; if(REC) REC[i]=LASTSH.concat([z]) }
       else { const s=shade(o,u0,u1,u2); if(!s) continue; px.set(s,i*3); cov[i]=1 }
     }
   }

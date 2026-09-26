@@ -45,7 +45,7 @@ function vglNew(canvas){
   const sh=(t,src)=>{ const s=gl.createShader(t); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s };
   const pr=gl.createProgram(); gl.attachShader(pr,sh(gl.VERTEX_SHADER,VGL_VS)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,VGL_FS)); gl.linkProgram(pr);
   if(!gl.getProgramParameter(pr,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
-  const bufs=[gl.createBuffer(),gl.createBuffer()], counts=[0,0], tex={};
+  const bufs=[gl.createBuffer(),gl.createBuffer()], counts=[0,0], tex={}; let mirror=null;
   // 空と遠景（MODEL2 の2Dの面。画面に貼るだけで、視点を回しても動かない）
   const bp=gl.createProgram();
   gl.attachShader(bp,sh(gl.VERTEX_SHADER,"attribute vec2 aXY; varying vec2 vUV; void main(){ vUV=vec2(aXY.x*0.5+0.5,0.5-aXY.y*0.5); gl_Position=vec4(aXY,0.999,1.0); }"));
@@ -75,7 +75,7 @@ function vglNew(canvas){
       for(const p of [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D,p,gl.NEAREST);
       for(const p of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D,p,gl.CLAMP_TO_EDGE) },
     // body＝体と背景、shadow＝影
-    setMesh(body,shadow){ [body,shadow].forEach((m,i)=>{ gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]); gl.bufferData(gl.ARRAY_BUFFER,m?m.data:new Float32Array(0),gl.STATIC_DRAW); counts[i]=m?m.count:0 }) },
+    setMesh(body,shadow){ [body,shadow].forEach((m,i)=>{ gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]); gl.bufferData(gl.ARRAY_BUFFER,m?m.data:new Float32Array(0),gl.STATIC_DRAW); counts[i]=m?m.count:0 }); mirror=body&&body.mirror },
     // view: 4×4（列優先）、focal: [x,y]（クリップ座標の倍率）
     draw(view,focal,light,back,opt={}){
       const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
@@ -99,7 +99,9 @@ function vglNew(canvas){
         at("aPos",3,0); at("aNrm",3,3); at("aCol",3,6); at("aLoc",2,9); at("aOrgSize",4,11); at("aMisc",3,15); at("aLk",4,19); at("aSpecial",1,23);
         gl.uniform1f(u("uShadow"),i);
         if(i){ gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false) }
-        gl.drawArrays(gl.TRIANGLES,0,counts[i]);
+        // 映り込みは奥行きを比べず・書かずに描き（前の組の上に塗る）、あとに来る床に隠させる（build.js の sceneMesh の説明）
+        if(!i&&mirror){ gl.drawArrays(gl.TRIANGLES,0,mirror[0]); gl.depthMask(false); gl.disable(gl.DEPTH_TEST); gl.drawArrays(gl.TRIANGLES,mirror[0],mirror[1]-mirror[0]); gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.drawArrays(gl.TRIANGLES,mirror[1],counts[0]-mirror[1]) }
+        else gl.drawArrays(gl.TRIANGLES,0,counts[i]);
         if(i){ gl.disable(gl.BLEND); gl.depthMask(true) }
       }
     }

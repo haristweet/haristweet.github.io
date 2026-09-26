@@ -4,7 +4,7 @@ const BUILD_STRIDE=24;
 // models: {0: 1P のモデル, 1: 2P のモデル, stage: ステージのモデル}（どれも Map 番号→モデル）。
 // opt.which: "body"（影以外）か "shadow"（影だけ）。opt.players: [1P を出すか, 2P を出すか]。opt.stage: 背景を出すか（false で出さない）
 function sceneMesh(sc,col,models,opt={}){
-  const out=[], missing=new Set(); let shadows=0; const which=opt.which||"body";
+  const out=[], missing=new Set(), mirror=[-1,-1]; let shadows=0; const which=opt.which||"body";
   const cram=new DataView(col.cram.buffer,col.cram.byteOffset,col.cram.byteLength);
   for(const d of sc.draws){
     let e=d.dyn||(models[d.player]&&models[d.player].get(d.id)), isStage=false;
@@ -15,11 +15,14 @@ function sceneMesh(sc,col,models,opt={}){
     if(shadow) shadows++;
     if((which==="shadow")!==shadow) continue;
     if(isStage?opt.stage===false:(opt.players&&!opt.players[d.player])) continue;
+    // 映り込み（行列式が負の部品。OBJ_*B）: ゲームは命令の列の組の順に描き、映り込みの組のあとにリングの床の組が来るので床に隠れる。
+    // 映り込みの前の組（縁の帯など）の上には、帯の方が手前でも塗る。ページでは映り込みを奥行きを比べず・書かずに描いて（vgl.js）、あとの部品に上から塗らせる。その頂点の範囲を覚えておく
+    const mir=!shadow&&det<-0.05; if(mir&&mirror[0]<0) mirror[0]=out.length/BUILD_STRIDE;
     const T=v=>[v[0]*m[0]+v[1]*m[3]+v[2]*m[6]+m[9], v[0]*m[1]+v[1]*m[4]+v[2]*m[7]+m[10], v[0]*m[2]+v[1]*m[5]+v[2]*m[8]+m[11]];
     // 属性の表は 1P（とステージ）が塊0、2P が塊1
     for(const p of objPolys(e.ch[3],e.ch[d.player?1:0],e.ch[2])){
       const q=p.v.map(T), a=q[1].map((x,i)=>x-q[0][i]), b=q[2].map((x,i)=>x-q[0][i]);
-      const n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=Math.hypot(...n)||1; for(let i=0;i<3;i++) n[i]/=l;
+      const n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=(det<0?-1:1)*(Math.hypot(...n)||1); for(let i=0;i<3;i++) n[i]/=l;   // 映り込み（行列式が負）は頂点の並びが裏返るので法線を戻す
       const c16=cram.getUint16((p.attr[3]>>6&1023)*2,true), c5=[c16&31,c16>>5&31,c16>>10&31];
       let tx=null; if(p.attr[0]>>14&1) tx=texCoords(p.attr,p.uv);
       const ls=p.h>>18&31, lt=opt.light?opt.light.tab[ls]:[63.5,31.5,0,0], lk=[lt[0],lt[1],lt[2],(lt[3]&7&(opt.light?opt.light.flags:0))?1:0,(ls>=10&&ls<=12?1:0)+((p.attr[1]>>8)?2:0)];
@@ -28,8 +31,9 @@ function sceneMesh(sc,col,models,opt={}){
         out.push((p.h>>10&3)|((p.h>>17&63)<<2),...lk) };
       for(let i=1;i+1<q.length;i++){ vert(0); vert(i); vert(i+1) }
     }
+    if(mir) mirror[1]=out.length/BUILD_STRIDE;
   }
-  return {data:new Float32Array(out), count:out.length/BUILD_STRIDE, missing:[...missing], shadows};
+  return {data:new Float32Array(out), count:out.length/BUILD_STRIDE, missing:[...missing], shadows, mirror:mirror[0]<0?null:mirror};
 }
 // 明るさ（0〜63）。VU1 のプログラム（calcBrightnessMainMdl2・m2CalcCont・m2mdlQuadPoly…m2mdlTex）を読んで写したもの:
 //   B＝clamp(拡散×d＋環境＋光沢×s^8, 0, 127)（d・s は scene.js の sceneLight の説明）→ L＝曲線[h1 の番号][B]（g_geo+0x2040＋番号×128）
@@ -46,6 +50,13 @@ function buildLuma(curveVal,tex,special){
 }
 // OBJ ファイル（展開後のモデルの一覧）の候補から、そのプレイヤーが描いた番号をいちばん多く含むものを選ぶ
 // （1P の表にはステージの部品も入っているので「全部」は求めない。同じ数なら先の候補＝1色目）。skip の番号は数えない
+// キャラのファイルに無い番号を、同じ名前に1文字足したファイル（OBJ_JAC1B の映り込み、E・A など）から足す。files: [{name,models}]
+function sceneAddCompanions(ch,sc,player,files){
+  if(!ch) return ch; const map=new Map(ch.map), used=[];
+  const need=new Set(sc.draws.filter(d=>d.player===player&&!map.has(d.id)).map(d=>d.id));
+  for(const f of files){ let n=0; for(const m of f.models) if(need.has(m.id)&&!map.has(m.id)){ map.set(m.id,m); n++ } if(n) used.push(f.name) }
+  return {...ch,map,used};
+}
 function sceneChooseModels(sc,player,candidates,skip){
   const need=new Set(sc.draws.filter(d=>d.player===player&&!(skip&&skip.has(d.id))).map(d=>d.id)); let best=null;
   for(const c of candidates){ const map=new Map(c.models.map(m=>[m.id,m])); let n=0; for(const id of need) if(map.has(id)) n++;
