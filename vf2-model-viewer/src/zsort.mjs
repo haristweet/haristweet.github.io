@@ -44,9 +44,14 @@ function shade(o,w0,w1,w2){
   let tv=-1; if(tex){ const lx=w0*V[0][9]+w1*V[1][9]+w2*V[2][9], ly=w0*V[0][10]+w1*V[1][10]+w2*V[2][10], sw=V[0][13], sh=V[0][14];
     if(process.env.BILIN){ // 4つのテクセルの重み付き平均（GS のバイリニア）。値 15 の透明は最寄りのテクセルで決める
       const T=(X,Y)=>g("texRam")(col.tex,V[0][16],Math.floor(V[0][11]+(((X%sw)+sw)%sw)),Math.floor(V[0][12]+(((Y%sh)+sh)%sh)));
-      if(V[0][15]>1.5&&T(Math.floor(lx),Math.floor(ly))===15) return null;
       const fx=lx-0.5, fy=ly-0.5, x0=Math.floor(fx), y0=Math.floor(fy), ax=fx-x0, ay=fy-y0;
-      tv=(1-ax)*(1-ay)*T(x0,y0)+ax*(1-ay)*T(x0+1,y0)+(1-ax)*ay*T(x0,y0+1)+ax*ay*T(x0+1,y0+1) }
+      const q=[[x0,y0,(1-ax)*(1-ay)],[x0+1,y0,ax*(1-ay)],[x0,y0+1,(1-ax)*ay],[x0+1,y0+1,ax*ay]].map(([x,y,w])=>[T(x,y),w]);
+      const DM=+(process.env.DECAL||0);
+      if(V[0][15]>1.5&&DM>0){ // 透明（値 15）を4つのテクセルの重みで混ぜる。DM=1: 不透明の重みが半分以上なら描く、2: 少しでもあれば描く。色は不透明のテクセルだけで平均
+        let a=0,c=0; for(const [v,w] of q) if(v!==15){ a+=w; c+=v*w }
+        if(DM<=2){ if(DM===1?a<0.5:a<=0.001) return null; tv=c/a }
+        else { const TH=DM===3?0.001:DM===4?0.25:0.5; if(a<=TH) return null; tv=c } }   // 3〜5: 透明のテクセルを 0 として混ぜる（縁が暗くなる）。描く境目 3=少しでも・4=1/4・5=1/2
+      else { if(V[0][15]>1.5&&T(Math.floor(lx),Math.floor(ly))===15) return null; tv=q.reduce((s,[v,w])=>s+v*w,0) } }
     else { tv=g("texRam")(col.tex,V[0][16],Math.floor(V[0][11]+((lx%sw)+sw)%sw),Math.floor(V[0][12]+((ly%sh)+sh)%sh)); if(V[0][15]>1.5&&tv===15) return null } }
   const l=Math.round(g("buildLuma")(Lc,tv,V[0][23]%2>.5)); LASTSH=[Lc,tv,V[0][23]%2>.5?1:0,c5,l,V[0][19]+"/"+V[0][20]]; return [0,1,2].map(ch=>col.xlat[ch*0x800+c5[ch]*64+l]);
 }
