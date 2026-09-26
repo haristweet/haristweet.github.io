@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.9.1";
+const VERSION="0.10.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -129,10 +129,12 @@ function applyArc(){
   const S=APP.scene, st=APP.states[APP.cur];
   if(!APP.arcRom||!S||APP.mode!=="state"||!st){ APP.gl.setArc(null); return }
   if(!st.arc){
-    const L=arcCharSheets(APP.arcRom,S.rob), T=S.col.tex;   // S.rob＝[1P, 2P]
-    st.arc=[0,1].map(p=>{ const o=new Uint8Array(1024*2048), m=L.mask[p], a=L.tex[p];
-      for(let y=0;y<2048;y++) for(let x=0;x<1024;x++){ const h=(y>>1)*512+(x>>1);
-        if(m[h]) o[y*1024+x]=arcTexel(a,x,y); else { const b=T[(p<<18)+x*256+(y>>3)]; o[y*1024+x]=(y>>2)&1?b>>4:b&15 } }
+    // キャラ（S.rob＝[1P, 2P]）は RAM の縦 0〜1023（PS2 の横 0〜255）、ステージは縦 1024〜1535（PS2 の横 256〜383）。それぞれ別に展開して、その範囲だけ使う
+    const L=arcCharSheets(APP.arcRom,S.rob), sn=+((S.names[2]||"").match(/STAGE(\d+)/)||[])[1], LS=sn?arcStageSheets(APP.arcRom,sn):null, T=S.col.tex;
+    st.arc=[0,1].map(p=>{ const o=new Uint8Array(1024*2048);
+      for(let y=0;y<2048;y++){ const src=y<1024?L:(y<1536&&LS)?LS:null;
+        for(let x=0;x<1024;x++){ const h=(y>>1)*512+(x>>1);
+          if(src&&src.mask[p][h]) o[y*1024+x]=arcTexel(src.tex[p],x,y); else { const b=T[(p<<18)+x*256+(y>>3)]; o[y*1024+x]=(y>>2)&1?b>>4:b&15 } } }
       return o });
   }
   APP.gl.setArc(st.arc);

@@ -4,6 +4,8 @@ const ARC_PAIRS=[["mpr-17560.10","mpr-17561.11"],["mpr-17558.8","mpr-17559.9"],[
 const ARC_PROG=["epr-18385.12","epr-18386.13","epr-18387.14","epr-18388.15"];
 // キャラのテクスチャのセット（2つ1組）の並び。セット 2k+1・2k+2 が ARC_CHARS[k]
 const ARC_CHARS=["AKI","JAC","SAR","KAG","LAU","JEF","PAI","WOL","SUI","TOU","DUR"];
+// ステージ（OBJ_STAGEn・TEX_STAGEn の n）のテクスチャのセット。TEX_STAGEn の中身がそのセットを展開した中にすべてある（CLAUDE.md）
+const ARC_STAGE_SETS={1:34,2:30,3:31,4:33,5:24,6:23,7:29,8:27,9:32,10:28,11:26,13:25};
 // files: 名前→Uint8Array。i960 のプログラム（2本ずつ 16bit 交互）と main_data の8本
 function arcRom(files){
   const need=[...ARC_PROG,...ARC_PAIRS.flat()].filter(n=>!files[n]); if(need.length) throw new Error("ロムに無いファイル: "+need.join(" "));
@@ -172,3 +174,5 @@ class I960 {
     }
   }
 }
+// ステージのテクスチャを作る（ページ 0・1 の両方。PS2 と同じく各ページの横 256〜383 に当たる所＝RAM の縦 1024〜1535）
+function arcStageSheets(rom,n){ const L=arcLoader(rom), s=ARC_STAGE_SETS[n]; if(s) L.loadSet(s,0); return L }

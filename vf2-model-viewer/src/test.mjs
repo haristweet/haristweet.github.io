@@ -51,10 +51,13 @@ if(has("disc/vf2.bin")){
         for(let x=0;x<496;x++) assert.equal(bk[x*4+3],255,"空の上端 x="+x);
       });
     }
-    if(has("disc/arcade/vf2.zip")) await t("アーケードのロム: ジャッキー（1P・2P）のテクスチャを展開すると PS2 の TEX_ROB と同じ（4 行に 1 行）",async()=>{
-      const z=await g("p2sOpen")(fs.readFileSync("disc/arcade/vf2.zip")), files={}; for(const n of z.keys()) files[n.split("/").pop()]=await z.get(n)();
-      const L=g("arcCharSheets")(g("arcRom")(files),["JAC","JAC"]), T=robs[1];
+    if(has("disc/arcade/vf2.zip")) await t("アーケードのロム: ジャッキー（1P・2P）とステージ6 のテクスチャを展開すると PS2 と同じ（4 行に 1 行）",async()=>{
+      const z=await g("p2sOpen")(fs.readFileSync("disc/arcade/vf2.zip")), rf={}; for(const n of z.keys()) rf[n.split("/").pop()]=await z.get(n)();
+      const rom=g("arcRom")(rf), L=g("arcCharSheets")(rom,["JAC","JAC"]), T=robs[1];
       for(const page of [1,0]){ let diff=0; for(let py=0;py<768;py+=5) for(let px=0;px<256;px+=3){ const b=T[py*128+(px>>1)]; if((px&1?b>>4:b&15)!==g("arcTexel")(L.tex[page],py,4*px+3)) diff++ } assert.equal(diff,0,"ページ "+page) }
+      // ステージ6（浜辺）: TEX_STAGE6 の前半がページ0、後半がページ1 の横 256〜383（PS2 と同じ場所）
+      const S6=g("cricmpUnpack")(await files.get("TEX_STAGE6.CMP")()), LS=g("arcStageSheets")(rom,6);
+      for(const page of [0,1]){ let diff=0; for(let py=0;py<1024;py+=7) for(let c=0;c<128;c+=3){ const b=S6[(page*1024+py)*64+(c>>1)]; if((c&1?b>>4:b&15)!==g("arcTexel")(LS.tex[page],py,4*(256+c)+3)) diff++ } assert.equal(diff,0,"ステージ ページ "+page) }
     });
     if(has("disc/states/17_jacky_somersault.p2s")) await t("写し 17: 床への映り込み（行列式が負の部品）は OBJ_JAC1B・JAC2B にある",async()=>{
       const z=await g("p2sOpen")(fs.readFileSync("disc/states/17_jacky_somersault.p2s")), sc=g("sceneRead")(await z.get("eeMemory.bin")());

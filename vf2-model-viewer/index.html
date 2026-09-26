@@ -1254,6 +1254,8 @@ const ARC_PAIRS=[["mpr-17560.10","mpr-17561.11"],["mpr-17558.8","mpr-17559.9"],[
 const ARC_PROG=["epr-18385.12","epr-18386.13","epr-18387.14","epr-18388.15"];
 // キャラのテクスチャのセット（2つ1組）の並び。セット 2k+1・2k+2 が ARC_CHARS[k]
 const ARC_CHARS=["AKI","JAC","SAR","KAG","LAU","JEF","PAI","WOL","SUI","TOU","DUR"];
+// ステージ（OBJ_STAGEn・TEX_STAGEn の n）のテクスチャのセット。TEX_STAGEn の中身がそのセットを展開した中にすべてある（CLAUDE.md）
+const ARC_STAGE_SETS={1:34,2:30,3:31,4:33,5:24,6:23,7:29,8:27,9:32,10:28,11:26,13:25};
 // files: 名前→Uint8Array。i960 のプログラム（2本ずつ 16bit 交互）と main_data の8本
 function arcRom(files){
   const need=[...ARC_PROG,...ARC_PAIRS.flat()].filter(n=>!files[n]); if(need.length) throw new Error("ロムに無いファイル: "+need.join(" "));
@@ -1422,6 +1424,8 @@ class I960 {
     }
   }
 }
+// ステージのテクスチャを作る（ページ 0・1 の両方。PS2 と同じく各ページの横 256〜383 に当たる所＝RAM の縦 1024〜1535）
+function arcStageSheets(rom,n){ const L=arcLoader(rom), s=ARC_STAGE_SETS[n]; if(s) L.loadSet(s,0); return L }
 // WebGL で描く。明るさは build.js の buildBright・buildLuma と同じ式（VU1 のプログラムを写したもの。pose.mjs も同じ）。
 // 色＝色の変換表[チャンネル][色 RAM の 5bit][明るさ]。光はゲームのカメラの座標で計算する（回して見ても場面に固定）。影は黒の半透明で最後に描く
 const VGL_VS=`
@@ -1564,7 +1568,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て
-const VERSION="0.9.1";
+const VERSION="0.10.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -1694,10 +1698,12 @@ function applyArc(){
   const S=APP.scene, st=APP.states[APP.cur];
   if(!APP.arcRom||!S||APP.mode!=="state"||!st){ APP.gl.setArc(null); return }
   if(!st.arc){
-    const L=arcCharSheets(APP.arcRom,S.rob), T=S.col.tex;   // S.rob＝[1P, 2P]
-    st.arc=[0,1].map(p=>{ const o=new Uint8Array(1024*2048), m=L.mask[p], a=L.tex[p];
-      for(let y=0;y<2048;y++) for(let x=0;x<1024;x++){ const h=(y>>1)*512+(x>>1);
-        if(m[h]) o[y*1024+x]=arcTexel(a,x,y); else { const b=T[(p<<18)+x*256+(y>>3)]; o[y*1024+x]=(y>>2)&1?b>>4:b&15 } }
+    // キャラ（S.rob＝[1P, 2P]）は RAM の縦 0〜1023（PS2 の横 0〜255）、ステージは縦 1024〜1535（PS2 の横 256〜383）。それぞれ別に展開して、その範囲だけ使う
+    const L=arcCharSheets(APP.arcRom,S.rob), sn=+((S.names[2]||"").match(/STAGE(\d+)/)||[])[1], LS=sn?arcStageSheets(APP.arcRom,sn):null, T=S.col.tex;
+    st.arc=[0,1].map(p=>{ const o=new Uint8Array(1024*2048);
+      for(let y=0;y<2048;y++){ const src=y<1024?L:(y<1536&&LS)?LS:null;
+        for(let x=0;x<1024;x++){ const h=(y>>1)*512+(x>>1);
+          if(src&&src.mask[p][h]) o[y*1024+x]=arcTexel(src.tex[p],x,y); else { const b=T[(p<<18)+x*256+(y>>3)]; o[y*1024+x]=(y>>2)&1?b>>4:b&15 } } }
       return o });
   }
   APP.gl.setArc(st.arc);
