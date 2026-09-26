@@ -21,11 +21,13 @@ varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc;
 // テクスチャの値（0〜15）。loc は面の中のテクセルの位置で、テクスチャの大きさで折り返す
 // アーケードのテクスチャ（uArc）: loc は横が 4 倍の単位。Model 2 のテクスチャ RAM（横 1024・縦 2048、ページ2枚を横に並べた 2048×2048）の
 // (横 py, 縦 4×px) を引く（PS2 の (px, py) はその 4 行に 1 行。arcade.js）
+// 折り返しは整数のテクセル番号で（mod に整数ちょうどを渡すと誤差で1つ先を読むことがある。なめらかのとき点々になった）
+vec2 wrapi(vec2 loc,vec2 sz){ vec2 li=floor(loc); return li-sz*floor((li+0.5)/sz); }
 float texv(vec2 loc){
-  if(uArc>0.5){ vec2 sz=vOrgSize.zw*vec2(4.0,1.0), t=vOrgSize.xy*vec2(4.0,1.0)+mod(loc,sz);
-    return floor(texture2D(uTexA,vec2((floor(t.y)+vMisc.y*1024.0+0.5)/2048.0,(floor(t.x)+0.5)/2048.0)).r*255.0/17.0+0.5); }
-  vec2 t=vOrgSize.xy+mod(loc,vOrgSize.zw);
-  return floor(texture2D(uTex,vec2((floor(t.x)+vMisc.y*512.0+0.5)/1024.0,(floor(t.y)+0.5)/1024.0)).r*255.0/17.0+0.5);
+  if(uArc>0.5){ vec2 sz=vOrgSize.zw*vec2(4.0,1.0), t=vOrgSize.xy*vec2(4.0,1.0)+wrapi(loc,sz);
+    return floor(texture2D(uTexA,vec2((t.y+vMisc.y*1024.0+0.5)/2048.0,(t.x+0.5)/2048.0)).r*255.0/17.0+0.5); }
+  vec2 t=vOrgSize.xy+wrapi(loc,vOrgSize.zw);
+  return floor(texture2D(uTex,vec2((t.x+vMisc.y*512.0+0.5)/1024.0,(t.y+0.5)/1024.0)).r*255.0/17.0+0.5);
 }
 float xl(float row,float luma){ return texture2D(uXlat,vec2((luma+0.5)/64.0,(row+0.5)/96.0)).r; }
 void main(){
@@ -35,12 +37,20 @@ void main(){
     vec2 loc=uArc>0.5?vLoc*vec2(4.0,1.0):vLoc;
     float tx=texv(loc);
     bool cut=vMisc.x>1.5, ramp=vSpecial>0.5||L<48.0;
-    if(abs(tx-uCut)<0.5||(cut&&tx>14.5)) discard;   // 値 15 は、属性 h0 の bit13 が立った面では透明（推測。写真で木が抜けるのを確かめた）
+    bool mame=uArc>0.5&&uBilin>0.5&&cut;   // アーケードのテクスチャ＋なめらか: 透明は MAME どおり（下）。一番近いテクセルでは抜かない
+    if(abs(tx-uCut)<0.5||(cut&&tx>14.5&&!mame)) discard;   // 値 15 は、属性 h0 の bit13 が立った面では透明（推測。写真で木が抜けるのを確かめた）
     // なめらか: ゲームは GS にバイリニアで引かせている（ゲームが描いた画面がぼけている）。周りの4つのテクセルの重み付き平均。
     // 透明のある面では透明のテクセル（15）を混ぜない（混ぜると縁が白っぽく色あせる）
     if(uBilin>0.5){ vec2 f=loc-0.5, b=floor(f), a=f-b;
       vec4 t=vec4(texv(b),texv(b+vec2(1.0,0.0)),texv(b+vec2(0.0,1.0)),texv(b+vec2(1.0,1.0))), w=vec4((1.0-a.x)*(1.0-a.y),a.x*(1.0-a.y),(1.0-a.x)*a.y,a.x*a.y);
-      if(cut) w*=step(t,vec4(14.5));
+      if(mame){
+        // MAME（model2rd.ipp の fetch_bilinear_texel）: 透明のテクセルは横の隣の値を借り、横に混ぜた1行が2つとも透明ならもう1行の値を借りる。
+        // 透明度も同じ重みで混ぜ、50% 未満なら描かない（アーケードは線に幅があるので削れない。PS2 版のテクスチャでは穴が開くので使わない）
+        vec4 op=step(t,vec4(14.5));
+        if(dot(w,op)<0.5) discard;
+        if(op.x<0.5) t.x=t.y; if(op.y<0.5) t.y=t.x; if(op.z<0.5) t.z=t.w; if(op.w<0.5) t.w=t.z;
+        if(op.x+op.y<0.5){ t.x=t.z; t.y=t.w; } if(op.z+op.w<0.5){ t.z=t.x; t.w=t.y; }
+      } else if(cut) w*=step(t,vec4(14.5));
       float ws=dot(w,vec4(1.0)); if(ws<1e-3){ t=vec4(tx); w=vec4(1.0,0.0,0.0,0.0); } else w/=ws;   // 4つとも透明（重み 0）なら一番近いテクセルだけ
       if(!ramp){
         // 目や眉など、値を色の表の特別な欄（48 列目〜）の番号として使う面: 番号を平均すると関係のない色になるので、4つを色にしてから混ぜる
