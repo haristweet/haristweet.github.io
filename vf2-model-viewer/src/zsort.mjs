@@ -36,11 +36,17 @@ function tris(OX,OY){
   return out.map(o=>({...o,P:o.V.map(v=>[OX+248+600*v[0]/v[2],OY+192-600*v[1]/v[2],v[2]])}));
 }
 // 面（四角は2つの三角形）ごとのまとまり: 同じ法線・同じ属性で続く三角形を1つの面とみなすのは不確かなので、build.js の並び（四角→2三角）を使う
+let LASTSH=null, REC=null;
 function shade(o,w0,w1,w2){
-  const V=o.V, c5=[V[0][6],V[0][7],V[0][8]], tex=V[0][15]>.5, Lc=col.clut[V[0][17]*128+g("buildBright")([V[0][3],V[0][4],V[0][5]],[V[0][19],V[0][20],V[0][21],V[0][22]],light)];
+  const V=o.V, c5=[V[0][6],V[0][7],V[0][8]], tex=V[0][15]>.5, Lc=col.clut[V[0][17]*128+g("buildBright")((o.ch||!process.env.FLIPST)?[V[0][3],V[0][4],V[0][5]]:[-V[0][3],-V[0][4],-V[0][5]],[V[0][19],V[0][20],V[0][21],V[0][22]],light)];
   let tv=-1; if(tex){ const lx=w0*V[0][9]+w1*V[1][9]+w2*V[2][9], ly=w0*V[0][10]+w1*V[1][10]+w2*V[2][10], sw=V[0][13], sh=V[0][14];
-    tv=g("texRam")(col.tex,V[0][16],Math.floor(V[0][11]+((lx%sw)+sw)%sw),Math.floor(V[0][12]+((ly%sh)+sh)%sh)); if(V[0][15]>1.5&&tv===15) return null }
-  const l=g("buildLuma")(Lc,tv,V[0][23]%2>.5); return [0,1,2].map(ch=>col.xlat[ch*0x800+c5[ch]*64+l]);
+    if(process.env.BILIN){ // 4つのテクセルの重み付き平均（GS のバイリニア）。値 15 の透明は最寄りのテクセルで決める
+      const T=(X,Y)=>g("texRam")(col.tex,V[0][16],Math.floor(V[0][11]+(((X%sw)+sw)%sw)),Math.floor(V[0][12]+(((Y%sh)+sh)%sh)));
+      if(V[0][15]>1.5&&T(Math.floor(lx),Math.floor(ly))===15) return null;
+      const fx=lx-0.5, fy=ly-0.5, x0=Math.floor(fx), y0=Math.floor(fy), ax=fx-x0, ay=fy-y0;
+      tv=(1-ax)*(1-ay)*T(x0,y0)+ax*(1-ay)*T(x0+1,y0)+(1-ax)*ay*T(x0,y0+1)+ax*ay*T(x0+1,y0+1) }
+    else { tv=g("texRam")(col.tex,V[0][16],Math.floor(V[0][11]+((lx%sw)+sw)%sw),Math.floor(V[0][12]+((ly%sh)+sh)%sh)); if(V[0][15]>1.5&&tv===15) return null } }
+  const l=Math.round(g("buildLuma")(Lc,tv,V[0][23]%2>.5)); LASTSH=[Lc,tv,V[0][23]%2>.5?1:0,c5,l,V[0][19]+"/"+V[0][20]]; return [0,1,2].map(ch=>col.xlat[ch*0x800+c5[ch]*64+l]);
 }
 // mode: "pixel"＝画素ごとの奥行き、それ以外は並べて奥から塗る（key: 三角形の頂点の奥行きの min/max/avg、cull: 裏向きを描かない）
 function render(T,mode,key,cull){
@@ -60,8 +66,10 @@ function render(T,mode,key,cull){
     for(let y=y0;y<=y1;y++) for(let x=x0;x<=x1;x++){
       const qx=x+.5,qy=y+.5, w1=((qx-a[0])*(c[1]-a[1])-(qy-a[1])*(c[0]-a[0]))/d, w2=((b[0]-a[0])*(qy-a[1])-(b[1]-a[1])*(qx-a[0]))/d, w0=1-w1-w2;
       if(w0<0||w1<0||w2<0) continue; const i=y*W+x;
-      if(mode==="pixel"){ const z=w0*a[2]+w1*b[2]+w2*c[2]; if(z>=zb[i]) continue; const s=shade(o,w0,w1,w2); if(!s) continue; zb[i]=z; px.set(s,i*3); cov[i]=1 }
-      else { const s=shade(o,w0,w1,w2); if(!s) continue; px.set(s,i*3); cov[i]=1 }
+      // テクスチャは奥行きを考えて（1/z で重みを付けて）引く
+      const p0=w0/a[2], p1=w1/b[2], p2=w2/c[2], ps=p0+p1+p2, u0=p0/ps, u1=p1/ps, u2=p2/ps;
+      if(mode==="pixel"){ const z=w0*a[2]+w1*b[2]+w2*c[2]; if(z>=zb[i]) continue; const s=shade(o,u0,u1,u2); if(!s) continue; zb[i]=z; px.set(s,i*3); cov[i]=1; if(REC) REC[i]=LASTSH.concat([z]) }
+      else { const s=shade(o,u0,u1,u2); if(!s) continue; px.set(s,i*3); cov[i]=1 }
     }
   }
   return {px,cov};
@@ -71,6 +79,11 @@ const err=(r,f,mask)=>{ let e=0,n=0; for(let i=0;i<W*H;i++){ if(!r.cov[i]||(mask
 let best=process.env.POS?(([OX,OY,fi])=>({e:0,OX,OY,fi}))(process.env.POS.split(",").map(Number)):null; if(!best) for(const fi of [0,1]) for(let OX=4;OX<=12;OX+=2) for(let OY=24;OY<=40;OY+=2){ const T=tris(OX,OY), r=render(T,"pixel"), e=err(r,frames[fi]); if(!best||e<best.e) best={e,OX,OY,fi} }
 console.log("位置",best.OX,best.OY,"コマ",best.fi,"画素ごとの奥行きでのずれ",best.e.toFixed(2));
 const T=tris(best.OX,best.OY), F=frames[best.fi], base=render(T,"pixel");
+if(process.env.REC){ REC=new Array(W*H); render(T,"pixel"); const out=[];
+  for(let i=0;i<W*H;i++){ const r=REC[i]; if(!r) continue; const f=[F[i*3],F[i*3+1],F[i*3+2]];
+    let best=[1e9,0]; for(let l=0;l<64;l++){ const q=[0,1,2].map(ch=>col.xlat[ch*0x800+r[3][ch]*64+l]); const e=Math.abs(q[0]-f[0])+Math.abs(q[1]-f[1])+Math.abs(q[2]-f[2]); if(e<best[0]) best=[e,l] }
+    const pc=[0,1,2].map(ch=>col.xlat[ch*0x800+r[3][ch]*64+r[4]]); out.push([r[0],r[1],r[2],r[4],best[1],best[0],r[5],Math.abs(pc[0]-f[0])+Math.abs(pc[1]-f[1])+Math.abs(pc[2]-f[2]),i,pc,f,r[6]]) }
+  fs.writeFileSync(process.env.REC,JSON.stringify(out)); console.log("記録",out.length); process.exit(0) }
 const variants=[["pixel",null,false]]; for(const key of ["max","part-org","part-min","part-max"]) for(const cull of [false,true]) variants.push(["sort",key,cull]);
 const rs=variants.map(([m,k,c])=>render(T,m,k,c));
 // 候補どうしで色が食い違う画素だけで比べる（床の明るさなど、重なりと関係ないずれを除く）
