@@ -16,10 +16,14 @@ void main(){
 }`;
 const VGL_FS=`
 precision highp float;
-uniform sampler2D uTex, uClut, uXlat; uniform float uShadow, uCut, uBilin;
+uniform sampler2D uTex, uClut, uXlat, uTexA; uniform float uShadow, uCut, uBilin, uArc;
 varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial;
 // テクスチャの値（0〜15）。loc は面の中のテクセルの位置で、テクスチャの大きさで折り返す
+// アーケードのテクスチャ（uArc）: loc は横が 4 倍の単位。Model 2 のテクスチャ RAM（横 1024・縦 2048、ページ2枚を横に並べた 2048×2048）の
+// (横 py, 縦 4×px) を引く（PS2 の (px, py) はその 4 行に 1 行。arcade.js）
 float texv(vec2 loc){
+  if(uArc>0.5){ vec2 sz=vOrgSize.zw*vec2(4.0,1.0), t=vOrgSize.xy*vec2(4.0,1.0)+mod(loc,sz);
+    return floor(texture2D(uTexA,vec2((floor(t.y)+vMisc.y*1024.0+0.5)/2048.0,(floor(t.x)+0.5)/2048.0)).r*255.0/17.0+0.5); }
   vec2 t=vOrgSize.xy+mod(loc,vOrgSize.zw);
   return floor(texture2D(uTex,vec2((floor(t.x)+vMisc.y*512.0+0.5)/1024.0,(floor(t.y)+0.5)/1024.0)).r*255.0/17.0+0.5);
 }
@@ -28,12 +32,13 @@ void main(){
   if(uShadow>0.5){ gl_FragColor=vec4(0.0,0.0,0.0,0.45); return; }
   float L=floor(texture2D(uClut,vec2((vB+0.5)/128.0,(vMisc.z+0.5)/256.0)).r*255.0+0.5), luma;
   if(vMisc.x>0.5){
-    float tx=texv(vLoc);
+    vec2 loc=uArc>0.5?vLoc*vec2(4.0,1.0):vLoc;
+    float tx=texv(loc);
     bool cut=vMisc.x>1.5, ramp=vSpecial>0.5||L<48.0;
     if(abs(tx-uCut)<0.5||(cut&&tx>14.5)) discard;   // 値 15 は、属性 h0 の bit13 が立った面では透明（推測。写真で木が抜けるのを確かめた）
     // なめらか: ゲームは GS にバイリニアで引かせている（ゲームが描いた画面がぼけている）。周りの4つのテクセルの重み付き平均。
     // 透明のある面では透明のテクセル（15）を混ぜない（混ぜると縁が白っぽく色あせる）
-    if(uBilin>0.5){ vec2 f=vLoc-0.5, b=floor(f), a=f-b;
+    if(uBilin>0.5){ vec2 f=loc-0.5, b=floor(f), a=f-b;
       vec4 t=vec4(texv(b),texv(b+vec2(1.0,0.0)),texv(b+vec2(0.0,1.0)),texv(b+vec2(1.0,1.0))), w=vec4((1.0-a.x)*(1.0-a.y),a.x*(1.0-a.y),(1.0-a.x)*a.y,a.x*a.y);
       if(cut) w*=step(t,vec4(14.5));
       float ws=dot(w,vec4(1.0)); if(ws<1e-3){ t=vec4(tx); w=vec4(1.0,0.0,0.0,0.0); } else w/=ws;   // 4つとも透明（重み 0）なら一番近いテクセルだけ
@@ -64,7 +69,7 @@ function vglNew(canvas){
   gl.attachShader(bp,sh(gl.FRAGMENT_SHADER,"precision mediump float; uniform sampler2D uBack; varying vec2 vUV; void main(){ vec4 c=texture2D(uBack,vUV); if(c.a<0.5) discard; gl_FragColor=vec4(c.rgb,1.0); }"));
   gl.linkProgram(bp); if(!gl.getProgramParameter(bp,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(bp));
   const quad=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,quad); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
-  let hasBack=false;
+  let hasBack=false, hasArc=false;
   const lum=(name,unit,w,h,data)=>{ let t=tex[name]; if(!t){ t=tex[name]=gl.createTexture() }
     gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,w,h,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,data);
@@ -80,6 +85,10 @@ function vglNew(canvas){
       lum("clut",1,128,256,col.clut.slice(0,128*256));   // 曲線（明るさの段階 B → L）。番号ごとに 128 段
       lum("xlat",2,64,96,col.xlat.slice(0,64*96));
     },
+    // アーケードのテクスチャ（ページ2枚。各 横 1024×縦 2048 の 4bit を1バイトずつ）。null で使わない
+    setArc(pages){ if(!pages){ hasArc=false; return } const t=new Uint8Array(2048*2048);
+      for(let p=0;p<2;p++) for(let y=0;y<2048;y++) for(let x=0;x<1024;x++) t[y*2048+p*1024+x]=pages[p][y*1024+x]*17;
+      lum("texA",4,2048,2048,t); hasArc=true },
     // 空と遠景の絵（496×384 の RGBA。null で消す）
     setBack(rgba){ hasBack=!!rgba; if(!rgba) return; let t=tex.back; if(!t) t=tex.back=gl.createTexture();
       gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
@@ -104,6 +113,7 @@ function vglNew(canvas){
       gl.uniformMatrix4fv(u("uView"),false,view); gl.uniform2fv(u("uFocal"),focal); gl.uniform3fv(u("uLight"),light);
       gl.uniform1f(u("uCut"),vglCut); gl.uniform1f(u("uBilin"),opt.bilin?1:0);
       gl.uniform1i(u("uTex"),0); gl.uniform1i(u("uClut"),1); gl.uniform1i(u("uXlat"),2);
+      gl.uniform1f(u("uArc"),opt.arc&&hasArc?1:0); if(hasArc){ gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D,tex.texA) } gl.uniform1i(u("uTexA"),4);
       const F=4, S=BUILD_STRIDE*F;
       for(let i=0;i<2;i++){ if(!counts[i]) continue;
         gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]);

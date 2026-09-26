@@ -54,6 +54,8 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
     <label class="btn">選ぶ<input type="file" id="f-disc" accept=".bin,.iso,.cvm,.img"></label><span class="name" id="n-disc">まだ</span></div>
   <div class="step" id="step-state"><b>2. セーブステート</b><small>PCSX2 の .p2s（対戦中のもの。いくつでも）。姿勢と色はここから読みます</small>
     <label class="btn">選ぶ<input type="file" id="f-state" accept=".p2s" multiple></label><span class="name" id="n-state">まだ</span><div id="states"></div></div>
+  <div class="step" id="step-arc"><b>3. アーケードのロム（なくてもよい）</b><small>MAME の vf2.zip。キャラのテクスチャをアーケード（Model 2）の細かさで描きます（PS2 版は横が 1/4）</small>
+    <label class="btn">選ぶ<input type="file" id="f-arc" accept=".zip"></label><span class="name" id="n-arc">まだ</span></div>
 </div>
 <div class="discview" id="discview" hidden><b>ディスクだけで見る</b>
   <select id="s-char" aria-label="キャラのファイル"></select>
@@ -70,6 +72,7 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <label><input type="checkbox" id="c-stage" checked> 背景</label>
   <label><input type="checkbox" id="c-sky" checked> 空</label>
   <label title="ゲームと同じく、テクスチャを周りの4つのテクセルでなめらかに引く（外すと最寄りのテクセルでくっきり）"><input type="checkbox" id="c-smooth" checked> なめらか</label>
+  <label title="アーケードのロムから作った細かいテクスチャで描く（3 を選ぶと使える）"><input type="checkbox" id="c-arc" disabled> アーケードのテクスチャ</label>
   <label><input type="checkbox" id="c-overlay"> ゲームの画面と重ねる</label>
   <button id="b-reset">ゲームの視点に戻す</button>
   <button id="b-png">PNG で保存</button>
@@ -77,6 +80,7 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさは、ゲームの VU1 のプログラムと同じ式です。背景はステージのモデルのうち、そのコマで描いた部品です。空と遠景は、アーケードの2Dのタイルの面をゲームと同じずらし方で画面に貼ります（視点を回しても動きません）。</p>
+<p>アーケードのロムを選ぶと、アーケードのプログラム（i960）のテクスチャを展開する処理を、ページの中の小さなエミュレーターでそのまま動かして、キャラのテクスチャを Model 2 の細かさで作ります。PS2 版のテクスチャは、これを縦横入れ替えて 4 行に 1 行だけ残したものです（11 人とも一致を確かめた）。</p>
 <p>ディスクだけで見るときは、色の材料もディスクから取ります。ただし色の変換表はステージごとにゲームが作るもので、ディスクには無いので、おおよその値で代わりにしています。</p>
 <p id="ver"></p></details>
 </main>

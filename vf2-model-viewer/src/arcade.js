@@ -1,7 +1,67 @@
+// アーケード（Model 2A）のテクスチャを、ユーザーが用意したロム（vf2.zip）から作る。ロムはページの中で読むだけ（リポジトリに入れない）
+// i960 のプログラム（ロム epr-18385〜18388。PS2 の IC12_15 と同じ）の展開処理を、下のエミュレーターでそのまま動かす（CLAUDE.md「アーケードのロム」）
+const ARC_PAIRS=[["mpr-17560.10","mpr-17561.11"],["mpr-17558.8","mpr-17559.9"],["mpr-17566.6","mpr-17567.7"],["mpr-17564.4","mpr-17565.5"]];
+const ARC_PROG=["epr-18385.12","epr-18386.13","epr-18387.14","epr-18388.15"];
+// キャラのテクスチャのセット（2つ1組）の並び。セット 2k+1・2k+2 が ARC_CHARS[k]
+const ARC_CHARS=["AKI","JAC","SAR","KAG","LAU","JEF","PAI","WOL","SUI","TOU","DUR"];
+// files: 名前→Uint8Array。i960 のプログラム（2本ずつ 16bit 交互）と main_data の8本
+function arcRom(files){
+  const need=[...ARC_PROG,...ARC_PAIRS.flat()].filter(n=>!files[n]); if(need.length) throw new Error("ロムに無いファイル: "+need.join(" "));
+  const prog=new Uint8Array(0x80000);
+  for(let h=0;h<2;h++){ const A=files[ARC_PROG[2*h]], B=files[ARC_PROG[2*h+1]]; for(let i=0;i<A.length;i+=2){ const o=h*0x40000+i*2; prog[o]=A[i]; prog[o+1]=A[i+1]; prog[o+2]=B[i]; prog[o+3]=B[i+1] } }
+  return {prog, chips:ARC_PAIRS.map(p=>p.map(n=>files[n]))};
+}
+// テクスチャ RAM 2枚（16bit の語に 2×2 テクセル。MAME: 語＝(y>>1)*512＋(x>>1)、y 偶数で上位バイト、x 偶数で上位ニブル）
+function arcTexel(s,x,y){ let w=s[((y>>1)*512+(x>>1))&0x7ffff]; if(!(y&1)) w>>=8; if(!(x&1)) w>>=4; return w&15 }
+function arcLoader(rom){
+  const code={readUInt32LE:a=>(rom.prog[a]|rom.prog[a+1]<<8|rom.prog[a+2]<<16|rom.prog[a+3]<<24)>>>0};
+  const half=k=>{ const c=rom.chips[k>>21][k&1], j=(k>>1)&0xfffff; return c[2*j]|c[2*j+1]<<8 };
+  const ram=new Uint8Array(0x100000), ram2=new Uint8Array(0x40000), tex=[new Uint16Array(0x80000),new Uint16Array(0x80000)], mask=[new Uint8Array(0x80000),new Uint8Array(0x80000)];
+  const md=o=>o<0x1000000?(half(o>>1)>>(8*(o&1)))&255:0;
+  const r8=A=>{ A>>>=0;
+    if(A<0x80000) return rom.prog[A];
+    if(A>=0x500000&&A<0x600000) return ram[A-0x500000];
+    if(A>=0x200000&&A<0x240000) return ram2[A-0x200000];
+    if(A>=0x2000000&&A<0x4000000) return md(A-0x2000000);
+    if(A>=0x6000000&&A<0x7000000) return md(A-0x6000000+0x1000000);
+    if(A>=0xf00000&&A<0xf00010) return 0xff;   // タイマー: いつも「まだ時間がある」（0xb6c・0x4cb64 などが時間切れで処理を譲らないように）
+    return 0 };
+  const texw=(A,v)=>{ const s=(A>>>22)&1, h=((A&0x1fffff)>>>2)&0x7ffff; tex[s][h]=v&0xffff; mask[s][h]=1 };
+  const mem={ r8, r16:A=>r8(A)|r8(A+1)<<8, r32:A=>(r8(A)|r8(A+1)<<8|r8(A+2)<<16|r8(A+3)<<24)>>>0,
+    w8(A,v){ A>>>=0; if(A>=0x500000&&A<0x600000) ram[A-0x500000]=v; else if(A>=0x200000&&A<0x240000) ram2[A-0x200000]=v },
+    w16(A,v){ A>>>=0; if(A>=0x12000000&&A<0x12800000) return texw(A,v); this.w8(A,v&255); this.w8(A+1,v>>>8&255) },
+    w32(A,v){ A>>>=0; if(A>=0x12000000&&A<0x12800000) return texw(A,v); for(let k=0;k<4;k++) this.w8(A+k,(v>>>(8*k))&255) } };
+  const cpu=new I960(code,mem);
+  // テクスチャのセット s を読み込む（0x4bd60〜0x4bf64 の流れ）。flip＝1 ならページを入れ替える（要求の旗の bit0。2P）
+  function loadSet(s,flip=0){
+    const R=cpu.r, r32=mem.r32;
+    let r10=r32(r32(0x230000c)+s*4); const first=r32(r10); r10+=4;
+    let r9=r32(r32(0x2300008)+first*4); const n=r32(r9); r9+=4;
+    for(let e=0;e<n;e++){
+      const g2=r32(r9), g0=(g2<<16)>>>17;
+      // 処理を譲る旗は下ろし、持ち時間（0x4c10c が入れる値）を入れておく
+      R[1]=R[31]=0x5f0000; mem.w32(0x550080,0); mem.w32(0x5500f4,0); mem.w8(0x500000,0); mem.w8(0x50008c,0); mem.w32(0x55c2f4,flip&1); mem.w32(0x550004,0x12a8); mem.w32(0x550008,0x4e20);
+      R[24]=(g2^flip)&1; R[22]=(mem.r16(0x4c120+g0*4)+(g2>>>24))>>>0; R[23]=(mem.r16(0x4c122+g0*4)+((g2<<8)>>>24))>>>0;
+      cpu.run(0x4d16c);
+      let g3=r32(r10); const t=r32(g3); R[19]=g3+4;
+      if(t===0){ cpu.run(0x4c180); cpu.run(0x4cb64); cpu.run(0x4cd18) } else cpu.run(0x4c9dc);
+      r9+=4; r10+=4;
+    }
+    return n;
+  }
+  return {cpu,mem,tex,mask,loadSet};
+}
+// キャラ（SC_ROB の名前。[1P, 2P]）のテクスチャを作る。1P はページ1、2P はページ0（PS2 と同じ。要求の旗の bit0 でページが入れ替わる）
+function arcCharSheets(rom,chars){
+  const L=arcLoader(rom);
+  chars.forEach((c,i)=>{ const k=ARC_CHARS.indexOf(c); if(k<0) return; L.loadSet(2*k+1,i); L.loadSet(2*k+2,i) });
+  return L;
+}
+
 // i960（Model 2 の主 CPU）の小さなエミュレーター。アーケードのプログラムの一部（テクスチャの展開と写し）をそのまま動かすためのもの。
 // 浮動小数点・割り込み・特権命令は無い。呼び出し（call/ret）の局所レジスターは JS の配列に積む（メモリには置かない）
 // mem: { r8(a), r16(a), r32(a), w8(a,v), w16(a,v), w32(a,v) }
-export class I960 {
+class I960 {
   constructor(code, mem){ this.code=code; this.mem=mem; this.r=new Uint32Array(32); this.cc=0; this.frames=[]; this.steps=0 }
   ea(w, a){ // MEM 形式の実効番地と命令長
     const ab=(w>>>14)&31, R=this.r;

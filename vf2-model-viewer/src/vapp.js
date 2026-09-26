@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.8.2";
+const VERSION="0.9.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -36,7 +36,7 @@ async function showDisc(){
     const only=APP.dv.k<0?null:ids[APP.dv.k], col=dvColors(APP.dvBase.fix,APP.dvBase.ic,rob,APP.dvBase.dfl), sc=dvScene(models,only);
     APP.mode="disc"; APP.cur=-1; listStates();
     APP.scene={sc,col,models:{0:models,1:null,stage:null},names:[name.replace(".CMP",""),"なし","なし"],light:sceneLight(null,sc)};
-    APP.gl.setColors(col); APP.gl.setBack(null); rebuild(); resetView();
+    APP.gl.setColors(col); APP.gl.setBack(null); APP.gl.setArc(null); rebuild(); resetView();
     if(only!=null){ APP.rot=[0.6,0.3]; draw() }   // 1つだけのときは斜めから（真横だと薄い部品が見えない）
     $("n-part").textContent=only==null?`全部（${ids.length}）`:`${APP.dv.k+1}/${ids.length}（番号 ${only}）`;
     $("shot").hidden=true; $("empty").hidden=true; $("hint").hidden=false;
@@ -64,8 +64,8 @@ async function show(){
     for(const n of stageNames) stc.push({name:n,models:await readObj(n)});
     const st2=sceneChooseModels(sc,0,stc,models[0]?new Set(models[0].keys()):null);
     models.stage=st2?st2.map:null; names.push(st2?st2.name.replace(".CMP",""):"なし");
-    APP.scene={sc,col,models,names,light:sceneLight(st.vu1,sc)};
-    APP.gl.setColors(col); APP.gl.setBack(scrBack(scrRead(st.mem))); rebuild(); resetView();
+    APP.scene={sc,col,models,names,light:sceneLight(st.vu1,sc),rob:[who[0]>=0?SC_ROB[who[0]]:null,who[1]>=0?SC_ROB[who[1]]:null]};
+    APP.gl.setColors(col); APP.gl.setBack(scrBack(scrRead(st.mem))); applyArc(); rebuild(); resetView();
     $("shot").src=st.shot||""; $("shot").hidden=!st.shot; $("empty").hidden=true; $("hint").hidden=false;
     status("");
   }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
@@ -98,7 +98,7 @@ function draw(){
   const V=new Float32Array([R[0],R[1],R[2],0, R[3],R[4],R[5],0, R[6],R[7],R[8],0, t[0]+APP.pan[0],t[1]+APP.pan[1],t[2],1]);
   // ゲームの画面（496×384 を 622×412 に広げて見せている）と同じ写り方。この欄の縦横比は 622:412
   const f=APP.scene.sc.focal, focal=[f[0]*APP.zoom*2/496, f[1]*APP.zoom*2/384];
-  APP.gl.draw(V,focal,APP.scene.light.L,$("c-sky").checked,{bilin:$("c-smooth").checked});   // 光はゲームのカメラの座標のまま（法線も回す前のもの）
+  APP.gl.draw(V,focal,APP.scene.light.L,$("c-sky").checked,{bilin:$("c-smooth").checked,arc:$("c-arc").checked});   // 光はゲームのカメラの座標のまま（法線も回す前のもの）
 }
 function hookInput(){
   // ドラッグで回す。Shift を押しながら（または右・中ボタンで）ドラッグすると平行に動かす。2本指はピンチで寄り、指の中ほどの移動で平行に動く（tobal ビューアと同じ）
@@ -124,6 +124,19 @@ function hookInput(){
   v.addEventListener("dblclick",resetView);
   addEventListener("resize",draw);
 }
+// アーケードのテクスチャ: そのセーブステートの2人のテクスチャをロムから作り（arcade.js）、ロムで書かれなかった所は PS2 のテクスチャを縦に 4 倍して埋める
+function applyArc(){
+  const S=APP.scene, st=APP.states[APP.cur];
+  if(!APP.arcRom||!S||APP.mode!=="state"||!st){ APP.gl.setArc(null); return }
+  if(!st.arc){
+    const L=arcCharSheets(APP.arcRom,S.rob), T=S.col.tex;   // S.rob＝[1P, 2P]
+    st.arc=[0,1].map(p=>{ const o=new Uint8Array(1024*2048), m=L.mask[p], a=L.tex[p];
+      for(let y=0;y<2048;y++) for(let x=0;x<1024;x++){ const h=(y>>1)*512+(x>>1);
+        if(m[h]) o[y*1024+x]=arcTexel(a,x,y); else { const b=T[(p<<18)+x*256+(y>>3)]; o[y*1024+x]=(y>>2)&1?b>>4:b&15 } }
+      return o });
+  }
+  APP.gl.setArc(st.arc);
+}
 function listStates(){
   const box=$("states"); box.innerHTML="";
   APP.states.forEach((s,i)=>{ const b=document.createElement("button"); b.textContent=s.name.replace(/\.p2s$/i,""); if(i===APP.cur) b.className="on";
@@ -143,6 +156,14 @@ function init(){
     if(APP.cur<0) APP.cur=0; $("n-state").textContent=APP.states.length+" 個"; $("step-state").classList.add("done"); listStates();
     if(APP.disc) show(); else status("次に 1 のディスクのイメージを選んでください");
   };
+  $("f-arc").onchange=async e=>{ const f=e.target.files[0]; if(!f) return;
+    try{ status("アーケードのロムを読み込み中…"); const z=await p2sOpen(await f.arrayBuffer()), files={};
+      for(const n of z.keys()) files[n.split("/").pop()]=await z.get(n)();
+      APP.arcRom=arcRom(files); for(const st of APP.states) st.arc=null;
+      $("n-arc").textContent=f.name; $("step-arc").classList.add("done"); $("c-arc").disabled=false; $("c-arc").checked=true; status("");
+      if(APP.mode==="state"&&APP.scene){ applyArc(); draw() } }
+    catch(err){ status("ロムを読めなかった: "+err.message,true) } };
+  $("c-arc").onchange=draw;
   for(const id of ["c-p1","c-p2","c-shadow","c-stage"]) $(id).onchange=rebuild;
   $("c-sky").onchange=draw; $("c-smooth").onchange=draw;
   $("s-char").onchange=()=>{ APP.dv=null; showDisc() };

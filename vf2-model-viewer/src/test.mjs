@@ -1,7 +1,7 @@
 // 単体試験。ページの .js を1つの文脈に読み、本物のデータ（disc/ にあれば）で確かめる。node test.mjs
 import fs from "fs"; import vm from "vm"; import assert from "assert";
 const ctx={console,TextDecoder,Blob,File,Response,DecompressionStream,Uint8Array}; vm.createContext(ctx);
-for(const f of ["zstd.js","p2s.js","cricmp.js","obj.js","tex.js","scene.js","build.js","m2scr.js","vdisc.js"]) vm.runInContext(fs.readFileSync(f,"utf8"),ctx,{filename:f});
+for(const f of ["zstd.js","p2s.js","cricmp.js","obj.js","tex.js","scene.js","build.js","m2scr.js","vdisc.js","arcade.js"]) vm.runInContext(fs.readFileSync(f,"utf8"),ctx,{filename:f});
 const g=n=>vm.runInContext(n,ctx);
 let ok=0; const t=async(name,fn)=>{ await fn(); ok++; console.log("  ok",name) };
 // 偽のデータでの試験（データが無くても回る）
@@ -51,6 +51,11 @@ if(has("disc/vf2.bin")){
         for(let x=0;x<496;x++) assert.equal(bk[x*4+3],255,"空の上端 x="+x);
       });
     }
+    if(has("disc/arcade/vf2.zip")) await t("アーケードのロム: ジャッキー（1P・2P）のテクスチャを展開すると PS2 の TEX_ROB と同じ（4 行に 1 行）",async()=>{
+      const z=await g("p2sOpen")(fs.readFileSync("disc/arcade/vf2.zip")), files={}; for(const n of z.keys()) files[n.split("/").pop()]=await z.get(n)();
+      const L=g("arcCharSheets")(g("arcRom")(files),["JAC","JAC"]), T=robs[1];
+      for(const page of [1,0]){ let diff=0; for(let py=0;py<768;py+=5) for(let px=0;px<256;px+=3){ const b=T[py*128+(px>>1)]; if((px&1?b>>4:b&15)!==g("arcTexel")(L.tex[page],py,4*px+3)) diff++ } assert.equal(diff,0,"ページ "+page) }
+    });
     if(has("disc/states/17_jacky_somersault.p2s")) await t("写し 17: 床への映り込み（行列式が負の部品）は OBJ_JAC1B・JAC2B にある",async()=>{
       const z=await g("p2sOpen")(fs.readFileSync("disc/states/17_jacky_somersault.p2s")), sc=g("sceneRead")(await z.get("eeMemory.bin")());
       const obj=async n=>({name:n,models:g("objModels")(g("cricmpUnpack")(await files.get(n)()))});
