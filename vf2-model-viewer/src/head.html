@@ -25,7 +25,7 @@ h1{font-size:20px;margin:0 0 4px}
 #states button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:99px;padding:3px 10px;cursor:pointer;font:inherit;font-size:13px}
 #states button.on{border-color:var(--acc);color:var(--acc);font-weight:600}
 #status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
-.viewer{position:relative;background:var(--stage);border-radius:10px;overflow:hidden;aspect-ratio:622/412;touch-action:none;user-select:none}
+.viewer{position:relative;background:radial-gradient(circle at 50% 35%,var(--stage2,var(--stage)),var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:622/412;touch-action:none;user-select:none}
 .viewer canvas{position:absolute;inset:0;width:100%;height:100%}
 /* 写真（640×480）のうち、ゲームの絵がある x 9〜630・y 34〜445 をこの欄にぴったり合わせる */
 .viewer img{position:absolute;left:-1.447%;top:-8.252%;width:102.894%;height:116.505%;opacity:0;transition:opacity .2s}
@@ -35,6 +35,11 @@ h1{font-size:20px;margin:0 0 4px}
 .viewer .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a8a49a;text-align:center;padding:20px}
 .ctrl{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:10px 0}
 .ctrl label{white-space:nowrap}
+.bgs{display:inline-flex;gap:6px;vertical-align:middle}
+.bgs button{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);padding:0!important;cursor:pointer}
+.bgs button[aria-pressed=true]{border-color:var(--acc)}
+.viewer.drop-over{outline:3px dashed var(--acc);outline-offset:-3px}
+body.drop-over main{opacity:.85}
 .ctrl button{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:5px 12px;cursor:pointer;font:inherit}
 #info{color:var(--mut);font-size:13px;margin:6px 0 0}
 .ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
@@ -63,7 +68,7 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <small>セーブステートが無くても、キャラの部品を大きさをそろえて並べて見られます。姿勢は無く、肌や服の色は対戦中にゲームが作る表で付くので、ここでは灰色がちになります</small></div>
 <div id="status"></div>
 <div class="viewer" id="viewer"><img id="shot" alt="" hidden><canvas id="cv"></canvas>
-  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます（1 だけでも部品を見られます）</div>
+  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます（1 だけでも部品を見られます）。ファイルはページにドロップしても読み込めます</div>
   <div class="hint" id="hint" hidden>ドラッグで回す・Shift＋ドラッグ（右ボタン・2本指）で動かす・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
 <div class="ctrl">
   <label><input type="checkbox" id="c-p1" checked> 1P</label>
@@ -76,13 +81,16 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <label><input type="checkbox" id="c-overlay"> ゲームの画面と重ねる</label>
   <button id="b-reset">ゲームの視点に戻す</button>
   <button id="b-png">PNG で保存</button>
+  <label title="PNG・動画を透明な背景で（空・ステージ・背景の色を描かない。動画はアニメーション PNG のときだけ）"><input type="checkbox" id="c-clear"> 背景なし</label>
+  <label title="PNG・動画をキャラの周りだけ切り抜く"><input type="checkbox" id="c-crop"> キャラだけ切り抜き</label>
+  <span class="bgs" id="bg-box" aria-label="背景の色"></span>
 </div>
 <div class="discview" id="motview" hidden><b>技を出す</b>
   <select id="m-pl" aria-label="どちらのキャラ"><option value="0">1P</option><option value="1">2P</option></select>
   <span class="parts">技 <button id="m-prev" aria-label="前の技">◀</button> <input id="m-num" type="number" min="1" max="1359" style="width:5.5em" aria-label="技の番号"> <button id="m-next" aria-label="次の技">▶</button></span>
-  <span class="parts">コマ <input id="m-frame" type="range" min="1" max="1" value="1" style="width:12em;vertical-align:middle" aria-label="コマ"> <span id="m-fn">-</span></span>
-  <button id="m-play">▶ 再生</button> <button id="m-rand">🎲 ランダムに連続</button> <button id="m-back">写しに戻す</button>
-  <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形は技の台本どおりに変わります（髪の揺れはその写しのまま）。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま。「ランダムに連続」は、技が終わるたびに番号をランダムに選び、ゲームの「前の技からのつなぎ」でつないで出し続けます（そのキャラの技でない番号も出るので、崩れたら止めてください）</small></div>
+  <span class="parts">コマ <button id="m-fprev" aria-label="前のコマ" title="前のコマ（←）">◀</button> <input id="m-frame" type="range" min="1" max="1" value="1" style="width:12em;vertical-align:middle" aria-label="コマ"> <button id="m-fnext" aria-label="次のコマ" title="次のコマ（→）">▶</button> <span id="m-fn">-</span></span>
+  <button id="m-play">▶ 再生</button> <button id="m-rand">🎲 ランダムに連続</button> <button id="m-rec" title="いまの技を1回分、動画で保存">🎬 動画</button><span id="rec-menu" hidden> <button data-fmt="video">MP4／WebM</button> <button data-fmt="apng">アニメーション PNG</button></span> <button id="m-back">写しに戻す</button>
+  <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形は技の台本どおりに変わります（髪の揺れはその写しのまま）。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま。コマは ◀ ▶ か ← → キーで1つずつ、スペースで再生・止める。「🎬 動画」は、いまの技を頭から最後まで MP4／WebM（1秒60コマ）かアニメーション PNG（30コマ/秒。「背景なし」なら透過）で保存します。「ランダムに連続」は、技が終わるたびに番号をランダムに選び、ゲームの「前の技からのつなぎ」でつないで出し続けます（そのキャラの技でない番号も出るので、崩れたら止めてください）</small></div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさは、ゲームの VU1 のプログラムと同じ式です。背景はステージのモデルのうち、そのコマで描いた部品です。空と遠景は、アーケードの2Dのタイルの面をゲームと同じずらし方で画面に貼ります（視点を回しても動きません）。</p>

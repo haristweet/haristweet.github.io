@@ -36,10 +36,30 @@ for(const [w,h,tag] of [[1100,900,"pc"],[390,844,"phone"]]){
     await p.click("#m-rand"); const seen=new Set(); for(let i=0;i<40&&seen.size<3;i++){ await p.waitForTimeout(250); seen.add(await p.inputValue("#m-num")) }
     await p.locator("#viewer").screenshot({path:"out/b_pc_m3.png"}); await p.click("#m-rand"); const a1=await p.textContent("#m-fn"); await p.waitForTimeout(400);
     console.log(tag,"ランダム:",[...seen].join(","),"止めたあと",a1,"→",await p.textContent("#m-fn"),await p.textContent("#m-rand"));
+    // v0.14.0: 背景の色・背景なし＋切り抜きの PNG・← → のコマ送り・動画（アニメーション PNG と MP4/WebM）・ホイールでカーソルの位置へ
+    await p.click("#bg-box button:nth-child(8)"); console.log(tag,"背景の色:",await p.evaluate(()=>document.getElementById("viewer").style.getPropertyValue("--stage")));
+    await p.fill("#m-num","570"); await p.dispatchEvent("#m-num","change"); await p.waitForFunction(()=>/\/ \d+/.test(document.getElementById("m-fn").textContent),null,{timeout:60000});
+    await p.locator("body").click({position:{x:5,y:5}}); await p.keyboard.press("ArrowRight"); await p.keyboard.press("ArrowRight"); await p.waitForTimeout(300);
+    console.log(tag,"→ を2回:",await p.textContent("#m-fn"));
+    await p.check("#c-clear"); await p.check("#c-crop");
+    { const [d]=await Promise.all([p.waitForEvent("download"),p.click("#b-png")]); const f=await d.path(), b=fs.readFileSync(f);
+      console.log(tag,"PNG:",d.suggestedFilename(),"幅",b.readUInt32BE(16),"高さ",b.readUInt32BE(20),"色の型",b[25]); fs.copyFileSync(f,"out/b_pc_shot.png") }
+    for(const fmt of ["apng","video"]){ await p.click("#m-rec"); const [d]=await Promise.all([p.waitForEvent("download",{timeout:300000}),p.click(`#rec-menu button[data-fmt=${fmt}]`)]);
+      const f=await d.path(), b=fs.readFileSync(f); console.log(tag,"動画:",d.suggestedFilename(),(b.length/1024).toFixed(0)+"KB",fmt==="apng"?"acTL "+b.includes(Buffer.from("acTL")):""); fs.copyFileSync(f,"out/b_pc_rec."+(fmt==="apng"?"png":d.suggestedFilename().split(".").pop()));
+      await p.waitForFunction(()=>/動画/.test(document.getElementById("m-rec").textContent),null,{timeout:60000}) }
+    await p.uncheck("#c-clear"); await p.uncheck("#c-crop");
+    { const box=await p.locator("#cv").boundingBox(); await p.mouse.move(box.x+box.width*0.8,box.y+box.height*0.3); await p.mouse.wheel(0,-600); await p.waitForTimeout(300); await p.locator("#viewer").screenshot({path:"out/b_pc_wheel.png"}) }
   }
   console.log(tag,"エラー",errs);
   await p.close();
 }
+// ドロップで読み込む（写し1つ。ディスクは大きいので渡さない）
+{ const p=await b.newPage({viewport:{width:1100,height:900}}); const errs=[]; p.on("pageerror",e=>errs.push(e.message));
+  await p.goto(page0); const st=fs.readdirSync(path.join(here,"disc/states")).filter(f=>f.endsWith(".p2s")).sort()[0], data=fs.readFileSync(path.join(here,"disc/states",st)).toString("base64");
+  const dt=await p.evaluateHandle(([name,b64])=>{ const u=Uint8Array.from(atob(b64),c=>c.charCodeAt(0)), d=new DataTransfer(); d.items.add(new File([u],name)); return d },[st,data]);
+  await p.dispatchEvent("body","dragenter",{dataTransfer:dt}); await p.dispatchEvent("body","drop",{dataTransfer:dt});
+  await p.waitForFunction(()=>/個/.test(document.getElementById("n-state").textContent),null,{timeout:60000});
+  console.log("ドロップ:",await p.textContent("#n-state"),JSON.stringify(await p.textContent("#status")),"エラー",errs); await p.close() }
 // ディスクだけ（セーブステートを持っていない人の流れ）: 部品を並べる → 1つずつ → キャラを変える → あとから写しを足す
 for(const [w,h,tag] of [[1100,900,"pc"],[390,844,"phone"]]){
   const p=await b.newPage({viewport:{width:w,height:h}}); const errs=[];

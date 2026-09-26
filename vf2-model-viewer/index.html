@@ -25,7 +25,7 @@ h1{font-size:20px;margin:0 0 4px}
 #states button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:99px;padding:3px 10px;cursor:pointer;font:inherit;font-size:13px}
 #states button.on{border-color:var(--acc);color:var(--acc);font-weight:600}
 #status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
-.viewer{position:relative;background:var(--stage);border-radius:10px;overflow:hidden;aspect-ratio:622/412;touch-action:none;user-select:none}
+.viewer{position:relative;background:radial-gradient(circle at 50% 35%,var(--stage2,var(--stage)),var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:622/412;touch-action:none;user-select:none}
 .viewer canvas{position:absolute;inset:0;width:100%;height:100%}
 /* 写真（640×480）のうち、ゲームの絵がある x 9〜630・y 34〜445 をこの欄にぴったり合わせる */
 .viewer img{position:absolute;left:-1.447%;top:-8.252%;width:102.894%;height:116.505%;opacity:0;transition:opacity .2s}
@@ -35,6 +35,11 @@ h1{font-size:20px;margin:0 0 4px}
 .viewer .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a8a49a;text-align:center;padding:20px}
 .ctrl{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:10px 0}
 .ctrl label{white-space:nowrap}
+.bgs{display:inline-flex;gap:6px;vertical-align:middle}
+.bgs button{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);padding:0!important;cursor:pointer}
+.bgs button[aria-pressed=true]{border-color:var(--acc)}
+.viewer.drop-over{outline:3px dashed var(--acc);outline-offset:-3px}
+body.drop-over main{opacity:.85}
 .ctrl button{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:5px 12px;cursor:pointer;font:inherit}
 #info{color:var(--mut);font-size:13px;margin:6px 0 0}
 .ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
@@ -63,7 +68,7 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <small>セーブステートが無くても、キャラの部品を大きさをそろえて並べて見られます。姿勢は無く、肌や服の色は対戦中にゲームが作る表で付くので、ここでは灰色がちになります</small></div>
 <div id="status"></div>
 <div class="viewer" id="viewer"><img id="shot" alt="" hidden><canvas id="cv"></canvas>
-  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます（1 だけでも部品を見られます）</div>
+  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます（1 だけでも部品を見られます）。ファイルはページにドロップしても読み込めます</div>
   <div class="hint" id="hint" hidden>ドラッグで回す・Shift＋ドラッグ（右ボタン・2本指）で動かす・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
 <div class="ctrl">
   <label><input type="checkbox" id="c-p1" checked> 1P</label>
@@ -76,13 +81,16 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <label><input type="checkbox" id="c-overlay"> ゲームの画面と重ねる</label>
   <button id="b-reset">ゲームの視点に戻す</button>
   <button id="b-png">PNG で保存</button>
+  <label title="PNG・動画を透明な背景で（空・ステージ・背景の色を描かない。動画はアニメーション PNG のときだけ）"><input type="checkbox" id="c-clear"> 背景なし</label>
+  <label title="PNG・動画をキャラの周りだけ切り抜く"><input type="checkbox" id="c-crop"> キャラだけ切り抜き</label>
+  <span class="bgs" id="bg-box" aria-label="背景の色"></span>
 </div>
 <div class="discview" id="motview" hidden><b>技を出す</b>
   <select id="m-pl" aria-label="どちらのキャラ"><option value="0">1P</option><option value="1">2P</option></select>
   <span class="parts">技 <button id="m-prev" aria-label="前の技">◀</button> <input id="m-num" type="number" min="1" max="1359" style="width:5.5em" aria-label="技の番号"> <button id="m-next" aria-label="次の技">▶</button></span>
-  <span class="parts">コマ <input id="m-frame" type="range" min="1" max="1" value="1" style="width:12em;vertical-align:middle" aria-label="コマ"> <span id="m-fn">-</span></span>
-  <button id="m-play">▶ 再生</button> <button id="m-rand">🎲 ランダムに連続</button> <button id="m-back">写しに戻す</button>
-  <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形は技の台本どおりに変わります（髪の揺れはその写しのまま）。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま。「ランダムに連続」は、技が終わるたびに番号をランダムに選び、ゲームの「前の技からのつなぎ」でつないで出し続けます（そのキャラの技でない番号も出るので、崩れたら止めてください）</small></div>
+  <span class="parts">コマ <button id="m-fprev" aria-label="前のコマ" title="前のコマ（←）">◀</button> <input id="m-frame" type="range" min="1" max="1" value="1" style="width:12em;vertical-align:middle" aria-label="コマ"> <button id="m-fnext" aria-label="次のコマ" title="次のコマ（→）">▶</button> <span id="m-fn">-</span></span>
+  <button id="m-play">▶ 再生</button> <button id="m-rand">🎲 ランダムに連続</button> <button id="m-rec" title="いまの技を1回分、動画で保存">🎬 動画</button><span id="rec-menu" hidden> <button data-fmt="video">MP4／WebM</button> <button data-fmt="apng">アニメーション PNG</button></span> <button id="m-back">写しに戻す</button>
+  <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形は技の台本どおりに変わります（髪の揺れはその写しのまま）。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま。コマは ◀ ▶ か ← → キーで1つずつ、スペースで再生・止める。「🎬 動画」は、いまの技を頭から最後まで MP4／WebM（1秒60コマ）かアニメーション PNG（30コマ/秒。「背景なし」なら透過）で保存します。「ランダムに連続」は、技が終わるたびに番号をランダムに選び、ゲームの「前の技からのつなぎ」でつないで出し続けます（そのキャラの技でない番号も出るので、崩れたら止めてください）</small></div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさは、ゲームの VU1 のプログラムと同じ式です。背景はステージのモデルのうち、そのコマで描いた部品です。空と遠景は、アーケードの2Dのタイルの面をゲームと同じずらし方で画面に貼ります（視点を回しても動きません）。</p>
@@ -2055,7 +2063,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て
-const VERSION="0.13.1";
+const VERSION="0.14.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -2179,7 +2187,9 @@ function hookInput(){
   });
   const up=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch=null; last=pts.size?[...pts.values()][0]:null; if(!pts.size) mode=null; else if(mode==="pinch") mode="pan" };
   v.addEventListener("pointerup",up); v.addEventListener("pointercancel",up);
-  v.addEventListener("wheel",e=>{ e.preventDefault(); APP.zoom=Math.max(.3,Math.min(20,APP.zoom*Math.exp(-e.deltaY*0.001))); draw() },{passive:false});
+  // ホイール: カーソルの下の物が動かないように寄る（寄った倍率 k だけ、中心からのずれを戻す）
+  v.addEventListener("wheel",e=>{ e.preventDefault(); const z0=APP.zoom; APP.zoom=Math.max(.3,Math.min(20,APP.zoom*Math.exp(-e.deltaY*0.001)));
+    const k=APP.zoom/z0, r=$("cv").getBoundingClientRect(), ox=e.clientX-(r.left+r.width/2), oy=e.clientY-(r.top+r.height/2); panBy(ox*(1-k),oy*(1-k)); draw() },{passive:false});
   v.addEventListener("dblclick",resetView);
   addEventListener("resize",draw);
 }
@@ -2242,12 +2252,14 @@ function motStop(){ if(APP.mot){ APP.mot.play=false; APP.mot.random=false } $("m
 // ランダムに連続: 技が終わるたびに 1〜1359 から次の技を選び、ゲームの「前の技からのつなぎ」（0x27130）でつなぐ
 function motPickRandom(M){ for(let n=0;n<200;n++){ const m=1+Math.floor(Math.random()*1359); if(M.eng.motionLength(m)>0) return m } return M.m||1 }
 async function motRandom(){
+  if(rec.busy) return;
   if(APP.mot&&APP.mot.random){ motStop(); return }
   motStop(); const M=await motEnsure(); if(!M) return;
   await motSet(motPickRandom(M),1,!!M.m); if(!M.m) return;
   M.random=true; $("m-rand").textContent="■ 止める"; motPlay(true);
 }
 function motPlay(fromRandom){
+  if(rec.busy) return;
   const M=APP.mot; if(!M||!M.m){ motSet(+$("m-num").value,1).then(()=>{ if(APP.mot&&APP.mot.m) motPlay() }); return }
   if(M.play&&!fromRandom){ motStop(); return }
   M.play=true; if(!M.random) $("m-play").textContent="■ 止める"; let t0=performance.now(), f0=M.f>=M.len?1:M.f, busy=false;
@@ -2261,27 +2273,141 @@ function motPlay(fromRandom){
   requestAnimationFrame(tick);
 }
 function motBack(){ motStop(); if(APP.mot) APP.mot.m=0; if(APP.scene){ APP.scene.sc=APP.scene.sc0; rebuild() } const st=APP.states[APP.cur]; if(st) motShowUI(st) }
+async function loadDisc(f){ if(!f) return;
+  try{ status("ディスクを読み込み中…"); APP.disc=await discOpen(f); APP.robs=null; APP.objCache.clear();
+    $("n-disc").textContent=f.name; $("step-disc").classList.add("done"); status(""); APP.dvBase=null; listChars(); if(APP.cur>=0) show(); else showDisc() }
+  catch(err){ status("ディスクを読めなかった: "+err.message,true) } }
+async function loadStates(files){
+  for(const f of files){ try{ APP.states.push({name:f.name,zip:await p2sOpen(await f.arrayBuffer())}) }catch(err){ status(f.name+" を読めなかった: "+err.message,true) } }
+  if(!APP.states.length) return;
+  if(APP.cur<0) APP.cur=0; $("n-state").textContent=APP.states.length+" 個"; $("step-state").classList.add("done"); listStates();
+  if(APP.disc) show(); else status("次に 1 のディスクのイメージを選んでください");
+}
+async function loadArc(f){ if(!f) return;
+  try{ status("アーケードのロムを読み込み中…"); const z=await p2sOpen(await f.arrayBuffer()), files={};
+    for(const n of z.keys()) files[n.split("/").pop()]=await z.get(n)();
+    APP.arcRom=arcRom(files); for(const st of APP.states) st.arc=null;
+    $("n-arc").textContent=f.name; $("step-arc").classList.add("done"); $("c-arc").disabled=false; $("c-arc").checked=true; status("");
+    if(APP.mode==="state"&&APP.scene){ applyArc(); draw() } }
+  catch(err){ status("ロムを読めなかった: "+err.message,true) } }
+// ページにドロップしたファイルを種類で振り分ける（.p2s＝写し、.zip＝アーケードのロム、それ以外＝ディスク）
+function hookDrop(){
+  let n=0; const on=v=>document.body.classList.toggle("drop-over",v);
+  addEventListener("dragenter",e=>{ e.preventDefault(); n++; on(true) }); addEventListener("dragover",e=>e.preventDefault());
+  addEventListener("dragleave",()=>{ if(--n<=0){ n=0; on(false) } });
+  addEventListener("drop",async e=>{ e.preventDefault(); n=0; on(false); const fs=[...e.dataTransfer.files];
+    const st=fs.filter(f=>/\.p2s$/i.test(f.name)), zip=fs.find(f=>/\.zip$/i.test(f.name)), disc=fs.find(f=>/\.(bin|iso|cvm|img)$/i.test(f.name));
+    if(!st.length&&!zip&&!disc){ status("読めるファイルが無い（.p2s・.bin/.iso/.cvm・vf2.zip）",true); return }
+    if(disc) await loadDisc(disc); if(zip) await loadArc(zip); if(st.length) await loadStates(st) });
+}
+// 背景の色（tobal2 のビューアと同じ8種。選んだものは覚えておく）。空を消したとき・「背景なし」でないスクショに出る
+const BG_PRESETS=[{name:"ダーク",c:"#3a3834",e:"#2a2926"},{name:"黒",c:"#111111",e:"#000000"},{name:"グレー",c:"#8a8a8a",e:"#6a6a6a"},{name:"白",c:"#ffffff",e:"#e6e4df"},
+  {name:"空",c:"#bfe3ff",e:"#5a9fd6"},{name:"夕焼け",c:"#ffcf8a",e:"#c4533a"},{name:"夜",c:"#35407a",e:"#0d1030"},{name:"グリーンバック",c:"#00b140",e:"#00b140"}];
+function setBackground(i){ const p=BG_PRESETS[i]||BG_PRESETS[0], v=$("viewer").style; v.setProperty("--stage2",p.c); v.setProperty("--stage",p.e); APP.bg=p;
+  [...$("bg-box").children].forEach((b,k)=>b.setAttribute("aria-pressed",String(k===i))); try{ localStorage.setItem("vf2bg",String(i)) }catch(_){} }
+function hookBackground(){
+  BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.name; b.setAttribute("aria-label","背景の色: "+p.name);
+    b.style.background=`radial-gradient(circle at 40% 35%,${p.c},${p.e})`; b.onclick=()=>setBackground(i); $("bg-box").append(b) });
+  let i=0; try{ i=+localStorage.getItem("vf2bg")||0 }catch(_){} setBackground(i);
+}
+// 枠と同じ背景（CSS の radial-gradient（50% 35%、いちばん遠い角まで））をキャンバスに塗る。x,y,w,h＝切り抜く範囲
+function paintBackground(g,W,H,x,y,w,h){ const p=APP.bg||BG_PRESETS[0], cx=W/2-x, cy=H*.35-y, grd=g.createRadialGradient(cx,cy,0,cx,cy,Math.hypot(W/2,H*.65));
+  grd.addColorStop(0,p.c); grd.addColorStop(1,p.e); g.fillStyle=grd; g.fillRect(0,0,w,h) }
+// 一時的に表示を変えて fn を呼ぶ（キャラだけで範囲を測る・背景なしで撮る）
+async function withView(opt,fn){ const keep={}; for(const [id,v] of Object.entries(opt)){ keep[id]=$(id).checked; $(id).checked=v }
+  if(Object.keys(opt).length) rebuild(); else draw();
+  try{ return await fn() } finally{ if(Object.keys(keep).length){ for(const id in keep) $(id).checked=keep[id]; rebuild() } } }
+const CHARS_ONLY={"c-stage":false,"c-sky":false};
+// 描いたキャンバスで不透明な画素の範囲（box があれば広げる）と、余白を足して偶数にそろえた範囲（tobal2 と同じ）
+const probe=document.createElement("canvas"), probeG=probe.getContext("2d",{willReadFrequently:true});
+function opaqueBox(box){ const cv=$("cv"), W=cv.width, H=cv.height; probe.width=W; probe.height=H; probeG.clearRect(0,0,W,H); probeG.drawImage(cv,0,0);
+  const d=probeG.getImageData(0,0,W,H).data; let x0=W,y0=H,x1=-1,y1=-1;
+  for(let y=0;y<H;y+=2){ const row=y*W; for(let x=0;x<W;x+=2) if(d[(row+x)*4+3]>8){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y } }
+  if(x1<0) return box; x1=Math.min(W,x1+2); y1=Math.min(H,y1+2);
+  return box?{x0:Math.min(box.x0,x0),y0:Math.min(box.y0,y0),x1:Math.max(box.x1,x1),y1:Math.max(box.y1,y1)}:{x0,y0,x1,y1} }
+function padBox(b){ const cv=$("cv"), W=cv.width, H=cv.height, m=Math.round(Math.max(b.x1-b.x0,b.y1-b.y0)*.04)+4;
+  let x0=Math.max(0,b.x0-m), y0=Math.max(0,b.y0-m), x1=Math.min(W,b.x1+m), y1=Math.min(H,b.y1+m);
+  if((x1-x0)%2) x1<W?x1++:x0--; if((y1-y0)%2) y1<H?y1++:y0--; return {x:x0,y:y0,w:x1-x0,h:y1-y0} }
+function fileBase(){ const b=(APP.mode==="disc"?APP.scene?.names[0]:APP.states[APP.cur]?.name||"vf2").replace(/\.p2s$/i,""), M=APP.mot;
+  return b+(M&&M.m&&APP.scene&&APP.scene.sc!==APP.scene.sc0?`_${M.pl?"2P":"1P"}_move${M.m}`:"")+"_v"+VERSION }
+function saveBlob(b,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name; a.hidden=true; document.body.append(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),60000) }
+async function savePng(){
+  if(!APP.scene) return; const cv=$("cv"), clear=$("c-clear").checked, crop=$("c-crop").checked;
+  let r=null; if(crop) await withView(CHARS_ONLY,()=>{ const b=opaqueBox(null); if(b) r=padBox(b) });
+  const blob=await withView(clear?CHARS_ONLY:{},()=>{ const W=cv.width,H=cv.height; r=r||{x:0,y:0,w:W,h:H};
+    const out=document.createElement("canvas"); out.width=r.w; out.height=r.h; const g=out.getContext("2d");
+    if(!clear) paintBackground(g,W,H,r.x,r.y,r.w,r.h); g.drawImage(cv,r.x,r.y,r.w,r.h,0,0,r.w,r.h); return new Promise(res=>out.toBlob(res,"image/png")) });
+  saveBlob(blob,fileBase()+".png");
+}
+// ===== 技を1回分、動画（MP4／WebM）かアニメーション PNG に保存（tobal2 のビューアと同じ作り） =====
+const rec={busy:false,cancel:false};
+async function* motFrames(){ const M=APP.mot; for(let f=1;f<=M.len;f++){ await motSet(M.m,f); yield f } }
+async function recordMotion(fmt){
+  const M=APP.mot; if(rec.busy||!M||!M.m){ if(!rec.busy) status("先に技を選んでください",true); return }
+  rec.busy=true; rec.cancel=false; motStop(); const keepF=M.f, cv=$("cv"), total=M.len;
+  const clear=$("c-clear").checked&&fmt==="apng", crop=$("c-crop").checked, prog=t=>$("m-rec").textContent=t;
+  try{
+    let box=null;
+    if(crop) await withView(CHARS_ONLY,async()=>{ for await (const f of motFrames()){ if(rec.cancel) throw new Error("cancel"); if(f%2===1) box=opaqueBox(box); if(f%10===0){ prog(`範囲 ${Math.round(f/total*100)}%`); await new Promise(r=>setTimeout(r)) } } });
+    const blob=await withView(clear?CHARS_ONLY:{},async()=>{
+      const W=cv.width, H=cv.height, r=crop&&box?padBox(box):{x:0,y:0,w:W-(W%2),h:H-(H%2)};
+      const cap=fmt==="apng"?540:1080, sc=Math.min(1,cap/Math.max(r.w,r.h)), ow=Math.max(2,Math.round(r.w*sc/2)*2), oh=Math.max(2,Math.round(r.h*sc/2)*2);
+      const out=document.createElement("canvas"); out.width=ow; out.height=oh; const g=out.getContext("2d",{willReadFrequently:fmt==="apng"});
+      const paint=()=>{ g.clearRect(0,0,ow,oh); if(!clear){ g.save(); g.scale(ow/r.w,oh/r.h); paintBackground(g,W,H,r.x,r.y,r.w,r.h); g.restore() } g.drawImage(cv,r.x,r.y,r.w,r.h,0,0,ow,oh) };
+      return fmt==="video"?encodeVideo(out,paint,total,prog):encodeApng(out,g,paint,total,prog) });
+    await motSet(M.m,keepF);
+    if(blob) saveBlob(blob,fileBase()+(fmt==="apng"?".png":blob.type.includes("mp4")?".mp4":".webm"));
+  }catch(err){ if(err.message!=="cancel"){ console.error(err); status("保存できなかった: "+err.message,true) } await motSet(M.m,keepF) }
+  finally{ rec.busy=false; prog("🎬 動画") }
+}
+// 動画: MediaRecorder に1コマずつ渡す。コマの計算中は録画を一時停止し、各コマをちょうど 1/60 秒ぶん流す
+async function encodeVideo(out,paint,total,prog){
+  if(!window.MediaRecorder||!out.captureStream) throw new Error("このブラウザは動画の書き出しに対応していません");
+  const mime=["video/mp4;codecs=avc1","video/mp4","video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"].find(t=>MediaRecorder.isTypeSupported(t));
+  const stream=out.captureStream(0), track=stream.getVideoTracks()[0], mr=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8e6}), chunks=[];
+  mr.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data) }; const done=new Promise(res=>mr.onstop=res), wait=ms=>new Promise(r=>setTimeout(r,ms));
+  let started=false;
+  for await (const f of motFrames()){
+    if(rec.cancel){ if(started){ mr.stop(); await done } throw new Error("cancel") }
+    paint(); if(!started){ mr.start(); started=true } else mr.resume();
+    track.requestFrame?track.requestFrame():stream.requestFrame&&stream.requestFrame(); await wait(1000/60); mr.pause();
+    if(f%5===0) prog(`書き出し ${Math.round(f/total*100)}%`);
+  }
+  mr.resume(); await wait(1000/60); mr.stop(); await done;
+  const blob=new Blob(chunks,{type:mime.split(";")[0]}); if(blob.size<1000) throw new Error("このブラウザでは動画を作れませんでした（アニメーション PNG なら保存できるかもしれません）");
+  return blob;
+}
+// アニメーション PNG: 30コマ/秒（1コマおき）。RGBA を「上」フィルタで圧縮して並べる
+const CRC_T=(()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=c&1?0xedb88320^(c>>>1):c>>>1; t[n]=c>>>0 } return t })();
+function pngChunk(type,data){ const b=new Uint8Array(12+data.length), dv=new DataView(b.buffer); dv.setUint32(0,data.length); for(let i=0;i<4;i++) b[4+i]=type.charCodeAt(i); b.set(data,8);
+  let c=0xffffffff; for(let i=4;i<8+data.length;i++) c=CRC_T[(c^b[i])&255]^(c>>>8); dv.setUint32(8+data.length,(c^0xffffffff)>>>0); return b }
+async function zlibDeflate(u8){ return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new CompressionStream("deflate"))).arrayBuffer()) }
+async function encodeApng(out,g,paint,total,prog){
+  if(!window.CompressionStream) throw new Error("このブラウザはアニメーション PNG の書き出しに対応していません");
+  const w=out.width, h=out.height, frames=Math.ceil(total/2), parts=[new Uint8Array([137,80,78,71,13,10,26,10])];
+  const u32=(...v)=>{ const b=new Uint8Array(v.length*4), dv=new DataView(b.buffer); v.forEach((x,i)=>dv.setUint32(i*4,x)); return b };
+  const ihdr=new Uint8Array(13); ihdr.set(u32(w,h)); ihdr[8]=8; ihdr[9]=6; parts.push(pngChunk("IHDR",ihdr)); parts.push(pngChunk("acTL",u32(frames,0)));
+  let seq=0, fi=0; const raw=new Uint8Array((w*4+1)*h);
+  for await (const f of motFrames()){
+    if(rec.cancel) throw new Error("cancel"); if(!(f%2)) continue;
+    paint(); const d=g.getImageData(0,0,w,h).data;
+    for(let y=0;y<h;y++){ const o=y*(w*4+1), s=y*w*4; raw[o]=y?2:0; if(y) for(let i=0;i<w*4;i++) raw[o+1+i]=(d[s+i]-d[s-w*4+i])&255; else raw.set(d.subarray(0,w*4),o+1) }
+    const fc=new Uint8Array(26); fc.set(u32(seq++,w,h,0,0)); new DataView(fc.buffer).setUint16(20,1); new DataView(fc.buffer).setUint16(22,30); parts.push(pngChunk("fcTL",fc));
+    const z=await zlibDeflate(raw); if(fi===0) parts.push(pngChunk("IDAT",z)); else { const fd=new Uint8Array(4+z.length); fd.set(u32(seq++)); fd.set(z,4); parts.push(pngChunk("fdAT",fd)) }
+    fi++; prog(`書き出し ${Math.round(f/total*100)}%`);
+  }
+  parts.push(pngChunk("IEND",new Uint8Array(0))); return new Blob(parts,{type:"image/png"});
+}
+// コマ送り（◀ ▶・← →）。技をまだ選んでいなければ番号の欄の技の 1 コマ目から
+function motStep(d){ if(rec.busy) return; motStop(); const M=APP.mot; if(M&&M.m) motSet(M.m,Math.max(1,Math.min(M.len,M.f+d))); else motSet(+$("m-num").value,1) }
 function init(){
   $("ver").textContent="版 "+VERSION; $("ver-h").textContent="v"+VERSION;
   try{ APP.gl=vglNew($("cv")) }catch(e){ status(e.message,true); return }
   hookInput(); draw();
-  $("f-disc").onchange=async e=>{ const f=e.target.files[0]; if(!f) return;
-    try{ status("ディスクを読み込み中…"); APP.disc=await discOpen(f); APP.robs=null; APP.objCache.clear();
-      $("n-disc").textContent=f.name; $("step-disc").classList.add("done"); status(""); APP.dvBase=null; listChars(); if(APP.cur>=0) show(); else showDisc() }
-    catch(err){ status("ディスクを読めなかった: "+err.message,true) } };
-  $("f-state").onchange=async e=>{
-    for(const f of e.target.files){ try{ APP.states.push({name:f.name,zip:await p2sOpen(await f.arrayBuffer())}) }catch(err){ status(f.name+" を読めなかった: "+err.message,true) } }
-    if(!APP.states.length) return;
-    if(APP.cur<0) APP.cur=0; $("n-state").textContent=APP.states.length+" 個"; $("step-state").classList.add("done"); listStates();
-    if(APP.disc) show(); else status("次に 1 のディスクのイメージを選んでください");
-  };
-  $("f-arc").onchange=async e=>{ const f=e.target.files[0]; if(!f) return;
-    try{ status("アーケードのロムを読み込み中…"); const z=await p2sOpen(await f.arrayBuffer()), files={};
-      for(const n of z.keys()) files[n.split("/").pop()]=await z.get(n)();
-      APP.arcRom=arcRom(files); for(const st of APP.states) st.arc=null;
-      $("n-arc").textContent=f.name; $("step-arc").classList.add("done"); $("c-arc").disabled=false; $("c-arc").checked=true; status("");
-      if(APP.mode==="state"&&APP.scene){ applyArc(); draw() } }
-    catch(err){ status("ロムを読めなかった: "+err.message,true) } };
+  $("f-disc").onchange=e=>loadDisc(e.target.files[0]);
+  $("f-state").onchange=e=>loadStates(e.target.files);
+  $("f-arc").onchange=e=>loadArc(e.target.files[0]);
+  hookDrop();
   $("c-arc").onchange=draw;
   for(const id of ["c-p1","c-p2","c-shadow","c-stage"]) $(id).onchange=rebuild;
   $("c-sky").onchange=draw; $("c-smooth").onchange=draw;
@@ -2294,7 +2420,14 @@ function init(){
   $("m-frame").oninput=()=>{ motStop(); motSet(APP.mot&&APP.mot.m?APP.mot.m:+$("m-num").value,+$("m-frame").value) };
   $("m-play").onclick=()=>motPlay(); $("m-rand").onclick=motRandom; $("m-back").onclick=motBack;
   $("m-pl").onchange=()=>{ motBack() };
-  $("b-png").onclick=()=>{ draw(); $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=(APP.mode==="disc"?APP.scene?.names[0]:APP.states[APP.cur]?.name||"vf2").replace(/\.p2s$/i,"")+"_v"+VERSION+".png"; a.click() }) };
+  $("b-png").onclick=savePng; hookBackground();
+  $("m-fprev").onclick=()=>motStep(-1); $("m-fnext").onclick=()=>motStep(1);
+  $("m-rec").onclick=e=>{ e.stopPropagation(); if(rec.busy){ rec.cancel=true; return } $("rec-menu").hidden=!$("rec-menu").hidden };
+  $("rec-menu").onclick=e=>{ const b=e.target.closest("button"); if(!b) return; e.stopPropagation(); $("rec-menu").hidden=true; recordMotion(b.dataset.fmt) };
+  document.addEventListener("click",()=>{ $("rec-menu").hidden=true });
+  // キー: ← → でコマ送り、スペースで再生・止める（技の欄が出ているとき。文字を打つ欄では使わない）
+  document.addEventListener("keydown",e=>{ if($("motview").hidden||rec.busy||e.target.closest("input:not([type=range]),select,textarea")) return;
+    if(e.key==="ArrowLeft"){ e.preventDefault(); motStep(-1) } else if(e.key==="ArrowRight"){ e.preventDefault(); motStep(1) } else if(e.key===" "){ e.preventDefault(); motPlay() } });
 }
 init();
 </script>
