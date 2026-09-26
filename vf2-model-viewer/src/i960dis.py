@@ -49,7 +49,7 @@ def dis(code, a):
         dst = (w >> 19) & 31; s2 = (w >> 14) & 31; s1 = w & 31
         m1 = (w >> 11) & 1; m2 = (w >> 12) & 1; m3 = (w >> 13) & 1; sf1 = (w >> 5) & 1; sf2 = (w >> 6) & 1
         n = REG.get(o, '?reg%03x' % o)
-        fl = n.endswith('r') or n.endswith('rl') or n in ('movre', 'cpysre', 'cpyrsre')
+        fl = (n.endswith('r') or n.endswith('rl')) and n not in ('or','xor','nor','notor','ornot') or n in ('movre', 'cpysre', 'cpyrsre')
         def opd(r, m, sf):
             if m: return (FR[r] if r < 4 else ('0.0' if r == 16 else '1.0' if r == 22 else '?f%d' % r)) if (fl and sf == 0) else str(r)
             return RN[r]

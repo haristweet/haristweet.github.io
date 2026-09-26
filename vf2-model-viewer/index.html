@@ -1314,7 +1314,42 @@ function arcCharSheets(rom,chars){
 // 浮動小数点・割り込み・特権命令は無い。呼び出し（call/ret）の局所レジスターは JS の配列に積む（メモリには置かない）
 // mem: { r8(a), r16(a), r32(a), w8(a,v), w16(a,v), w32(a,v) }
 class I960 {
-  constructor(code, mem){ this.code=code; this.mem=mem; this.r=new Uint32Array(32); this.cc=0; this.frames=[]; this.steps=0 }
+  constructor(code, mem){ this.code=code; this.mem=mem; this.r=new Uint32Array(32); this.cc=0; this.frames=[]; this.steps=0; this.fp=[0,0,0,0] }
+  // 浮動小数点（i960 KB）。m＝1 なら番号 0〜3 が fp0〜fp3（拡張精度。JS の数で持つ）、16 が 0.0、22 が 1.0。m＝0 なら g/r に 32bit（rl は2語の 64bit）
+  fget(m,i,dbl){
+    if(m) return i<4?this.fp[i]:i===16?0:i===22?1:NaN;
+    const u=new Uint32Array(2), R=this.r; if(!dbl){ u[0]=R[i]; return new Float32Array(u.buffer)[0] } u[0]=R[i]; u[1]=R[i+1]; return new Float64Array(u.buffer)[0];
+  }
+  fset(m,i,v,dbl){
+    if(m){ this.fp[i&3]=v; return }
+    const R=this.r; if(!dbl){ const f=new Float32Array([v]); R[i]=new Uint32Array(f.buffer)[0]; return } const f=new Float64Array([v]), u=new Uint32Array(f.buffer); R[i]=u[0]; R[i+1]=u[1];
+  }
+  freg(o,w){ // 浮動小数点の REG 命令。扱ったら true
+    const dst=(w>>>19)&31, s2=(w>>>14)&31, s1=w&31, m1=(w>>>11)&1, m2=(w>>>12)&1, m3=(w>>>13)&1, R=this.r;
+    const dbl=(o>=0x790&&o<=0x79f)||o===0x6d9||o===0x675||o===0x6c1||o===0x6c3||o===0x694||o===0x695||(o>=0x690&&o<=0x69f);
+    const A=()=>this.fget(m1,s1,dbl), B=()=>this.fget(m2,s2,dbl), S=v=>this.fset(m3,dst,v,dbl&&o!==0x6c1&&o!==0x6c3);
+    const cmp=(a,b)=>{ this.cc=a<b?4:a===b?2:a>b?1:0 };
+    switch(o){
+      case 0x78b: case 0x79b: S(B()/A()); return true; case 0x78c: case 0x79c: S(B()*A()); return true;
+      case 0x78d: case 0x79d: S(B()-A()); return true; case 0x78f: case 0x79f: S(B()+A()); return true;
+      case 0x674: S(m1?s1:(R[s1]|0)); return true;                 // cvtir
+      case 0x675: this.fset(m3,dst,m1?s1:(R[s1]|0),true); return true;   // cvtilr
+      case 0x6c0: { const v=A(); R[dst]=Math.round(v)|0; return true }          // cvtri（偶数への丸めは近似）
+      case 0x6c2: { const v=A(); R[dst]=Math.trunc(v)|0; return true }          // cvtzri
+      case 0x6c9: case 0x6d9: S(A()); return true;                 // movr / movrl
+      case 0x6e1: this.fp[dst&3]=this.fget(m1,s1,false); return true;   // movre（近似）
+      case 0x685: case 0x684: case 0x695: case 0x694: cmp(A(),B()); return true;   // cmpr / cmpor
+      case 0x688: case 0x698: S(Math.sqrt(A())); return true;
+      case 0x68c: case 0x69c: S(Math.sin(A())); return true; case 0x68d: case 0x69d: S(Math.cos(A())); return true;
+      case 0x68e: case 0x69e: S(Math.tan(A())); return true;
+      case 0x680: case 0x690: S(Math.atan2(B(),A())); return true;    // atanr: atan(src2/src1)
+      case 0x68b: case 0x69b: S(Math.round(A())); return true;
+      case 0x677: case 0x676: { const n=m1?s1:(R[s1]|0); this.fset(m3,dst,this.fget(m2,s2,o===0x676)*Math.pow(2,n),o===0x676); return true }   // scaler
+      case 0x6e2: S(Math.abs(B())*(A()<0?-1:1)); return true;  // cpysre
+      case 0x6e3: S(Math.abs(B())*(A()<0?1:-1)); return true;  // cpyrsre
+    }
+    return false;
+  }
   ea(w, a){ // MEM 形式の実効番地と命令長
     const ab=(w>>>14)&31, R=this.r;
     if(!((w>>>12)&1)){ const off=w&0xfff; return [(w>>>13)&1 ? (R[ab]+off)>>>0 : off, 4] }
@@ -1395,7 +1430,7 @@ class I960 {
           case 0x70b: v=a?Math.floor((b>>>0)/(a>>>0)):0; break; case 0x708: v=a?(b>>>0)%(a>>>0):0; break;
           case 0x74b: v=a?Math.trunc((b|0)/(a|0)):0; break; case 0x748: v=a?(b|0)%(a|0):0; break;
           case 0x66d: case 0x66b: case 0x66c: case 0x66f: pc+=4; continue;   // flushreg など
-          default: throw new Error("REG "+o.toString(16)+" at "+pc.toString(16));
+          default: if(this.freg(o,w)){ pc+=4; continue } throw new Error("REG "+o.toString(16)+" at "+pc.toString(16));
         }
         R[dst]=v>>>0; pc+=4; continue;
       }
