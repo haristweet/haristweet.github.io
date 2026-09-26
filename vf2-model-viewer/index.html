@@ -62,7 +62,7 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
 <div id="status"></div>
 <div class="viewer" id="viewer"><img id="shot" alt="" hidden><canvas id="cv"></canvas>
   <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます（1 だけでも部品を見られます）</div>
-  <div class="hint" id="hint" hidden>ドラッグで回す・ホイールかピンチで寄る</div></div>
+  <div class="hint" id="hint" hidden>ドラッグで回す・Shift＋ドラッグ（右ボタン・2本指）で動かす・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
 <div class="ctrl">
   <label><input type="checkbox" id="c-p1" checked> 1P</label>
   <label><input type="checkbox" id="c-p2" checked> 2P</label>
@@ -1354,7 +1354,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て
-const VERSION="0.8.0";
+const VERSION="0.8.1";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -1456,17 +1456,27 @@ function draw(){
   APP.gl.draw(V,focal,APP.scene.light.L,$("c-sky").checked,{bilin:$("c-smooth").checked});   // 光はゲームのカメラの座標のまま（法線も回す前のもの）
 }
 function hookInput(){
-  const v=$("viewer"), pts=new Map(); let last=null, pinch=null;
-  v.addEventListener("pointerdown",e=>{ v.setPointerCapture(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]); last=[e.clientX,e.clientY] });
+  // ドラッグで回す。Shift を押しながら（または右・中ボタンで）ドラッグすると平行に動かす。2本指はピンチで寄り、指の中ほどの移動で平行に動く（tobal ビューアと同じ）
+  const v=$("viewer"), pts=new Map(); let last=null, pinch=null, mode=null;
+  // 画面の px をカメラの座標の長さに直して、平行移動に足す（中心の奥行きで、指の下の物が指に付いてくる量）
+  const panBy=(dx,dy)=>{ const cv=$("cv"), r=cv.getBoundingClientRect(), f=APP.scene?APP.scene.sc.focal:[600,600], z=APP.scene?center()[2]:4;
+    APP.pan[0]+=dx*2/r.width*z/(f[0]*APP.zoom*2/496); APP.pan[1]-=dy*2/r.height*z/(f[1]*APP.zoom*2/384) };
+  v.addEventListener("contextmenu",e=>e.preventDefault());
+  v.addEventListener("pointerdown",e=>{ v.setPointerCapture(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]); last=[e.clientX,e.clientY];
+    mode=pts.size>=2?"pinch":(e.shiftKey||e.button===1||e.button===2)?"pan":"rotate" });
   v.addEventListener("pointermove",e=>{
-    if(!pts.has(e.pointerId)) return; pts.set(e.pointerId,[e.clientX,e.clientY]);
-    if(pts.size===2){ const [p,q]=[...pts.values()], d=Math.hypot(p[0]-q[0],p[1]-q[1]); if(pinch) APP.zoom=Math.max(.3,Math.min(8,APP.zoom*d/pinch)); pinch=d; draw(); return }
+    if(!pts.has(e.pointerId)) return; const prev=pts.get(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]);
+    if(pts.size===2){ const [p,q]=[...pts.values()], d=Math.hypot(p[0]-q[0],p[1]-q[1]); if(pinch) APP.zoom=Math.max(.3,Math.min(20,APP.zoom*d/pinch)); pinch=d;
+      panBy((e.clientX-prev[0])/2,(e.clientY-prev[1])/2); draw(); return }
     if(!last) return; const dx=e.clientX-last[0], dy=e.clientY-last[1]; last=[e.clientX,e.clientY];
-    APP.rot[0]+=dx*0.01; APP.rot[1]=Math.max(-1.5,Math.min(1.5,APP.rot[1]+dy*0.01)); draw();
+    if(mode==="pan"||e.shiftKey) panBy(dx,dy);
+    else { APP.rot[0]+=dx*0.01; APP.rot[1]=Math.max(-1.5,Math.min(1.5,APP.rot[1]+dy*0.01)) }
+    draw();
   });
-  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch=null; last=pts.size?[...pts.values()][0]:null };
+  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch=null; last=pts.size?[...pts.values()][0]:null; if(!pts.size) mode=null; else if(mode==="pinch") mode="pan" };
   v.addEventListener("pointerup",up); v.addEventListener("pointercancel",up);
-  v.addEventListener("wheel",e=>{ e.preventDefault(); APP.zoom=Math.max(.3,Math.min(8,APP.zoom*Math.exp(-e.deltaY*0.001))); draw() },{passive:false});
+  v.addEventListener("wheel",e=>{ e.preventDefault(); APP.zoom=Math.max(.3,Math.min(20,APP.zoom*Math.exp(-e.deltaY*0.001))); draw() },{passive:false});
+  v.addEventListener("dblclick",resetView);
   addEventListener("resize",draw);
 }
 function listStates(){
