@@ -12,8 +12,7 @@ PS2 版 VF2（`../vf2-model-viewer/`）と同じ作りの移植なので、VF2 �
 - 写し（2026-09-27 追加）: 同じキャラ同士（raxel_throw・raxel_down・bahn_down・grace_throw・grace_armorbreak・picky・honey・jane・sanman・tokio_armorbreak）。
   grace_throw と tokio_armorbreak は一時停止のメニューが出ている
 - 頼みたいこと: マーラー・ほかの隠れキャラ（ROB08・09・21・22 はまだ写しに出ていない）
-- 次にやること（2026-09-27 に止めた。ページは v0.4.3）: コマンド表の技と技の番号の結び付けは、8 人で 1/3 ほど決まったところ（cmdmap.mjs、下の「技（動き）」の終わり）。
-  案 1＝ページで技を名前から選ぶ（リポジトリには「キャラ・表の何番目・番号」の数字だけ、名前はディスクから読む）、案 2＝決まる技を増やす（投げ・背後・ジャンプ・連続）。どちらもユーザーの返事待ち。
+- 次にやること: v0.5.0 で技を名前から選べるようにした（fvmoves.js＝キャラ・コマンド表の何番目・番号、名前はページがディスクから読む）。残り: 決まる技を増やす（投げ・背後・ジャンプ・連続。cmdmap.mjs を広げて fvmoves.js を作り直す）
   ほかの残り: 手の形の表・投げられている側・空
 
 ## ページ（`index.html`、版は `src/fapp.js` の VERSION、履歴は CHANGELOG.md）
@@ -23,7 +22,7 @@ cd fv-model-viewer/src
 sh check.sh          # 組み立て（assemble.py が head.html と .js を連結）→ 単体試験（node test.mjs）→ ../index.html
 node browser.mjs     # Playwright。何も無し → 写しだけ → ディスク（CHD）も、の順にたどり、PC とスマホの幅で撮る（out/b_*.png）
 ```
-- ソース: zstd.js・p2s.js（VF2 と同じ）・fdisc.js（CHD は tobal1 の disc.js）・cricmp.js・obj.js・tex.js・scene.js・build.js・arcade.js（VF2 の i960）・ee.js・motion.js（技）・fvarc.js・vgl.js（VF2 のものの、アーケードのテクスチャの単位を FV に）・fapp.js・head.html
+- ソース: zstd.js・p2s.js（VF2 と同じ）・fdisc.js（CHD は tobal1 の disc.js）・cricmp.js・obj.js・tex.js・scene.js・build.js・arcade.js（VF2 の i960）・ee.js・motion.js（技）・fvmoves.js（技の名前の対応とコマンド表の読み方）・fvarc.js・vgl.js（VF2 のものの、アーケードのテクスチャの単位を FV に）・fapp.js・head.html
 
 ## データの置き場所（リポジトリに入れない。`src/.gitignore` で disc/・out/・*.chd などを外す）
 
@@ -146,6 +145,7 @@ node motshot.mjs disc/states/grace1P_picky1P_round1 0 130 1,15,30,45,60,71 out/m
   グレース 27/74・バーン 19/62・ラクセル 29/72・トキオ 25/88・ジェーン 26/74・ピッキー 25/79・ハニー 28/85・サンマン 25/76。
   【×】ジャンプ中（↑ を押し続けても跳ばず構えに戻る。跳ぶ処理はこの動かし方の外）・G を含む連続（K＋GK など。2 つ目が効かない）・PPPP などの長い連続（途中の技の番号のまま。当たったときだけ続く？）・
   投げ・背後・相手ダウン中などの条件は試していない
+- 【数字】fvmoves.js の作り方（`node fvmovesgen.mjs`）: out/cmdmap.json から、番号ごとに入力のいちばん短い技を採る（PPK と ←＋K がどちらも 608 なら ←＋K）。8 人 204 技。試験で全部がコマンド表の「名前と入力」の組を指すのを確かめる
 - 【絵】グレースのキャメルキック（x＋K→627）＝片足を横に伸ばす蹴り、ブラックアイス（P＋K→1009）＝腕を振る打撃、レッグラウンチ（xx＋K→720）＝高い蹴り上げで、名前に合う（motshot）
 - i960 の concmpo・concmpi（0x5a2・0x5a3。歩きの 0x18558 で使う）を arcade.js に足した（VF2 にも）
 - まだ: 手の形の表（VF2 の +0x67c。FV の +0x67c は小数で別物）、描く処理（0x19f10 など）を動かして部品の番号を取る所

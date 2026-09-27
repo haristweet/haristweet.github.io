@@ -1,5 +1,5 @@
 // 画面の組み立て（VF2 の vapp.js を元に、FV のモデルの選び方とアーケードのテクスチャに合わせたもの）
-const VERSION="0.4.3";
+const VERSION="0.5.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, objCache:new Map(), rom:null, states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -94,10 +94,21 @@ function pickScene(mem){
   try{ const U2=motEngine(new Uint8Array(0),mem,null).units(1), p=motPickScene(mem,U2); if(p&&p.n>=8) return p.sc }catch(e){ console.warn(e) }
   return sceneRead(mem);
 }
+// ===== 技の名前（ディスクのコマンド表 XXX_CMND.FTS と fvmoves.js の番号） =====
+async function motNames(st,pl){ const sel=$("m-name"); sel.hidden=true; sel.innerHTML=""; APP.names=null;
+  try{ const d=new DataView(st.mem.buffer,st.mem.byteOffset,st.mem.byteLength), g7=d.getUint32(MOT_WORK+(pl?0x500808:0x500804),true), cid=st.mem[MOT_WORK+g7+0x1b1], e=FV_MOVES[cid];
+    if(!e||!APP.disc||!APP.disc.get(e[0])) return;
+    APP.cmdCache=APP.cmdCache||{}; if(!APP.cmdCache[e[0]]) APP.cmdCache[e[0]]=cmdStrings(await APP.disc.get(e[0])());
+    const s=APP.cmdCache[e[0]], list=e[1].filter(([i])=>s[i]&&s[i+1]).map(([i,m])=>({m,name:s[i],cmd:cmdPretty(s[i+1])}));
+    if(+$("m-pl").value!==pl||APP.states[APP.cur]!==st) return;   // 読むあいだに切り替わった
+    APP.names=list; sel.innerHTML=`<option value="">技の名前から選ぶ（${list.length}）</option>`+list.map(x=>`<option value="${x.m}">${x.name}　${x.cmd}</option>`).join("");
+    sel.hidden=!list.length; motNameSync() }catch(err){ console.warn(err) } }
+// 番号の欄と名前の一覧をそろえる（一覧に無い番号なら先頭の「技の名前から選ぶ」）
+function motNameSync(){ const sel=$("m-name"); if(sel.hidden) return; const v=String(+$("m-num").value); sel.value=[...sel.options].some(o=>o.value===v)?v:"" }
 // ===== 技を出す（motion.js）。エンジンは写しごとに最初に触ったときに作る（写しの主メモリを写して使う） =====
 const MOT_MAX=1052;
 function motG7Info(mem,pl){ const d=new DataView(mem.buffer,mem.byteOffset,mem.byteLength), W=MOT_WORK, g7=d.getUint32(W+(pl?0x500808:0x500804),true); return {motion:d.getUint16(W+g7+0x1a8,true),frame:d.getUint16(W+g7+0x1aa,true)} }
-function motShowUI(st){ $("motview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
+function motShowUI(st){ $("motview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; motNames(st,pl); $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
 async function motEnsure(){
   const st=APP.states[APP.cur]; if(!st||!APP.scene||APP.mode!=="state") return null;
   if(APP.mot&&APP.mot.st===st) return APP.mot;
@@ -115,13 +126,14 @@ async function motSet(m,f,smooth=false){
     const M=await motEnsure(); if(!M) return; const pl=+$("m-pl").value;
     if(M.pl!==pl){ M.pl=pl; M.m=0 }
     if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.len=len; M.eng.start(pl,m,smooth); $("m-frame").max=len; status("") }
-    M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len;
+    M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len; motNameSync();
     const S=APP.scene; S.sc=motApply(S.sc0,M.att[pl],M.eng.frame(pl,M.f),null); rebuild();
   }catch(e){ console.error(e); motStop(); status("技を計算できなかった: "+e.message,true) }
 }
 function motStop(){ if(APP.mot){ APP.mot.play=false; APP.mot.random=false } $("m-play").textContent="▶ 再生"; $("m-rand").textContent="🎲 ランダムに連続" }
-// ランダムに連続: 技が終わるたびに 1〜1052 から次の技を選び、ゲームの「前の技からのつなぎ」（0x29f48）でつなぐ
-function motPickRandom(M){ for(let n=0;n<200;n++){ const m=1+Math.floor(Math.random()*MOT_MAX); if(M.eng.motionLength(m)>0) return m } return M.m||1 }
+// ランダムに連続: 技が終わるたびに名前の一覧（無ければ 1〜1052）から次の技を選び、ゲームの「前の技からのつなぎ」（0x29f48）でつなぐ
+function motPickRandom(M){ const L=APP.names; if(L&&L.length) return L[Math.floor(Math.random()*L.length)].m;
+  for(let n=0;n<200;n++){ const m=1+Math.floor(Math.random()*MOT_MAX); if(M.eng.motionLength(m)>0) return m } return M.m||1 }
 async function motRandom(){
   if(rec.busy) return;
   if(APP.mot&&APP.mot.random){ motStop(); return }
@@ -206,7 +218,7 @@ function listStates(){
     b.onclick=()=>{ APP.cur=i; listStates(); show() }; box.appendChild(b) });
 }
 async function loadDisc(f){ if(!f) return;
-  try{ status("ディスクを読み込み中…"); APP.disc=await discOpen(f); APP.objCache.clear(); APP.rom=null; for(const s of APP.states) s.arc=null;
+  try{ status("ディスクを読み込み中…"); APP.disc=await discOpen(f); APP.objCache.clear(); APP.cmdCache=null; APP.rom=null; for(const s of APP.states) s.arc=null;
     if(!APP.disc.get("ROM_CODE1.CMP")) throw new Error("ディスクの中に ROM_CODE1.CMP が無い（ファイティングバイパーズの PS2 版ではない？）");
     $("n-disc").textContent=f.name; $("step-disc").classList.add("done"); APP.dvBase=null; listChars(); if(APP.cur>=0) show(); else showDisc() }
   catch(err){ APP.disc=null; status("ディスクを読めなかった: "+err.message,true) } }
@@ -335,6 +347,7 @@ function init(){
   $("c-overlay").onchange=()=>$("viewer").classList.toggle("overlay",$("c-overlay").checked);
   $("b-reset").onclick=resetView; $("b-png").onclick=savePng;
   $("m-num").onchange=()=>{ motStop(); motSet(+$("m-num").value,1) };
+  $("m-name").onchange=()=>{ const v=+$("m-name").value; if(!v) return; motStop(); motSet(v,1) };
   $("m-prev").onclick=()=>{ motStop(); motSet(Math.max(1,+$("m-num").value-1),1) }; $("m-next").onclick=()=>{ motStop(); motSet(Math.min(MOT_MAX,+$("m-num").value+1),1) };
   $("m-frame").oninput=()=>{ motStop(); motSet(APP.mot&&APP.mot.m?APP.mot.m:+$("m-num").value,+$("m-frame").value) };
   $("m-play").onclick=()=>motPlay(); $("m-rand").onclick=motRandom; $("m-back").onclick=motBack; $("m-pl").onchange=()=>motBack();

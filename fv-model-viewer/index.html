@@ -82,10 +82,11 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
 </div>
 <div class="discview" id="motview" hidden><b>技を出す</b>
   <select id="m-pl" aria-label="どちらのキャラ"><option value="0">1P</option><option value="1">2P</option></select>
+  <select id="m-name" aria-label="技の名前" hidden></select>
   <span class="parts">技 <button id="m-prev" aria-label="前の技">◀</button> <input id="m-num" type="number" min="1" max="1052" style="width:5.5em" aria-label="技の番号"> <button id="m-next" aria-label="次の技">▶</button></span>
   <span class="parts">コマ <button id="m-fprev" aria-label="前のコマ" title="前のコマ（←）">◀</button> <input id="m-frame" type="range" min="1" max="1" value="1" style="width:12em;vertical-align:middle" aria-label="コマ"> <button id="m-fnext" aria-label="次のコマ" title="次のコマ（→）">▶</button> <span id="m-fn">-</span></span>
   <button id="m-play">▶ 再生</button> <button id="m-rand">🎲 ランダムに連続</button> <button id="m-rec" title="いまの技を1回分、動画で保存">🎬 動画</button><span id="rec-menu" hidden> <button data-fmt="video">MP4／WebM</button> <button data-fmt="apng">アニメーション PNG</button></span> <button id="m-back">写しに戻す</button>
-  <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号（1〜1052。全キャラ共通の表）で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形・髪の揺れはその写しのまま。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま。コマは ◀ ▶ か ← → キーで1つずつ、スペースで再生・止める。「🎬 動画」は、いまの技を頭から最後まで MP4／WebM（1秒60コマ）かアニメーション PNG（30コマ/秒。「背景なし」なら透過）で保存します。「ランダムに連続」は、技が終わるたびに番号をランダムに選び、ゲームの「前の技からのつなぎ」でつないで出し続けます（そのキャラの技でない番号も出るので、崩れたら止めてください）</small></div>
+  <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技は名前の一覧（ディスクのコマンド表の名前と入力。ゲームの処理に入力を与えて番号を確かめられた技だけ。1 人 20〜30 ほど）か、番号（1〜1052。全キャラ共通の表。写しのキャラの技でない番号だと崩れることがあります）で選びます。手の形・髪の揺れはその写しのまま。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま。コマは ◀ ▶ か ← → キーで1つずつ、スペースで再生・止める。「🎬 動画」は、いまの技を頭から最後まで MP4／WebM（1秒60コマ）かアニメーション PNG（30コマ/秒。「背景なし」なら透過）で保存します。「ランダムに連続」は、技が終わるたびに名前の一覧からランダムに選び（一覧の無いキャラは全部の番号から）、ゲームの「前の技からのつなぎ」でつないで出し続けます</small></div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表から、ゲームと同じ引き方で付けます（作りは PS2 版バーチャファイター2 と同じ）。</p>
@@ -2018,6 +2019,26 @@ function motApply(sc, att, U2, ids){
   const hide=new Set(att.shadowParts);
   return {...sc,draws:draws.filter((d,i)=>!hide.has(i))};
 }
+// コマンド表（ディスクの XXX_CMND.FTS）の技と技の番号の対応（cmdmap.mjs で、ゲームの処理に入力を与えて出させたもの）。
+// 同じ番号が出た技が複数あるときは入力のいちばん短いもの（PPK と ←＋K がどちらも 608 なら ←＋K の名前）。
+// キャラの番号（構造体の +0x1b1）→ [ファイルの名前, [[コマンド表の文字列の何番目（技の名前）, 技の番号], …]]。名前そのものはページがディスクから読む
+const FV_MOVES={
+  1:["GRACE_CMND.FTS",[[2,673],[4,843],[6,842],[8,557],[10,844],[16,298],[22,1022],[26,864],[28,579],[30,836],[32,503],[34,784],[38,565],[40,608],[44,720],[46,627],[48,585],[52,1009],[54,339],[78,396],[82,797],[100,513],[138,675],[140,639],[142,511],[146,515],[148,641]]],
+  4:["BAHN_CMND.FTS",[[2,847],[4,1022],[6,605],[8,616],[12,615],[14,614],[18,717],[24,981],[34,632],[36,548],[38,656],[40,832],[42,727],[44,511],[46,396],[112,676],[116,854],[118,630],[120,515]]],
+  6:["RAXEL_CMND.FTS",[[2,671],[4,576],[6,665],[12,842],[14,1022],[16,611],[18,619],[20,620],[26,712],[28,653],[30,600],[32,603],[34,602],[36,642],[38,784],[40,546],[42,609],[44,518],[46,372],[50,802],[52,389],[58,341],[68,396],[72,720],[90,691],[132,675],[134,509],[136,630],[138,515]]],
+  3:["TOKIO_CMND.FTS",[[2,671],[4,678],[6,679],[8,681],[10,596],[12,1022],[14,719],[20,680],[24,722],[26,846],[38,321],[44,629],[46,609],[48,560],[52,802],[54,638],[58,375],[62,340],[70,342],[92,512],[96,396],[118,505],[164,676],[166,1010],[170,515]]],
+  0:["JANE_CMND.FTS",[[2,674],[4,620],[6,842],[8,646],[16,573],[18,964],[22,1022],[24,561],[26,610],[28,711],[32,650],[34,578],[36,613],[38,612],[44,642],[46,560],[48,629],[50,697],[52,518],[54,517],[56,340],[60,396],[134,676],[136,512],[138,630],[140,515]]],
+  5:["PICKY_CMND.FTS",[[2,664],[4,665],[6,685],[8,535],[20,1027],[26,1022],[30,611],[32,667],[34,668],[36,669],[38,413],[42,662],[44,696],[46,375],[48,607],[50,663],[54,738],[60,698],[66,339],[70,396],[74,629],[140,414],[142,630],[144,515],[150,509]]],
+  2:["HONEY_CMND.FTS",[[2,674],[4,574],[6,842],[8,575],[16,1022],[18,539],[20,864],[22,586],[24,579],[26,587],[30,716],[36,974],[38,642],[40,542],[50,375],[52,739],[56,373],[58,606],[60,689],[64,537],[66,340],[68,342],[70,511],[74,396],[78,721],[154,676],[160,515],[162,497]]],
+  7:["SANMAN_CMND.FTS",[[2,671],[4,683],[6,853],[8,149],[12,654],[14,377],[18,1022],[20,599],[22,703],[24,704],[28,713],[30,714],[34,336],[36,682],[44,684],[52,687],[54,548],[56,606],[58,376],[60,340],[70,688],[86,396],[144,496],[146,497],[148,515]]],
+};
+// コマンド表の文字列: 「★」から後ろの EUC-JP の 0 終わりの並び（cmdlist.py と同じ読み方）。[★, 凡例, 技の名前, 入力, 技の名前, 入力, …]
+function cmdStrings(u8){ let t=-1; const key=[60,88,95,50,48,48,62]; for(let i=0;i+7<u8.length&&t<0;i++){ let ok=true; for(let k=0;k<7;k++) if(u8[i+k]!==key[k]){ ok=false; break } if(ok) t=i }   // "<X_200>"
+  let b=t; while(b>2&&!(u8[b-3]===0xa1&&u8[b-2]===0xfa&&u8[b-1]===0)) b--; b-=3;
+  const dec=new TextDecoder("euc-jp"), out=[]; let s=b; for(let i=b;i<u8.length;i++) if(!u8[i]){ if(i>s) out.push(dec.decode(u8.subarray(s,i))); s=i+1 } return out }
+// 入力の表記を読める形に: r→ l← u↑ d↓ x↘ z↙ a↗ s↖（大文字は長押し）。条件の言葉はそのまま
+const CMD_ARROW={r:"→",l:"←",u:"↑",d:"↓",x:"↘",z:"↙",a:"↗",s:"↖"};
+function cmdPretty(c){ return c.replace("<X_20>","").replace(/<GFX_([^>]*)>/g,(_,t)=>[...t].map(ch=>"PKG".includes(ch)?ch:CMD_ARROW[ch]?CMD_ARROW[ch]:CMD_ARROW[ch.toLowerCase()]?CMD_ARROW[ch.toLowerCase()]+"長":ch).join("")).replace(/　/g," ").trim() }
 // FV のアーケードのテクスチャを、ディスクの ROM_CODE1（i960 のプログラム）と ROM_DATA（main_data、0x2000000〜）から作る。
 // 読み込みの流れ（FV 0x4b5ec〜）は VF2 の 0x4bd60〜 と命令単位で同じで、関数の番地だけ違う（arcade.js の I960 を使う）:
 // テクスチャ RAM の書き先の頭は、VF2 は定数（0x12200000・0x12600000）だが FV は RAM の [0x500254]（ページ0）・[0x500258]（ページ1）から読み、
@@ -2228,7 +2249,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て（VF2 の vapp.js を元に、FV のモデルの選び方とアーケードのテクスチャに合わせたもの）
-const VERSION="0.4.3";
+const VERSION="0.5.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, objCache:new Map(), rom:null, states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -2323,10 +2344,21 @@ function pickScene(mem){
   try{ const U2=motEngine(new Uint8Array(0),mem,null).units(1), p=motPickScene(mem,U2); if(p&&p.n>=8) return p.sc }catch(e){ console.warn(e) }
   return sceneRead(mem);
 }
+// ===== 技の名前（ディスクのコマンド表 XXX_CMND.FTS と fvmoves.js の番号） =====
+async function motNames(st,pl){ const sel=$("m-name"); sel.hidden=true; sel.innerHTML=""; APP.names=null;
+  try{ const d=new DataView(st.mem.buffer,st.mem.byteOffset,st.mem.byteLength), g7=d.getUint32(MOT_WORK+(pl?0x500808:0x500804),true), cid=st.mem[MOT_WORK+g7+0x1b1], e=FV_MOVES[cid];
+    if(!e||!APP.disc||!APP.disc.get(e[0])) return;
+    APP.cmdCache=APP.cmdCache||{}; if(!APP.cmdCache[e[0]]) APP.cmdCache[e[0]]=cmdStrings(await APP.disc.get(e[0])());
+    const s=APP.cmdCache[e[0]], list=e[1].filter(([i])=>s[i]&&s[i+1]).map(([i,m])=>({m,name:s[i],cmd:cmdPretty(s[i+1])}));
+    if(+$("m-pl").value!==pl||APP.states[APP.cur]!==st) return;   // 読むあいだに切り替わった
+    APP.names=list; sel.innerHTML=`<option value="">技の名前から選ぶ（${list.length}）</option>`+list.map(x=>`<option value="${x.m}">${x.name}　${x.cmd}</option>`).join("");
+    sel.hidden=!list.length; motNameSync() }catch(err){ console.warn(err) } }
+// 番号の欄と名前の一覧をそろえる（一覧に無い番号なら先頭の「技の名前から選ぶ」）
+function motNameSync(){ const sel=$("m-name"); if(sel.hidden) return; const v=String(+$("m-num").value); sel.value=[...sel.options].some(o=>o.value===v)?v:"" }
 // ===== 技を出す（motion.js）。エンジンは写しごとに最初に触ったときに作る（写しの主メモリを写して使う） =====
 const MOT_MAX=1052;
 function motG7Info(mem,pl){ const d=new DataView(mem.buffer,mem.byteOffset,mem.byteLength), W=MOT_WORK, g7=d.getUint32(W+(pl?0x500808:0x500804),true); return {motion:d.getUint16(W+g7+0x1a8,true),frame:d.getUint16(W+g7+0x1aa,true)} }
-function motShowUI(st){ $("motview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
+function motShowUI(st){ $("motview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; motNames(st,pl); $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
 async function motEnsure(){
   const st=APP.states[APP.cur]; if(!st||!APP.scene||APP.mode!=="state") return null;
   if(APP.mot&&APP.mot.st===st) return APP.mot;
@@ -2344,13 +2376,14 @@ async function motSet(m,f,smooth=false){
     const M=await motEnsure(); if(!M) return; const pl=+$("m-pl").value;
     if(M.pl!==pl){ M.pl=pl; M.m=0 }
     if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.len=len; M.eng.start(pl,m,smooth); $("m-frame").max=len; status("") }
-    M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len;
+    M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len; motNameSync();
     const S=APP.scene; S.sc=motApply(S.sc0,M.att[pl],M.eng.frame(pl,M.f),null); rebuild();
   }catch(e){ console.error(e); motStop(); status("技を計算できなかった: "+e.message,true) }
 }
 function motStop(){ if(APP.mot){ APP.mot.play=false; APP.mot.random=false } $("m-play").textContent="▶ 再生"; $("m-rand").textContent="🎲 ランダムに連続" }
-// ランダムに連続: 技が終わるたびに 1〜1052 から次の技を選び、ゲームの「前の技からのつなぎ」（0x29f48）でつなぐ
-function motPickRandom(M){ for(let n=0;n<200;n++){ const m=1+Math.floor(Math.random()*MOT_MAX); if(M.eng.motionLength(m)>0) return m } return M.m||1 }
+// ランダムに連続: 技が終わるたびに名前の一覧（無ければ 1〜1052）から次の技を選び、ゲームの「前の技からのつなぎ」（0x29f48）でつなぐ
+function motPickRandom(M){ const L=APP.names; if(L&&L.length) return L[Math.floor(Math.random()*L.length)].m;
+  for(let n=0;n<200;n++){ const m=1+Math.floor(Math.random()*MOT_MAX); if(M.eng.motionLength(m)>0) return m } return M.m||1 }
 async function motRandom(){
   if(rec.busy) return;
   if(APP.mot&&APP.mot.random){ motStop(); return }
@@ -2435,7 +2468,7 @@ function listStates(){
     b.onclick=()=>{ APP.cur=i; listStates(); show() }; box.appendChild(b) });
 }
 async function loadDisc(f){ if(!f) return;
-  try{ status("ディスクを読み込み中…"); APP.disc=await discOpen(f); APP.objCache.clear(); APP.rom=null; for(const s of APP.states) s.arc=null;
+  try{ status("ディスクを読み込み中…"); APP.disc=await discOpen(f); APP.objCache.clear(); APP.cmdCache=null; APP.rom=null; for(const s of APP.states) s.arc=null;
     if(!APP.disc.get("ROM_CODE1.CMP")) throw new Error("ディスクの中に ROM_CODE1.CMP が無い（ファイティングバイパーズの PS2 版ではない？）");
     $("n-disc").textContent=f.name; $("step-disc").classList.add("done"); APP.dvBase=null; listChars(); if(APP.cur>=0) show(); else showDisc() }
   catch(err){ APP.disc=null; status("ディスクを読めなかった: "+err.message,true) } }
@@ -2564,6 +2597,7 @@ function init(){
   $("c-overlay").onchange=()=>$("viewer").classList.toggle("overlay",$("c-overlay").checked);
   $("b-reset").onclick=resetView; $("b-png").onclick=savePng;
   $("m-num").onchange=()=>{ motStop(); motSet(+$("m-num").value,1) };
+  $("m-name").onchange=()=>{ const v=+$("m-name").value; if(!v) return; motStop(); motSet(v,1) };
   $("m-prev").onclick=()=>{ motStop(); motSet(Math.max(1,+$("m-num").value-1),1) }; $("m-next").onclick=()=>{ motStop(); motSet(Math.min(MOT_MAX,+$("m-num").value+1),1) };
   $("m-frame").oninput=()=>{ motStop(); motSet(APP.mot&&APP.mot.m?APP.mot.m:+$("m-num").value,+$("m-frame").value) };
   $("m-play").onclick=()=>motPlay(); $("m-rand").onclick=motRandom; $("m-back").onclick=motBack; $("m-pl").onchange=()=>motBack();

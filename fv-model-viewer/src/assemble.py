@@ -1,5 +1,5 @@
 # ソースを決まった順に連結して ../index.html を作る（1枚のページ）
-order=['zstd.js','p2s.js','fdisc.js','cricmp.js','obj.js','tex.js','scene.js','discview.js','build.js','arcade.js','ee.js','motion.js','fvarc.js','vgl.js','fapp.js']
+order=['zstd.js','p2s.js','fdisc.js','cricmp.js','obj.js','tex.js','scene.js','discview.js','build.js','arcade.js','ee.js','motion.js','fvmoves.js','fvarc.js','vgl.js','fapp.js']
 out=[open('head.html',encoding='utf-8').read()]
 for f in order: out.append(open(f,encoding='utf-8').read().rstrip('\n'))
 out.append("</script>\n</body>\n</html>")
