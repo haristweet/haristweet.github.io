@@ -1,6 +1,6 @@
 # haristweet.github.io
 
-GitHub Pages のサイト。作業の中心は `tobal1-model-viewer/`。
+GitHub Pages のサイト。ビューアは `tobal1-model-viewer/`・`vf2-model-viewer/`・`fv-model-viewer/`（作りはじめ）。
 そちらの作業メモ `tobal1-model-viewer/CLAUDE.md` を先に読むこと（進め方の決まりもそこにある）。
 
 ## ビューア作りで守ること（tobal1 ビューアで学んだこと。新しいビューアを作るときも必ず守る）
