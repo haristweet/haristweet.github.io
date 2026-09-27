@@ -1551,6 +1551,8 @@ class I960 {
           case 0x59a: { let x=(b|0)>>(a>31?31:a); if((b|0)<0&&a&&(b&((1<<a)-1))) x+=1; v=x; break }
           case 0x59d: v=(b<<(a&31))|(a&31?b>>>(32-(a&31)):0); break;
           case 0x5a0: this.cmp(a,b,false); pc+=4; continue; case 0x5a1: this.cmp(a,b,true); pc+=4; continue;
+          // concmpo・concmpi: 条件が「等しい」でなければ src1≤src2 で 010、それ以外 001（FV の歩き 0x18558 で使う）
+          case 0x5a2: if(!(this.cc&4)) this.cc=(a>>>0)<=(b>>>0)?2:1; pc+=4; continue; case 0x5a3: if(!(this.cc&4)) this.cc=(a|0)<=(b|0)?2:1; pc+=4; continue;
           case 0x5a4: this.cmp(a,b,false); v=b+1; break; case 0x5a5: this.cmp(a,b,true); v=b+1; break;
           case 0x5a6: this.cmp(a,b,false); v=b-1; break; case 0x5a7: this.cmp(a,b,true); v=b-1; break;
           case 0x5ae: this.cc=((b>>>(a&31))&1)?2:0; pc+=4; continue;
