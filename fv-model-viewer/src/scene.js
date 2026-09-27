@@ -27,3 +27,18 @@ function sceneRead(mem,from=0x1280000){
   }
   return {focal,light,draws,windows,unknown};
 }
+// 色とテクスチャ（VF2 の g_geo と同じ並びの塊。FV は 0x12e7a80）: +0x40 色 RAM（16bit×1024）・+0x840 色の変換表（R・G・B、各 32 行×64）・
+// +0x2040 明るさの曲線（128B ずつ）・+0xa040 テクスチャ（ページ 2 枚、各 幅 512・高さ 1024 の 4bit）。
+// テクスチャのファイル（TEX_ROBnn）が 1P は +0xa040+0x40000、2P は +0xa040 に、128B ずつ行の間隔 256B で載っている所から逆算した
+const SC_GEO=0x12e7a80;
+function sceneColors(mem){
+  const g=mem.subarray(SC_GEO,SC_GEO+0xa040+0x80000);
+  return {tex:g.subarray(0xa040,0xa040+0x80000), cram:g.subarray(0x40,0x840), xlat:g.subarray(0x840,0x2040), clut:g.subarray(0x2040,0x2040+0x8000)};
+}
+// 光の設定（VU1 のデータの 0〜31 番＝拡散・環境・光沢・回数、32 番＝光の向き）。VF2 と同じ読み方
+function sceneLight(vu1,sc){
+  if(!vu1||vu1.length<34*16) return {tab:Array.from({length:32},()=>[63.5,31.5,0,0]), L:sc?sc.light:[0,-1,0], flags:7, fromVu:false};
+  const dv=new DataView(vu1.buffer,vu1.byteOffset,vu1.byteLength), tab=[];
+  for(let q=0;q<32;q++) tab.push([dv.getFloat32(q*16,true),dv.getFloat32(q*16+4,true),dv.getFloat32(q*16+8,true),dv.getUint32(q*16+12,true)]);
+  return {tab, L:[0,1,2].map(i=>dv.getFloat32(32*16+i*4,true)), flags:dv.getUint32(32*16+12,true), fromVu:true};
+}
