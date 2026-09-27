@@ -1,11 +1,11 @@
 // セーブステートの1コマを、命令の列（scene.js）とディスクのモデル（obj.js）で組んで描き、画面の写真と並べる（教訓1）。
-//   node pose.mjs disc/states/grace1P_picky1P_round1 out/pose_grace.png
+//   node pose.mjs disc/states/grace1P_picky1P_round1 out/pose_grace.png   （BUF=12c0000 で読む命令の列を選ぶ）
 // 左＝組んだ絵（1P 青・2P 赤・背景 灰。面の向きで濃淡）、右＝写真に組んだ絵の輪郭を重ねたもの。色・テクスチャはまだ付けない
 import fs from "fs"; import vm from "vm"; import path from "path"; import {pngEncode,pngDecode} from "./png.mjs";
 const here=path.dirname(new URL(import.meta.url).pathname), ctx={console}; vm.createContext(ctx);
 for(const f of ["cricmp.js","obj.js","raster.js","scene.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
 const g=n=>vm.runInContext(n,ctx);
-const [,,dir,outp="out/pose.png"]=process.argv, mem=fs.readFileSync(path.join(dir,"eeMemory.bin")), sc=g("sceneRead")(mem);
+const [,,dir,outp="out/pose.png"]=process.argv, mem=fs.readFileSync(path.join(dir,"eeMemory.bin")), sc=g("sceneRead")(mem,process.env.BUF?parseInt(process.env.BUF,16):undefined);
 // モデルのファイル: キャラ（OBJ_ROBnn）・ステージ（OBJ_STGnn）・共通（OBJ_COMMON）。人ごとに、描いた番号をいちばん多く含むものを選ぶ
 const bin=path.join(here,"disc/bin"), files=fs.readdirSync(bin).filter(f=>/^OBJ_(ROB\d+R?|STG\d+R?|COMMON)\.CMP$/.test(f)).sort()
   .map(f=>({name:f,map:new Map(g("objModels")(g("cricmpUnpack")(new Uint8Array(fs.readFileSync(path.join(bin,f))))).map(e=>[e.id,e]))}));
