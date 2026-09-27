@@ -102,7 +102,7 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <span class="parts">FV の技 <input id="x-num" type="number" min="0" max="1052" value="0" style="width:5.5em" aria-label="FV の技の番号"></span>
   <select id="x-name" aria-label="FV の技の名前" hidden></select>
   <span class="parts">押し合い <input id="x-push" type="number" min="0" max="2" step="0.05" value="0.6" style="width:4.5em" aria-label="押し合いの距離"></span>
-  <small>ファイティングバイパーズ（PS2『SEGA AGES 2500 Vol.21』）のディスクと写しを選ぶと、VF2 の 2P の代わりに FV のキャラを置けます（2 人とも、それぞれのゲームのプログラムで姿勢を計算し、色もそれぞれのゲームのもの）。FV のキャラは VF2 の 2P の腰の所に、1P の方を向けて置きます。上の「技を出す」は 1P（VF2）の技、ここの番号は FV のキャラの技で、再生・コマ送り・動画は 2 人いっしょに動きます（0 なら写しの姿勢のまま）。このビューアには体の当たりが無いので、前へ出る技ですれ違わないよう、腰の間が「押し合い」の距離より近いと半分ずつ押し戻します（ゲームの値ではなく仮のもの）。</small></div>
+  <small>ファイティングバイパーズ（PS2『SEGA AGES 2500 Vol.21』）のディスクと写しを選ぶと、VF2 の 2P の代わりに FV のキャラを置けます（2 人とも、それぞれのゲームのプログラムで姿勢を計算し、色もそれぞれのゲームのもの）。FV のキャラは VF2 の 2P の腰の所に、1P の方を向けて置きます。上の「技を出す」は 1P（VF2）の技、ここの番号は FV のキャラの技で、再生・コマ送り・動画は 2 人いっしょに動きます（0 なら写しの姿勢のまま）。このビューアには体の当たりが無いので、前へ出る技ですれ違わないよう、腰の間が「押し合い」の距離より近いと、前へ出たほうを相手の前で止めます（ゲームの値ではなく仮のもの）。</small></div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさは、ゲームの VU1 のプログラムと同じ式です。背景はステージのモデルのうち、そのコマで描いた部品です。空と遠景は、アーケードの2Dのタイルの面をゲームと同じずらし方で画面に貼ります（視点を回しても動きません）。</p>
@@ -3226,12 +3226,18 @@ function xCompose(M,UA,f){
   const toV=mul(mul(invG(R.att.V),T),V);   // FV のカメラの座標 → VF2 のカメラの座標
   // 押し合い（仮）: 体の当たりが無いので、2 人を結ぶ向きの腰の間が x-push より近いと半分ずつ押し戻す（ゲームの値ではない）
   const PUSH=Math.max(0,+$("x-push").value||0), ua=UA?UA[0].slice(9):pA, ub=mul(UB[0],T).slice(9), ax=[pL[0]-pA[0],pL[2]-pA[2]], al=Math.hypot(...ax)||1, u=[ax[0]/al,ax[1]/al];
-  const sep=(ub[0]-ua[0])*u[0]+(ub[2]-ua[2])*u[1], sh=sep<PUSH?(PUSH-sep)/2:0, move=k=>mul(mul(invG(V),[1,0,0,0,1,0,0,0,1,k*sh*u[0],0,k*sh*u[1]]),V);
-  const MA=move(-1), MB=mul(toV,move(1)), own=S.models[0];
+  const sep=(ub[0]-ua[0])*u[0]+(ub[2]-ua[2])*u[1], [shA,shB]=xPushShares(sep,PUSH,(ua[0]-pA[0])*u[0]+(ua[2]-pA[2])*u[1],-((ub[0]-pL[0])*u[0]+(ub[2]-pL[2])*u[1]));
+  const move=d=>mul(mul(invG(V),[1,0,0,0,1,0,0,0,1,d*u[0],0,d*u[1]]),V);
+  const MA=move(-shA), MB=mul(toV,move(shB)), own=S.models[0];
   S.xsc={...S.sc,draws:S.sc.draws.filter(d=>d.player===0).map(d=>d.dyn||own&&own.has(d.id)?{...d,m:mul(d.m,MA)}:d)};   // VF2 の 2P は描かない（1P の表のステージは残る）
   const sB=FVX.motApply(R.sc,R.att,UB,null);
   S.fsc={...sB,draws:sB.draws.filter(d=>d.player===R.pl&&(d.dyn||R.fm.has(d.id))).map(d=>({...d,m:mul(d.m,MB)}))};   // 人の番号はそのまま（2P の色は面の 2P 用の属性で付く）
 }
+// 押し合いの分け方: 近すぎる分（PUSH−sep）を、写しの位置から相手の方へ出た分（advA・advB）に比べて戻す。前へ出たほうが止まり、立っている相手は押されない
+// （半分ずつだと、片方だけ前へ出る技で 2 人とも 2P の側へずれていった）。出た分より多く重なるとき（初めから近いなど）は残りを半分ずつ
+function xPushShares(sep,PUSH,advA,advB){ const ov=PUSH-sep; if(ov<=0) return [0,0];
+  const a=Math.max(0,advA), b=Math.max(0,advB), t=a+b, use=Math.min(ov,t), rest=(ov-use)/2;
+  return [(t>1e-6?use*a/t:0)+rest,(t>1e-6?use*b/t:0)+rest] }
 // rebuild() から: FV の分のメッシュ（光の向きは VF2 の場面のもの、強さの表は FV のもの）
 function xMesh(o){ const S=APP.scene, R=XV.ready; if(!S.fsc) return null;
   const light={...R.light0,L:S.light.L}, on=$("c-p2").checked, p={which:"body",stage:false,light,players:[on&&R.pl===0,on&&R.pl===1]}, models={[R.pl]:R.fm};
@@ -3246,7 +3252,7 @@ function xInit(){
   $("x-push").onchange=()=>xRefresh();
 }
 // 画面の組み立て
-const VERSION="0.15.1";
+const VERSION="0.15.2";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }

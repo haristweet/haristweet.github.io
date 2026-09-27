@@ -70,12 +70,18 @@ function xCompose(M,UA,f){
   const toV=mul(mul(invG(R.att.V),T),V);   // FV のカメラの座標 → VF2 のカメラの座標
   // 押し合い（仮）: 体の当たりが無いので、2 人を結ぶ向きの腰の間が x-push より近いと半分ずつ押し戻す（ゲームの値ではない）
   const PUSH=Math.max(0,+$("x-push").value||0), ua=UA?UA[0].slice(9):pA, ub=mul(UB[0],T).slice(9), ax=[pL[0]-pA[0],pL[2]-pA[2]], al=Math.hypot(...ax)||1, u=[ax[0]/al,ax[1]/al];
-  const sep=(ub[0]-ua[0])*u[0]+(ub[2]-ua[2])*u[1], sh=sep<PUSH?(PUSH-sep)/2:0, move=k=>mul(mul(invG(V),[1,0,0,0,1,0,0,0,1,k*sh*u[0],0,k*sh*u[1]]),V);
-  const MA=move(-1), MB=mul(toV,move(1)), own=S.models[0];
+  const sep=(ub[0]-ua[0])*u[0]+(ub[2]-ua[2])*u[1], [shA,shB]=xPushShares(sep,PUSH,(ua[0]-pA[0])*u[0]+(ua[2]-pA[2])*u[1],-((ub[0]-pL[0])*u[0]+(ub[2]-pL[2])*u[1]));
+  const move=d=>mul(mul(invG(V),[1,0,0,0,1,0,0,0,1,d*u[0],0,d*u[1]]),V);
+  const MA=move(-shA), MB=mul(toV,move(shB)), own=S.models[0];
   S.xsc={...S.sc,draws:S.sc.draws.filter(d=>d.player===0).map(d=>d.dyn||own&&own.has(d.id)?{...d,m:mul(d.m,MA)}:d)};   // VF2 の 2P は描かない（1P の表のステージは残る）
   const sB=FVX.motApply(R.sc,R.att,UB,null);
   S.fsc={...sB,draws:sB.draws.filter(d=>d.player===R.pl&&(d.dyn||R.fm.has(d.id))).map(d=>({...d,m:mul(d.m,MB)}))};   // 人の番号はそのまま（2P の色は面の 2P 用の属性で付く）
 }
+// 押し合いの分け方: 近すぎる分（PUSH−sep）を、写しの位置から相手の方へ出た分（advA・advB）に比べて戻す。前へ出たほうが止まり、立っている相手は押されない
+// （半分ずつだと、片方だけ前へ出る技で 2 人とも 2P の側へずれていった）。出た分より多く重なるとき（初めから近いなど）は残りを半分ずつ
+function xPushShares(sep,PUSH,advA,advB){ const ov=PUSH-sep; if(ov<=0) return [0,0];
+  const a=Math.max(0,advA), b=Math.max(0,advB), t=a+b, use=Math.min(ov,t), rest=(ov-use)/2;
+  return [(t>1e-6?use*a/t:0)+rest,(t>1e-6?use*b/t:0)+rest] }
 // rebuild() から: FV の分のメッシュ（光の向きは VF2 の場面のもの、強さの表は FV のもの）
 function xMesh(o){ const S=APP.scene, R=XV.ready; if(!S.fsc) return null;
   const light={...R.light0,L:S.light.L}, on=$("c-p2").checked, p={which:"body",stage:false,light,players:[on&&R.pl===0,on&&R.pl===1]}, models={[R.pl]:R.fm};

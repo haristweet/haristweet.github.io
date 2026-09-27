@@ -51,10 +51,12 @@ const mA=mAS?+mAS:0, mB=mBS?+mBS:0, LA=mA?EA.motionLength(mA):0, LB=mB?EB.motion
 if(mA) EA.start(0,mA); if(mB) EB.start(fpl,mB);
 function frameScenes(fr){
   const UA=mA?EA.frame(0,Math.max(1,Math.round(fr*(LA-1))+1)):null, UB=mB?EB.frame(fpl,Math.max(1,Math.round(fr*(LB-1))+1)):EB.units(fpl);
-  // 押し合い（仮）: ビューアには体の当たりが無く、前へ出る技ですれ違うので、腰の間（2 人を結ぶ向き）が PUSH より近いと半分ずつ押し戻す（ゲームの値ではない）
+  // 押し合い（仮）: ビューアには体の当たりが無く、前へ出る技ですれ違うので、腰の間（2 人を結ぶ向き）が PUSH より近いと押し戻す（ゲームの値ではない）
   const ua=(UA||EA.units(0))[0].slice(9), ub=mul([...UB[0].slice(0,9),...UB[0].slice(9)],T).slice(9), ax=[pL[0]-pA[0],pL[2]-pA[2]], al=Math.hypot(...ax), u=[ax[0]/al,ax[1]/al];
-  const sep=(ub[0]-ua[0])*u[0]+(ub[2]-ua[2])*u[1], sh=sep<PUSH?(PUSH-sep)/2:0, move=(k)=>mul(mul(invG(V),[1,0,0,0,1,0,0,0,1,k*sh*u[0],0,k*sh*u[1]]),V);
-  const MA=move(-1), MB=move(1);
+  // 分け方は cross.js の xPushShares と同じ（前へ出たほうが止まる）
+  const sep=(ub[0]-ua[0])*u[0]+(ub[2]-ua[2])*u[1], ov=PUSH-sep, aA=Math.max(0,(ua[0]-pA[0])*u[0]+(ua[2]-pA[2])*u[1]), aB=Math.max(0,-((ub[0]-pL[0])*u[0]+(ub[2]-pL[2])*u[1])), t=aA+aB, use=Math.min(Math.max(ov,0),t), rest=Math.max(0,ov-use)/2;
+  const shA=ov>0?(t>1e-6?use*aA/t:0)+rest:0, shB=ov>0?(t>1e-6?use*aB/t:0)+rest:0, move=d=>mul(mul(invG(V),[1,0,0,0,1,0,0,0,1,d*u[0],0,d*u[1]]),V);
+  const MA=move(-shA), MB=move(shB);
   const sA0=UA?A("motApply")(vsc,attA,UA,EA.parts(0)):vsc, sA={...sA0,draws:sA0.draws.map(d=>d.player===0&&(d.dyn||vmodels[0].has(d.id))?{...d,m:mul(d.m,MA)}:d)};
   const vs={...sA,draws:sA.draws.filter(d=>d.player===0)};   // VF2 の 2P は消す（1P の表のステージは残る）
   const sB=B("motApply")(fsc,attB,UB,null);
