@@ -1231,7 +1231,10 @@ function sceneMesh(sc,col,models,opt={}){
       const c16=cram.getUint16((p.attr[3]>>6&1023)*2,true), c5=[c16&31,c16>>5&31,c16>>10&31];
       let tx=null; if(p.attr[0]>>14&1) tx=texCoords(p.attr,p.uv);
       const ov=same||(p.attr[1]>>8)||(tx&&(p.attr[0]>>13&1))?++over:0;
-      const ls=p.h>>18&31, lt=opt.light?opt.light.tab[ls]:[63.5,31.5,0,0], lk=[lt[0],lt[1],lt[2],(lt[3]&7&(opt.light?opt.light.flags:0))?1:0,(ls>=10&&ls<=12?1:0)+(ov?2:0)+4*Math.min(ov,255)];
+      // 1024: 裏向きなら描かない（キャラの面。ステージ・影・映り込みは両面。ゲームもキャラは裏向きを描かない。FV のバーンのコートで表と裏地が逆向きに重なっていて見つけた）
+      // 両面の旗は面の頭の bit17（MAME の model2_v.cpp の check_culling: bit17 が 0 なら裏向きを捨てる。VF2 のラウの腰の布の裏は bit17＝1 で、ゲームの写真でも見える）
+      const cull=!isStage&&!shadow&&det>0.05&&!(p.h>>>17&1);
+      const ls=p.h>>18&31, lt=opt.light?opt.light.tab[ls]:[63.5,31.5,0,0], lk=[lt[0],lt[1],lt[2],(lt[3]&7&(opt.light?opt.light.flags:0))?1:0,(ls>=10&&ls<=12?1:0)+(ov?2:0)+4*Math.min(ov,255)+(cull?1024:0)];
       const vert=k=>{ out.push(...q[k],...n,...c5);
         if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,(p.attr[0]>>13&1)?2:1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0);
         out.push((p.h>>10&3)|((p.h>>17&63)<<2),...lk) };
@@ -1911,13 +1914,14 @@ function motRomData(rom){ const half=k=>{ const c=rom.chips[k>>21][k&1], j=(k>>1
 const VGL_VS=`
 attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol; attribute vec2 aLoc; attribute vec4 aOrgSize; attribute vec3 aMisc; attribute vec4 aLk; attribute float aSpecial;
 uniform mat4 uView; uniform vec2 uFocal; uniform vec3 uLight;
-varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial; varying float vCull;
 void main(){
   vec4 p=uView*vec4(aPos,1.0);
   float d=clamp(dot(uLight,aNrm),0.0,1.0), s=clamp(2.0*d*aNrm.z-uLight.z,0.0,1.0);
   vB=floor(clamp(aLk.x*d+aLk.y+(aLk.w>0.5?aLk.z*pow(s,8.0):0.0),0.0,127.0));
   vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc; vSpecial=mod(aSpecial,2.0);
-  float over=floor(aSpecial/4.0);   // 部品の中で何枚目の重ねる面か（build.js）
+  float over=floor(mod(aSpecial,1024.0)/4.0);   // 部品の中で何枚目の重ねる面か（build.js）
+  vCull=aSpecial>=1023.5?1.0:0.0;   // 裏向きなら描かない面（キャラ。build.js の 1024）
   // 奥行き 0.05〜100 を -1〜1 に
   gl_Position=vec4(uFocal.x*p.x, uFocal.y*p.y, (p.z*100.05-10.0)/99.95, p.z);
   // 重ねる面（貼りもの＝目や眉、透明ありのテクスチャの面＝ウルフの隈取りなど）は肌とまったく同じ所にあるので、ごくわずか手前へ。
@@ -1927,7 +1931,7 @@ void main(){
 const VGL_FS=`
 precision highp float;
 uniform sampler2D uTex, uClut, uXlat, uTexA, uTexM; uniform float uShadow, uCut, uBilin, uArc, uMip, uMipForce;
-varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial; varying float vCull;
 // テクスチャの値（0〜15）。loc は面の中のテクセルの位置で、テクスチャの大きさで折り返す
 // アーケードのテクスチャ（uArc）: loc は横が 4 倍の単位。Model 2 のテクスチャ RAM（横 1024・縦 2048、ページ2枚を横に並べた 2048×2048）の
 // (横 py, 縦 4×px) を引く（PS2 の (px, py) はその 4 行に 1 行。arcade.js）
@@ -1952,6 +1956,7 @@ float texv(vec2 loc){
 }
 float xl(float row,float luma){ return texture2D(uXlat,vec2((luma+0.5)/64.0,(row+0.5)/96.0)).r; }
 void main(){
+  if(vCull>0.5&&!gl_FrontFacing) discard;   // キャラの裏向きの面（ゲームも描かない）
   if(uShadow>0.5){ gl_FragColor=vec4(0.0,0.0,0.0,0.45); return; }
   float L=floor(texture2D(uClut,vec2((vB+0.5)/128.0,(vMisc.z+0.5)/256.0)).r*255.0+0.5), luma;
   if(vMisc.x>0.5){
@@ -2075,7 +2080,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て
-const VERSION="0.14.1";
+const VERSION="0.14.2";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }

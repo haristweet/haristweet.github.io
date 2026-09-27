@@ -1342,7 +1342,8 @@ function sceneMesh(sc,col,models,opt={}){
       let tx=null; if(p.attr[0]>>14&1) tx=texCoords(p.attr,p.uv);
       const ov=same||(p.attr[1]>>8)||(tx&&(p.attr[0]>>13&1))?++over:0;
       // 1024: 裏向きなら描かない（キャラの面。ステージ・影・映り込みは両面。ゲームもキャラは裏向きを描かない。バーンのコートは表と裏地が同じ所に逆向きで重なる）
-      const cull=!isStage&&!shadow&&det>0.05;
+      // 両面の旗は面の頭の bit17（MAME の model2_v.cpp の check_culling: bit17 が 0 なら裏向きを捨てる。VF2 のラウの腰の布の裏は bit17＝1 で、ゲームの写真でも見える）
+      const cull=!isStage&&!shadow&&det>0.05&&!(p.h>>>17&1);
       const ls=p.h>>18&31, lt=opt.light?opt.light.tab[ls]:[63.5,31.5,0,0], lk=[lt[0],lt[1],lt[2],(lt[3]&7&(opt.light?opt.light.flags:0))?1:0,(ls>=10&&ls<=12?1:0)+(ov?2:0)+4*Math.min(ov,255)+(cull?1024:0)];
       const vert=k=>{ out.push(...q[k],...n,...c5);
         if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,(p.attr[0]>>13&1)?2:1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0);
@@ -2225,7 +2226,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て（VF2 の vapp.js を元に、FV のモデルの選び方とアーケードのテクスチャに合わせたもの）
-const VERSION="0.4.2";
+const VERSION="0.4.3";
 const $=id=>document.getElementById(id);
 const APP={disc:null, objCache:new Map(), rom:null, states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
