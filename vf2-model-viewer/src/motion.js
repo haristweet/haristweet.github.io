@@ -34,7 +34,8 @@ function motEngine(prog, eeMem, mainData){
     w32(A,v){ A>>>=0; if(isF(A)) return copW(v>>>0); if(isC(A)) return ee.w32(cr+A-0x900000,v); for(let k=0;k<4;k++) this.w8(A+k,(v>>>(8*k))&255) } };
   const cpu=new I960({readUInt32LE:a=>(prog[a]|prog[a+1]<<8|prog[a+2]<<16|prog[a+3]<<24)>>>0}, mem);
   const g7=pl=>mem.r32(pl?0x500808:0x500804);
-  const run=(pl,addrs,m)=>{ for(const a of addrs){ const R=cpu.r; R[1]=R[31]=0x5f8000; R[23]=g7(pl); R[27]=0x880000; R[28]=0x4000; R[16]=m||0; cpu.run(a) } };
+  // 途中で止まったら TGP への送りかけと答えの残りを捨てる（残すと次の呼び出しから引数と答えがずれ、何をしても崩れる）。1 回の上限は 2000 万命令（ふつうは 1 コマ数十万）
+  const run=(pl,addrs,m)=>{ try{ for(const a of addrs){ const R=cpu.r; R[1]=R[31]=0x5f8000; R[23]=g7(pl); R[27]=0x880000; R[28]=0x4000; R[16]=m||0; cpu.run(a,2e7) } }catch(e){ cop.cur=null; cop.out.length=0; throw e } };
   // 関節の行列の置き場（cprMtxStUnitMat: [g7+4] の bit0 が 1 なら [gp−0x7db0]、それ以外は [gp−0x7dac]）。64B×16、12 個（行 x,y,z の像と位置）に直す
   const unitBase=pl=>ee.r32(MOT_GP-((mem.r8(g7(pl)+4)&1)?0x7db0:0x7dac));
   const units=pl=>{ const b=unitBase(pl), F=k=>{ const u=ee.r32(b+k); return new Float32Array(new Uint32Array([u]).buffer)[0] }; return [...Array(16)].map((_,j)=>[0,4,8,16,20,24,32,36,40,48,52,56].map(o=>F(j*64+o))) };
@@ -60,7 +61,8 @@ function motEngine(prog, eeMem, mainData){
       copCall(4,V.map(f2u)); cop.out.length=0;
       capture={ mat(m,fn){ if(pend){ out.push({id:pend.id,player:pend.pl,m,fn,pc:pend.pc}); pend=null } } };
       cpu.trace=pc=>{ if(pc===0x7c60||pc===0x7d14){ const R=cpu.r; pend={id:R[16],pl:R[17]&1,pc} } };
-      try{ for(const a of addrs){ const R=cpu.r; R[1]=R[31]=0x5f8000; R[23]=g7(pl); R[24]=g7(1-pl); R[26]=0x800000; R[27]=0x880000; R[28]=0x4000; R[29]=mem.r32(0x500814); R[30]=0; cpu.run(a) } }
+      try{ for(const a of addrs){ const R=cpu.r; R[1]=R[31]=0x5f8000; R[23]=g7(pl); R[24]=g7(1-pl); R[26]=0x800000; R[27]=0x880000; R[28]=0x4000; R[29]=mem.r32(0x500814); R[30]=0; cpu.run(a,2e7) } }
+      catch(e){ cop.cur=null; cop.out.length=0; throw e }
       finally{ capture=null; cpu.trace=null }
       return out },
     // 関節ごとに描く部品の番号（構造体の +0x40 に 16 個。手（5・8）は +0x67c の表を +0x6c7・+0x6cd の手の形で引く。i960 の 0x18fe8〜・0x19e34）

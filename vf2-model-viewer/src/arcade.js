@@ -124,12 +124,14 @@ class I960 {
     return target;
   }
   // 番地 pc から、ret で最初の深さに戻るまで動かす
-  run(pc, maxSteps=5e8){
-    const R=this.r, M=this.mem, C=this.code, depth0=this.frames.length;
+  // 途中で止まったら（知らない命令・命令が多すぎる）呼び出しの積み上げを戻す。戻さないと次からの呼び出しがどこへ戻るか狂う
+  run(pc, maxSteps=5e8){ const depth0=this.frames.length; try{ return this.run1(pc,maxSteps) }catch(e){ this.frames.length=depth0; throw e } }
+  run1(pc, maxSteps){
+    const R=this.r, M=this.mem, C=this.code, depth0=this.frames.length, lim=this.steps+maxSteps;   // 上限は 1 回の呼び出しごと（累計だと使い続けるうちに必ず当たる）
     this.frames.push({loc:R.slice(0,16), fp:R[31], stop:true});
     { const nfp=((R[1]+63)&~63)>>>0; R.fill(0,0,16); R[31]=nfp; R[1]=(nfp+64)>>>0 }
     for(;;){
-      if(++this.steps>maxSteps) throw new Error("命令が多すぎる at "+pc.toString(16));
+      if(++this.steps>lim) throw new Error("命令が多すぎる at "+pc.toString(16));
       if(this.trace) this.trace(pc);
       const w=C.readUInt32LE(pc), op=w>>>24;
       if(op<0x20){ // CTRL
@@ -179,6 +181,9 @@ class I960 {
           case 0x701: v=Math.imul(a,b); break; case 0x741: v=Math.imul(a,b); break;
           case 0x70b: v=a?Math.floor((b>>>0)/(a>>>0)):0; break; case 0x708: v=a?(b>>>0)%(a>>>0):0; break;
           case 0x74b: v=a?Math.trunc((b|0)/(a|0)):0; break; case 0x748: v=a?(b|0)%(a|0):0; break;
+          case 0x670: { const x=BigInt(a>>>0)*BigInt(b>>>0); R[dst]=Number(x&0xffffffffn); R[dst+1]=Number(x>>32n); pc+=4; continue }   // emul（64bit の積を dst・dst+1 へ）
+          case 0x671: { const hi=((w>>>12)&1)?0:R[s2i+1], x=(BigInt(hi>>>0)<<32n)|BigInt(b>>>0), d=BigInt(a>>>0); if(!d){ pc+=4; continue }
+            R[dst]=Number(x%d); R[dst+1]=Number((x/d)&0xffffffffn); pc+=4; continue }   // ediv（64bit を割り、余り→dst・商→dst+1。数字を 10 進に直す所 0x18ae8 で使う）
           case 0x66d: case 0x66b: case 0x66c: case 0x66f: pc+=4; continue;   // flushreg など
           default: if(this.freg(o,w)){ pc+=4; continue } throw new Error("REG "+o.toString(16)+" at "+pc.toString(16));
         }

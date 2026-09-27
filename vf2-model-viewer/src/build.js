@@ -21,12 +21,16 @@ function sceneMesh(sc,col,models,opt={}){
     const T=v=>[v[0]*m[0]+v[1]*m[3]+v[2]*m[6]+m[9], v[0]*m[1]+v[1]*m[4]+v[2]*m[7]+m[10], v[0]*m[2]+v[1]*m[5]+v[2]*m[8]+m[11]];
     // 属性の表は 1P（とステージ）が塊0、2P が塊1
     let over=0;   // 部品の中で何枚目の「重ねる面」か（透明ありのテクスチャの面と貼りもの。ゲームは部品の中をファイルの順に上塗りする）
+    // 前の面と同じ平面に乗っている面・同じ頂点の面も重ねる面（影丸の覆面は、顔の肌の面と同じ頂点の面を旗無しで重ねてあり、ファイルで後ろにある。頂点の並びの始まりは違う）
+    const planes=new Set();
     for(const p of objPolys(e.ch[3],e.ch[d.player?1:0],e.ch[2])){
+      let same=false; if(!isStage){ const v=p.v, a=v[1].map((x,i)=>x-v[0][i]), b=v[2].map((x,i)=>x-v[0][i]), n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=Math.hypot(...n);
+        if(l>1e-12){ const key=n.map(x=>(x/l).toFixed(3)).join()+"/"+((n[0]*v[0][0]+n[1]*v[0][1]+n[2]*v[0][2])/l).toFixed(4); const vk=v.map(u=>u.map(x=>x.toFixed(4)).join()).sort().join("|"); same=planes.has(key)||planes.has(vk); planes.add(key); planes.add(vk) } }
       const q=p.v.map(T), a=q[1].map((x,i)=>x-q[0][i]), b=q[2].map((x,i)=>x-q[0][i]);
       const n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=(det<0?-1:1)*(Math.hypot(...n)||1); for(let i=0;i<3;i++) n[i]/=l;   // 映り込み（行列式が負）は頂点の並びが裏返るので法線を戻す
       const c16=cram.getUint16((p.attr[3]>>6&1023)*2,true), c5=[c16&31,c16>>5&31,c16>>10&31];
       let tx=null; if(p.attr[0]>>14&1) tx=texCoords(p.attr,p.uv);
-      const ov=(p.attr[1]>>8)||(tx&&(p.attr[0]>>13&1))?++over:0;
+      const ov=same||(p.attr[1]>>8)||(tx&&(p.attr[0]>>13&1))?++over:0;
       const ls=p.h>>18&31, lt=opt.light?opt.light.tab[ls]:[63.5,31.5,0,0], lk=[lt[0],lt[1],lt[2],(lt[3]&7&(opt.light?opt.light.flags:0))?1:0,(ls>=10&&ls<=12?1:0)+(ov?2:0)+4*Math.min(ov,255)];
       const vert=k=>{ out.push(...q[k],...n,...c5);
         if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,(p.attr[0]>>13&1)?2:1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0);

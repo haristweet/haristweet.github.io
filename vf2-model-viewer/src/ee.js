@@ -26,10 +26,11 @@ class EE {
   run(pc){
     const G=this.g, V=this.vf;
     let npc=pc+4, delay=false;
+    const lim=this.steps+5e7;   // 上限は 1 回の呼び出しごと
     const S=(r)=>G[r*4]|0, U=(r)=>G[r*4]>>>0;
     for(;;){
       if(pc===0xfffffff0) return;
-      if(++this.steps>5e7) throw new Error("命令が多すぎる");
+      if(++this.steps>lim) throw new Error("命令が多すぎる");
       const w=this.r32(pc), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31, sa=(w>>>6)&31, imm=(w<<16)>>16, uimm=w&0xffff;
       let next=npc, target=-1, likely=false, taken=false;
       const br=(c,l)=>{ taken=c; likely=l; target=(npc+(imm<<2))>>>0 };
