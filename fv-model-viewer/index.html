@@ -1178,12 +1178,12 @@ function texCoords(attr,uv){
   const loc=uv.map(([u,v])=>[(u+7-ku)/8, (v+7-kv)/8]);
   return {page:h2>>12&1, org:[Y,X], size:[su/8,sv/8], loc, st:loc};
 }
-// テクスチャ用メモリ（g_geo+0xa040 の 512KB）から 4bit を読む。FV の PS2 版はアーケードのテクスチャ RAM を縦横とも 1 つおきに間引いたもの（arcadetex.mjs で確かめた）:
-// RAM の (x, y) → 行 r＝(x を偶数に丸めたもの)＋(y の bit9)、行の中の横 (y&511)>>1。行は 256B おき、ページは 0x40000 ずつ
+// テクスチャ用メモリ（g_geo+0xa040 の 512KB）から 4bit を読む。FV の PS2 版はアーケードのテクスチャ RAM（ページごとに 横 1024・縦 2048）を縦横とも 1 つおきに間引いたもの:
+// RAM の (x, y) → ページ×0x40000＋(x>>1)×512＋((y>>9)&3)×128＋((y&511)>>2)、ニブルは (y>>1)&1（写しのメモリとアーケードの展開で確かめた）
 function texRam(ram,page,ay,ax){
-  ay=Math.floor(ay)&1023; ax=Math.floor(ax)&1023;
-  const r=(ax&~1)+((ay>>9)&1), c=(ay&511)>>1, b=ram[(page<<18)+r*256+(c>>1)];
-  return c&1?b>>4:b&15;
+  ay=Math.floor(ay)&2047; ax=Math.floor(ax)&1023;
+  const b=ram[(page<<18)+(ax>>1)*512+((ay>>9)&3)*128+((ay&511)>>2)];
+  return (ay>>1)&1?b>>4:b&15;
 }
 // セーブステートの主メモリから、そのコマでゲームがジオメトライザに送った命令の列を読む（VF2 の scene.js と同じ作り。番地だけ FV のもの）。
 // 命令の語の上位 9bit（w>>>23）が番号。引数の語数: 物体1=4・枠3=6・モード7=1・8=1・焦点9=2・光10=3・行列11=12・12=3・LOD22=1、
@@ -1752,11 +1752,13 @@ async function chooseModels(sc){
   if(f){ models.stage=new Map(await readObj(f)); const r=await readObj(f.replace(/R?\.CMP$/,"R.CMP")); if(r) for(const [k,v] of r) if(!models.stage.has(k)) models.stage.set(k,v) }
   return {models,names:used};
 }
-// アーケードのテクスチャ（fvarc.js）: キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）で 2P はページを入れ替え、ステージ OBJ_STGnn はセット 18＋n。
+// アーケードのテクスチャ（fvarc.js）: 共通のセット 36、キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）で 2P はページを入れ替え、ステージ OBJ_STGnn はセット 18＋n。
+// （写しの PS2 のテクスチャ用メモリと一致するセットはこれだけ。grace・bahn・picky で確かめた）
 // キャラは RAM の縦 0〜1023、ステージは 1024〜1535 だけ使い（セットは段の小さい版などほかの所にも書く）、ロムで書いた所は値＋128
 async function arcPages(names){
   if(!APP.rom){ status("アーケードのテクスチャを展開中…"); APP.rom={prog:await readDec("ROM_CODE1.CMP"), data:await readDec("ROM_DATA.CMP")} }
   const LC=fvArcLoader(APP.rom.prog,APP.rom.data), LS=fvArcLoader(APP.rom.prog,APP.rom.data);
+  LC.loadSet(36,0);   // どの写しにも載っている共通のセット（ページ1）
   names.slice(0,2).forEach((f,pl)=>{ if(!f) return; let n=+f.match(/ROB(\d+)/)[1]; if(n>=13) n-=13; LC.loadSet(2*n+1,pl); LC.loadSet(2*n+2,pl) });
   if(names[2]) LS.loadSet(18+(+names[2].match(/STG(\d+)/)[1]),0);
   return [0,1].map(p=>{ const o=new Uint8Array(1024*2048);

@@ -19,11 +19,13 @@ async function chooseModels(sc){
   if(f){ models.stage=new Map(await readObj(f)); const r=await readObj(f.replace(/R?\.CMP$/,"R.CMP")); if(r) for(const [k,v] of r) if(!models.stage.has(k)) models.stage.set(k,v) }
   return {models,names:used};
 }
-// アーケードのテクスチャ（fvarc.js）: キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）で 2P はページを入れ替え、ステージ OBJ_STGnn はセット 18＋n。
+// アーケードのテクスチャ（fvarc.js）: 共通のセット 36、キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）で 2P はページを入れ替え、ステージ OBJ_STGnn はセット 18＋n。
+// （写しの PS2 のテクスチャ用メモリと一致するセットはこれだけ。grace・bahn・picky で確かめた）
 // キャラは RAM の縦 0〜1023、ステージは 1024〜1535 だけ使い（セットは段の小さい版などほかの所にも書く）、ロムで書いた所は値＋128
 async function arcPages(names){
   if(!APP.rom){ status("アーケードのテクスチャを展開中…"); APP.rom={prog:await readDec("ROM_CODE1.CMP"), data:await readDec("ROM_DATA.CMP")} }
   const LC=fvArcLoader(APP.rom.prog,APP.rom.data), LS=fvArcLoader(APP.rom.prog,APP.rom.data);
+  LC.loadSet(36,0);   // どの写しにも載っている共通のセット（ページ1）
   names.slice(0,2).forEach((f,pl)=>{ if(!f) return; let n=+f.match(/ROB(\d+)/)[1]; if(n>=13) n-=13; LC.loadSet(2*n+1,pl); LC.loadSet(2*n+2,pl) });
   if(names[2]) LS.loadSet(18+(+names[2].match(/STG(\d+)/)[1]),0);
   return [0,1].map(p=>{ const o=new Uint8Array(1024*2048);

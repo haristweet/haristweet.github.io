@@ -9,6 +9,7 @@ for(const f of ["cricmp.js","obj.js","tex.js","scene.js","build.js","arcade.js",
 const g=n=>vm.runInContext(n,ctx);
 const [,,dir,outp="out/color.png"]=process.argv, mem=fs.readFileSync(path.join(dir,"eeMemory.bin"));
 const sc=g("sceneRead")(mem,process.env.BUF?parseInt(process.env.BUF,16):undefined), col=g("sceneColors")(mem);
+if(process.env.SKIP){ const sk=process.env.SKIP.split(",").map(Number); sc.draws=sc.draws.filter(d=>!sk.includes(d.id)) }   // 調べ用: SKIP=番号,… の部品を描かない
 const vu1p=path.join(dir,"vu1Memory.bin"), light=g("sceneLight")(fs.existsSync(vu1p)?fs.readFileSync(vu1p):null,sc);
 // モデル: 人ごとに、描いた番号をいちばん多く含む OBJ_ROBnn（＋同じ番号の R・共通 OBJ_COMMON）。背景は OBJ_STGnn
 const bin=path.join(here,"disc/bin"), load=f=>new Map(g("objModels")(g("cricmpUnpack")(new Uint8Array(fs.readFileSync(path.join(bin,f))))).map(e=>[e.id,e]));
@@ -21,6 +22,7 @@ for(const p of [0,1]){ const ids=sc.draws.filter(d=>d.player===p).map(d=>d.id), 
 { const ids=sc.draws.filter(d=>d.player===0&&!models[0].has(d.id)).map(d=>d.id), b=best(ids,/^OBJ_STG\d+R?\.CMP$/); if(b&&b[1]){ models.stage=files[b[0]]; used.push(b[0]) } }
 let arc=null;
 if(process.env.ARC){ const L=g("fvArcLoader")(new Uint8Array(fs.readFileSync(path.join(bin,"ROM_CODE1.dec"))),new Uint8Array(fs.readFileSync(path.join(bin,"ROM_DATA.dec"))));
+  L.loadSet(36,0);
   used.slice(0,2).forEach((f,pl)=>{ let n=+f.match(/ROB(\d+)/)[1]; if(n>=13) n-=13; L.loadSet(2*n+1,pl); L.loadSet(2*n+2,pl) });
   if(used[2]){ const n=+used[2].match(/STG(\d+)/)[1]; L.loadSet(18+n,0) }
   arc=(p,ay,ax)=>{ ax=Math.floor(ax)&1023; ay=Math.floor(ay)&2047; let w=L.tex[p][(ay>>1)*512+(ax>>1)]; if(!(ay&1)) w>>=8; if(!(ax&1)) w>>=4; return w&15 } }

@@ -28,10 +28,10 @@ function texCoords(attr,uv){
   const loc=uv.map(([u,v])=>[(u+7-ku)/8, (v+7-kv)/8]);
   return {page:h2>>12&1, org:[Y,X], size:[su/8,sv/8], loc, st:loc};
 }
-// テクスチャ用メモリ（g_geo+0xa040 の 512KB）から 4bit を読む。FV の PS2 版はアーケードのテクスチャ RAM を縦横とも 1 つおきに間引いたもの（arcadetex.mjs で確かめた）:
-// RAM の (x, y) → 行 r＝(x を偶数に丸めたもの)＋(y の bit9)、行の中の横 (y&511)>>1。行は 256B おき、ページは 0x40000 ずつ
+// テクスチャ用メモリ（g_geo+0xa040 の 512KB）から 4bit を読む。FV の PS2 版はアーケードのテクスチャ RAM（ページごとに 横 1024・縦 2048）を縦横とも 1 つおきに間引いたもの:
+// RAM の (x, y) → ページ×0x40000＋(x>>1)×512＋((y>>9)&3)×128＋((y&511)>>2)、ニブルは (y>>1)&1（写しのメモリとアーケードの展開で確かめた）
 function texRam(ram,page,ay,ax){
-  ay=Math.floor(ay)&1023; ax=Math.floor(ax)&1023;
-  const r=(ax&~1)+((ay>>9)&1), c=(ay&511)>>1, b=ram[(page<<18)+r*256+(c>>1)];
-  return c&1?b>>4:b&15;
+  ay=Math.floor(ay)&2047; ax=Math.floor(ax)&1023;
+  const b=ram[(page<<18)+(ax>>1)*512+((ay>>9)&3)*128+((ay&511)>>2)];
+  return (ay>>1)&1?b>>4:b&15;
 }
