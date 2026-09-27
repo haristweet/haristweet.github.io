@@ -1,5 +1,5 @@
 // 画面の組み立て（VF2 の vapp.js を元に、FV のモデルの選び方とアーケードのテクスチャに合わせたもの）
-const VERSION="0.5.0";
+const VERSION="0.6.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, objCache:new Map(), rom:null, states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -95,14 +95,21 @@ function pickScene(mem){
   return sceneRead(mem);
 }
 // ===== 技の名前（ディスクのコマンド表 XXX_CMND.FTS と fvmoves.js の番号） =====
-async function motNames(st,pl){ const sel=$("m-name"); sel.hidden=true; sel.innerHTML=""; APP.names=null;
-  try{ const d=new DataView(st.mem.buffer,st.mem.byteOffset,st.mem.byteLength), g7=d.getUint32(MOT_WORK+(pl?0x500808:0x500804),true), cid=st.mem[MOT_WORK+g7+0x1b1], e=FV_MOVES[cid];
-    if(!e||!APP.disc||!APP.disc.get(e[0])) return;
-    APP.cmdCache=APP.cmdCache||{}; if(!APP.cmdCache[e[0]]) APP.cmdCache[e[0]]=cmdStrings(await APP.disc.get(e[0])());
-    const s=APP.cmdCache[e[0]], list=e[1].filter(([i])=>s[i]&&s[i+1]).map(([i,m])=>({m,name:s[i],cmd:cmdPretty(s[i+1])}));
+// 技の名前の一覧: 写しのキャラの技を先頭に、ほかのキャラの技もキャラごとの見出しで並べる（ほかのキャラの技も同じ 16 の関節で出せる）。
+// APP.names＝写しのキャラの技、APP.namesAll＝全員の技
+async function motNames(st,pl){ const sel=$("m-name"); sel.hidden=true; sel.innerHTML=""; APP.names=null; APP.namesAll=null;
+  try{ const d=new DataView(st.mem.buffer,st.mem.byteOffset,st.mem.byteLength), g7=d.getUint32(MOT_WORK+(pl?0x500808:0x500804),true), cid=st.mem[MOT_WORK+g7+0x1b1];
+    if(!APP.disc) return;
+    APP.cmdCache=APP.cmdCache||{}; const groups=[];
+    for(const k of [cid,...Object.keys(FV_MOVES).map(Number).filter(k=>k!==cid)]){ const e=FV_MOVES[k]; if(!e||!APP.disc.get(e[0])) continue;
+      if(!APP.cmdCache[e[0]]) APP.cmdCache[e[0]]=cmdStrings(await APP.disc.get(e[0])());
+      const s=APP.cmdCache[e[0]], who=(s[1]||"").split("<")[0]||e[0].replace("_CMND.FTS","");
+      groups.push({own:k===cid,who,list:e[1].filter(([i])=>s[i]&&s[i+1]).map(([i,m])=>({m,name:s[i],cmd:cmdPretty(s[i+1])}))}) }
     if(+$("m-pl").value!==pl||APP.states[APP.cur]!==st) return;   // 読むあいだに切り替わった
-    APP.names=list; sel.innerHTML=`<option value="">技の名前から選ぶ（${list.length}）</option>`+list.map(x=>`<option value="${x.m}">${x.name}　${x.cmd}</option>`).join("");
-    sel.hidden=!list.length; motNameSync() }catch(err){ console.warn(err) } }
+    const own=groups.find(x=>x.own); APP.names=own?own.list:null; APP.namesAll=groups.flatMap(x=>x.list);
+    const esc=t=>t.replace(/[&<>"]/g,c=>"&#"+c.charCodeAt(0)+";");
+    sel.innerHTML=`<option value="">技の名前から選ぶ（${own?own.list.length:0}／全員 ${APP.namesAll.length}）</option>`+groups.map(x=>`<optgroup label="${esc(x.who)}${x.own?"（このキャラ）":""}">`+x.list.map(y=>`<option value="${y.m}">${esc(y.name)}　${esc(y.cmd)}</option>`).join("")+"</optgroup>").join("");
+    sel.hidden=!APP.namesAll.length; motNameSync() }catch(err){ console.warn(err) } }
 // 番号の欄と名前の一覧をそろえる（一覧に無い番号なら先頭の「技の名前から選ぶ」）
 function motNameSync(){ const sel=$("m-name"); if(sel.hidden) return; const v=String(+$("m-num").value); sel.value=[...sel.options].some(o=>o.value===v)?v:"" }
 // ===== 技を出す（motion.js）。エンジンは写しごとに最初に触ったときに作る（写しの主メモリを写して使う） =====
@@ -131,8 +138,8 @@ async function motSet(m,f,smooth=false){
   }catch(e){ console.error(e); motStop(); status("技を計算できなかった: "+e.message,true) }
 }
 function motStop(){ if(APP.mot){ APP.mot.play=false; APP.mot.random=false } $("m-play").textContent="▶ 再生"; $("m-rand").textContent="🎲 ランダムに連続" }
-// ランダムに連続: 技が終わるたびに名前の一覧（無ければ 1〜1052）から次の技を選び、ゲームの「前の技からのつなぎ」（0x29f48）でつなぐ
-function motPickRandom(M){ const L=APP.names; if(L&&L.length) return L[Math.floor(Math.random()*L.length)].m;
+// ランダムに連続: 技が終わるたびに名前の一覧（このキャラの技、「全員の技から」なら全員の技。無ければ 1〜1052）から次の技を選び、ゲームの「前の技からのつなぎ」（0x29f48）でつなぐ
+function motPickRandom(M){ const L=$("c-randall").checked?APP.namesAll:APP.names; if(L&&L.length) return L[Math.floor(Math.random()*L.length)].m;
   for(let n=0;n<200;n++){ const m=1+Math.floor(Math.random()*MOT_MAX); if(M.eng.motionLength(m)>0) return m } return M.m||1 }
 async function motRandom(){
   if(rec.busy) return;

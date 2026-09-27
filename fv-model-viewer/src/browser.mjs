@@ -38,8 +38,13 @@ for(const [name,vp] of [["pc",{width:1100,height:900}],["phone",{width:390,heigh
     await p.locator("#states button").nth(0).click(); await waitIdle(p); await p.waitForTimeout(300);
     console.log(name,"技の欄:",await p.isVisible("#motview"),"写しの技",await p.inputValue("#m-num"),JSON.stringify(await p.textContent("#info")));
     await p.waitForFunction(()=>!document.getElementById("m-name").hidden,null,{timeout:60000});
-    const opts=await p.$$eval("#m-name option",o=>o.map(x=>x.value+"|"+x.textContent));
-    console.log(name,"名前の一覧:",opts.length-1,"件",opts.slice(1,4).map(x=>x.split("|")[0]).join(","),"…");
+    const opts=await p.$$eval("#m-name optgroup:first-of-type option",o=>o.map(x=>x.value+"|"+x.textContent));
+    const groups=await p.$$eval("#m-name optgroup",g=>g.map(x=>x.label+" "+x.children.length));
+    console.log(name,"名前の一覧:",groups.join("・"),"／このキャラ",opts.length,"件",opts.slice(0,3).map(x=>x.split("|")[0]).join(","),"…");
+    { const v=await p.$eval("#m-name optgroup:nth-of-type(2) option:nth-child(3)",o=>o.value);
+      await p.selectOption("#m-name",{index:(await p.$$eval("#m-name option",o=>o.length))-1}); await p.waitForFunction(()=>/\/ /.test(document.getElementById("m-fn").textContent),null,{timeout:60000});
+      await p.locator("#m-frame").fill("15"); await p.waitForTimeout(500); await p.locator("#viewer").screenshot({path:`out/b_${name}_n2.png`});
+      console.log(name,"ほかのキャラの技（一覧の最後）: 技",await p.inputValue("#m-num"),await p.textContent("#m-fn")) }
     await p.selectOption("#m-name","627"); await p.waitForFunction(()=>/\/ /.test(document.getElementById("m-fn").textContent)&&document.getElementById("m-num").value==="627",null,{timeout:60000});
     await p.locator("#m-frame").fill("20"); await p.waitForTimeout(500); await p.locator("#viewer").screenshot({path:`out/b_${name}_n1.png`}); await p.locator("#motview").screenshot({path:`out/b_${name}_n0.png`});
     console.log(name,"名前で選ぶ: 技",await p.inputValue("#m-num"),await p.textContent("#m-fn"),"一覧の選択",await p.inputValue("#m-name"));
@@ -53,8 +58,10 @@ for(const [name,vp] of [["pc",{width:1100,height:900}],["phone",{width:390,heigh
     await p.click("#m-back"); await p.waitForTimeout(300); console.log(name,"戻す:",await p.textContent("#m-fn"));
     await p.click("#m-rand"); const seen=new Set(); for(let i=0;i<40&&seen.size<3;i++){ await p.waitForTimeout(250); seen.add(await p.inputValue("#m-num")) }
     await p.locator("#viewer").screenshot({path:`out/b_${name}_m3.png`}); await p.click("#m-rand"); const a1=await p.textContent("#m-fn"); await p.waitForTimeout(400);
-    const inList=[...seen].every(v=>opts.some(o=>o.split("|")[0]===v)); console.log(name,"ランダムは一覧の技だけ:",inList);
+    const inList=[...seen].every(v=>opts.some(o=>o.split("|")[0]===v)); console.log(name,"ランダムはこのキャラの技だけ:",inList);
     console.log(name,"ランダム:",[...seen].join(","),"止めたあと",a1,"→",await p.textContent("#m-fn"),await p.textContent("#m-rand"));
+    { await p.check("#c-randall"); await p.click("#m-rand"); const seen2=new Set(); for(let i=0;i<80&&seen2.size<6;i++){ await p.waitForTimeout(250); seen2.add(await p.inputValue("#m-num")) } await p.click("#m-rand"); await p.uncheck("#c-randall");
+      const own=new Set(opts.map(o=>o.split("|")[0])); console.log(name,"全員の技から:",[...seen2].join(","),"このキャラ以外",[...seen2].filter(v=>!own.has(v)).length) }
     await p.fill("#m-num","130"); await p.dispatchEvent("#m-num","change"); await p.waitForFunction(()=>/^1 \/ 72/.test(document.getElementById("m-fn").textContent),null,{timeout:60000});
     await p.locator("#cv").click(); await p.keyboard.press("ArrowRight"); await p.waitForTimeout(200); await p.keyboard.press("ArrowRight"); await p.waitForTimeout(400);
     console.log(name,"→ を2回:",await p.textContent("#m-fn"));
