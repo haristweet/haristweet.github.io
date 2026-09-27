@@ -12,7 +12,7 @@ PS2 版 VF2（`../vf2-model-viewer/`）と同じ作りの移植なので、VF2 �
 - 写し（2026-09-27 追加）: 同じキャラ同士（raxel_throw・raxel_down・bahn_down・grace_throw・grace_armorbreak・picky・honey・jane・sanman・tokio_armorbreak）。
   grace_throw と tokio_armorbreak は一時停止のメニューが出ている
 - 頼みたいこと: マーラー・ほかの隠れキャラ（ROB08・09・21・22 はまだ写しに出ていない）
-- 次にやること: 技を出す。motion.js（i960 と EE で技の姿勢を計算）と motshot.mjs（絵で確かめる）までできた（下の「技（動き）」）。次はページに入れる（技を出す・コマ送り・再生・ランダム・動画。手の形の表はまだ）。空・バーンのコートは後で戻る
+- 次にやること: v0.4.0 で技を出す（番号・コマ送り・再生・ランダム・動画）までページに入れた。残り: 手の形の表・投げられている側・空・バーンのコート
 
 ## ページ（`index.html`、版は `src/fapp.js` の VERSION、履歴は CHANGELOG.md）
 
@@ -21,7 +21,7 @@ cd fv-model-viewer/src
 sh check.sh          # 組み立て（assemble.py が head.html と .js を連結）→ 単体試験（node test.mjs）→ ../index.html
 node browser.mjs     # Playwright。何も無し → 写しだけ → ディスク（CHD）も、の順にたどり、PC とスマホの幅で撮る（out/b_*.png）
 ```
-- ソース: zstd.js・p2s.js（VF2 と同じ）・fdisc.js（CHD は tobal1 の disc.js）・cricmp.js・obj.js・tex.js・scene.js・build.js・arcade.js（VF2 の i960）・fvarc.js・vgl.js（VF2 のものの、アーケードのテクスチャの単位を FV に）・fapp.js・head.html
+- ソース: zstd.js・p2s.js（VF2 と同じ）・fdisc.js（CHD は tobal1 の disc.js）・cricmp.js・obj.js・tex.js・scene.js・build.js・arcade.js（VF2 の i960）・ee.js・motion.js（技）・fvarc.js・vgl.js（VF2 のものの、アーケードのテクスチャの単位を FV に）・fapp.js・head.html
 
 ## データの置き場所（リポジトリに入れない。`src/.gitignore` で disc/・out/・*.chd などを外す）
 
@@ -127,4 +127,5 @@ node motshot.mjs disc/states/grace1P_picky1P_round1 0 130 1,15,30,45,60,71 out/m
   0x1298000 が 1 つ前…）。列の番号を持つ値・列を指す番地は主メモリに見つからない（13 の写しで共通の場所なし）。なので motPickScene で関節と照らして選ぶ（2 秒ほど）
 - 【確定】部品の行列＝関節の行列·C。C はステージの行列（いちばん多い行列）から y 軸まわりに回ったもの（VF2 は C＝いちばん多い行列）。motCamera で関節から逆算する
 - 【絵】motshot: jane・grace・raxel の構えで 1 枚目（写し）と 2 枚目（計算し直し）が同じ。grace に技 130（投げ）を出すと体がつながったまま跳んで回る
-- まだ: 手の形の表（VF2 の +0x67c。FV の +0x67c は小数で別物）、描く処理（0x19f10 など）を動かして部品の番号を取る所、ページ
+- 【絵】ページ（v0.4.0）で 1P の表のステージの部品（床など、関節の近くにある）を「髪など」として付けてしまい、床が体と一緒に傾いた。キャラのファイルに無い番号は付けない（motAttach の keep）
+- まだ: 手の形の表（VF2 の +0x67c。FV の +0x67c は小数で別物）、描く処理（0x19f10 など）を動かして部品の番号を取る所

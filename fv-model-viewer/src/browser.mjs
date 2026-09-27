@@ -33,6 +33,28 @@ for(const [name,vp] of [["pc",{width:1100,height:900}],["phone",{width:390,heigh
   const [dl]=await Promise.all([p.waitForEvent("download"),p.click("#b-png")]); const f=`out/b_${name}_save.png`; await dl.saveAs(f);
   const hd=fs.readFileSync(f); console.log(name,"保存:",dl.suggestedFilename(),"大きさ",hd.readUInt32BE(16)+"×"+hd.readUInt32BE(20),"透過",hd[25]===6);
   await p.uncheck("#c-clear"); await p.uncheck("#c-crop"); await p.waitForTimeout(200); await p.locator("#viewer").screenshot({path:`out/b_${name}_4.png`});
+  // 技を出す（PC だけ）: grace の写しで技 130（投げ）を選び、コマを動かす → 再生 → ランダム → 写しに戻す → → キー → 動画
+  if(name==="pc"){
+    await p.locator("#states button").nth(0).click(); await waitIdle(p); await p.waitForTimeout(300);
+    console.log(name,"技の欄:",await p.isVisible("#motview"),"写しの技",await p.inputValue("#m-num"),JSON.stringify(await p.textContent("#info")));
+    t0=Date.now(); await p.fill("#m-num","130"); await p.dispatchEvent("#m-num","change"); await p.waitForFunction(()=>/\/ 72/.test(document.getElementById("m-fn").textContent)||document.getElementById("status").className==="err",null,{timeout:120000});
+    console.log(name,"技 130（"+(Date.now()-t0)+"ms）:",await p.textContent("#m-fn"),JSON.stringify(await p.textContent("#status")));
+    await p.locator("#m-frame").fill("45"); await p.waitForFunction(()=>/^45 /.test(document.getElementById("m-fn").textContent),null,{timeout:20000});
+    await p.waitForTimeout(300); await p.locator("#viewer").screenshot({path:`out/b_${name}_m1.png`}); await p.locator("#motview").screenshot({path:`out/b_${name}_m0.png`});
+    await p.click("#m-play"); await p.waitForTimeout(700); const f1=await p.textContent("#m-fn"); await p.waitForTimeout(500); const f2=await p.textContent("#m-fn");
+    await p.locator("#viewer").screenshot({path:`out/b_${name}_m2.png`}); await p.click("#m-play");
+    console.log(name,"再生:",f1,"→",f2,await p.textContent("#m-play"));
+    await p.click("#m-back"); await p.waitForTimeout(300); console.log(name,"戻す:",await p.textContent("#m-fn"));
+    await p.click("#m-rand"); const seen=new Set(); for(let i=0;i<40&&seen.size<3;i++){ await p.waitForTimeout(250); seen.add(await p.inputValue("#m-num")) }
+    await p.locator("#viewer").screenshot({path:`out/b_${name}_m3.png`}); await p.click("#m-rand"); const a1=await p.textContent("#m-fn"); await p.waitForTimeout(400);
+    console.log(name,"ランダム:",[...seen].join(","),"止めたあと",a1,"→",await p.textContent("#m-fn"),await p.textContent("#m-rand"));
+    await p.fill("#m-num","130"); await p.dispatchEvent("#m-num","change"); await p.waitForFunction(()=>/^1 \/ 72/.test(document.getElementById("m-fn").textContent),null,{timeout:60000});
+    await p.locator("#cv").click(); await p.keyboard.press("ArrowRight"); await p.waitForTimeout(200); await p.keyboard.press("ArrowRight"); await p.waitForTimeout(400);
+    console.log(name,"→ を2回:",await p.textContent("#m-fn"));
+    for(const fmt of ["apng","video"]){ await p.click("#m-rec"); const [d]=await Promise.all([p.waitForEvent("download",{timeout:300000}),p.click(`#rec-menu button[data-fmt=${fmt}]`)]);
+      const f=`out/b_${name}_rec_${fmt}`; await d.saveAs(f); console.log(name,"動画",fmt,d.suggestedFilename(),fs.statSync(f).size,"B");
+      await p.waitForFunction(()=>/動画/.test(document.getElementById("m-rec").textContent),null,{timeout:60000}) }
+  }
   console.log(name,"エラー",errs); await p.close();
 }
 await b.close();

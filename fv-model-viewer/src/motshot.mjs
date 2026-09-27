@@ -20,7 +20,7 @@ for(const p of [0,1]){ const ids=sc.draws.filter(d=>d.player===p).map(d=>d.id), 
   const r=f.replace(".CMP","R.CMP"); if(files[r]) for(const [k,v] of files[r]) if(!m.has(k)) m.set(k,v);
   for(const [k,v] of files["OBJ_COMMON.CMP"]) if(!m.has(k)) m.set(k,v); models[p]=m }
 const Us=[E.units(pl)];
-const att=g("motAttach")(sc,pl,Us,null);
+const att=g("motAttach")(sc,pl,Us,null,d=>d.dyn||models[pl].has(d.id));
 const m=rest[0]?+rest[0]:info.motion, len=E.motionLength(m);
 const frames=rest[1]?rest[1].split(",").map(Number):[1,Math.round(len/4),Math.round(len/2),Math.round(len*3/4),len-1].filter(f=>f>=1);
 const scenes=[{sc,label:"写し"}];

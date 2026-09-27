@@ -80,11 +80,18 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <label title="PNG をキャラの周りだけ切り抜く"><input type="checkbox" id="c-crop"> キャラだけ切り抜き</label>
   <span class="bgs" id="bg-box" aria-label="背景の色"></span>
 </div>
+<div class="discview" id="motview" hidden><b>技を出す</b>
+  <select id="m-pl" aria-label="どちらのキャラ"><option value="0">1P</option><option value="1">2P</option></select>
+  <span class="parts">技 <button id="m-prev" aria-label="前の技">◀</button> <input id="m-num" type="number" min="1" max="1052" style="width:5.5em" aria-label="技の番号"> <button id="m-next" aria-label="次の技">▶</button></span>
+  <span class="parts">コマ <button id="m-fprev" aria-label="前のコマ" title="前のコマ（←）">◀</button> <input id="m-frame" type="range" min="1" max="1" value="1" style="width:12em;vertical-align:middle" aria-label="コマ"> <button id="m-fnext" aria-label="次のコマ" title="次のコマ（→）">▶</button> <span id="m-fn">-</span></span>
+  <button id="m-play">▶ 再生</button> <button id="m-rand">🎲 ランダムに連続</button> <button id="m-rec" title="いまの技を1回分、動画で保存">🎬 動画</button><span id="rec-menu" hidden> <button data-fmt="video">MP4／WebM</button> <button data-fmt="apng">アニメーション PNG</button></span> <button id="m-back">写しに戻す</button>
+  <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号（1〜1052。全キャラ共通の表）で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形・髪の揺れはその写しのまま。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま。コマは ◀ ▶ か ← → キーで1つずつ、スペースで再生・止める。「🎬 動画」は、いまの技を頭から最後まで MP4／WebM（1秒60コマ）かアニメーション PNG（30コマ/秒。「背景なし」なら透過）で保存します。「ランダムに連続」は、技が終わるたびに番号をランダムに選び、ゲームの「前の技からのつなぎ」でつないで出し続けます（そのキャラの技でない番号も出るので、崩れたら止めてください）</small></div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表から、ゲームと同じ引き方で付けます（作りは PS2 版バーチャファイター2 と同じ）。</p>
 <p>テクスチャは、ディスクに入っているアーケード（Model 2B）のロムの中身から、アーケードのプログラム（i960）のテクスチャを展開する処理をページの中の小さなエミュレーターでそのまま動かして作ります。PS2 版のテクスチャはこれを縦横1つおきに間引いたものなので、アーケードの細かさで描いています。</p>
 <p>ディスクだけで見るときは、色の材料もディスクから取ります（面の色＝ROM_DATA、明るさの曲線＝ROM_EP1）。ただし色の変換表はステージごとにゲームが作るもので、ディスクには無いので、おおよその値で代わりにしています。</p>
+<p>技を出すときは、写しに残っているアーケードの作業用メモリから始めて、アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をページの中の小さなエミュレーターでそのまま動かします。アーケードでは計算用のチップ（TGP）がする計算は、PS2 本体がその代わりに持っている関数を、PS2 の CPU の小さなエミュレーターで動かします。できた 16 個の関節に、写しの部品を付け直して描きます。命令の列は主メモリに 12 コマ分残っているので、写しの関節の行列と同じコマのものを選んで使います。</p>
 <p id="ver"></p></details>
 </main>
 <script>

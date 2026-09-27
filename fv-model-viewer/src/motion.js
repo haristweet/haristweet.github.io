@@ -71,9 +71,9 @@ const MOT_I=[1,0,0,0,1,0,0,0,1];
 // ids: 写しのときの関節ごとの部品の番号（engine.parts）。あればその番号の部品はその関節に付ける（ゲームと同じ）
 // カメラ C（部品の行列＝関節の行列·C）を関節 U から逆算する。pl の体の部品（行列式が 1 に近い）の先頭いくつかと 16 の関節の組で C の候補を作り、
 // いちばん多くの部品が どれかの関節·C に一致するもの。n＝一致した部品の数（命令の列が関節と同じコマかの目安にもなる）
-function motCamera(sc, pl, U, tries=Infinity){
+function motCamera(sc, pl, U, tries=Infinity, keep=null){
   let bg=null, nv=0; for(const d of sc.draws){ let n=0; for(const e of sc.draws) if(motDist(e.m,d.m)<1e-4) n++; if(n>nv){ nv=n; bg=d.m } }
-  const mine=sc.draws.filter(d=>d.player===pl&&motDet(d.m)>0.5&&!(bg&&motDist(d.m,bg)<1e-4)); let best=null;
+  const mine=sc.draws.filter(d=>d.player===pl&&motDet(d.m)>0.5&&!(bg&&motDist(d.m,bg)<1e-4)&&(!keep||keep(d))); let best=null;
   for(const d of mine.slice(0,tries)) for(const u of U){ const C=motMul(motInv(u),d.m), iC=motInvG(C); let n=0;
     for(const e of mine){ const W=motMul(e.m,iC); if(U.some(x=>motDist(x,W)<2e-3)) n++ } if(!best||n>best.n) best={V:C,n} }
   return best;
@@ -85,16 +85,17 @@ function motPickScene(mem, U2){
   for(let k=0;k<12;k++){ let sc; try{ sc=sceneRead(mem,0x1288000+k*0x8000) }catch(e){ continue } const c=motCamera(sc,1,U2,4); if(c&&(!best||c.n>best.n)) best={sc,n:c.n,k} }
   return best;
 }
-function motAttach(sc, pl, Us, ids){
+// keep(d): 付けてよい部品か（FV は 1P の表にステージの部品も入り、床などが関節の近くにあるので、キャラのファイルに無い番号は外す）
+function motAttach(sc, pl, Us, ids, keep=null){
   if(!Array.isArray(Us[0][0])) Us=[Us];
-  let best=null; for(const U of Us){ const a=motAttach1(sc,pl,U,ids); if(!best||a.parts.filter(p=>p.body).length>best.parts.filter(p=>p.body).length) best=a } best.ids=ids||null; return best;
+  let best=null; for(const U of Us){ const a=motAttach1(sc,pl,U,ids,keep); if(!best||a.parts.filter(p=>p.body).length>best.parts.filter(p=>p.body).length) best=a } best.ids=ids||null; return best;
 }
-function motAttach1(sc, pl, U, ids){
+function motAttach1(sc, pl, U, ids, keep=null){
   // カメラ: FV では部品の行列＝関節·C で、C はステージの行列（いちばん多い行列）とは y 軸まわりに回っている。関節から逆算する（motCamera）
   let bg=null, nv=0; for(const d of sc.draws){ let n=0; for(const e of sc.draws) if(motDist(e.m,d.m)<1e-4) n++; if(n>nv){ nv=n; bg=d.m } }
-  const V=(motCamera(sc,pl,U)||{V:bg}).V;
+  const V=(motCamera(sc,pl,U,Infinity,keep)||{V:bg}).V;
   const iV=motInvG(V), out=[], shadows=[], mirrors=[];
-  sc.draws.forEach((d,i)=>{ if(d.player!==pl||d.id<0&&!d.dyn||motDist(d.m,bg)<1e-4) return;   // 背景（1P の表に入っている）は除く
+  sc.draws.forEach((d,i)=>{ if(d.player!==pl||d.id<0&&!d.dyn||motDist(d.m,bg)<1e-4||keep&&!keep(d)) return;   // 背景（1P の表に入っている）は除く
     const W=motMul(d.m,iV);
     if(Math.min(...U.map(u=>Math.hypot(u[9]-W[9],u[10]-W[10],u[11]-W[11])))>1.5) return;
     if(Math.abs(motDet(d.m))<0.05){ shadows.push({i,W}); return }   // build.js と同じ見分け方
