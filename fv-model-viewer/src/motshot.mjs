@@ -19,6 +19,9 @@ const models={};
 for(const p of [0,1]){ const ids=sc.draws.filter(d=>d.player===p).map(d=>d.id), [f]=names.filter(f=>/^OBJ_ROB\d+\.CMP$/.test(f)).map(f=>[f,ids.filter(i=>files[f].has(i)).length]).sort((a,b)=>b[1]-a[1])[0], m=new Map(files[f]);
   const r=f.replace(".CMP","R.CMP"); if(files[r]) for(const [k,v] of files[r]) if(!m.has(k)) m.set(k,v);
   for(const [k,v] of files["OBJ_COMMON.CMP"]) if(!m.has(k)) m.set(k,v); models[p]=m }
+// 共通の部品を 1P・2P に振り分ける（scene.js の sceneAssignCommon。NOFIX=1 で直す前のまま）
+if(!process.env.NOFIX){ const own=[0,1].map(p=>{ const ids=sc.draws.filter(d=>d.player===p).map(d=>d.id), [f]=names.filter(f=>/^OBJ_ROB\d+\.CMP$/.test(f)).map(f=>[f,ids.filter(i=>files[f].has(i)).length]).sort((a,b)=>b[1]-a[1])[0]; const r=f.replace(".CMP","R.CMP"); return id=>files[f].has(id)||!!files[r]&&files[r].has(id) });
+  g("sceneAssignCommon")(sc,id=>files["OBJ_COMMON.CMP"].has(id),(p,id)=>own[p](id)) }
 const Us=[E.units(pl)];
 const att=g("motAttach")(sc,pl,Us,null,d=>d.dyn||models[pl].has(d.id));
 const m=rest[0]?+rest[0]:info.motion, len=E.motionLength(m);

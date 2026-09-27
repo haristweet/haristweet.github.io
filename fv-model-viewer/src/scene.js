@@ -55,3 +55,17 @@ function sceneLight(vu1,sc){
   for(let q=0;q<32;q++) tab.push([dv.getFloat32(q*16,true),dv.getFloat32(q*16+4,true),dv.getFloat32(q*16+8,true),dv.getUint32(q*16+12,true)]);
   return {tab, L:[0,1,2].map(i=>dv.getFloat32(32*16+i*4,true)), flags:dv.getUint32(32*16+12,true), fromVu:true};
 }
+// 共通の部品（OBJ_COMMON。影 228〜242・705 など）は番号の表の 1P の側にしか載っていないので、2P のぶんも 1P と読んでしまう。
+// ゲームは 1P・2P の順に同じ部品を同じ並び（影は 232,238,240,…,228 の 15 個、体の前に 705）で描くので、1 つの列に 2 回出る番号は 1 回目＝1P・2 回目＝2P
+// （毎コマ作る部品と同じ決め方）。1 回きりや 3 回以上のものは、いちばん近いキャラの部品の人。isCommon(id)・isChar(p,id): 番号が共通か、p のキャラのファイルにあるか
+function sceneAssignCommon(sc,isCommon,isChar){
+  const D=sc.draws, n=new Map(), seen=new Map();
+  for(const d of D) if(!d.dyn&&isCommon(d.id)) n.set(d.id,(n.get(d.id)||0)+1);
+  const own=[0,1].map(p=>D.filter(d=>!d.dyn&&d.player===p&&!isCommon(d.id)&&isChar(p,d.id)));
+  const dist=(a,b)=>Math.hypot(a.m[9]-b.m[9],a.m[10]-b.m[10],a.m[11]-b.m[11]);
+  for(const d of D){ if(d.dyn||!isCommon(d.id)) continue;
+    if(n.get(d.id)===2){ const k=seen.get(d.id)||0; seen.set(d.id,k+1); d.player=k; continue }
+    if(!own[0].length||!own[1].length) continue;
+    const e=own.map(L=>Math.min(...L.map(o=>dist(o,d)))); d.player=e[1]<e[0]?1:0 }
+  return sc;
+}

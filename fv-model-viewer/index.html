@@ -1264,6 +1264,20 @@ function sceneLight(vu1,sc){
   for(let q=0;q<32;q++) tab.push([dv.getFloat32(q*16,true),dv.getFloat32(q*16+4,true),dv.getFloat32(q*16+8,true),dv.getUint32(q*16+12,true)]);
   return {tab, L:[0,1,2].map(i=>dv.getFloat32(32*16+i*4,true)), flags:dv.getUint32(32*16+12,true), fromVu:true};
 }
+// 共通の部品（OBJ_COMMON。影 228〜242・705 など）は番号の表の 1P の側にしか載っていないので、2P のぶんも 1P と読んでしまう。
+// ゲームは 1P・2P の順に同じ部品を同じ並び（影は 232,238,240,…,228 の 15 個、体の前に 705）で描くので、1 つの列に 2 回出る番号は 1 回目＝1P・2 回目＝2P
+// （毎コマ作る部品と同じ決め方）。1 回きりや 3 回以上のものは、いちばん近いキャラの部品の人。isCommon(id)・isChar(p,id): 番号が共通か、p のキャラのファイルにあるか
+function sceneAssignCommon(sc,isCommon,isChar){
+  const D=sc.draws, n=new Map(), seen=new Map();
+  for(const d of D) if(!d.dyn&&isCommon(d.id)) n.set(d.id,(n.get(d.id)||0)+1);
+  const own=[0,1].map(p=>D.filter(d=>!d.dyn&&d.player===p&&!isCommon(d.id)&&isChar(p,d.id)));
+  const dist=(a,b)=>Math.hypot(a.m[9]-b.m[9],a.m[10]-b.m[10],a.m[11]-b.m[11]);
+  for(const d of D){ if(d.dyn||!isCommon(d.id)) continue;
+    if(n.get(d.id)===2){ const k=seen.get(d.id)||0; seen.set(d.id,k+1); d.player=k; continue }
+    if(!own[0].length||!own[1].length) continue;
+    const e=own.map(L=>Math.min(...L.map(o=>dist(o,d)))); d.player=e[1]<e[0]?1:0 }
+  return sc;
+}
 // ディスクだけで見る（セーブステートなし）。OBJ ファイルの部品を、姿勢なしで大きさをそろえて並べる（VF2 の discview.js と同じ作り）。
 // 色の材料はディスクから: 面の色＝ROM_DATA の 0x100000（写しの色 RAM と 1024 色のうち 1023 色が同じ）、明るさの曲線＝ROM_EP1 の 0x266e0
 // （写しの曲線と 256 本のうち若い番号の 7 本が同じ。キャラが使うのは若い番号）。テクスチャはアーケードのセット（fapp.js）。
@@ -2207,7 +2221,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て（VF2 の vapp.js を元に、FV のモデルの選び方とアーケードのテクスチャに合わせたもの）
-const VERSION="0.4.0";
+const VERSION="0.4.1";
 const $=id=>document.getElementById(id);
 const APP={disc:null, objCache:new Map(), rom:null, states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -2225,6 +2239,9 @@ async function chooseModels(sc){
     if(common) for(const [k,v] of common) if(!m.has(k)) m.set(k,v); models[p]=m }
   const f=await best(sc.draws.filter(d=>d.player===0&&!models[0].has(d.id)).map(d=>d.id),/^OBJ_STG\d+R?\.CMP$/); used.push(f);
   if(f){ models.stage=new Map(await readObj(f)); const r=await readObj(f.replace(/R?\.CMP$/,"R.CMP")); if(r) for(const [k,v] of r) if(!models.stage.has(k)) models.stage.set(k,v) }
+  // 共通の部品を近いほうの人に（sceneAssignCommon）。1 つの列につき 1 回
+  if(common&&!sc.commonFixed){ const own=[0,1].map(p=>used[p]?APP.objCache.get(used[p]):null), rr=[0,1].map(p=>used[p]?APP.objCache.get(used[p].replace(".CMP","R.CMP")):null);
+    sceneAssignCommon(sc,id=>common.has(id),(p,id)=>!!(own[p]&&own[p].has(id)||rr[p]&&rr[p].has(id))); sc.commonFixed=true }
   return {models,names:used};
 }
 // アーケードのテクスチャ（fvarc.js）: 共通のセット 36、キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）で 2P はページを入れ替え、ステージ OBJ_STGnn はセット 18＋n。

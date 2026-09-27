@@ -1,5 +1,5 @@
 // 画面の組み立て（VF2 の vapp.js を元に、FV のモデルの選び方とアーケードのテクスチャに合わせたもの）
-const VERSION="0.4.0";
+const VERSION="0.4.1";
 const $=id=>document.getElementById(id);
 const APP={disc:null, objCache:new Map(), rom:null, states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -17,6 +17,9 @@ async function chooseModels(sc){
     if(common) for(const [k,v] of common) if(!m.has(k)) m.set(k,v); models[p]=m }
   const f=await best(sc.draws.filter(d=>d.player===0&&!models[0].has(d.id)).map(d=>d.id),/^OBJ_STG\d+R?\.CMP$/); used.push(f);
   if(f){ models.stage=new Map(await readObj(f)); const r=await readObj(f.replace(/R?\.CMP$/,"R.CMP")); if(r) for(const [k,v] of r) if(!models.stage.has(k)) models.stage.set(k,v) }
+  // 共通の部品を近いほうの人に（sceneAssignCommon）。1 つの列につき 1 回
+  if(common&&!sc.commonFixed){ const own=[0,1].map(p=>used[p]?APP.objCache.get(used[p]):null), rr=[0,1].map(p=>used[p]?APP.objCache.get(used[p].replace(".CMP","R.CMP")):null);
+    sceneAssignCommon(sc,id=>common.has(id),(p,id)=>!!(own[p]&&own[p].has(id)||rr[p]&&rr[p].has(id))); sc.commonFixed=true }
   return {models,names:used};
 }
 // アーケードのテクスチャ（fvarc.js）: 共通のセット 36、キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）で 2P はページを入れ替え、ステージ OBJ_STGnn はセット 18＋n。
