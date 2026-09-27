@@ -80,4 +80,28 @@ for(const [w,h,tag] of [[1100,900,"pc"],[390,844,"phone"]]){
   console.log(tag,"ディスクだけ エラー",errs);
   await p.close();
 }
+// 2P を FV のキャラに（cross.js）: VF2 の写し 1 つ＋FV のディスクと写し → アキラ（VF2 の技 108）とバーン（FV の技 727 鉄山靠）→ コマ・再生・動画 → 切る・写しに戻す（FV のデータがあるとき）
+{ const FVD=path.join(here,"../../fv-model-viewer/src/disc");
+  if(fs.existsSync(path.join(FVD,"fv.bin"))){ const p=await b.newPage({viewport:{width:1100,height:900}}); const errs=[];
+    p.on("pageerror",e=>errs.push(e.message)); p.on("console",m=>{ if(m.type()==="error") errs.push(m.text()) });
+    await p.goto(page0); await p.setInputFiles("#f-state",[path.join(here,"disc/states/01_akira_lau.p2s")]); await p.setInputFiles("#f-disc",path.join(here,"disc/vf2.bin"));
+    await p.waitForFunction(()=>document.getElementById("info").textContent.length>0,null,{timeout:120000});
+    await p.setInputFiles("#x-disc",path.join(FVD,"fv.bin")); await p.setInputFiles("#x-state",path.join(FVD,"states/bahn1P_honey1P_tower.p2s"));
+    await p.waitForFunction(()=>/FV /.test(document.getElementById("info").textContent),null,{timeout:300000});
+    console.log("FV 入れ替え:",JSON.stringify(await p.textContent("#info")),JSON.stringify(await p.textContent("#status"))); await p.locator("#viewer").screenshot({path:"out/b_x0.png"});
+    await p.fill("#m-num","108"); await p.press("#m-num","Enter"); await p.waitForFunction(()=>/\/ \d+/.test(document.getElementById("m-fn").textContent),null,{timeout:60000});
+    await p.selectOption("#x-name","727"); await p.waitForFunction(()=>/\/ 81/.test(document.getElementById("m-fn").textContent),null,{timeout:60000});
+    console.log("FV 技:",await p.inputValue("#x-num"),await p.textContent("#m-fn"));
+    for(const f of [24,36]){ await p.locator("#m-frame").fill(String(f)); await p.waitForFunction(f=>document.getElementById("m-fn").textContent.startsWith(f+" "),f,{timeout:30000}); await p.waitForTimeout(200); await p.locator("#viewer").screenshot({path:`out/b_x${f}.png`}) }
+    await p.click("#m-play"); await p.waitForTimeout(800); const f1=await p.textContent("#m-fn"); await p.waitForTimeout(600); const f2=await p.textContent("#m-fn"); await p.click("#m-play");
+    console.log("FV 再生:",f1,"→",f2);
+    await p.click("#m-rec"); { const [d]=await Promise.all([p.waitForEvent("download",{timeout:300000}),p.click("#rec-menu button[data-fmt=video]")]); const b2=fs.readFileSync(await d.path()); console.log("FV 動画:",d.suggestedFilename(),(b2.length/1024).toFixed(0)+"KB"); fs.copyFileSync(await d.path(),"out/b_x_video"+path.extname(d.suggestedFilename())) }
+    await p.waitForFunction(()=>/動画/.test(document.getElementById("m-rec").textContent),null,{timeout:60000});
+    await p.uncheck("#x-on"); await p.waitForFunction(()=>/2P OBJ_LAU/.test(document.getElementById("info").textContent),null,{timeout:30000}); console.log("切る:",JSON.stringify(await p.textContent("#info")),"1P/2P を選べる",!(await p.isDisabled("#m-pl")));
+    await p.check("#x-on"); await p.click("#m-back"); await p.waitForFunction(()=>/FV /.test(document.getElementById("info").textContent),null,{timeout:30000}); await p.waitForTimeout(300);
+    console.log("写しに戻す:",await p.textContent("#m-fn"),"FV の技",await p.inputValue("#x-num")); await p.locator("#viewer").screenshot({path:"out/b_x_back.png"});
+    // FV の写しの 2P（ハニー）に替える
+    await p.selectOption("#x-pl","1"); await p.waitForFunction(()=>/の 2P/.test(document.getElementById("info").textContent),null,{timeout:300000}); await p.waitForTimeout(300);
+    console.log("FV の 2P:",JSON.stringify(await p.textContent("#info"))); await p.locator("#viewer").screenshot({path:"out/b_x_2p.png"});
+    console.log("FV 入れ替え エラー",errs); await p.close() } }
 await b.close();

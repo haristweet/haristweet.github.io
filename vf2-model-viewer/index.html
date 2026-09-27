@@ -47,6 +47,7 @@ body.drop-over main{opacity:.85}
 .ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
 .discview{margin:12px 0 0;padding:10px 14px;border:1px solid var(--line,#ccc);border-radius:10px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
 .discview small{flex-basis:100%;color:var(--mut)}
+.discview .btn2{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:4px 10px;cursor:pointer}.discview .name{font-size:13px;color:var(--mut);overflow-wrap:anywhere}
 .discview select,.discview button{font:inherit;padding:4px 8px}
 .discview .parts{white-space:nowrap}
 details{margin:16px 0 0;color:var(--mut);font-size:13px}
@@ -93,6 +94,15 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <span class="parts">コマ <button id="m-fprev" aria-label="前のコマ" title="前のコマ（←）">◀</button> <input id="m-frame" type="range" min="1" max="1" value="1" style="width:12em;vertical-align:middle" aria-label="コマ"> <button id="m-fnext" aria-label="次のコマ" title="次のコマ（→）">▶</button> <span id="m-fn">-</span></span>
   <button id="m-play">▶ 再生</button> <button id="m-rand">🎲 ランダムに連続</button> <button id="m-rec" title="いまの技を1回分、動画で保存">🎬 動画</button><span id="rec-menu" hidden> <button data-fmt="video">MP4／WebM</button> <button data-fmt="apng">アニメーション PNG</button></span> <button id="m-back">写しに戻す</button>
   <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形は技の台本どおりに変わります（髪の揺れはその写しのまま）。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま。コマは ◀ ▶ か ← → キーで1つずつ、スペースで再生・止める。「🎬 動画」は、いまの技を頭から最後まで MP4／WebM（1秒60コマ）かアニメーション PNG（30コマ/秒。「背景なし」なら透過）で保存します。「ランダムに連続」は、技が終わるたびに番号をランダムに選び、ゲームの「前の技からのつなぎ」でつないで出し続けます（そのキャラの技でない番号も出るので、崩れたら止めてください）</small></div>
+<div class="discview" id="xview" hidden><b>2P を FV のキャラに</b>
+  <label class="btn2">FV のディスク<input type="file" id="x-disc" accept=".bin,.iso,.cvm,.img,.chd" hidden></label><span class="name" id="x-ndisc">まだ</span>
+  <label class="btn2">FV の写し<input type="file" id="x-state" accept=".p2s" hidden></label><span class="name" id="x-nstate">まだ</span>
+  <select id="x-pl" aria-label="FV の写しのどちら"><option value="0">FV の 1P</option><option value="1">FV の 2P</option></select>
+  <label><input type="checkbox" id="x-on" disabled> 入れ替える</label>
+  <span class="parts">FV の技 <input id="x-num" type="number" min="0" max="1052" value="0" style="width:5.5em" aria-label="FV の技の番号"></span>
+  <select id="x-name" aria-label="FV の技の名前" hidden></select>
+  <span class="parts">押し合い <input id="x-push" type="number" min="0" max="2" step="0.05" value="0.6" style="width:4.5em" aria-label="押し合いの距離"></span>
+  <small>ファイティングバイパーズ（PS2『SEGA AGES 2500 Vol.21』）のディスクと写しを選ぶと、VF2 の 2P の代わりに FV のキャラを置けます（2 人とも、それぞれのゲームのプログラムで姿勢を計算し、色もそれぞれのゲームのもの）。FV のキャラは VF2 の 2P の腰の所に、1P の方を向けて置きます。上の「技を出す」は 1P（VF2）の技、ここの番号は FV のキャラの技で、再生・コマ送り・動画は 2 人いっしょに動きます（0 なら写しの姿勢のまま）。このビューアには体の当たりが無いので、前へ出る技ですれ違わないよう、腰の間が「押し合い」の距離より近いと半分ずつ押し戻します（ゲームの値ではなく仮のもの）。</small></div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさは、ゲームの VU1 のプログラムと同じ式です。背景はステージのモデルのうち、そのコマで描いた部品です。空と遠景は、アーケードの2Dのタイルの面をゲームと同じずらし方で画面に貼ります（視点を回しても動きません）。</p>
@@ -2053,7 +2063,10 @@ function vglNew(canvas){
     setMesh(body,shadow){ [body,shadow].forEach((m,i)=>{ gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]); gl.bufferData(gl.ARRAY_BUFFER,m?m.data:new Float32Array(0),gl.STATIC_DRAW); counts[i]=m?m.count:0 }); mirror=body&&body.mirror },
     // view: 4×4（列優先）、focal: [x,y]（クリップ座標の倍率）
     draw(view,focal,light,back,opt={}){
-      const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+      // opt.noClear: 消さずに重ねて描く（VF2 と FV の 2 人を 1 つの画面に。同じ canvas の vglNew は同じ WebGL を使うので、奥行きも共通になる）
+      const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); if(!opt.noClear){ gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT) }
+      // 自分のテクスチャを置き場 0〜2 に結び付け直す（同じ WebGL を使うほかの vglNew が上書きしていることがある）
+      [["tex",0],["clut",1],["xlat",2]].forEach(([n,k])=>{ if(tex[n]){ gl.activeTexture(gl.TEXTURE0+k); gl.bindTexture(gl.TEXTURE_2D,tex[n]) } });
       if(!counts[0]&&!counts[1]) return;
       for(let l=0;l<8;l++) gl.disableVertexAttribArray(l);
       if(back&&hasBack){   // いちばん先に、奥行きを書かずに画面いっぱいに貼る（ゲームも 3D より先に描く）
@@ -2083,8 +2096,1156 @@ function vglNew(canvas){
     }
   };
 }
+const FVX=(()=>{
+// ディスクのイメージを読む。CHD（MAME の圧縮イメージ v5・CD。cdlz/cdzl）は tobal1-model-viewer/src/disc.js の読み取りを写したもの、
+// .bin（2352）・.iso（2048）・BIN.CVM は VF2 の vdisc.js と同じ。返り値: Map(名前 → () => Promise<Uint8Array>)
+// ============================================================
+//  CHD（MAME の圧縮ディスクイメージ、v5・CD）
+// ============================================================
+class MsbBits{
+  constructor(d){this.d=d;this.pos=0}
+  peek(n){let v=0;for(let i=0;i<n;i++){const p=this.pos+i;v=v*2+(((this.d[p>>3]||0)>>(7-(p&7)))&1)}return v}
+  read(n){const v=this.peek(n);this.pos+=n;return v}
+}
+function huffmanFromRle(br,numcodes,maxbits){
+  const nb=maxbits>=16?5:maxbits>=8?4:3, len=new Array(numcodes).fill(0);
+  for(let cur=0;cur<numcodes;){
+    let b=br.read(nb);
+    if(b!==1){len[cur++]=b;continue}
+    b=br.read(nb);
+    if(b===1){len[cur++]=1;continue}
+    for(let r=br.read(nb)+3;r>0&&cur<numcodes;r--) len[cur++]=b;
+  }
+  const hist=new Array(33).fill(0); for(const l of len) if(l) hist[l]++;
+  let start=0; for(let l=32;l>0;l--){const next=(start+hist[l])>>1; hist[l]=start; start=next}
+  const table=new Array(1<<maxbits).fill(0);
+  len.forEach((l,sym)=>{ if(!l) return; const code=hist[l]++, sh=maxbits-l; for(let k=code<<sh;k<((code+1)<<sh);k++) table[k]=[sym,l] });
+  return ()=>{const e=table[br.peek(maxbits)]; if(!e) throw new Error("CHD の目次が壊れています"); br.pos+=e[1]; return e[0]};
+}
+function lzmaDecode(src,outLen,lc=3,lp=0,pb=2){
+  const out=new Uint8Array(outLen);
+  let ip=5, range=0xFFFFFFFF, code=((src[1]<<24)>>>0)+(src[2]<<16)+(src[3]<<8)+src[4];
+  const P=n=>new Uint16Array(n).fill(1024);
+  const bit=(p,i)=>{
+    const b=(range>>>11)*p[i]; let r;
+    if(code<b){range=b; p[i]+=(2048-p[i])>>5; r=0} else {range-=b; code-=b; p[i]-=p[i]>>5; r=1}
+    if(range<16777216){range*=256; code=code*256+(src[ip++]||0)}
+    return r;
+  };
+  const tree=(p,base,n)=>{let m=1;for(let i=0;i<n;i++)m=(m<<1)+bit(p,base+m);return m-(1<<n)};
+  const rtree=(p,base,n)=>{let m=1,s=0;for(let i=0;i<n;i++){const b=bit(p,base+m);m=(m<<1)+b;s|=b<<i}return s};
+  const isMatch=P(192),isRep=P(12),isRepG0=P(12),isRepG1=P(12),isRepG2=P(12),isRep0Long=P(192);
+  const posSlot=P(256),specPos=P(114),align=P(16),lenC=P(514),repLenC=P(514),lit=P(0x300<<(lc+lp));
+  const len=(p,ps)=>!bit(p,0)?tree(p,2+(ps<<3),3):!bit(p,1)?8+tree(p,130+(ps<<3),3):16+tree(p,258,8);
+  let state=0,r0=0,r1=0,r2=0,r3=0,op=0;
+  const pbMask=(1<<pb)-1, lpMask=(1<<lp)-1;
+  while(op<outLen){
+    const ps=op&pbMask;
+    if(!bit(isMatch,(state<<4)+ps)){
+      const base=0x300*(((op&lpMask)<<lc)+((op?out[op-1]:0)>>(8-lc)));
+      let s=1;
+      if(state<7){ while(s<0x100) s=(s<<1)|bit(lit,base+s) }
+      else{
+        let mb=out[op-r0-1];
+        while(s<0x100){ const m=(mb>>7)&1; mb<<=1; const b=bit(lit,base+0x100+(m<<8)+s); s=(s<<1)|b; if(m!==b){ while(s<0x100) s=(s<<1)|bit(lit,base+s); break } }
+      }
+      out[op++]=s&255; state=state<4?0:state<10?state-3:state-6; continue;
+    }
+    let n;
+    if(bit(isRep,state)){
+      if(!bit(isRepG0,state)){
+        if(!bit(isRep0Long,(state<<4)+ps)){ state=state<7?9:11; out[op]=out[op-r0-1]; op++; continue }
+      }else{
+        let d;
+        if(!bit(isRepG1,state)) d=r1; else { if(!bit(isRepG2,state)) d=r2; else {d=r3; r3=r2} r2=r1 }
+        r1=r0; r0=d;
+      }
+      n=len(repLenC,ps); state=state<7?8:11;
+    }else{
+      r3=r2; r2=r1; r1=r0;
+      n=len(lenC,ps); state=state<7?7:10;
+      const slot=tree(posSlot,Math.min(n,3)<<6,6);
+      if(slot<4) r0=slot;
+      else{
+        const nd=(slot>>1)-1; let d=(2|(slot&1))*2**nd;
+        if(slot<14) d+=rtree(specPos,d-slot-1,nd);
+        else{
+          let direct=0;
+          for(let i=0;i<nd-4;i++){ range=range>>>1; let b=0; if(code>=range){code-=range;b=1} direct=direct*2+b; if(range<16777216){range*=256; code=code*256+(src[ip++]||0)} }
+          d+=direct*16+rtree(align,0,4);
+        }
+        if(d>=0xFFFFFFFF) break;
+        r0=d;
+      }
+    }
+    for(n+=2;n>0&&op<outLen;n--,op++) out[op]=out[op-r0-1];
+  }
+  return out;
+}
+async function inflateRaw(data){
+  if(typeof DecompressionStream==="undefined") throw new Error("このブラウザは CHD の展開に必要な機能に対応していません。iPhone は iOS 16.4 以降にしてください（.bin なら読めます）");
+  const s=new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+class ChdDisc{
+  constructor(file){this.file=file;this.cache=new Map()}
+  async bytes(off,n){return new Uint8Array(await this.file.slice(off,off+n).arrayBuffer())}
+  async init(){
+    const h=await this.bytes(0,124), dv=new DataView(h.buffer);
+    if(String.fromCharCode(...h.subarray(0,8))!=="MComprHD") throw new Error("CHD ファイルとして読めませんでした");
+    if(dv.getUint32(12)!==5) throw new Error("この版の CHD にはまだ対応していません（v5 のみ）");
+    this.codecs=[0,1,2,3].map(i=>String.fromCharCode(...h.subarray(16+i*4,20+i*4)).replace(/\0/g,""));
+    const logical=Number(dv.getBigUint64(32)), mapoff=Number(dv.getBigUint64(40));
+    this.hunkBytes=dv.getUint32(56); this.unitBytes=dv.getUint32(60);
+    if(dv.getBigUint64(104)|dv.getBigUint64(112)) throw new Error("差分形式（親ファイルが必要）の CHD には対応していません");
+    if(!this.codecs[0]) throw new Error("非圧縮の CHD にはまだ対応していません");
+    const count=Math.ceil(logical/this.hunkBytes);
+    const mh=await this.bytes(mapoff,16), mdv=new DataView(mh.buffer);
+    const mapLen=mdv.getUint32(0), lengthBits=mh[12], selfBits=mh[13], parentBits=mh[14];
+    let cur=mdv.getUint32(4)*65536+mdv.getUint16(8);
+    const br=new MsbBits(await this.bytes(mapoff+16,mapLen)), dec=huffmanFromRle(br,16,8);
+    const types=new Uint8Array(count);
+    for(let i=0,last=0,rep=0;i<count;i++){
+      if(rep>0){types[i]=last;rep--;continue}
+      const v=dec();
+      if(v===7){types[i]=last;rep=2+dec()}
+      else if(v===8){types[i]=last;rep=2+16+(dec()<<4);rep+=dec()}
+      else types[i]=last=v;
+    }
+    this.map=[];
+    for(let i=0,lastSelf=0;i<count;i++){
+      let t=types[i], off=0, len=0;
+      if(t<=3){len=br.read(lengthBits);off=cur;cur+=len;br.read(16)}
+      else if(t===4){len=this.hunkBytes;off=cur;cur+=len;br.read(16)}
+      else if(t===5){off=lastSelf=br.read(selfBits)}
+      else if(t===9||t===10){if(t===10)lastSelf++;t=5;off=lastSelf}
+      else throw new Error("親ファイルを参照する CHD には対応していません");
+      this.map.push([t,off,len]);
+    }
+    const f0=await this.hunk(0);
+    this.dataOff=f0[15]===1?16:24;
+  }
+  async hunk(i){
+    if(this.cache.has(i)) return this.cache.get(i);
+    const [t,off,len]=this.map[i]; let out;
+    if(t===5) out=await this.hunk(off);
+    else if(t===4) out=await this.bytes(off,len);
+    else{
+      const src=await this.bytes(off,len), codec=this.codecs[t], hb=this.hunkBytes;
+      if(!/^cd(lz|zl)$/.test(codec)) throw new Error(`この圧縮形式（${codec}）の部分はまだ読めません`);
+      const frames=hb/2448, eccBytes=(frames+7)>>3, clBytes=hb<65536?2:3;
+      let cl=0; for(let k=0;k<clBytes;k++) cl=cl*256+src[eccBytes+k];
+      const body=src.subarray(eccBytes+clBytes,eccBytes+clBytes+cl);
+      const sect=codec==="cdlz"?lzmaDecode(body,frames*2352):await inflateRaw(body);
+      out=new Uint8Array(hb);
+      for(let f=0;f<frames;f++) out.set(sect.subarray(f*2352,(f+1)*2352),f*2448);
+    }
+    if(this.cache.size>64) this.cache.delete(this.cache.keys().next().value);
+    this.cache.set(i,out); return out;
+  }
+  async read(lba,count){
+    const out=new Uint8Array(count*2048);
+    for(let k=0;k<count;k++){
+      const pos=(lba+k)*this.unitBytes, h=await this.hunk(Math.floor(pos/this.hunkBytes)), o=pos%this.hunkBytes;
+      out.set(h.subarray(o+this.dataOff,o+this.dataOff+2048),k*2048);
+    }
+    return out;
+  }
+  async readRaw(lba){ const pos=lba*this.unitBytes, h=await this.hunk(Math.floor(pos/this.hunkBytes)), o=pos%this.hunkBytes; return h.subarray(o,o+2352) }
+  async rootFiles(){return BinDisc.prototype.rootFiles.call(this)}
+}
+async function vdSlice(file,off,len){ return new Uint8Array(await file.slice(off,off+len).arrayBuffer()) }
+function vdWalk(readSec,root){   // ISO9660 のファイルを全部たどる。readSec(lba,count)→Promise<Uint8Array>
+  const out=[];
+  const walk=async(lba,size,pre)=>{
+    const d=await readSec(lba,Math.ceil(size/2048)), dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+    for(let p=0;p<d.length;){
+      const L=d[p]; if(!L){ p=(Math.floor(p/2048)+1)*2048; continue }
+      const el=dv.getUint32(p+2,true), es=dv.getUint32(p+10,true), fl=d[p+25], nl=d[p+32];
+      const nm=String.fromCharCode(...d.subarray(p+33,p+33+nl)).split(";")[0];
+      if(nl===1&&d[p+33]<2){ p+=L; continue }
+      if(fl&2) await walk(el,es,pre+nm+"/"); else out.push({name:pre+nm,lba:el,size:es});
+      p+=L;
+    }
+  };
+  return walk(root[0],root[1],"").then(()=>out);
+}
+function vdRootOf(pvd){ const dv=new DataView(pvd.buffer,pvd.byteOffset,pvd.byteLength); return [dv.getUint32(156+2,true),dv.getUint32(156+10,true)] }
+// 2048 バイトのセクタを読む関数から、File と同じ slice(a,b).arrayBuffer() で読める物を作る（CHD の中の BIN.CVM を全部展開せずに読む）
+function fdSectorFile(readSec,lba,size){
+  return {size, slice(a,b){ return {arrayBuffer:async()=>{ b=Math.min(b,size); if(b<=a) return new ArrayBuffer(0);
+    const s0=Math.floor(a/2048), s1=Math.ceil(b/2048), d=await readSec(lba+s0,s1-s0); return d.slice(a-s0*2048,b-s0*2048).buffer } } } };
+}
+async function discOpen(file){
+  const head=await vdSlice(file,0,16);
+  let cvm=null;
+  if(String.fromCharCode(...head.subarray(0,4))==="CVMH") cvm=file;
+  else {
+    let readSec;
+    if(String.fromCharCode(...head.subarray(0,8))==="MComprHD"){ const chd=new ChdDisc(file); await chd.init(); readSec=(lba,n)=>chd.read(lba,n) }
+    else {
+      let sec,base;
+      if(String.fromCharCode(...(await vdSlice(file,16*2352+25,5)))==="CD001"){ sec=2352; base=24 }
+      else if(String.fromCharCode(...(await vdSlice(file,16*2048+1,5)))==="CD001"){ sec=2048; base=0 }
+      else throw new Error("ディスクのイメージ（.chd・.bin・.iso）か BIN.CVM ではない");
+      readSec=async(lba,n)=>{ const raw=await vdSlice(file,lba*sec,n*sec); if(sec===2048) return raw;
+        const o=new Uint8Array(n*2048); for(let i=0;i<n;i++) o.set(raw.subarray(i*sec+base,i*sec+base+2048),i*2048); return o };
+    }
+    const list=await vdWalk(readSec,vdRootOf(await readSec(16,1)));
+    const e=list.find(f=>f.name.toUpperCase()==="BIN.CVM");
+    if(!e) throw new Error("ディスクの中に BIN.CVM が無い（ファイティングバイパーズの PS2 版ではない？）");
+    cvm=fdSectorFile(readSec,e.lba,e.size);
+  }
+  const ch=await vdSlice(cvm,0,0x20000); let at=-1;
+  for(let i=0;i<ch.length-6;i++) if(ch[i]===1&&ch[i+1]===0x43&&ch[i+2]===0x44&&ch[i+3]===0x30&&ch[i+4]===0x30&&ch[i+5]===0x31){ at=i; break }
+  if(at<0) throw new Error("BIN.CVM の中に ISO9660 が見つからない");
+  const base=at-16*2048, readSec=(lba,n)=>vdSlice(cvm,base+lba*2048,n*2048), files=new Map();
+  for(const f of await vdWalk(readSec,vdRootOf(await readSec(16,1))))
+    files.set(f.name,()=>vdSlice(cvm,base+f.lba*2048,f.size));
+  return files;
+}
+// テクスチャのシート（本体のテクスチャ用メモリ g_geo+0xa040 と同じ並び）。1024×512 の 4bit が2ページ、1行 512B。
+// TEX_ROB.MRG の1人ぶん（展開 98304B）は、128B の行 r をシートの行 r>>1・横 (r&1)*512 画素に置く（本体 sysGeoWriteRobTex）。
+// 1P（player 0）はページ1、2P はページ0
+function texSheetNew(){ return new Uint8Array(0x80000) }
+function texPutRob(sheet,rob,player){
+  const base=(player^1)<<18;
+  for(let r=0;r<768;r++) sheet.set(rob.subarray(r*128,r*128+128),base+r*256);
+}
+function texNibble(sheet,page,X,Y){
+  X&=1023; Y&=511;
+  const b=sheet[(page<<18)+Y*512+(X>>1)];
+  return X&1?b>>4:b&15;
+}
+
+// 面の UV（1/8 画素）から、テクスチャ用メモリの画素の位置を出す（本体 0x1c6380・0x1c6e40 を写し、写しの ST と一致を確かめた）。
+// 属性 h0: bit0-2 縦の大きさ・bit3-5 横の大きさ（32..2048）。h2: 下位6bit×32＝原点X（T 側）、次の6bit×32−1024＝原点Y（S 側）、
+// 原点X≥1024 なら X−=1024・Y+=1024。bit12＝ページ。UV は +10 して、面の中の最小値が大きさの外なら大きさの倍数ぶん戻す。
+// テクスチャ用メモリの1ページ＝幅 512・高さ 1024 の 4bit（1行 256B）。S*1024＝ページ*512＋(u'/8+Y)/4？ ではなく
+// ページ内の横 px＝(u'/8+原点Y)/4、縦 py＝v'/8+原点X（GS の S,T を 1024 倍したもの）
+const TEX_SZ=[32,64,128,256,512,1024,2048,2048];
+function texCoords(attr,uv){
+  // FV: 読み込み済みモデルの ST は (UV＋7)÷区画の大きさ（VF2 は ＋10）。loc・org・size はアーケードのテクスチャ RAM のテクセル単位で、
+  // [0]＝u の向き（RAM の y、原点 Y＝(h2>>6&63)×32−1024）、[1]＝v の向き（RAM の x、原点 X＝(h2&63)×32）
+  const [h0,,h2]=attr, su=TEX_SZ[h0>>3&7]*8, sv=TEX_SZ[h0&7]*8;
+  let X=(h2&63)*32, Y=(h2>>6&63)*32-1024; if(X>=1024){ X-=1024; Y+=1024 }
+  const mu=Math.min(...uv.map(a=>a[0])), mv=Math.min(...uv.map(a=>a[1]));
+  const ku=Math.floor((mu+7)/su)*su, kv=Math.floor((mv+7)/sv)*sv;
+  const loc=uv.map(([u,v])=>[(u+7-ku)/8, (v+7-kv)/8]);
+  return {page:h2>>12&1, org:[Y,X], size:[su/8,sv/8], loc, st:loc};
+}
+// テクスチャ用メモリ（g_geo+0xa040 の 512KB）から 4bit を読む。FV の PS2 版はアーケードのテクスチャ RAM（ページごとに 横 1024・縦 2048）を縦横とも 1 つおきに間引いたもの:
+// RAM の (x, y) → ページ×0x40000＋(x>>1)×512＋((y>>9)&3)×128＋((y&511)>>2)、ニブルは (y>>1)&1（写しのメモリとアーケードの展開で確かめた）
+function texRam(ram,page,ay,ax){
+  ay=Math.floor(ay)&2047; ax=Math.floor(ax)&1023;
+  const b=ram[(page<<18)+(ax>>1)*512+((ay>>9)&3)*128+((ay&511)>>2)];
+  return (ay>>1)&1?b>>4:b&15;
+}
+// セーブステートの主メモリから、そのコマでゲームがジオメトライザに送った命令の列を読む（VF2 の scene.js と同じ作り。番地だけ FV のもの）。
+// 命令の語の上位 9bit（w>>>23）が番号。引数の語数: 物体1=4・枠3=6・モード7=1・8=1・焦点9=2・光10=3・行列11=12・12=3・LOD22=1、
+// 13・16 は 1 語だけ。4 は [番地][語数 n][n 語]。bit31 の立った語は 1 語。15 で終わり。
+const SC_OBJTBL=0x1f834f0, SC_OBJN=5413;   // 番号→読み込んだモデルの番地の表（2人 × 5413 語。モデルの頂点で確かめた）
+// from: 読み始める番地（命令の列は 0x1288000 から 0x8000 おきにいくつもあり、コマが違う。どれが画面のコマかは調べ中）
+function sceneRead(mem,from=0x1280000){
+  const W32=new Uint32Array(mem.buffer,mem.byteOffset,mem.length>>2), F32=new Float32Array(mem.buffer,mem.byteOffset,mem.length>>2);
+  const inv=new Map(), T=SC_OBJTBL>>2;
+  for(let i=0;i<2*SC_OBJN;i++){ const v=W32[T+i]; if(v&&!inv.has(v)) inv.set(v,{player:(i/SC_OBJN)|0,id:i%SC_OBJN}) }
+  const LEN={0:0,1:4,3:6,7:1,8:1,9:2,10:3,11:12,12:3,13:0,16:0,22:1};
+  let start=-1; for(let j=from>>2;j<0x1300000>>2;j++) if(W32[j]===0x04800000){ start=j; break }
+  if(start<0) throw new Error("命令の列が見つからない（対戦中のセーブステートではない？）");
+  const draws=[], focal=[F32[start+1],F32[start+2]], windows=[]; let mat=null, light=null, n=0, unknown=0;
+  for(let j=start;;){
+    if(++n>100000) throw new Error("命令の列が終わらない");
+    const w=W32[j];
+    if(w>>>31){ j++; continue }
+    const op=w>>>23;
+    if(op===15) break;
+    if(op===4){ j+=3+W32[j+2]; continue }
+    if(!(op in LEN)) throw new Error("知らない命令 "+op+" at 0x"+(j*4).toString(16));
+    if(op===11) mat=Array.from(F32.subarray(j+1,j+13));
+    if(op===10&&!light) light=Array.from(F32.subarray(j+1,j+4));
+    if(op===3) windows.push(Array.from(W32.subarray(j+1,j+7)));
+    if(op===1){ const a=W32[j+4], o=inv.get(a);
+      if(o&&mat) draws.push({player:o.player,id:o.id,m:mat,addr:a});
+      else if(a===0xa&&mat){ const dyn=sceneDyn(mem,W32,W32[j+1],W32[j+2],W32[j+3]); if(dyn){ dyn.player=draws.filter(d=>d.dyn).length?1:0; draws.push({player:dyn.player,id:-1,m:mat,dyn}) } else unknown++ }
+      else if(a!==0xffffffff) unknown++ }
+    j+=1+LEN[op];
+  }
+  return {focal,light,draws,windows,unknown};
+}
+// 毎コマ作る部品（物体の命令の 4 つ目が 0xa。VF2 の腹の帯にあたる）: 1 つ目＝テクスチャの座標の塊、2 つ目＝属性の塊（どちらも読み込んだ OBJ_ROBnnR の中を指す）、
+// 3 つ目＝その コマの形（ファイルと同じ 40B の面の記録）。1P・2P は描く順（1 つ目が 1P）。同じキャラ同士では 2 人とも同じ属性の塊を指すことがある（tokio 同士）ので、属性の塊からは決めない。
+// 塊の長さは塊の前の語。形の長さは R のモデルの 4 つ目の塊の長さ（座標の塊のすぐ後ろ）
+function sceneDyn(mem,W32,uv,attr,geo){
+  if(uv<16||attr<16||uv+8>mem.length||attr+8>mem.length) return null;
+  const la=W32[(attr-4)>>2], lu=W32[(uv-4)>>2]; if(!la||!lu||la>0x10000||lu>0x10000) return null;
+  const lg=W32[(uv+lu)>>2]; if(!lg||lg>0x10000||geo+lg>mem.length) return null;
+  const a=mem.subarray(attr,attr+la);
+  return {ch:[a,a,mem.subarray(uv,uv+lu),mem.subarray(geo,geo+lg)]};
+}
+// 色とテクスチャ（VF2 の g_geo と同じ並びの塊。FV は 0x12e7a80）: +0x40 色 RAM（16bit×1024）・+0x840 色の変換表（R・G・B、各 32 行×64）・
+// +0x2040 明るさの曲線（128B ずつ）・+0xa040 テクスチャ（ページ 2 枚、各 幅 512・高さ 1024 の 4bit）。
+// テクスチャのファイル（TEX_ROBnn）が 1P は +0xa040+0x40000、2P は +0xa040 に、128B ずつ行の間隔 256B で載っている所から逆算した
+const SC_GEO=0x12e7a80;
+function sceneColors(mem){
+  const g=mem.subarray(SC_GEO,SC_GEO+0xa040+0x80000);
+  return {tex:g.subarray(0xa040,0xa040+0x80000), cram:g.subarray(0x40,0x840), xlat:g.subarray(0x840,0x2040), clut:g.subarray(0x2040,0x2040+0x8000)};
+}
+// 光の設定（VU1 のデータの 0〜31 番＝拡散・環境・光沢・回数、32 番＝光の向き）。VF2 と同じ読み方
+function sceneLight(vu1,sc){
+  if(!vu1||vu1.length<34*16) return {tab:Array.from({length:32},()=>[63.5,31.5,0,0]), L:sc?sc.light:[0,-1,0], flags:7, fromVu:false};
+  const dv=new DataView(vu1.buffer,vu1.byteOffset,vu1.byteLength), tab=[];
+  for(let q=0;q<32;q++) tab.push([dv.getFloat32(q*16,true),dv.getFloat32(q*16+4,true),dv.getFloat32(q*16+8,true),dv.getUint32(q*16+12,true)]);
+  return {tab, L:[0,1,2].map(i=>dv.getFloat32(32*16+i*4,true)), flags:dv.getUint32(32*16+12,true), fromVu:true};
+}
+// 共通の部品（OBJ_COMMON。影 228〜242・705 など）は番号の表の 1P の側にしか載っていないので、2P のぶんも 1P と読んでしまう。
+// ゲームは 1P・2P の順に同じ部品を同じ並び（影は 232,238,240,…,228 の 15 個、体の前に 705）で描くので、1 つの列に 2 回出る番号は 1 回目＝1P・2 回目＝2P
+// （毎コマ作る部品と同じ決め方）。1 回きりや 3 回以上のものは、いちばん近いキャラの部品の人。isCommon(id)・isChar(p,id): 番号が共通か、p のキャラのファイルにあるか
+function sceneAssignCommon(sc,isCommon,isChar){
+  const D=sc.draws, n=new Map(), seen=new Map();
+  for(const d of D) if(!d.dyn&&isCommon(d.id)) n.set(d.id,(n.get(d.id)||0)+1);
+  const own=[0,1].map(p=>D.filter(d=>!d.dyn&&d.player===p&&!isCommon(d.id)&&isChar(p,d.id)));
+  const dist=(a,b)=>Math.hypot(a.m[9]-b.m[9],a.m[10]-b.m[10],a.m[11]-b.m[11]);
+  for(const d of D){ if(d.dyn||!isCommon(d.id)) continue;
+    if(n.get(d.id)===2){ const k=seen.get(d.id)||0; seen.set(d.id,k+1); d.player=k; continue }
+    if(!own[0].length||!own[1].length) continue;
+    const e=own.map(L=>Math.min(...L.map(o=>dist(o,d)))); d.player=e[1]<e[0]?1:0 }
+  return sc;
+}
+// 場面の2人（と背景）を、描くための頂点の配列にする（WebGL でも node の台本でも使う）。
+// 頂点ごとに 24 個の数: 位置3（カメラの座標）・法線3・色 RAM の 5bit×3・テクスチャの loc2・org2・size2・テクスチャ（0 なし・1 あり・2 あり＋値 15 を抜く）・ページ・パレット番号・面の頭の bit10-11 と bit17-22（(h>>10&3)|((h>>17&63)<<2)）・光の表の値4（拡散・環境・光沢・光沢の回数）・旗（1＝光の設定 10〜12、2＝貼りもの＝h1 の上位バイトが 0 でない。目や眉）
+const BUILD_STRIDE=24;
+// models: {0: 1P のモデル, 1: 2P のモデル, stage: ステージのモデル}（どれも Map 番号→モデル）。
+// opt.which: "body"（影以外）か "shadow"（影だけ）。opt.players: [1P を出すか, 2P を出すか]。opt.stage: 背景を出すか（false で出さない）
+function sceneMesh(sc,col,models,opt={}){
+  const out=[], missing=new Set(), mirror=[-1,-1]; let shadows=0; const which=opt.which||"body";
+  const cram=new DataView(col.cram.buffer,col.cram.byteOffset,col.cram.byteLength);
+  for(const d of sc.draws){
+    let e=d.dyn||(models[d.player]&&models[d.player].get(d.id)), isStage=false;
+    if(!e&&d.player===0&&models.stage){ e=models.stage.get(d.id); isStage=!!e }   // ステージの部品は 1P の表に入っている
+    if(!e){ missing.add(d.id); continue }
+    const m=d.m, det=m[0]*(m[4]*m[8]-m[5]*m[7])-m[1]*(m[3]*m[8]-m[5]*m[6])+m[2]*(m[3]*m[7]-m[4]*m[6]);
+    const shadow=!isStage&&Math.abs(det)<0.05;   // 床に潰した影（行列の縦がほぼ 0。01 の写しで 343〜354 など）
+    if(shadow) shadows++;
+    if((which==="shadow")!==shadow) continue;
+    if(isStage?opt.stage===false:(opt.players&&!opt.players[d.player])) continue;
+    // 映り込み（行列式が負の部品。OBJ_*B）: ゲームは命令の列の組の順に描き、映り込みの組のあとにリングの床の組が来るので床に隠れる。
+    // 映り込みの前の組（縁の帯など）の上には、帯の方が手前でも塗る。ページでは映り込みを奥行きを比べず・書かずに描いて（vgl.js）、あとの部品に上から塗らせる。その頂点の範囲を覚えておく
+    const mir=!shadow&&det<-0.05; if(mir&&mirror[0]<0) mirror[0]=out.length/BUILD_STRIDE;
+    const T=v=>[v[0]*m[0]+v[1]*m[3]+v[2]*m[6]+m[9], v[0]*m[1]+v[1]*m[4]+v[2]*m[7]+m[10], v[0]*m[2]+v[1]*m[5]+v[2]*m[8]+m[11]];
+    // 属性の表は 1P（とステージ）が塊0、2P が塊1
+    let over=0;   // 部品の中で何枚目の「重ねる面」か（透明ありのテクスチャの面と貼りもの。ゲームは部品の中をファイルの順に上塗りする）
+    // 前の面と同じ平面に乗っている面・同じ頂点の面も重ねる面（影丸の覆面は、顔の肌の面と同じ頂点の面を旗無しで重ねてあり、ファイルで後ろにある。頂点の並びの始まりは違う）
+    const planes=new Set();
+    for(const p of objPolys(e.ch[3],e.ch[d.player?1:0],e.ch[2])){
+      let same=false; if(!isStage){ const v=p.v, a=v[1].map((x,i)=>x-v[0][i]), b=v[2].map((x,i)=>x-v[0][i]), n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=Math.hypot(...n);
+        if(l>1e-12){ const key=n.map(x=>(x/l).toFixed(3)).join()+"/"+((n[0]*v[0][0]+n[1]*v[0][1]+n[2]*v[0][2])/l).toFixed(4); const vk=v.map(u=>u.map(x=>x.toFixed(4)).join()).sort().join("|"); same=planes.has(key)||planes.has(vk); planes.add(key); planes.add(vk) } }
+      const q=p.v.map(T), a=q[1].map((x,i)=>x-q[0][i]), b=q[2].map((x,i)=>x-q[0][i]);
+      const n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=(det<0?-1:1)*(Math.hypot(...n)||1); for(let i=0;i<3;i++) n[i]/=l;   // 映り込み（行列式が負）は頂点の並びが裏返るので法線を戻す
+      const c16=cram.getUint16((p.attr[3]>>6&1023)*2,true), c5=[c16&31,c16>>5&31,c16>>10&31];
+      let tx=null; if(p.attr[0]>>14&1) tx=texCoords(p.attr,p.uv);
+      const ov=same||(p.attr[1]>>8)||(tx&&(p.attr[0]>>13&1))?++over:0;
+      // 1024: 裏向きなら描かない（キャラの面。ステージ・影・映り込みは両面。ゲームもキャラは裏向きを描かない。バーンのコートは表と裏地が同じ所に逆向きで重なる）
+      // 両面の旗は面の頭の bit17（MAME の model2_v.cpp の check_culling: bit17 が 0 なら裏向きを捨てる。VF2 のラウの腰の布の裏は bit17＝1 で、ゲームの写真でも見える）
+      const cull=!isStage&&!shadow&&det>0.05&&!(p.h>>>17&1);
+      const ls=p.h>>18&31, lt=opt.light?opt.light.tab[ls]:[63.5,31.5,0,0], lk=[lt[0],lt[1],lt[2],(lt[3]&7&(opt.light?opt.light.flags:0))?1:0,(ls>=10&&ls<=12?1:0)+(ov?2:0)+4*Math.min(ov,255)+(cull?1024:0)];
+      const vert=k=>{ out.push(...q[k],...n,...c5);
+        if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,(p.attr[0]>>13&1)?2:1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0);
+        out.push((p.h>>10&3)|((p.h>>17&63)<<2),...lk) };
+      for(let i=1;i+1<q.length;i++){ vert(0); vert(i); vert(i+1) }
+    }
+    if(mir) mirror[1]=out.length/BUILD_STRIDE;
+  }
+  return {data:new Float32Array(out), count:out.length/BUILD_STRIDE, missing:[...missing], shadows, mirror:mirror[0]<0?null:mirror};
+}
+// 明るさ（0〜63）。VU1 のプログラム（calcBrightnessMainMdl2・m2CalcCont・m2mdlQuadPoly…m2mdlTex）を読んで写したもの:
+//   B＝clamp(拡散×d＋環境＋光沢×s^8, 0, 127)（d・s は scene.js の sceneLight の説明）→ L＝曲線[h1 の番号][B]（g_geo+0x2040＋番号×128）
+//   テクスチャあり: 光の設定が 10〜12 か L＜48 なら L×(テクスチャの値×17)×8/2048、それ以外は 48＋テクスチャの値（色の変換表の特別な欄）
+//   テクスチャなし: L。光沢の回数は s^8 と近似（7つの写しでは結果に影響しなかった）
+// 7つの写しで、写真とのずれが当てはめた式より減る（light.mjs。当てはめに使わなかった 06 で 11.45→8.78）
+function buildBright(n,lk,light){
+  const L=light.L, d=Math.max(0,Math.min(1,L[0]*n[0]+L[1]*n[1]+L[2]*n[2])), s=Math.max(0,Math.min(1,2*d*n[2]-L[2]));
+  return Math.floor(Math.max(0,Math.min(127,lk[0]*d+lk[1]+(lk[3]?lk[2]*Math.pow(s,8):0))));
+}
+function buildLuma(curveVal,tex,special){
+  if(tex<0) return Math.min(63,curveVal);
+  const v=special||curveVal<48?Math.floor(curveVal*tex*17*8/2048):48+tex; return Math.max(0,Math.min(63,v));
+}
+// OBJ ファイル（展開後のモデルの一覧）の候補から、そのプレイヤーが描いた番号をいちばん多く含むものを選ぶ
+// （1P の表にはステージの部品も入っているので「全部」は求めない。同じ数なら先の候補＝1色目）。skip の番号は数えない
+// キャラのファイルに無い番号を、同じ名前に1文字足したファイル（OBJ_JAC1B の映り込み、E・A など）から足す。files: [{name,models}]
+function sceneAddCompanions(ch,sc,player,files){
+  if(!ch) return ch; const map=new Map(ch.map), used=[];
+  const need=new Set(sc.draws.filter(d=>d.player===player&&!map.has(d.id)).map(d=>d.id));
+  for(const f of files){ let n=0; for(const m of f.models) if(need.has(m.id)&&!map.has(m.id)){ map.set(m.id,m); n++ } if(n) used.push(f.name) }
+  return {...ch,map,used};
+}
+function sceneChooseModels(sc,player,candidates,skip){
+  const need=new Set(sc.draws.filter(d=>d.player===player&&!(skip&&skip.has(d.id))).map(d=>d.id)); let best=null;
+  for(const c of candidates){ const map=new Map(c.models.map(m=>[m.id,m])); let n=0; for(const id of need) if(map.has(id)) n++;
+    if(n>0&&(!best||n>best.n)) best={name:c.name,map,n} }
+  return best;
+}
+// PS2 の EE（R5900）の小さなエミュレーター（VF2 の ee.js と同じ。gp だけ FV の値）。本体のコプロ代わりの関数（cpr*）を、セーブステートの主メモリの上でそのまま動かすためのもの。
+// 整数（64bit は2語で持つ。lq/sq・pcpyud のため4語）・COP1（単精度）・VU0 のマクロ命令だけ
+const f32=Math.fround;
+const FB=new Float32Array(1), UB=new Uint32Array(FB.buffer);
+const u2f=u=>{ UB[0]=u; return FB[0] }, f2u=f=>{ FB[0]=f; return UB[0] };
+class EE {
+  constructor(mem){ // mem: Uint8Array（32MB）
+    this.m=mem; this.dv=new DataView(mem.buffer,mem.byteOffset,mem.byteLength);
+    this.g=new Uint32Array(32*4); this.hi=[0,0]; this.lo=[0,0];
+    this.f=new Float32Array(32); this.fcc=false; this.acc=0;
+    this.vf=new Float32Array(32*4); this.vf[3]=1; this.vi=new Uint16Array(16); this.Q=0; this.I=0; this.vacc=new Float32Array(4);
+    this.steps=0; this.unk={}; this.gp=0x292170;   // FV の本体の gp（起動処理 0x100170 で入れる値）
+  }
+  a(A){ A>>>=0; if(A>=0x20000000&&A<0x22000000) A-=0x20000000; else if(A>=0x30000000&&A<0x32000000) A-=0x30000000; else if(A>=0x70000000&&A<0x70004000) A=0x1fc0000+(A-0x70000000); return A&0x1ffffff }   // スクラッチパッドは空いていそうな所に置く
+  r8(A){ return this.m[this.a(A)] } r16(A){ return this.dv.getUint16(this.a(A),true) } r32(A){ return this.dv.getUint32(this.a(A),true) }
+  w8(A,v){ this.m[this.a(A)]=v } w16(A,v){ this.dv.setUint16(this.a(A),v,true) } w32(A,v){ this.dv.setUint32(this.a(A),v>>>0,true) }
+  set32(r,v){ if(!r) return; const G=this.g; G[r*4]=v>>>0; G[r*4+1]=(v|0)<0?0xffffffff:0 }   // 32bit の結果は符号を広げる
+  set64(r,lo,hi){ if(!r) return; this.g[r*4]=lo>>>0; this.g[r*4+1]=hi>>>0 }
+  // 関数 pc を ra＝止まる番地 で呼ぶ
+  call(pc, args=[], sp=0x1ff0000){
+    const G=this.g; for(let i=0;i<args.length;i++) this.set32(4+i,args[i]);
+    this.set32(29,sp); this.set32(31,0xfffffff0); this.set32(28,this.gp);
+    this.run(pc);
+    return G[2*4];
+  }
+  run(pc){
+    const G=this.g, V=this.vf;
+    let npc=pc+4, delay=false;
+    const lim=this.steps+5e7;   // 上限は 1 回の呼び出しごと
+    const S=(r)=>G[r*4]|0, U=(r)=>G[r*4]>>>0;
+    for(;;){
+      if(pc===0xfffffff0) return;
+      if(++this.steps>lim) throw new Error("命令が多すぎる");
+      const w=this.r32(pc), op=w>>>26, rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31, sa=(w>>>6)&31, imm=(w<<16)>>16, uimm=w&0xffff;
+      let next=npc, target=-1, likely=false, taken=false;
+      const br=(c,l)=>{ taken=c; likely=l; target=(npc+(imm<<2))>>>0 };
+      switch(op){
+        case 0x00: { // SPECIAL
+          const fn=w&63;
+          switch(fn){
+            case 0x00: this.set32(rd,U(rt)<<sa); break;
+            case 0x02: this.set32(rd,U(rt)>>>sa); break;
+            case 0x03: this.set32(rd,S(rt)>>sa); break;
+            case 0x04: this.set32(rd,U(rt)<<(U(rs)&31)); break;
+            case 0x06: this.set32(rd,U(rt)>>>(U(rs)&31)); break;
+            case 0x07: this.set32(rd,S(rt)>>(U(rs)&31)); break;
+            case 0x08: target=U(rs); taken=true; break;
+            case 0x09: { const t=U(rs); this.set32(rd||31,npc+4); target=t; taken=true; break }
+            case 0x0a: if(G[rt*4]===0&&G[rt*4+1]===0) this.g64copy(rd,rs); break;   // movz
+            case 0x0b: if(G[rt*4]!==0||G[rt*4+1]!==0) this.g64copy(rd,rs); break;   // movn
+            case 0x0f: break; // sync
+            case 0x10: this.set64(rd,this.hi[0],this.hi[1]); break; case 0x12: this.set64(rd,this.lo[0],this.lo[1]); break;
+            case 0x11: this.hi=[G[rs*4],G[rs*4+1]]; break; case 0x13: this.lo=[G[rs*4],G[rs*4+1]]; break;
+            case 0x14: { const v=this.get64(rt)<<BigInt(U(rs)&63); this.put64(rd,v); break }
+            case 0x16: { const v=BigInt.asUintN(64,this.get64(rt))>>BigInt(U(rs)&63); this.put64(rd,v); break }
+            case 0x17: { const v=BigInt.asIntN(64,this.get64(rt))>>BigInt(U(rs)&63); this.put64(rd,v); break }
+            case 0x18: { const p=BigInt(S(rs))*BigInt(S(rt)); this.setHL(p); if(rd) this.set32(rd,this.lo[0]); break }
+            case 0x19: { const p=BigInt(U(rs))*BigInt(U(rt)); this.setHL(p); if(rd) this.set32(rd,this.lo[0]); break }
+            case 0x1a: { const a=S(rs), b=S(rt); if(b){ this.lo=this.sx(Math.trunc(a/b)); this.hi=this.sx(a%b) } break }
+            case 0x1b: { const a=U(rs), b=U(rt); if(b){ this.lo=this.sx(Math.floor(a/b)|0); this.hi=this.sx((a%b)|0) } break }
+            case 0x20: case 0x21: this.set32(rd,U(rs)+U(rt)); break;
+            case 0x22: case 0x23: this.set32(rd,U(rs)-U(rt)); break;
+            case 0x24: this.set64(rd,G[rs*4]&G[rt*4],G[rs*4+1]&G[rt*4+1]); break;
+            case 0x25: this.set64(rd,G[rs*4]|G[rt*4],G[rs*4+1]|G[rt*4+1]); break;
+            case 0x26: this.set64(rd,G[rs*4]^G[rt*4],G[rs*4+1]^G[rt*4+1]); break;
+            case 0x27: this.set64(rd,~(G[rs*4]|G[rt*4]),~(G[rs*4+1]|G[rt*4+1])); break;
+            case 0x2a: this.set32(rd,BigInt.asIntN(64,this.get64(rs))<BigInt.asIntN(64,this.get64(rt))?1:0); break;
+            case 0x2b: this.set32(rd,this.get64(rs)<this.get64(rt)?1:0); break;
+            case 0x2c: case 0x2d: this.put64(rd,this.get64(rs)+this.get64(rt)); break;
+            case 0x2e: case 0x2f: this.put64(rd,this.get64(rs)-this.get64(rt)); break;
+            case 0x38: this.put64(rd,this.get64(rt)<<BigInt(sa)); break;
+            case 0x3a: this.put64(rd,BigInt.asUintN(64,this.get64(rt))>>BigInt(sa)); break;
+            case 0x3b: this.put64(rd,BigInt.asIntN(64,this.get64(rt))>>BigInt(sa)); break;
+            case 0x3c: this.put64(rd,this.get64(rt)<<BigInt(sa+32)); break;
+            case 0x3e: this.put64(rd,BigInt.asUintN(64,this.get64(rt))>>BigInt(sa+32)); break;
+            case 0x3f: this.put64(rd,BigInt.asIntN(64,this.get64(rt))>>BigInt(sa+32)); break;
+            default: throw new Error("SPECIAL "+fn.toString(16)+" at "+pc.toString(16));
+          }
+          break;
+        }
+        case 0x01: { // REGIMM
+          const a=BigInt.asIntN(64,this.get64(rs));
+          switch(rt){ case 0: br(a<0n,false); break; case 1: br(a>=0n,false); break; case 2: br(a<0n,true); break; case 3: br(a>=0n,true); break;
+            case 0x11: this.set32(31,npc+4); br(a>=0n,false); break; case 0x10: this.set32(31,npc+4); br(a<0n,false); break;
+            default: throw new Error("REGIMM "+rt+" at "+pc.toString(16)) }
+          break;
+        }
+        case 0x02: target=((npc&0xf0000000)|((w&0x3ffffff)<<2))>>>0; taken=true; break;
+        case 0x03: this.set32(31,npc+4); target=((npc&0xf0000000)|((w&0x3ffffff)<<2))>>>0; taken=true; break;
+        case 0x04: br(this.eq(rs,rt),false); break; case 0x05: br(!this.eq(rs,rt),false); break;
+        case 0x06: br(BigInt.asIntN(64,this.get64(rs))<=0n,false); break; case 0x07: br(BigInt.asIntN(64,this.get64(rs))>0n,false); break;
+        case 0x14: br(this.eq(rs,rt),true); break; case 0x15: br(!this.eq(rs,rt),true); break;
+        case 0x16: br(BigInt.asIntN(64,this.get64(rs))<=0n,true); break; case 0x17: br(BigInt.asIntN(64,this.get64(rs))>0n,true); break;
+        case 0x08: case 0x09: this.set32(rt,U(rs)+imm); break;
+        case 0x18: case 0x19: this.put64(rt,this.get64(rs)+BigInt(imm)); break;
+        case 0x0a: this.set32(rt,BigInt.asIntN(64,this.get64(rs))<BigInt(imm)?1:0); break;
+        case 0x0b: this.set32(rt,this.get64(rs)<BigInt.asUintN(64,BigInt(imm))?1:0); break;
+        case 0x0c: this.set64(rt,G[rs*4]&uimm,0); break;
+        case 0x0d: this.set64(rt,G[rs*4]|uimm,G[rs*4+1]); break;
+        case 0x0e: this.set64(rt,G[rs*4]^uimm,G[rs*4+1]); break;
+        case 0x0f: this.set32(rt,uimm<<16); break;
+        case 0x20: this.set32(rt,(this.r8(U(rs)+imm)<<24)>>24); break;
+        case 0x24: this.set32(rt,this.r8(U(rs)+imm)); break;
+        case 0x21: this.set32(rt,(this.r16(U(rs)+imm)<<16)>>16); break;
+        case 0x25: this.set32(rt,this.r16(U(rs)+imm)); break;
+        case 0x23: this.set32(rt,this.r32(U(rs)+imm)); break;
+        case 0x27: this.set64(rt,this.r32(U(rs)+imm),0); break;
+        case 0x37: { const A=U(rs)+imm; this.set64(rt,this.r32(A),this.r32(A+4)); break }
+        case 0x1e: { const A=(U(rs)+imm)&~15; if(rt) for(let k=0;k<4;k++) G[rt*4+k]=this.r32(A+4*k); break }   // lq
+        case 0x1f: { const A=(U(rs)+imm)&~15; for(let k=0;k<4;k++) this.w32(A+4*k,G[rt*4+k]); break }   // sq
+        case 0x28: this.w8(U(rs)+imm,G[rt*4]&255); break;
+        case 0x29: this.w16(U(rs)+imm,G[rt*4]&0xffff); break;
+        case 0x2b: this.w32(U(rs)+imm,G[rt*4]); break;
+        case 0x3f: { const A=U(rs)+imm; this.w32(A,G[rt*4]); this.w32(A+4,G[rt*4+1]); break }
+        case 0x22: case 0x26: { // lwl / lwr
+          const A=(U(rs)+imm)>>>0, al=A&~3, sh=A&3, mw=this.r32(al), old=G[rt*4];
+          let v; if(op===0x22){ v=((mw<<(8*(3-sh)))|(old&(sh===3?0:(0xffffffff>>>(8*(sh+1))))))>>>0 } else { v=((mw>>>(8*sh))|(sh?(old&((0xffffffff<<(8*(4-sh)))>>>0)):0))>>>0 }
+          if(op===0x26&&sh!==0) G[rt*4]=v; else this.set32(rt,v); break }
+        case 0x2c: case 0x2d: { // sdl / sdr
+          const A=(U(rs)+imm)>>>0, al=A&~7, sh=A&7, v=this.get64(rt);
+          let mw=(BigInt(this.r32(al+4))<<32n)|BigInt(this.r32(al));
+          if(op===0x2c){ const n=BigInt(8*(7-sh)), mask=sh===7?0n:((1n<<64n)-1n)<<BigInt(8*(sh+1)); mw=(mw&mask)|(BigInt.asUintN(64,v)>>n) }
+          else { const n=BigInt(8*sh), mask=sh===0?0n:((1n<<BigInt(8*sh))-1n); mw=(mw&mask)|BigInt.asUintN(64,v<<n) }
+          mw=BigInt.asUintN(64,mw); this.w32(al,Number(mw&0xffffffffn)); this.w32(al+4,Number(mw>>32n)); break }
+        case 0x1a: case 0x1b: { // ldl / ldr
+          const A=(U(rs)+imm)>>>0, al=A&~7, sh=A&7, mw=(BigInt(this.r32(al+4))<<32n)|BigInt(this.r32(al)), old=BigInt.asUintN(64,this.get64(rt));
+          let v; if(op===0x1a){ const n=BigInt(8*(7-sh)); const keep=sh===7?0n:((1n<<BigInt(8*(7-sh)))-1n); v=BigInt.asUintN(64,mw<<n)|(old&keep) }
+          else { const n=BigInt(8*sh); const keep=sh===0?0n:(((1n<<64n)-1n)<<BigInt(8*(8-sh)))&((1n<<64n)-1n); v=(mw>>n)|(old&keep) }
+          this.put64(rt,v); break }
+        case 0x2f: break; // cache
+        case 0x31: this.f[rt]=u2f(this.r32(U(rs)+imm)); break;   // lwc1
+        case 0x39: this.w32(U(rs)+imm,f2u(this.f[rt])); break;   // swc1
+        case 0x36: { const A=(U(rs)+imm)&~15; for(let k=0;k<4;k++) V[rt*4+k]=u2f(this.r32(A+4*k)); if(!rt){V[0]=V[1]=V[2]=0;V[3]=1} break }   // lqc2
+        case 0x3e: { const A=(U(rs)+imm)&~15; for(let k=0;k<4;k++) this.w32(A+4*k,f2u(V[rt*4+k])); break }   // sqc2
+        case 0x11: this.cop1(w,pc,br); break;
+        case 0x12: this.cop2(w,pc,br); break;
+        case 0x1c: this.mmi(w,pc); break;
+        default: throw new Error("op "+op.toString(16)+" at "+pc.toString(16)+" w="+w.toString(16));
+      }
+      if(target>=0||likely){
+        if(taken){ // 遅延スロットを実行してから飛ぶ
+          pc=npc; npc=target; continue;
+        } else if(likely){ pc=npc+4; npc=pc+4; continue }
+      }
+      pc=npc; npc=pc+4;
+      if(this.pendingTarget!==undefined){}
+    }
+  }
+  g64copy(d,s){ if(d){ this.g[d*4]=this.g[s*4]; this.g[d*4+1]=this.g[s*4+1] } }
+  get64(r){ return BigInt.asIntN(64,(BigInt(this.g[r*4+1])<<32n)|BigInt(this.g[r*4])) }
+  put64(r,v){ v=BigInt.asUintN(64,v); this.set64(r,Number(v&0xffffffffn),Number(v>>32n)) }
+  eq(a,b){ return this.g[a*4]===this.g[b*4]&&this.g[a*4+1]===this.g[b*4+1] }
+  sx(v){ return [v>>>0,(v|0)<0?0xffffffff:0] }
+  setHL(p){ const lo=Number(BigInt.asIntN(32,p)), hi=Number(BigInt.asIntN(32,p>>32n)); this.lo=this.sx(lo); this.hi=this.sx(hi) }
+  cop1(w,pc,br){
+    const fmt=(w>>>21)&31, ft=(w>>>16)&31, fs=(w>>>11)&31, fd=(w>>>6)&31, fn=w&63, F=this.f;
+    if(fmt===0){ this.set32(ft,f2u(F[fs])); return }            // mfc1
+    if(fmt===4){ F[fs]=u2f(this.g[ft*4]); return }             // mtc1
+    if(fmt===2||fmt===6) return;                                // cfc1/ctc1
+    if(fmt===8){ const t=(w>>>16)&1, l=(w>>>17)&1; br(t?this.fcc:!this.fcc,!!l); return }
+    if(fmt===16){
+      switch(fn){
+        case 0: F[fd]=f32(F[fs]+F[ft]); return; case 1: F[fd]=f32(F[fs]-F[ft]); return;
+        case 2: F[fd]=f32(F[fs]*F[ft]); return; case 3: F[fd]=f32(F[fs]/F[ft]); return;
+        case 4: F[fd]=f32(Math.sqrt(Math.abs(F[ft]))); return; case 5: F[fd]=Math.abs(F[fs]); return;
+        case 6: F[fd]=F[fs]; return; case 7: F[fd]=-F[fs]; return;
+        case 0x16: F[fd]=f32(F[fs]/Math.sqrt(Math.abs(F[ft]))); return;
+        case 0x18: this.acc=f32(F[fs]+F[ft]); return; case 0x19: this.acc=f32(F[fs]-F[ft]); return; case 0x1a: this.acc=f32(F[fs]*F[ft]); return;
+        case 0x1c: F[fd]=this.acc=f32(this.acc+f32(F[fs]*F[ft])); return; case 0x1d: F[fd]=this.acc=f32(this.acc-f32(F[fs]*F[ft])); return;
+        case 0x1e: this.acc=f32(this.acc+f32(F[fs]*F[ft])); return; case 0x1f: this.acc=f32(this.acc-f32(F[fs]*F[ft])); return;
+        case 0x24: { const v=F[fs]; FB[0]=0; const i=Math.trunc(v); UB[0]=(i|0)>>>0; F[fd]=FB[0]; return }   // cvt.w.s
+        case 0x28: F[fd]=Math.max(F[fs],F[ft]); return; case 0x29: F[fd]=Math.min(F[fs],F[ft]); return;
+        case 0x30: this.fcc=false; return; case 0x32: this.fcc=F[fs]===F[ft]; return;
+        case 0x34: this.fcc=F[fs]<F[ft]; return; case 0x36: this.fcc=F[fs]<=F[ft]; return;
+      }
+    }
+    if(fmt===20&&fn===0x20){ FB[0]=F[fs]; F[fd]=f32(UB[0]|0); return }   // cvt.s.w
+    throw new Error("COP1 fmt "+fmt+" fn "+fn.toString(16)+" at "+pc.toString(16));
+  }
+  mmi(w,pc){
+    const rs=(w>>>21)&31, rt=(w>>>16)&31, rd=(w>>>11)&31, sa=(w>>>6)&31, fn=w&63, G=this.g;
+    if(fn===0x29&&sa===14){ // pcpyud
+      if(rd){ const a=[G[rs*4+2],G[rs*4+3],G[rt*4+2],G[rt*4+3]]; for(let k=0;k<4;k++) G[rd*4+k]=a[k] } return }
+    if(fn===0x09&&sa===14){ // pcpyld
+      if(rd){ const a=[G[rt*4],G[rt*4+1],G[rs*4],G[rs*4+1]]; for(let k=0;k<4;k++) G[rd*4+k]=a[k] } return }
+    if(fn===0x08&&sa===18){ if(rd){ const a=[G[rt*4],G[rs*4],G[rt*4+1],G[rs*4+1]]; for(let k=0;k<4;k++) G[rd*4+k]=a[k] } return }   // pextlw
+    if(fn===0x28&&sa===18){ if(rd){ const a=[G[rt*4+2],G[rs*4+2],G[rt*4+3],G[rs*4+3]]; for(let k=0;k<4;k++) G[rd*4+k]=a[k] } return }   // pextuw
+    if(fn===0x29&&sa===18){ if(rd) for(let k=0;k<4;k++) G[rd*4+k]=G[rs*4+k]|G[rt*4+k]; return }   // por
+    if(fn===0x09&&sa===18){ if(rd) for(let k=0;k<4;k++) G[rd*4+k]=G[rs*4+k]&G[rt*4+k]; return }   // pand
+    if(fn===0x18){ const p=BigInt(this.g[rs*4]|0)*BigInt(this.g[rt*4]|0); this.setHL(p); if(rd) this.set32(rd,this.lo[0]); return }   // mult1 近似
+    throw new Error("MMI fn "+fn.toString(16)+" sa "+sa+" at "+pc.toString(16));
+  }
+  cop2(w,pc,br){
+    const V=this.vf, G=this.g, rs=(w>>>21)&31;
+    if(!((w>>>25)&1)){
+      const rt=(w>>>16)&31, rd=(w>>>11)&31;
+      switch(rs){
+        case 1: if(rt) for(let k=0;k<4;k++) G[rt*4+k]=f2u(V[rd*4+k]); return;   // qmfc2
+        case 5: if(rd) for(let k=0;k<4;k++) V[rd*4+k]=u2f(G[rt*4+k]); return;   // qmtc2
+        case 2: { let v=0; if(rd<16) v=this.vi[rd]; else if(rd===22) v=f2u(this.Q); else if(rd===21) v=f2u(this.I); this.set32(rt,v); return }   // cfc2
+        case 6: { const v=G[rt*4]; if(rd<16){ if(rd) this.vi[rd]=v&0xffff } else if(rd===22) this.Q=u2f(v); else if(rd===21) this.I=u2f(v); return }   // ctc2
+        case 8: { const t=(w>>>16)&1, l=(w>>>17)&1; br(t?false:true,!!l); return }   // bc2f/t（VU0 はいつも止まっている）
+      }
+      throw new Error("COP2 rs "+rs+" at "+pc.toString(16));
+    }
+    const dest=(w>>>21)&15, ft=(w>>>16)&31, fs=(w>>>11)&31, fd=(w>>>6)&31, fn=w&63;
+    const D=[(dest>>3)&1,(dest>>2)&1,(dest>>1)&1,dest&1];
+    const rd=(r,k)=>r===0?(k===3?1:0):V[r*4+k];
+    const wr=(r,vals)=>{ if(!r) return; for(let k=0;k<4;k++) if(D[k]) V[r*4+k]=f32(vals[k]) };
+    const wacc=vals=>{ for(let k=0;k<4;k++) if(D[k]) this.vacc[k]=f32(vals[k]) };
+    const vs=r=>[0,1,2,3].map(k=>rd(r,k));
+    const bc=w&3;
+    if(fn<0x3c){
+      const a=vs(fs), b=vs(ft), bb=[0,1,2,3].map(()=>rd(ft,bc)), A=this.vacc;
+      const mul=(x,y)=>x.map((v,k)=>f32(v*y[k]));
+      switch(fn>>2){
+        case 0: wr(fd,a.map((v,k)=>v+bb[k])); return;                 // vaddbc
+        case 1: wr(fd,a.map((v,k)=>v-bb[k])); return;                 // vsubbc
+        case 2: wr(fd,mul(a,bb).map((v,k)=>A[k]+v)); return;          // vmaddbc
+        case 3: wr(fd,mul(a,bb).map((v,k)=>A[k]-v)); return;          // vmsubbc
+        case 4: wr(fd,a.map((v,k)=>Math.max(v,bb[k]))); return;
+        case 5: wr(fd,a.map((v,k)=>Math.min(v,bb[k]))); return;
+        case 6: wr(fd,mul(a,bb)); return;                             // vmulbc
+      }
+      switch(fn){
+        case 0x1c: wr(fd,a.map(v=>v*this.Q)); return;
+        case 0x1e: wr(fd,a.map(v=>v*this.I)); return;
+        case 0x20: wr(fd,a.map(v=>v+this.Q)); return;
+        case 0x21: wr(fd,a.map((v,k)=>A[k]+f32(v*this.Q))); return;
+        case 0x22: wr(fd,a.map(v=>v+this.I)); return;
+        case 0x24: wr(fd,a.map(v=>v-this.Q)); return;
+        case 0x26: wr(fd,a.map(v=>v-this.I)); return;
+        case 0x28: wr(fd,a.map((v,k)=>v+b[k])); return;
+        case 0x29: wr(fd,mul(a,b).map((v,k)=>A[k]+v)); return;
+        case 0x2a: wr(fd,mul(a,b)); return;
+        case 0x2b: wr(fd,a.map((v,k)=>Math.max(v,b[k]))); return;
+        case 0x2c: wr(fd,a.map((v,k)=>v-b[k])); return;
+        case 0x2d: wr(fd,mul(a,b).map((v,k)=>A[k]-v)); return;
+        case 0x2e: { const r=[A[0]-f32(a[1]*b[2]),A[1]-f32(a[2]*b[0]),A[2]-f32(a[0]*b[1])]; if(fd) for(let k=0;k<3;k++) V[fd*4+k]=f32(r[k]); return }   // vopmsub
+        case 0x2f: wr(fd,a.map((v,k)=>Math.min(v,b[k]))); return;
+        case 0x30: this.vi[fd&15]=(this.vi[fs&15]+this.vi[ft&15])&0xffff; return;
+        case 0x31: this.vi[fd&15]=(this.vi[fs&15]-this.vi[ft&15])&0xffff; return;
+        case 0x32: { const im=((w>>>6)&31)<<27>>27; if(ft&15) this.vi[ft&15]=(this.vi[fs&15]+im)&0xffff; return }
+      }
+      throw new Error("VU0 "+fn.toString(16)+" at "+pc.toString(16));
+    }
+    const op2=(((w>>>6)&31)<<2)|(w&3), a=vs(fs), b=vs(ft), bb=[0,1,2,3].map(()=>rd(ft,bc)), A=this.vacc;
+    const mul=(x,y)=>x.map((v,k)=>f32(v*y[k]));
+    switch(op2>>2){
+      case 0: wacc(a.map((v,k)=>v+bb[k])); return;
+      case 1: wacc(a.map((v,k)=>v-bb[k])); return;
+      case 2: wacc(mul(a,bb).map((v,k)=>A[k]+v)); return;
+      case 3: wacc(mul(a,bb).map((v,k)=>A[k]-v)); return;
+      case 6: wacc(mul(a,bb)); return;
+    }
+    switch(op2){
+      case 0x10: case 0x11: case 0x12: case 0x13: { const sc=[1,16,4096,32768][op2-0x10]; wr(ft,[0,1,2,3].map(k=>this.itof(fs,k)/sc)); return }
+      case 0x14: case 0x15: case 0x16: case 0x17: { const sc=[1,16,4096,32768][op2-0x14]; if(!ft) return; for(let k=0;k<4;k++) if(D[k]){ const i=Math.trunc(rd(fs,k)*sc); FB[0]=0; UB[0]=(Math.max(-2147483648,Math.min(2147483647,i))|0)>>>0; V[ft*4+k]=FB[0] } return }
+      case 0x1c: wacc(a.map(v=>v*this.Q)); return;
+      case 0x1d: wr(ft,a.map(Math.abs)); return;
+      case 0x1e: wacc(a.map(v=>v*this.I)); return;
+      case 0x28: wacc(a.map((v,k)=>v+b[k])); return;
+      case 0x29: wacc(mul(a,b).map((v,k)=>A[k]+v)); return;
+      case 0x2a: wacc(mul(a,b)); return;
+      case 0x2c: wacc(a.map((v,k)=>v-b[k])); return;
+      case 0x2d: wacc(mul(a,b).map((v,k)=>A[k]-v)); return;
+      case 0x2e: { this.vacc[0]=f32(a[1]*b[2]); this.vacc[1]=f32(a[2]*b[0]); this.vacc[2]=f32(a[0]*b[1]); return }   // vopmula
+      case 0x2f: return; // vnop
+      case 0x30: wr(ft,a); return;   // vmove
+      case 0x31: wr(ft,[a[1],a[2],a[3],a[0]]); return;   // vmr32
+      case 0x38: { const fsf=(w>>>21)&3, ftf=(w>>>23)&3; this.Q=f32(rd(fs,fsf)/rd(ft,ftf)); return }   // vdiv
+      case 0x39: { const ftf=(w>>>23)&3; this.Q=f32(Math.sqrt(Math.abs(rd(ft,ftf)))); return }
+      case 0x3a: { const fsf=(w>>>21)&3, ftf=(w>>>23)&3; this.Q=f32(rd(fs,fsf)/Math.sqrt(Math.abs(rd(ft,ftf)))); return }
+      case 0x3b: return; // vwaitq
+      case 0x3c: this.vi[ft&15]=f2u(rd(fs,(w>>>21)&3))&0xffff; return;   // vmtir
+      case 0x3d: { const v=(this.vi[fs&15]<<16)>>16; FB[0]=0; UB[0]=v>>>0; const f=FB[0]; wr(ft,[f,f,f,f]); return }   // vmfir
+    }
+    throw new Error("VU0 special2 "+op2.toString(16)+" at "+pc.toString(16));
+  }
+  itof(r,k){ FB[0]=this.vf[r*4+k]; return UB[0]|0 }
+}
+// 技（動き）: セーブステートの i960 の RAM から、アーケードのプログラムで好きな技・コマの姿勢を計算する（VF2 の motion.js と同じ作り。番地は FV のもの）。
+// i960 は arcade.js の I960、TGP（コプロ）は PS2 本体の代わりの関数（cpr*。表 0x23fc20）を ee.js の EE でそのまま動かす。
+// i960 の番地: 0〜 プログラム（ROM_CODE1）、0x500000〜 RAM（写しの 0x16b6dd0〜）、0x2000000〜 main_data（ROM_DATA）、
+//   0x6400000〜 ROM_EP1（属性の表など）、0x6c00000〜 ROM_EP2（技の表 0x6c00004。写し4つのコマ数で確かめた）
+const MOT_GP=0x292170, MOT_CPR=0x23fc20, MOT_WORK=0x11b6dd0;
+const MOT_MOTTBL=0x6c00004;   // 技の番号 → 動きのデータ（先頭の 16bit がコマ数）
+const MOT_FN={start:0x1b880, setup:0x29d08, blend:0x29f48, frame:0x2aa84, units:0x17160, script:0x1c0fc, visible:0x1b574, body:0x19f10, setObj:0x5a48};
+// prog: i960 のプログラム（512KB）、eeMem: 写しの主メモリ（写してから使う）、rom: {data, ep1, ep2}（ディスクの ROM_DATA・ROM_EP1・ROM_EP2）
+function motEngine(prog, eeMem, rom){
+  const ee=new EE(new Uint8Array(eeMem));
+  const ram=ee.m.subarray(MOT_WORK+0x500000,MOT_WORK+0x600000);
+  const argb=ee.r32(MOT_GP-0x7cf4), outb=ee.r32(MOT_GP-0x7d00), cr=ee.r32(MOT_GP-0x7cec);
+  const cop={cur:null,out:[]}, miss={};
+  let capture=null;
+  const curMat=()=>{ const V=ee.vf, r=[]; for(const i of [24,25,26,27]) r.push(V[i*4],V[i*4+1],V[i*4+2]); return r };
+  const copCall=(fn,args)=>{ if(capture&&(fn===52||fn===5)){ capture.mat(curMat(),fn); if(fn===52){ cop.out.push(0); return } }
+    const f=ee.r32(MOT_CPR+fn*16), nr=ee.r32(MOT_CPR+fn*16+8)>>2; args.forEach((v,k)=>ee.w32(argb+4*k,v)); ee.call(f); for(let k=0;k<nr;k++) cop.out.push(ee.r32(outb+4*k)) };
+  const f2u=f=>new Uint32Array(new Float32Array([f]).buffer)[0];
+  const copW=v=>{ if(!cop.cur) cop.cur={fn:v&0xff,args:[]}; else cop.cur.args.push(v); const c=cop.cur; if(c.args.length>=ee.r32(MOT_CPR+c.fn*16+4)){ cop.cur=null; copCall(c.fn,c.args) } };
+  const copR=()=>cop.out.length?cop.out.shift():0;
+  const r8=A=>{ A>>>=0;
+    if(A<0x80000) return prog[A];
+    if(A>=0x500000&&A<0x600000) return ram[A-0x500000];
+    if(A>=0x2000000&&A<0x3000000) return rom.data[A-0x2000000];
+    if(A>=0x6400000&&A<0x6500000) return rom.ep1[A-0x6400000];
+    if(A>=0x6c00000&&A<0x6d00000) return rom.ep2[A-0x6c00000];
+    const k=(A>>>8).toString(16); miss[k]=(miss[k]||0)+1; return 0 };
+  const isF=A=>A>=0x880000&&A<0x890000, isC=A=>A>=0x900000&&A<0x920000;   // TGP の FIFO・データ RAM（PS2 の [gp−0x7cec]）
+  const mem={ r8,
+    r16(A){ A>>>=0; if(isF(A)) return copR()&0xffff; if(isC(A)) return ee.r16(cr+A-0x900000); return r8(A)|r8(A+1)<<8 },
+    r32(A){ A>>>=0; if(isF(A)) return copR(); if(isC(A)) return ee.r32(cr+A-0x900000); return (r8(A)|r8(A+1)<<8|r8(A+2)<<16|r8(A+3)<<24)>>>0 },
+    w8(A,v){ A>>>=0; if(A>=0x500000&&A<0x600000) ram[A-0x500000]=v; else if(A>=0x800000&&A<0x810000) return; else { const k="w"+(A>>>8).toString(16); miss[k]=(miss[k]||0)+1 } },
+    w16(A,v){ this.w8(A,v&255); this.w8(A+1,v>>>8&255) },
+    w32(A,v){ A>>>=0; if(isF(A)) return copW(v>>>0); if(isC(A)) return ee.w32(cr+A-0x900000,v); for(let k=0;k<4;k++) this.w8(A+k,(v>>>(8*k))&255) } };
+  const cpu=new I960({readUInt32LE:a=>(prog[a]|prog[a+1]<<8|prog[a+2]<<16|prog[a+3]<<24)>>>0}, mem);
+  const g7=pl=>mem.r32(pl?0x500808:0x500804);
+  const run=(pl,addrs,m)=>{ try{ for(const a of addrs){ const R=cpu.r; R[1]=R[31]=0x5f8000; R[23]=g7(pl); R[24]=g7(1-pl); R[26]=0x800000; R[27]=0x880000; R[28]=0x4000; R[16]=m||0; cpu.run(a,2e7) } }catch(e){ cop.cur=null; cop.out.length=0; throw e } };
+  // 関節の行列の置き場（cprMtxStUnitMat 0x18eac0: 引数0 の bit0 で [[gp−0x7fb8]] か [[gp−0x7fb4]]。引数0 は [g7+4]）。64B×16、12 個に直す
+  const unitBase=pl=>ee.r32(ee.r32(MOT_GP-0x7fb8+4*(mem.r8(g7(pl)+4)&1)));
+  const units=pl=>{ const b=unitBase(pl), F=k=>{ const u=ee.r32(b+k); return new Float32Array(new Uint32Array([u]).buffer)[0] }; return [...Array(16)].map((_,j)=>[0,4,8,16,20,24,32,36,40,48,52,56].map(o=>F(j*64+o))) };
+  const cur=[null,null];
+  const md16=A=>r8(A)|r8(A+1)<<8, md32=A=>mem.r32(A);
+  return {
+    mem, cpu, ee, units, unitBase, miss, run, g7,
+    info:pl=>({motion:mem.r16(g7(pl)+0x1a8), frame:mem.r16(g7(pl)+0x1aa), length:mem.r16(g7(pl)+0x800)}),
+    motionLength(m){ if(m<1||m>=md32(0x6c00000)) return 0; const p=md32(MOT_MOTTBL+m*4); if(!(p>=0x2000000&&p<0x3000000||p>=0x6c00000&&p<0x6d00000)) return 0; return md16(p) },
+    start(pl,m,smooth=false){ const G=g7(pl); mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,1); run(pl,smooth?[MOT_FN.start,MOT_FN.setup,MOT_FN.blend]:[MOT_FN.start,MOT_FN.setup],m); cur[pl]={m,f:0} },
+    frame(pl,f){ const G=g7(pl), m=mem.r16(G+0x1a8);
+      if(!cur[pl]||cur[pl].m!==m||f<=cur[pl].f&&cur[pl].f>0){ if(cur[pl]&&cur[pl].m===m) this.start(pl,m); else cur[pl]={m,f:0} }
+      for(let k=cur[pl].f+1;k<=f;k++){ mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,k); if(k<mem.r16(G+0x800)) run(pl,[MOT_FN.script],m) }
+      mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,f); cur[pl].f=f; run(pl,[MOT_FN.frame,MOT_FN.units],m); return units(pl) },
+  };
+}
+
+// 行列（12 個。行ベクトルの形: 点 p → p·R＋t。R の行＝x,y,z の像）
+const motMul=(a,b)=>{ const r=[]; for(let i=0;i<3;i++) for(let j=0;j<3;j++) r[i*3+j]=a[i*3]*b[j]+a[i*3+1]*b[3+j]+a[i*3+2]*b[6+j]; for(let j=0;j<3;j++) r[9+j]=a[9]*b[j]+a[10]*b[3+j]+a[11]*b[6+j]+b[9+j]; return r };
+const motInv=a=>{ // 回転は直交とみなす
+  const r=[a[0],a[3],a[6],a[1],a[4],a[7],a[2],a[5],a[8]]; return [...r,-(a[9]*r[0]+a[10]*r[3]+a[11]*r[6]),-(a[9]*r[1]+a[10]*r[4]+a[11]*r[7]),-(a[9]*r[2]+a[10]*r[5]+a[11]*r[8])] };
+const motInvG=a=>{ // 一般の 3×3＋位置（影のように潰れていないもの）
+  const [m0,m1,m2,m3,m4,m5,m6,m7,m8]=a, d=m0*(m4*m8-m5*m7)-m1*(m3*m8-m5*m6)+m2*(m3*m7-m4*m6);
+  const r=[(m4*m8-m5*m7)/d,(m2*m7-m1*m8)/d,(m1*m5-m2*m4)/d,(m5*m6-m3*m8)/d,(m0*m8-m2*m6)/d,(m2*m3-m0*m5)/d,(m3*m7-m4*m6)/d,(m1*m6-m0*m7)/d,(m0*m4-m1*m3)/d];
+  return [...r,-(a[9]*r[0]+a[10]*r[3]+a[11]*r[6]),-(a[9]*r[1]+a[10]*r[4]+a[11]*r[7]),-(a[9]*r[2]+a[10]*r[5]+a[11]*r[8])] };
+const motDist=(a,b)=>{ let m=0; for(let i=0;i<a.length;i++) m=Math.max(m,Math.abs(a[i]-b[i])); return m };
+const motDet=a=>a[0]*(a[4]*a[8]-a[5]*a[7])-a[1]*(a[3]*a[8]-a[5]*a[6])+a[2]*(a[3]*a[7]-a[4]*a[6]);
+const MOT_I=[1,0,0,0,1,0,0,0,1];
+
+// 写しの部品を関節に付ける。V＝カメラ（背景の部品の行列＝いちばん多く出てくる行列）。
+// 体の部品は関節の行列そのまま（写し16 で 17 個ともずれ 0）。影（潰れた行列）は 世界＝関節·P（P は床へ潰す行列、全部の影で共通）。
+// それ以外（髪など）は、いちばん近い関節からのずれ（rel）をそのまま持って付いていく
+// Us: 関節の候補（写しの命令の列は関節の行列より 2 コマほど遅れているので、今のコマから数コマ前まで。いちばん多く体が付くものを使う）
+// ids: 写しのときの関節ごとの部品の番号（engine.parts）。あればその番号の部品はその関節に付ける（ゲームと同じ）
+// カメラ C（部品の行列＝関節の行列·C）を関節 U から逆算する。pl の体の部品（行列式が 1 に近い）の先頭いくつかと 16 の関節の組で C の候補を作り、
+// いちばん多くの部品が どれかの関節·C に一致するもの。n＝一致した部品の数（命令の列が関節と同じコマかの目安にもなる）
+function motCamera(sc, pl, U, tries=Infinity, keep=null){
+  let bg=null, nv=0; for(const d of sc.draws){ let n=0; for(const e of sc.draws) if(motDist(e.m,d.m)<1e-4) n++; if(n>nv){ nv=n; bg=d.m } }
+  const mine=sc.draws.filter(d=>d.player===pl&&motDet(d.m)>0.5&&!(bg&&motDist(d.m,bg)<1e-4)&&(!keep||keep(d))); let best=null;
+  for(const d of mine.slice(0,tries)) for(const u of U){ const C=motMul(motInv(u),d.m), iC=motInvG(C); let n=0;
+    for(const e of mine){ const W=motMul(e.m,iC); if(U.some(x=>motDist(x,W)<2e-3)) n++ } if(!best||n>best.n) best={V:C,n} }
+  return best;
+}
+// 命令の列（0x1288000 から 0x8000 おきに 12 本。回しながら書く）のうち、写しの関節と同じコマのもの。2P の関節で照らす（1P の表にはステージも入るので）。
+// 列の番号を持つ値は主メモリに見つからなかった（CLAUDE.md）
+function motPickScene(mem, U2){
+  let best=null;
+  for(let k=0;k<12;k++){ let sc; try{ sc=sceneRead(mem,0x1288000+k*0x8000) }catch(e){ continue } const c=motCamera(sc,1,U2,4); if(c&&(!best||c.n>best.n)) best={sc,n:c.n,k} }
+  return best;
+}
+// keep(d): 付けてよい部品か（FV は 1P の表にステージの部品も入り、床などが関節の近くにあるので、キャラのファイルに無い番号は外す）
+function motAttach(sc, pl, Us, ids, keep=null){
+  if(!Array.isArray(Us[0][0])) Us=[Us];
+  let best=null; for(const U of Us){ const a=motAttach1(sc,pl,U,ids,keep); if(!best||a.parts.filter(p=>p.body).length>best.parts.filter(p=>p.body).length) best=a } best.ids=ids||null; return best;
+}
+function motAttach1(sc, pl, U, ids, keep=null){
+  // カメラ: FV では部品の行列＝関節·C で、C はステージの行列（いちばん多い行列）とは y 軸まわりに回っている。関節から逆算する（motCamera）
+  let bg=null, nv=0; for(const d of sc.draws){ let n=0; for(const e of sc.draws) if(motDist(e.m,d.m)<1e-4) n++; if(n>nv){ nv=n; bg=d.m } }
+  const V=(motCamera(sc,pl,U,Infinity,keep)||{V:bg}).V;
+  const iV=motInvG(V), out=[], shadows=[], mirrors=[];
+  sc.draws.forEach((d,i)=>{ if(d.player!==pl||d.id<0&&!d.dyn||motDist(d.m,bg)<1e-4||keep&&!keep(d)) return;   // 背景（1P の表に入っている）は除く
+    const W=motMul(d.m,iV);
+    if(Math.min(...U.map(u=>Math.hypot(u[9]-W[9],u[10]-W[10],u[11]-W[11])))>1.5) return;
+    if(Math.abs(motDet(d.m))<0.05){ shadows.push({i,W}); return }   // build.js と同じ見分け方
+    if(motDet(d.m)<-0.05){ mirrors.push({i,W}); return }   // 床への映り込み（行列式が負。写し16・17）
+    if(ids&&d.id>=0){ const k=ids.indexOf(d.id); if(k>=0){ out.push({i,k,rel:[...MOT_I,0,0,0],body:true}); return } }
+    let bk=0, be=1e9; for(let k=0;k<16;k++){ const rel=motMul(W,motInv(U[k])); const e=motDist(rel.slice(0,9),MOT_I)+Math.hypot(rel[9],rel[10],rel[11]); if(e<be){ be=e; bk=k } }
+    if(be>=0.6){ be=1e9; for(let k=0;k<16;k++){ const e=Math.hypot(U[k][9]-W[9],U[k][10]-W[10],U[k][11]-W[11]); if(e<be){ be=e; bk=k } } out.push({i,k:bk,rel:motMul(W,motInv(U[bk]))}); return }   // 髪など: いちばん近い関節
+    out.push({i,k:bk,rel:[...MOT_I,0,0,0],body:true});
+  });
+  // 映り込み: 世界＝関節·F（F は床で折り返す行列で全部に共通）。F＝inv(U_k)·W をすべての組で作り、いちばん多く一致するもの
+  if(mirrors.length){
+    const cand=[]; for(const s of mirrors) for(let k=0;k<16;k++) cand.push(motMul(motInv(U[k]),s.W));
+    let F=null, nf=0; for(const c of cand){ let n=0; for(const e of cand) if(motDist(e,c)<0.01) n++; if(n>nf){ nf=n; F=c } }
+    for(const s of mirrors){ let bk=0,be=1e9; for(let k=0;k<16;k++){ const e=motDist(motMul(motInv(U[k]),s.W),F); if(e<be){ be=e; bk=k } }
+      if(be<0.05) out.push({i:s.i,k:bk,mirror:F}); else { let bj=0,bd=1e9; for(let k=0;k<16;k++){ const e=Math.hypot(U[k][9]-s.W[9],U[k][10]-s.W[10],U[k][11]-s.W[11]); if(e<bd){ bd=e; bj=k } } out.push({i:s.i,k:bj,rel:motMul(s.W,motInvG(U[bj]))}) } }
+  }
+  // 影: ゲームの影の部品は体の部品と向きの決め方が違い、関節の行列を床へ潰した形では合わない（写し16）。技を出すときは影の部品を消し、
+  // 体の部品を光の向きで床（元の影の高さ）へ投げたもので代わりにする（ゲームの影そのものではない）
+  const Vr=V, L=sc.light, Lw=[0,1,2].map(j=>L[0]*Vr[j*3]+L[1]*Vr[j*3+1]+L[2]*Vr[j*3+2]);   // カメラの向き → 世界（R は直交。v_world＝v_cam·Rᵀ）
+  const h=shadows.length?shadows.reduce((a,s)=>a+s.W[10],0)/shadows.length:null;
+  const shadowP=h===null||Math.abs(Lw[1])<1e-3?null:[1,0,0,-Lw[0]/Lw[1],0,-Lw[2]/Lw[1],0,0,1,h*Lw[0]/Lw[1],h,h*Lw[2]/Lw[1]];
+  return {V,parts:out,shadowParts:shadows.map(s=>s.i),shadowP};
+}
+// 新しい関節 U2 で、写しの命令の列（sc）の pl の部品の行列を置き直した列を返す。ids（engine.parts）があれば手などの部品の番号も差し替える（att.ids＝写しのときの番号）
+function motApply(sc, att, U2, ids){
+  const draws=sc.draws.slice();
+  for(const p of att.parts){ const d=draws[p.i], id=ids&&p.body&&ids[p.k]!==undefined&&d.id>=0&&att.ids&&d.id===att.ids[p.k]?ids[p.k]:d.id; draws[p.i]={...d,id,m:motMul(p.mirror?motMul(U2[p.k],p.mirror):motMul(p.rel,U2[p.k]),att.V)} }
+  if(att.shadowP) for(const p of att.parts) if(p.body) draws.push({...draws[p.i],m:motMul(motMul(motMul(p.rel,U2[p.k]),att.shadowP),att.V)});
+  const hide=new Set(att.shadowParts);
+  return {...sc,draws:draws.filter((d,i)=>!hide.has(i))};
+}
+// コマンド表（ディスクの XXX_CMND.FTS）の技と技の番号の対応（cmdmap.mjs で、ゲームの処理に入力を与えて出させたもの）。
+// 同じ番号が出た技が複数あるときは入力のいちばん短いもの（PPK と ←＋K がどちらも 608 なら ←＋K の名前）。
+// キャラの番号（構造体の +0x1b1）→ [ファイルの名前, [[コマンド表の文字列の何番目（技の名前）, 技の番号], …]]。名前そのものはページがディスクから読む
+const FV_MOVES={
+  1:["GRACE_CMND.FTS",[[2,673],[4,843],[6,842],[8,557],[10,844],[16,298],[22,1022],[26,864],[28,579],[30,836],[32,503],[34,784],[38,565],[40,608],[44,720],[46,627],[48,585],[52,1009],[54,339],[78,396],[82,797],[100,513],[138,675],[140,639],[142,511],[146,515],[148,641]]],
+  4:["BAHN_CMND.FTS",[[2,847],[4,1022],[6,605],[8,616],[12,615],[14,614],[18,717],[24,981],[34,632],[36,548],[38,656],[40,832],[42,727],[44,511],[46,396],[112,676],[116,854],[118,630],[120,515]]],
+  6:["RAXEL_CMND.FTS",[[2,671],[4,576],[6,665],[12,842],[14,1022],[16,611],[18,619],[20,620],[26,712],[28,653],[30,600],[32,603],[34,602],[36,642],[38,784],[40,546],[42,609],[44,518],[46,372],[50,802],[52,389],[58,341],[68,396],[72,720],[90,691],[132,675],[134,509],[136,630],[138,515]]],
+  3:["TOKIO_CMND.FTS",[[2,671],[4,678],[6,679],[8,681],[10,596],[12,1022],[14,719],[20,680],[24,722],[26,846],[38,321],[44,629],[46,609],[48,560],[52,802],[54,638],[58,375],[62,340],[70,342],[92,512],[96,396],[118,505],[164,676],[166,1010],[170,515]]],
+  0:["JANE_CMND.FTS",[[2,674],[4,620],[6,842],[8,646],[16,573],[18,964],[22,1022],[24,561],[26,610],[28,711],[32,650],[34,578],[36,613],[38,612],[44,642],[46,560],[48,629],[50,697],[52,518],[54,517],[56,340],[60,396],[134,676],[136,512],[138,630],[140,515]]],
+  5:["PICKY_CMND.FTS",[[2,664],[4,665],[6,685],[8,535],[20,1027],[26,1022],[30,611],[32,667],[34,668],[36,669],[38,413],[42,662],[44,696],[46,375],[48,607],[50,663],[54,738],[60,698],[66,339],[70,396],[74,629],[140,414],[142,630],[144,515],[150,509]]],
+  2:["HONEY_CMND.FTS",[[2,674],[4,574],[6,842],[8,575],[16,1022],[18,539],[20,864],[22,586],[24,579],[26,587],[30,716],[36,974],[38,642],[40,542],[50,375],[52,739],[56,373],[58,606],[60,689],[64,537],[66,340],[68,342],[70,511],[74,396],[78,721],[154,676],[160,515],[162,497]]],
+  7:["SANMAN_CMND.FTS",[[2,671],[4,683],[6,853],[8,149],[12,654],[14,377],[18,1022],[20,599],[22,703],[24,704],[28,713],[30,714],[34,336],[36,682],[44,684],[52,687],[54,548],[56,606],[58,376],[60,340],[70,688],[86,396],[144,496],[146,497],[148,515]]],
+};
+// コマンド表の文字列: 「★」から後ろの EUC-JP の 0 終わりの並び（cmdlist.py と同じ読み方）。[★, 凡例, 技の名前, 入力, 技の名前, 入力, …]
+function cmdStrings(u8){ let t=-1; const key=[60,88,95,50,48,48,62]; for(let i=0;i+7<u8.length&&t<0;i++){ let ok=true; for(let k=0;k<7;k++) if(u8[i+k]!==key[k]){ ok=false; break } if(ok) t=i }   // "<X_200>"
+  let b=t; while(b>2&&!(u8[b-3]===0xa1&&u8[b-2]===0xfa&&u8[b-1]===0)) b--; b-=3;
+  const dec=new TextDecoder("euc-jp"), out=[]; let s=b; for(let i=b;i<u8.length;i++) if(!u8[i]){ if(i>s) out.push(dec.decode(u8.subarray(s,i))); s=i+1 } return out }
+// 入力の表記を読める形に: r→ l← u↑ d↓ x↘ z↙ a↗ s↖（大文字は長押し）。条件の言葉はそのまま
+const CMD_ARROW={r:"→",l:"←",u:"↑",d:"↓",x:"↘",z:"↙",a:"↗",s:"↖"};
+function cmdPretty(c){ return c.replace("<X_20>","").replace(/<GFX_([^>]*)>/g,(_,t)=>[...t].map(ch=>"PKG".includes(ch)?ch:CMD_ARROW[ch]?CMD_ARROW[ch]:CMD_ARROW[ch.toLowerCase()]?CMD_ARROW[ch.toLowerCase()]+"長":ch).join("")).replace(/　/g," ").trim() }
+// FV のアーケードのテクスチャを、ディスクの ROM_CODE1（i960 のプログラム）と ROM_DATA（main_data、0x2000000〜）から作る。
+// 読み込みの流れ（FV 0x4b5ec〜）は VF2 の 0x4bd60〜 と命令単位で同じで、関数の番地だけ違う（arcade.js の I960 を使う）:
+// テクスチャ RAM の書き先の頭は、VF2 は定数（0x12200000・0x12600000）だが FV は RAM の [0x500254]（ページ0）・[0x500258]（ページ1）から読み、
+// 16bit の語を 2 バイトおきに書く（VF2 は 4 バイトおき）。段（ミップマップ）ごとの進みは 0xc0000（VF2 は 0x180000）。ここでは 0x40000000・0x48000000 を入れて受ける
+//   VF2 0x4d16c→FV 0x4ca74（段ごとの写し先）・0x4c180→0x4ba2c（符号の木で展開）・0x4cb64→0x4c470・0x4cd18→0x4c620・0x4c9dc→0x4c2a0・表 0x4c120→0x4b9c0
+const FVA={place:0x4ca74, huff:0x4ba2c, b:0x4c470, c:0x4c620, other:0x4c2a0, tbl:0x4b9c0};
+function fvArcLoader(prog,data){
+  const code={readUInt32LE:a=>(prog[a]|prog[a+1]<<8|prog[a+2]<<16|prog[a+3]<<24)>>>0};
+  const ram=new Uint8Array(0x100000), ram2=new Uint8Array(0x40000), tex=[new Uint16Array(0x80000),new Uint16Array(0x80000)], mask=[new Uint8Array(0x80000),new Uint8Array(0x80000)];
+  const r8=A=>{ A>>>=0;
+    if(A<0x80000) return prog[A];
+    if(A>=0x500000&&A<0x600000) return ram[A-0x500000];
+    if(A>=0x200000&&A<0x240000) return ram2[A-0x200000];
+    if(A>=0x2000000&&A<0x3000000) return data[A-0x2000000];
+    if(A>=0xf00000&&A<0xf00010) return 0xff;   // タイマー: いつも「まだ時間がある」
+    return 0 };
+  const texw=(A,v)=>{ const s=(A>>>27)&1, h=((A&0x7ffffff)>>>1)&0x7ffff; tex[s][h]=v&0xffff; mask[s][h]=1 };
+  const mem={ r8, r16:A=>r8(A)|r8(A+1)<<8, r32:A=>(r8(A)|r8(A+1)<<8|r8(A+2)<<16|r8(A+3)<<24)>>>0,
+    w8(A,v){ A>>>=0; if(A>=0x500000&&A<0x600000) ram[A-0x500000]=v; else if(A>=0x200000&&A<0x240000) ram2[A-0x200000]=v },
+    w16(A,v){ A>>>=0; if(A>=0x40000000&&A<0x50000000) return texw(A,v); this.w8(A,v&255); this.w8(A+1,v>>>8&255) },
+    w32(A,v){ A>>>=0; if(A>=0x40000000&&A<0x50000000) return texw(A,v); for(let k=0;k<4;k++) this.w8(A+k,(v>>>(8*k))&255) } };
+  const cpu=new I960(code,mem); mem.w32(0x500254,0x40000000); mem.w32(0x500258,0x48000000);
+  function loadSet(s,flip=0){
+    const R=cpu.r, r32=mem.r32;
+    let r10=r32(r32(0x230000c)+s*4); const first=r32(r10); r10+=4;
+    let r9=r32(r32(0x2300008)+first*4); const n=r32(r9); r9+=4;
+    for(let e=0;e<n;e++){
+      const g2=r32(r9), g0=(g2<<16)>>>17;
+      R[1]=R[31]=0x5f0000; mem.w32(0x550080,0); mem.w32(0x5500f4,0); mem.w8(0x500000,0); mem.w8(0x50008c,0); mem.w32(0x55c2f4,flip&1); mem.w32(0x550004,0x12a8); mem.w32(0x550008,0x4e20);
+      R[24]=(g2^flip)&1; R[22]=(mem.r16(FVA.tbl+g0*4)+(g2>>>24))>>>0; R[23]=(mem.r16(FVA.tbl+2+g0*4)+((g2<<8)>>>24))>>>0;
+      cpu.run(FVA.place);
+      let g3=r32(r10); const t=r32(g3); R[19]=g3+4;
+      if(t===0){ cpu.run(FVA.huff); cpu.run(FVA.b); cpu.run(FVA.c) } else cpu.run(FVA.other);
+      r9+=4; r10+=4;
+    }
+    return n;
+  }
+  return {cpu,mem,tex,mask,loadSet};
+}
+// アーケードのテクスチャ: 共通のセット 36、キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）で 2P はページを入れ替え、ステージ OBJ_STGnn はセット 18＋n。
+// （写しの PS2 のテクスチャ用メモリと一致するセットはこれだけ。grace・bahn・picky で確かめた）
+// キャラは RAM の縦 0〜1023、ステージは 1024〜1535 だけ使い（セットは段の小さい版などほかの所にも書く）、ロムで書いた所は値＋128
+// names: [1P のキャラ, 2P のキャラ, ステージ]（OBJ_ROBnn.CMP・OBJ_STGnn.CMP の名前）
+function fvArcPages(rom,names){   // rom: {prog: ROM_CODE1, data: ROM_DATA}（展開したもの）
+  const LC=fvArcLoader(rom.prog,rom.data), LS=fvArcLoader(rom.prog,rom.data);
+  LC.loadSet(36,0);   // どの写しにも載っている共通のセット（ページ1）
+  names.slice(0,2).forEach((f,pl)=>{ if(!f) return; let n=+f.match(/ROB(\d+)/)[1]; if(n>=13) n-=13; LC.loadSet(2*n+1,pl); LC.loadSet(2*n+2,pl) });
+  if(names[2]) LS.loadSet(18+(+names[2].match(/STG(\d+)/)[1]),0);
+  return [0,1].map(p=>{ const o=new Uint8Array(1024*2048);
+    for(let y=0;y<1536;y++){ const src=y<1024?LC:LS;
+      for(let x=0;x<1024;x++){ const h=(y>>1)*512+(x>>1); if(src.mask[p][h]) o[y*1024+x]=128|arcTexel(src.tex[p],x,y) } }
+    return o });
+}
+// ミップマップの小さい版（段 1〜3）を元の大きさの版から作る（VF2 の vapp.js と同じ）。ロムで作った所（値＋128）だけ。ほかは 255（小さい版なし）
+function fvArcMips(pages){
+  const o=new Uint8Array(2048*2048).fill(255), place=[null,[512,0],[256,1024],[128,1536]];
+  for(const p of [0,1]) for(let l=1;l<=3;l++){ const sc=1<<l, W=1024>>l, H=2048>>l, [ox,oy]=[place[l][0]*p,place[l][1]];
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){ let n=0,tr=0,sum=0,ok=true;
+      for(let dy=0;dy<sc&&ok;dy++) for(let dx=0;dx<sc;dx++){ const v=pages[p][(y*sc+dy)*1024+x*sc+dx]; if(v<128){ ok=false; break } n++; if((v&15)===15) tr++; else sum+=v&15 }
+      if(ok) o[(oy+y)*2048+ox+x]=tr*2>=n?15:Math.round(sum/(n-tr)) } }
+  return o;
+}
+// WebGL で描く。明るさは build.js の buildBright・buildLuma と同じ式（VU1 のプログラムを写したもの。pose.mjs も同じ）。
+// 色＝色の変換表[チャンネル][色 RAM の 5bit][明るさ]。光はゲームのカメラの座標で計算する（回して見ても場面に固定）。影は黒の半透明で最後に描く
+const VGL_VS=`
+attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol; attribute vec2 aLoc; attribute vec4 aOrgSize; attribute vec3 aMisc; attribute vec4 aLk; attribute float aSpecial;
+uniform mat4 uView; uniform vec2 uFocal; uniform vec3 uLight;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial; varying float vCull;
+void main(){
+  vec4 p=uView*vec4(aPos,1.0);
+  float d=clamp(dot(uLight,aNrm),0.0,1.0), s=clamp(2.0*d*aNrm.z-uLight.z,0.0,1.0);
+  vB=floor(clamp(aLk.x*d+aLk.y+(aLk.w>0.5?aLk.z*pow(s,8.0):0.0),0.0,127.0));
+  vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc; vSpecial=mod(aSpecial,2.0);
+  float over=floor(mod(aSpecial,1024.0)/4.0);   // 部品の中で何枚目の重ねる面か（build.js）
+  vCull=aSpecial>=1023.5?1.0:0.0;   // 裏向きなら描かない面（キャラ。build.js の 1024）
+  // 奥行き 0.05〜100 を -1〜1 に
+  gl_Position=vec4(uFocal.x*p.x, uFocal.y*p.y, (p.z*100.05-10.0)/99.95, p.z);
+  // 重ねる面（貼りもの＝目や眉、透明ありのテクスチャの面＝ウルフの隈取りなど）は肌とまったく同じ所にあるので、ごくわずか手前へ。
+  // ゲームは部品の中をファイルの順に上塗りする（VU1 の m2mdlSetSameZval）ので、後の面ほど少しずつ手前へ（深さの刻み 1 つ強ずつ）
+  if(mod(aSpecial,4.0)>1.5) gl_Position.z-=(0.00002+over*1.5e-7)*p.z;
+}`;
+const VGL_FS=`
+precision highp float;
+uniform sampler2D uTex, uClut, uXlat, uTexA, uTexM; uniform float uShadow, uCut, uBilin, uArc, uMip, uMipForce;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial; varying float vCull;
+// テクスチャの値（0〜15）。loc は面の中のテクセルの位置で、テクスチャの大きさで折り返す
+// アーケードのテクスチャ（uArc）: FV は loc・org・size がアーケードのテクスチャ RAM のテクセル単位（tex.js の texCoords。[0]＝u の向き＝RAM の縦、[1]＝v の向き＝RAM の横）。
+// RAM（横 1024・縦 2048、ページ2枚を横に並べた 2048×2048）の (横 org[1]＋loc[1], 縦 org[0]＋loc[0]) を引く（VF2 は横が 4 倍の単位だった）
+// 折り返しは整数のテクセル番号で（mod に整数ちょうどを渡すと誤差で1つ先を読むことがある。なめらかのとき点々になった）
+vec2 wrapi(vec2 loc,vec2 sz){ vec2 li=floor(loc); return li-sz*floor((li+0.5)/sz); }
+// PS2 のテクスチャ: 座標は UV に +10 した値（横 10/32・縦 10/8 テクセル。PS2 版の変換済みモデルの ST と同じ）。区画の端ちょうどまでの面が
+// この分だけはみ出して、折り返すと反対の端（目や眉の濃い所）を読み、頬に線が出た。何番目の区画かは +10 を引いた位置で決め、はみ出しは端のテクセルで止める
+vec2 wrapb(vec2 loc,vec2 sz){ vec2 li=floor(loc), k=floor((loc-vec2(0.3125,1.25))/sz); return clamp(li-sz*k,vec2(0.0),sz-1.0); }
+// アーケードのテクスチャのミップマップの段（0＝元の大きさ）。小さい版はページで作る（vapp.js の arcMips。アーケードの RAM の小さい版は、ステージのセットを全部展開すると別のテクスチャとぶつかるので使わない）
+float gLev=0.0;
+float texA(vec2 loc){   // loc は段 gLev の単位。値＋128（ロムで作った所）のまま返す。段 1〜 で小さい版が無い所は 255
+  float sc=exp2(gLev); vec2 sz=vOrgSize.zw/sc, o=vOrgSize.xy, li=wrapi(loc,sz);
+  float x=floor(o.y/sc)+li.y, y=floor(o.x/sc)+li.x;   // 格納の座標（横 x＝o.y 側、縦 y＝o.x 側）を段の大きさで
+  if(gLev>0.5){ float w=1024.0/sc, oy=gLev<1.5?0.0:gLev<2.5?1024.0:1536.0;
+    float v=floor(texture2D(uTexM,vec2((vMisc.y*w+x+0.5)/2048.0,(oy+y+0.5)/2048.0)).r*255.0+0.5); return v>254.5?v:v+128.0; }
+  return floor(texture2D(uTexA,vec2((x+vMisc.y*1024.0+0.5)/2048.0,(y+0.5)/2048.0)).r*255.0+0.5);
+}
+float texv(vec2 loc){
+  if(uArc>0.5){ float v=texA(loc); return v>127.5?v-128.0:v; }
+  vec2 t=vOrgSize.xy+wrapb(loc,vOrgSize.zw);
+  return floor(texture2D(uTex,vec2((t.x+vMisc.y*512.0+0.5)/1024.0,(t.y+0.5)/1024.0)).r*255.0/17.0+0.5);
+}
+float xl(float row,float luma){ return texture2D(uXlat,vec2((luma+0.5)/64.0,(row+0.5)/96.0)).r; }
+void main(){
+  if(vCull>0.5&&!gl_FrontFacing) discard;   // キャラの裏向きの面（ゲームも描かない。バーンのコートの裏地が表の上に出ていた）
+  if(uShadow>0.5){ gl_FragColor=vec4(0.0,0.0,0.0,0.45); return; }
+  float L=floor(texture2D(uClut,vec2((vB+0.5)/128.0,(vMisc.z+0.5)/256.0)).r*255.0+0.5), luma;
+  if(vMisc.x>0.5){
+    vec2 loc=uArc>0.5?vLoc-0.875:vLoc;   // アーケード: MAME と同じく UV÷8（FV の PS2 の座標の +7 の分を引く）
+#ifdef HAS_DERIV
+    // 微分は if や discard より前に（画素ごとに通り方が違う所では値が決まらない。そこで取ると段がでたらめになり点々が出た）
+    float rho=max(length(dFdx(loc)),length(dFdy(loc)));
+    // アーケードのテクスチャ: 画面の1画素に入るテクセルの数で段を選ぶ。元の大きさの所がロムで展開した所のときだけ（ロムで展開したテクスチャには小さい版が必ずある。
+    // PS2 で埋めた所には無く、段の場所にたまたまロムの別のテクスチャがあるので、段の場所では判定しない）
+    if(uArc>0.5&&uMip>0.5&&texA(loc)>127.5){ float l=clamp(floor(log2(max(rho,1e-6))),0.0,3.0);
+      if(uMipForce>-0.5) l=uMipForce;   // 調べ用（URL の ?mip=段）
+      for(int k=0;k<3;k++){ if(l>0.5){ gLev=l; if(texA(loc/exp2(l))<254.5) break; l-=1.0; } }
+      gLev=l; loc/=exp2(l); }
+#endif
+    float tx=texv(loc);
+    bool cut=vMisc.x>1.5, ramp=vSpecial>0.5||L<48.0;
+    bool mame=uArc>0.5&&uBilin>0.5&&cut;   // アーケードのテクスチャ＋なめらか: 透明は MAME どおり（下）。一番近いテクセルでは抜かない
+    if(abs(tx-uCut)<0.5||(cut&&tx>14.5&&!mame)) discard;   // 値 15 は、属性 h0 の bit13 が立った面では透明（推測。写真で木が抜けるのを確かめた）
+    // なめらか: ゲームは GS にバイリニアで引かせている（ゲームが描いた画面がぼけている）。周りの4つのテクセルの重み付き平均。
+    // 透明のある面では透明のテクセル（15）を混ぜない（混ぜると縁が白っぽく色あせる）
+    if(uBilin>0.5){ vec2 f=loc-0.5, b=floor(f), a=f-b;
+      vec4 t=vec4(texv(b),texv(b+vec2(1.0,0.0)),texv(b+vec2(0.0,1.0)),texv(b+vec2(1.0,1.0))), w=vec4((1.0-a.x)*(1.0-a.y),a.x*(1.0-a.y),(1.0-a.x)*a.y,a.x*a.y);
+      if(mame){
+        // MAME（model2rd.ipp の fetch_bilinear_texel）: 透明のテクセルは横の隣の値を借り、横に混ぜた1行が2つとも透明ならもう1行の値を借りる。
+        // 透明度も同じ重みで混ぜ、50% 未満なら描かない（アーケードは線に幅があるので削れない。PS2 版のテクスチャでは穴が開くので使わない）
+        vec4 op=step(t,vec4(14.5));
+        if(dot(w,op)<0.5) discard;
+        if(op.x<0.5) t.x=t.y; if(op.y<0.5) t.y=t.x; if(op.z<0.5) t.z=t.w; if(op.w<0.5) t.w=t.z;
+        if(op.x+op.y<0.5){ t.x=t.z; t.y=t.w; } if(op.z+op.w<0.5){ t.z=t.x; t.w=t.y; }
+      } else if(cut) w*=step(t,vec4(14.5));
+      float ws=dot(w,vec4(1.0)); if(ws<1e-3){ t=vec4(tx); w=vec4(1.0,0.0,0.0,0.0); } else w/=ws;   // 4つとも透明（重み 0）なら一番近いテクセルだけ
+      if(!ramp){
+        // 目や眉など、値を色の表の特別な欄（48 列目〜）の番号として使う面: 番号を平均すると関係のない色になるので、4つを色にしてから混ぜる
+        vec3 c=vec3(0.0);
+        for(int k=0;k<4;k++){ float tk=k==0?t.x:k==1?t.y:k==2?t.z:t.w, wk=k==0?w.x:k==1?w.y:k==2?w.z:w.w; float lk=clamp(floor(48.0+tk+0.5),0.0,63.0);
+          c+=wk*vec3(xl(vCol.r,lk),xl(32.0+vCol.g,lk),xl(64.0+vCol.b,lk)); }
+        gl_FragColor=vec4(c,1.0); return;
+      }
+      tx=dot(t,w); }
+    luma=ramp?floor(L*tx*17.0*8.0/2048.0):floor(48.0+tx+0.5);
+  } else luma=L;
+  luma=clamp(luma,0.0,63.0);
+  gl_FragColor=vec4(xl(vCol.r,luma),xl(32.0+vCol.g,luma),xl(64.0+vCol.b,luma),1.0);
+}`;
+let vglCut=+(new URLSearchParams(location.search).get("cut")??-1), vglMip=+(new URLSearchParams(location.search).get("mip")??-1);
+function vglNew(canvas){
+  const gl=canvas.getContext("webgl",{antialias:true,preserveDrawingBuffer:true,alpha:true});
+  if(!gl) throw new Error("このブラウザは WebGL に対応していない");
+  const sh=(t,src)=>{ const s=gl.createShader(t); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s };
+  // 描画の微分（ミップマップの段を選ぶのに使う）。無いブラウザでは段は 0 のまま
+  const deriv=!!gl.getExtension("OES_standard_derivatives");
+  const pr=gl.createProgram(); gl.attachShader(pr,sh(gl.VERTEX_SHADER,VGL_VS)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,(deriv?"#extension GL_OES_standard_derivatives : enable\n#define HAS_DERIV 1\n":"")+VGL_FS)); gl.linkProgram(pr);
+  if(!gl.getProgramParameter(pr,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  const bufs=[gl.createBuffer(),gl.createBuffer()], counts=[0,0], tex={}; let mirror=null;
+  // 空と遠景（MODEL2 の2Dの面。画面に貼るだけで、視点を回しても動かない）
+  const bp=gl.createProgram();
+  gl.attachShader(bp,sh(gl.VERTEX_SHADER,"attribute vec2 aXY; varying vec2 vUV; void main(){ vUV=vec2(aXY.x*0.5+0.5,0.5-aXY.y*0.5); gl_Position=vec4(aXY,0.999,1.0); }"));
+  gl.attachShader(bp,sh(gl.FRAGMENT_SHADER,"precision mediump float; uniform sampler2D uBack; varying vec2 vUV; void main(){ vec4 c=texture2D(uBack,vUV); if(c.a<0.5) discard; gl_FragColor=vec4(c.rgb,1.0); }"));
+  gl.linkProgram(bp); if(!gl.getProgramParameter(bp,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(bp));
+  const quad=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,quad); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  let hasBack=false, hasArc=false;
+  const lum=(name,unit,w,h,data)=>{ let t=tex[name]; if(!t){ t=tex[name]=gl.createTexture() }
+    gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,w,h,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,data);
+    for(const p of [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D,p,gl.NEAREST);
+    for(const p of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D,p,gl.CLAMP_TO_EDGE) };
+  return {
+    // 色とテクスチャの材料（sceneColors の結果）を GPU に置く
+    setColors(col){
+      const t=new Uint8Array(1024*1024);
+      for(let page=0;page<2;page++) for(let y=0;y<1024;y++) for(let x=0;x<512;x+=2){
+        const b=col.tex[(page<<18)+y*256+(x>>1)], o=y*1024+page*512+x; t[o]=(b&15)*17; t[o+1]=(b>>4)*17 }
+      lum("tex",0,1024,1024,t);
+      lum("clut",1,128,256,col.clut.slice(0,128*256));   // 曲線（明るさの段階 B → L）。番号ごとに 128 段
+      lum("xlat",2,64,96,col.xlat.slice(0,64*96));
+    },
+    // アーケードのテクスチャ（ページ2枚。各 横 1024×縦 2048 の 4bit を1バイトずつ）。null で使わない
+    // mips: ミップマップの小さい版（vapp.js の arcMips の並べ方）
+    setArc(pages,mips){ if(!pages){ hasArc=false; return } const t=new Uint8Array(2048*2048);
+      for(let p=0;p<2;p++) for(let y=0;y<2048;y++) for(let x=0;x<1024;x++) t[y*2048+p*1024+x]=pages[p][y*1024+x];
+      lum("texA",4,2048,2048,t);
+      lum("texM",5,2048,2048,mips||new Uint8Array(2048*2048).fill(255)); hasArc=true },
+    // 空と遠景の絵（496×384 の RGBA。null で消す）
+    setBack(rgba){ hasBack=!!rgba; if(!rgba) return; let t=tex.back; if(!t) t=tex.back=gl.createTexture();
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,496,384,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+      for(const p of [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D,p,gl.NEAREST);
+      for(const p of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D,p,gl.CLAMP_TO_EDGE) },
+    // body＝体と背景、shadow＝影
+    setMesh(body,shadow){ [body,shadow].forEach((m,i)=>{ gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]); gl.bufferData(gl.ARRAY_BUFFER,m?m.data:new Float32Array(0),gl.STATIC_DRAW); counts[i]=m?m.count:0 }); mirror=body&&body.mirror },
+    // view: 4×4（列優先）、focal: [x,y]（クリップ座標の倍率）
+    draw(view,focal,light,back,opt={}){
+      // opt.noClear: 消さずに重ねて描く（VF2 と FV の 2 人を 1 つの画面に。同じ canvas の vglNew は同じ WebGL を使うので、奥行きも共通になる）
+      const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); if(!opt.noClear){ gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT) }
+      // 自分のテクスチャを置き場 0〜2 に結び付け直す（同じ WebGL を使うほかの vglNew が上書きしていることがある）
+      [["tex",0],["clut",1],["xlat",2]].forEach(([n,k])=>{ if(tex[n]){ gl.activeTexture(gl.TEXTURE0+k); gl.bindTexture(gl.TEXTURE_2D,tex[n]) } });
+      if(!counts[0]&&!counts[1]) return;
+      for(let l=0;l<8;l++) gl.disableVertexAttribArray(l);
+      if(back&&hasBack){   // いちばん先に、奥行きを書かずに画面いっぱいに貼る（ゲームも 3D より先に描く）
+        gl.useProgram(bp); gl.disable(gl.DEPTH_TEST); gl.bindBuffer(gl.ARRAY_BUFFER,quad);
+        const l=gl.getAttribLocation(bp,"aXY"); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,2,gl.FLOAT,false,0,0);
+        gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,tex.back); gl.uniform1i(gl.getUniformLocation(bp,"uBack"),3);
+        gl.drawArrays(gl.TRIANGLE_STRIP,0,4); gl.disableVertexAttribArray(l);
+      }
+      gl.enable(gl.DEPTH_TEST); gl.useProgram(pr);
+      const u=n=>gl.getUniformLocation(pr,n);
+      gl.uniformMatrix4fv(u("uView"),false,view); gl.uniform2fv(u("uFocal"),focal); gl.uniform3fv(u("uLight"),light);
+      gl.uniform1f(u("uCut"),vglCut); gl.uniform1f(u("uBilin"),opt.bilin?1:0);
+      gl.uniform1i(u("uTex"),0); gl.uniform1i(u("uClut"),1); gl.uniform1i(u("uXlat"),2);
+      gl.uniform1f(u("uArc"),opt.arc&&hasArc?1:0); gl.uniform1f(u("uMip"),opt.mip===false||vglMip===-2?0:1); gl.uniform1f(u("uMipForce"),vglMip); if(hasArc){ gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D,tex.texA); gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D,tex.texM) } gl.uniform1i(u("uTexA"),4); gl.uniform1i(u("uTexM"),5);
+      const F=4, S=BUILD_STRIDE*F;
+      for(let i=0;i<2;i++){ if(!counts[i]) continue;
+        gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]);
+        const at=(n,k,o)=>{ const l=gl.getAttribLocation(pr,n); if(l<0) return; gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,k,gl.FLOAT,false,S,o*F) };
+        at("aPos",3,0); at("aNrm",3,3); at("aCol",3,6); at("aLoc",2,9); at("aOrgSize",4,11); at("aMisc",3,15); at("aLk",4,19); at("aSpecial",1,23);
+        gl.uniform1f(u("uShadow"),i);
+        if(i){ gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false) }
+        // 映り込みは奥行きを比べず・書かずに描き（前の組の上に塗る）、あとに来る床に隠させる（build.js の sceneMesh の説明）
+        if(!i&&mirror){ gl.drawArrays(gl.TRIANGLES,0,mirror[0]); gl.depthMask(false); gl.disable(gl.DEPTH_TEST); gl.drawArrays(gl.TRIANGLES,mirror[0],mirror[1]-mirror[0]); gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.drawArrays(gl.TRIANGLES,mirror[1],counts[0]-mirror[1]) }
+        else gl.drawArrays(gl.TRIANGLES,0,counts[i]);
+        if(i){ gl.disable(gl.BLEND); gl.depthMask(true) }
+      }
+    }
+  };
+}
+return {discOpen,sceneColors,sceneLight,sceneAssignCommon,sceneMesh,motEngine,motAttach,motApply,motPickScene,FV_MOVES,cmdStrings,cmdPretty,fvArcPages,fvArcMips,vglNew};
+})();
+// VF2 と FV を 1 つの場面に（crossshot.mjs と同じ置き方）: VF2 の写しの 2P の代わりに、FV の写しのキャラを置いて、2 人とも技を出す。
+// FV の処理は FVX（assemble.py が FV ビューアのソースを包んだもの）。姿勢はそれぞれのゲームのプログラムで計算し、色・テクスチャ・光の強さもそれぞれのゲームのもの。
+// 置き方: FV の世界を y 軸まわりに回して動かし、FV のキャラの腰を VF2 の 2P の腰の所へ、FV で相手を向いていた向きを VF2 の 2P が 1P を向く向きに合わせる
+// （VF2 と FV は同じ大きさの座標で床は y＝0）。カメラ・背景・光の向きは VF2 の写しのもの。描くのは同じ WebGL・同じ奥行きで、VF2 のあとに FV を重ねる
+const XV={disc:null, rom:null, objCache:new Map(), st:null, ready:null, gl:null, m:0, len:0};
+function xOn(){ return !!(XV.ready&&$("x-on").checked&&APP.mode==="state"&&APP.scene) }
+async function xReadDec(n){ const f=XV.disc.get(n); if(!f) throw new Error("FV のディスクに "+n+" が無い"); return cricmpUnpack(await f()) }
+async function xReadObj(n){ if(!XV.objCache.has(n)){ const f=XV.disc.get(n); if(!f) return null; XV.objCache.set(n,new Map(objModels(cricmpUnpack(await f())).map(e=>[e.id,e]))) } return XV.objCache.get(n) }
+async function xLoadDisc(f){ if(!f) return;
+  try{ status("FV のディスクを読み込み中…"); XV.disc=await FVX.discOpen(f); XV.rom=null; XV.objCache.clear(); XV.ready=null; XV.cmd=null;
+    $("x-ndisc").textContent=f.name; status(""); await xPrepare() }catch(err){ console.error(err); status("FV のディスクを読めなかった: "+err.message,true) } }
+async function xLoadState(f){ if(!f) return;
+  try{ const z=await p2sOpen(await f.arrayBuffer()), v1=z.get("vu1Memory.bin"); XV.st={name:f.name, mem:await z.get("eeMemory.bin")(), vu1:v1?await v1():null}; XV.ready=null;
+    $("x-nstate").textContent=f.name; await xPrepare() }catch(err){ console.error(err); status("FV の写しを読めなかった: "+err.message,true) } }
+// FV のキャラを用意する（ディスクと写しがそろったとき・1P/2P を変えたとき）
+async function xPrepare(){
+  XV.ready=null; $("x-on").disabled=true;
+  if(!XV.disc||!XV.st){ if(XV.disc||XV.st) status(XV.disc?"FV の写し（.p2s）も選んでください":"FV のディスクも選んでください"); return }
+  try{
+    status("FV のキャラの用意…"); await new Promise(r=>setTimeout(r));
+    if(!XV.rom){ const R={}; for(const [k,n] of [["prog","ROM_CODE1"],["data","ROM_DATA"],["ep1","ROM_EP1"],["ep2","ROM_EP2"]]) R[k]=await xReadDec(n+".CMP"); XV.rom=R }
+    const pl=+$("x-pl").value, mem=XV.st.mem, E=FVX.motEngine(XV.rom.prog,mem,XV.rom), pick=FVX.motPickScene(mem,E.units(1));
+    if(!pick) throw new Error("FV の写しに、関節と同じコマの命令の列が見つからない");
+    const sc=pick.sc, col=FVX.sceneColors(mem), light0=FVX.sceneLight(XV.st.vu1,sc);
+    // キャラのファイル: 描いた番号をいちばん多く含む OBJ_ROBnn（＋R・共通 OBJ_COMMON）。FV のビューアと同じ選び方
+    const ids=sc.draws.filter(d=>d.player===pl).map(d=>d.id); let best=[null,0];
+    for(const n of [...XV.disc.keys()].filter(n=>/^OBJ_ROB\d+\.CMP$/.test(n)).sort()){ const m=await xReadObj(n), k=ids.filter(i=>m.has(i)).length; if(k>best[1]) best=[n,k] }
+    if(!best[0]) throw new Error("FV の写しのキャラのファイルが見つからない");
+    const file=await xReadObj(best[0]), fileR=await xReadObj(best[0].replace(".CMP","R.CMP")), common=await xReadObj("OBJ_COMMON.CMP")||new Map(), fm=new Map(file);
+    for(const x of [fileR,common]) if(x) for(const [k,v] of x) if(!fm.has(k)) fm.set(k,v);
+    FVX.sceneAssignCommon(sc,id=>common.has(id),(p,id)=>p===pl&&(file.has(id)||!!fileR&&fileR.has(id)));
+    const att=FVX.motAttach(sc,pl,[E.units(pl)],null,d=>d.dyn||fm.has(d.id)), U0=E.units(pl);
+    status("FV のテクスチャを展開中…"); await new Promise(r=>setTimeout(r));
+    const pages=FVX.fvArcPages(XV.rom,[pl?null:best[0],pl?best[0]:null,null]);
+    if(!XV.gl) XV.gl=FVX.vglNew($("cv"));
+    XV.gl.setColors(col); XV.gl.setArc(pages,FVX.fvArcMips(pages));
+    XV.ready={pl,E,sc,col,light0,fm,att,U0,pB:U0[0].slice(9),pH:E.units(1-pl)[0].slice(9),file:best[0].replace(".CMP",""),cid:E.mem.r8(E.g7(pl)+0x1b1)};
+    XV.m=0; XV.len=0; $("x-num").value=0;
+    $("x-on").disabled=false; $("x-on").checked=true; status("");
+    await xNames(); await xRefresh();
+  }catch(err){ console.error(err); XV.ready=null; status("FV のキャラを用意できなかった: "+err.message,true) }
+}
+// FV の技の名前（ディスクのコマンド表と fvmoves.js の番号。写しのキャラの技を先頭に）
+async function xNames(){ const sel=$("x-name"), R=XV.ready; sel.hidden=true; sel.innerHTML="";
+  try{ XV.cmd=XV.cmd||{}; const groups=[];
+    for(const k of [R.cid,...Object.keys(FVX.FV_MOVES).map(Number).filter(k=>k!==R.cid)]){ const e=FVX.FV_MOVES[k]; if(!e||!XV.disc.get(e[0])) continue;
+      if(!XV.cmd[e[0]]) XV.cmd[e[0]]=FVX.cmdStrings(await XV.disc.get(e[0])());
+      const s=XV.cmd[e[0]], who=(s[1]||"").split("<")[0]||e[0].replace("_CMND.FTS","");
+      groups.push({own:k===R.cid,who,list:e[1].filter(([i])=>s[i]&&s[i+1]).map(([i,m])=>({m,name:s[i],cmd:FVX.cmdPretty(s[i+1])}))}) }
+    const esc=t=>t.replace(/[&<>"]/g,c=>"&#"+c.charCodeAt(0)+";"), n=groups.reduce((a,x)=>a+x.list.length,0);
+    sel.innerHTML=`<option value="">FV の技の名前から選ぶ（${n}）</option>`+groups.map(x=>`<optgroup label="${esc(x.who)}${x.own?"（このキャラ）":""}">`+x.list.map(y=>`<option value="${y.m}">${esc(y.name)}　${esc(y.cmd)}</option>`).join("")+"</optgroup>").join("");
+    sel.hidden=!n; xNameSync() }catch(err){ console.warn(err) } }
+function xNameSync(){ const sel=$("x-name"); if(sel.hidden) return; const v=String(+$("x-num").value); sel.value=[...sel.options].some(o=>o.value===v)?v:"" }
+// FV の技を変える（0＝写しの姿勢のまま）。2 人とも頭のコマから
+async function xSetMove(m){ const R=XV.ready; if(!R||m===XV.m&&(m===0||R.E.info(R.pl).motion===m)) return; motStop();
+  if(m){ const len=R.E.motionLength(m); if(!len){ status("FV の技 "+m+" は表に無い",true); return } R.E.start(R.pl,m); XV.m=m; XV.len=len } else { XV.m=0; XV.len=0 }
+  status(""); $("x-num").value=XV.m; xNameSync(); await xRefresh(1) }
+// 今の VF2 の技・コマで組み直す（入れ替えを切り替えたとき・押し合いを変えたときなど）
+async function xRefresh(f){ if(!APP.scene||APP.mode!=="state") return;
+  $("m-pl").disabled=xOn(); if(xOn()&&+$("m-pl").value!==0){ $("m-pl").value=0; if(APP.mot) APP.mot.m=0 }
+  const M=await motEnsure(); if(!M) return;
+  if(M.m) await motSet(M.m,f||M.f); else { APP.scene.sc=APP.scene.sc0; if(xOn()) xCompose(M,null,f||1); rebuild() } }
+// 組む: VF2 の 1P（S.sc の 1P の部品。UA＝そのコマの関節、null なら写しのまま）と FV のキャラ（コマ f）→ S.xsc（VF2 の分）・S.fsc（FV の分）
+function xCompose(M,UA,f){
+  const S=APP.scene, R=XV.ready, mul=motMul, invG=motInvG, [pA,pL]=M.hips, V=M.att[0].V;
+  const UB=XV.m?R.E.frame(R.pl,Math.max(1,Math.min(XV.len,f))):R.U0;
+  // FV の世界 → VF2 の世界: FV のキャラの腰を原点へ → y 軸まわりに φ 回す → VF2 の 2P の腰へ
+  const phi=Math.atan2(pA[2]-pL[2],pA[0]-pL[0])-Math.atan2(R.pH[2]-R.pB[2],R.pH[0]-R.pB[0]), c=Math.cos(phi), s=Math.sin(phi);
+  const T=mul(mul([1,0,0,0,1,0,0,0,1,-R.pB[0],0,-R.pB[2]],[c,0,s,0,1,0,-s,0,c,0,0,0]),[1,0,0,0,1,0,0,0,1,pL[0],0,pL[2]]);
+  const toV=mul(mul(invG(R.att.V),T),V);   // FV のカメラの座標 → VF2 のカメラの座標
+  // 押し合い（仮）: 体の当たりが無いので、2 人を結ぶ向きの腰の間が x-push より近いと半分ずつ押し戻す（ゲームの値ではない）
+  const PUSH=Math.max(0,+$("x-push").value||0), ua=UA?UA[0].slice(9):pA, ub=mul(UB[0],T).slice(9), ax=[pL[0]-pA[0],pL[2]-pA[2]], al=Math.hypot(...ax)||1, u=[ax[0]/al,ax[1]/al];
+  const sep=(ub[0]-ua[0])*u[0]+(ub[2]-ua[2])*u[1], sh=sep<PUSH?(PUSH-sep)/2:0, move=k=>mul(mul(invG(V),[1,0,0,0,1,0,0,0,1,k*sh*u[0],0,k*sh*u[1]]),V);
+  const MA=move(-1), MB=mul(toV,move(1)), own=S.models[0];
+  S.xsc={...S.sc,draws:S.sc.draws.filter(d=>d.player===0).map(d=>d.dyn||own&&own.has(d.id)?{...d,m:mul(d.m,MA)}:d)};   // VF2 の 2P は描かない（1P の表のステージは残る）
+  const sB=FVX.motApply(R.sc,R.att,UB,null);
+  S.fsc={...sB,draws:sB.draws.filter(d=>d.player===R.pl&&(d.dyn||R.fm.has(d.id))).map(d=>({...d,m:mul(d.m,MB)}))};   // 人の番号はそのまま（2P の色は面の 2P 用の属性で付く）
+}
+// rebuild() から: FV の分のメッシュ（光の向きは VF2 の場面のもの、強さの表は FV のもの）
+function xMesh(o){ const S=APP.scene, R=XV.ready; if(!S.fsc) return null;
+  const light={...R.light0,L:S.light.L}, on=$("c-p2").checked, p={which:"body",stage:false,light,players:[on&&R.pl===0,on&&R.pl===1]}, models={[R.pl]:R.fm};
+  const body=FVX.sceneMesh(S.fsc,R.col,models,p), shadow=o.shadow?FVX.sceneMesh(S.fsc,R.col,models,{...p,which:"shadow"}):null;
+  XV.gl.setMesh(body,shadow); return (body.count+(shadow?shadow.count:0))/3 }
+function xInit(){
+  $("x-disc").onchange=e=>xLoadDisc(e.target.files[0]); $("x-state").onchange=e=>xLoadState(e.target.files[0]);
+  $("x-pl").onchange=()=>xPrepare();
+  $("x-on").onchange=()=>{ motStop(); xRefresh() };
+  $("x-num").onchange=()=>xSetMove(Math.max(0,+$("x-num").value|0));
+  $("x-name").onchange=()=>{ if($("x-name").value) xSetMove(+$("x-name").value) };
+  $("x-push").onchange=()=>xRefresh();
+}
 // 画面の組み立て
-const VERSION="0.14.3";
+const VERSION="0.15.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -2154,16 +3315,17 @@ async function show(){
     APP.gl.setColors(col); APP.gl.setBack(scrBack(scrRead(st.mem))); applyArc(); rebuild(); resetView();
     $("shot").src=st.shot||""; $("shot").hidden=!st.shot; $("empty").hidden=true; $("hint").hidden=false;
     motShowUI(st);
-    status("");
+    status(""); if(xOn()) await xRefresh();
   }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
 }
 function rebuild(){
   const S=APP.scene; if(!S) return;
-  const o={players:[$("c-p1").checked,$("c-p2").checked],stage:$("c-stage").checked,light:S.light};
-  const body=sceneMesh(S.sc,S.col,S.models,{...o,which:"body"}), shadow=$("c-shadow").checked?sceneMesh(S.sc,S.col,S.models,{...o,which:"shadow"}):null;
-  APP.gl.setMesh(body,shadow);
+  // 2P を FV のキャラにしているとき（cross.js）は、VF2 の分は 1P だけ（S.xsc）、FV の分は別に作って重ねて描く
+  const x=xOn()&&S.xsc&&S.fsc, sc=x?S.xsc:S.sc, o={players:[$("c-p1").checked,x?false:$("c-p2").checked],stage:$("c-stage").checked,light:S.light};
+  const body=sceneMesh(sc,S.col,S.models,{...o,which:"body"}), shadow=$("c-shadow").checked?sceneMesh(sc,S.col,S.models,{...o,which:"shadow"}):null;
+  APP.gl.setMesh(body,shadow); const xt=x?xMesh({shadow:$("c-shadow").checked}):0;
   if(APP.mode==="disc"){ $("info").textContent=`${S.names[0]}　部品 ${S.sc.draws.length} 個　三角形 ${body.count/3}（ディスクだけ。姿勢なし・色は灰色がち）`; draw(); return }
-  $("info").textContent=`1P ${S.names[0]}・2P ${S.names[1]}・背景 ${S.names[2]}　部品 ${S.sc.draws.length} 個（うち影 ${body.shadows}）　三角形 ${(body.count+(shadow?shadow.count:0))/3}`+(body.missing.length?`　ファイルに無い番号 ${body.missing.length} 個`:"");
+  $("info").textContent=`1P ${S.names[0]}・2P ${x?"FV "+XV.ready.file+"（"+XV.st.name.replace(/\.p2s$/i,"")+" の "+(XV.ready.pl?"2P":"1P")+"）":S.names[1]}・背景 ${S.names[2]}　部品 ${S.sc.draws.length} 個（うち影 ${body.shadows}）　三角形 ${(body.count+(shadow?shadow.count:0))/3+xt}`+(body.missing.length?`　ファイルに無い番号 ${body.missing.length} 個`:"");
   draw();
 }
 // 視点: ゲームのカメラの座標のまま、2人の真ん中を中心に回す
@@ -2187,6 +3349,7 @@ function draw(){
   // ゲームの画面（496×384 を 622×412 に広げて見せている）と同じ写り方。この欄の縦横比は 622:412
   const f=APP.scene.sc.focal, focal=[f[0]*APP.zoom*2/496, f[1]*APP.zoom*2/384];
   APP.gl.draw(V,focal,APP.scene.light.L,$("c-sky").checked,{bilin:$("c-smooth").checked,arc:$("c-arc").checked});   // 光はゲームのカメラの座標のまま（法線も回す前のもの）
+  if(xOn()&&APP.scene.fsc) XV.gl.draw(V,focal,APP.scene.light.L,false,{noClear:true,bilin:$("c-smooth").checked,arc:true});   // FV のキャラを同じ奥行きで重ねる（cross.js）
 }
 function hookInput(){
   // ドラッグで回す。Shift を押しながら（または右・中ボタンで）ドラッグすると平行に動かす。2本指はピンチで寄り、指の中ほどの移動で平行に動く（tobal ビューアと同じ）
@@ -2248,7 +3411,7 @@ function listStates(){
 }
 // 技を出す（motion.js）。エンジンは写しごとに最初に触ったときに作る（写しの主メモリを写して使う）
 function motG7Info(mem,pl){ const d=new DataView(mem.buffer,mem.byteOffset,mem.byteLength), W=MOT_WORK, g7=d.getUint32(W+(pl?0x500808:0x500804),true); return {motion:d.getUint16(W+g7+0x1a8,true),frame:d.getUint16(W+g7+0x1aa,true)} }
-function motShowUI(st){ $("motview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
+function motShowUI(st){ $("motview").hidden=false; $("xview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
 async function motEnsure(){
   const st=APP.states[APP.cur]; if(!st||!APP.scene) return null;
   if(APP.mot&&APP.mot.st===st) return APP.mot;
@@ -2258,15 +3421,18 @@ async function motEnsure(){
   // 写しの部品を関節に付ける。命令の列は関節の行列より 2 コマほど遅れているので、数コマ前までを候補にする
   for(const pl of [0,1]){ const f=eng.info(pl).frame, ids=eng.parts(pl), Us=[eng.units(pl)]; for(const d of [1,2,3]) Us.push(eng.frame(pl,Math.max(1,f-d))); att.push(motAttach(sc,pl,Us,ids)) }
   status("");
-  return APP.mot={st,eng,att,pl:0,m:0,f:1,len:0,play:false};
+  // hips: 写しの 1P・2P の腰（世界の座標）。2P を FV のキャラに入れ替えるとき（cross.js）の置き場所
+  return APP.mot={st,eng,att,pl:0,m:0,f:1,len:0,lenA:0,play:false,hips:[eng.units(0)[0].slice(9),eng.units(1)[0].slice(9)]};
 }
 async function motSet(m,f,smooth=false){
   try{
-    const M=await motEnsure(); if(!M) return; const pl=+$("m-pl").value;
+    const M=await motEnsure(); if(!M) return; const x=xOn(), pl=x?0:+$("m-pl").value;
     if(M.pl!==pl){ M.pl=pl; M.m=0 }
-    if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.len=len; M.eng.start(pl,m,smooth); $("m-frame").max=len; status("") }
+    if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.lenA=len; M.eng.start(pl,m,smooth); status("") }
+    // 2P を FV のキャラにしているときは、長いほうの技に合わせる（先に終わったほうは最後のコマのまま）
+    M.len=x?Math.max(M.lenA,XV.m?XV.len:0):M.lenA; $("m-frame").max=M.len;
     M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len;
-    const S=APP.scene; S.sc=motApply(S.sc0,M.att[pl],M.eng.frame(pl,M.f),M.eng.parts(pl)); rebuild();
+    const S=APP.scene, U=M.eng.frame(pl,Math.min(M.f,M.lenA)); S.sc=motApply(S.sc0,M.att[pl],U,M.eng.parts(pl)); if(x) xCompose(M,U,M.f); rebuild();
   }catch(e){ console.error(e); motStop(); status("技を計算できなかった: "+e.message,true) }
 }
 function motStop(){ if(APP.mot){ APP.mot.play=false; APP.mot.random=false } $("m-play").textContent="▶ 再生"; $("m-rand").textContent="🎲 ランダムに連続" }
@@ -2293,7 +3459,7 @@ function motPlay(fromRandom){
     requestAnimationFrame(tick) };
   requestAnimationFrame(tick);
 }
-function motBack(){ motStop(); if(APP.mot) APP.mot.m=0; if(APP.scene){ APP.scene.sc=APP.scene.sc0; rebuild() } const st=APP.states[APP.cur]; if(st) motShowUI(st) }
+function motBack(){ motStop(); if(APP.mot) APP.mot.m=0; XV.m=0; XV.len=0; $("x-num").value=0; xNameSync(); if(APP.scene){ APP.scene.sc=APP.scene.sc0; rebuild() } const st=APP.states[APP.cur]; if(st) motShowUI(st); if(xOn()) xRefresh() }
 async function loadDisc(f){ if(!f) return;
   try{ status("ディスクを読み込み中…"); APP.disc=await discOpen(f); APP.robs=null; APP.objCache.clear();
     $("n-disc").textContent=f.name; $("step-disc").classList.add("done"); status(""); APP.dvBase=null; listChars(); if(APP.cur>=0) show(); else showDisc() }
@@ -2428,7 +3594,7 @@ function init(){
   $("f-disc").onchange=e=>loadDisc(e.target.files[0]);
   $("f-state").onchange=e=>loadStates(e.target.files);
   $("f-arc").onchange=e=>loadArc(e.target.files[0]);
-  hookDrop();
+  hookDrop(); xInit();
   $("c-arc").onchange=draw;
   for(const id of ["c-p1","c-p2","c-shadow","c-stage"]) $(id).onchange=rebuild;
   $("c-sky").onchange=draw; $("c-smooth").onchange=draw;

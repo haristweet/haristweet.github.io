@@ -37,3 +37,26 @@ function fvArcLoader(prog,data){
   }
   return {cpu,mem,tex,mask,loadSet};
 }
+// アーケードのテクスチャ: 共通のセット 36、キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）で 2P はページを入れ替え、ステージ OBJ_STGnn はセット 18＋n。
+// （写しの PS2 のテクスチャ用メモリと一致するセットはこれだけ。grace・bahn・picky で確かめた）
+// キャラは RAM の縦 0〜1023、ステージは 1024〜1535 だけ使い（セットは段の小さい版などほかの所にも書く）、ロムで書いた所は値＋128
+// names: [1P のキャラ, 2P のキャラ, ステージ]（OBJ_ROBnn.CMP・OBJ_STGnn.CMP の名前）
+function fvArcPages(rom,names){   // rom: {prog: ROM_CODE1, data: ROM_DATA}（展開したもの）
+  const LC=fvArcLoader(rom.prog,rom.data), LS=fvArcLoader(rom.prog,rom.data);
+  LC.loadSet(36,0);   // どの写しにも載っている共通のセット（ページ1）
+  names.slice(0,2).forEach((f,pl)=>{ if(!f) return; let n=+f.match(/ROB(\d+)/)[1]; if(n>=13) n-=13; LC.loadSet(2*n+1,pl); LC.loadSet(2*n+2,pl) });
+  if(names[2]) LS.loadSet(18+(+names[2].match(/STG(\d+)/)[1]),0);
+  return [0,1].map(p=>{ const o=new Uint8Array(1024*2048);
+    for(let y=0;y<1536;y++){ const src=y<1024?LC:LS;
+      for(let x=0;x<1024;x++){ const h=(y>>1)*512+(x>>1); if(src.mask[p][h]) o[y*1024+x]=128|arcTexel(src.tex[p],x,y) } }
+    return o });
+}
+// ミップマップの小さい版（段 1〜3）を元の大きさの版から作る（VF2 の vapp.js と同じ）。ロムで作った所（値＋128）だけ。ほかは 255（小さい版なし）
+function fvArcMips(pages){
+  const o=new Uint8Array(2048*2048).fill(255), place=[null,[512,0],[256,1024],[128,1536]];
+  for(const p of [0,1]) for(let l=1;l<=3;l++){ const sc=1<<l, W=1024>>l, H=2048>>l, [ox,oy]=[place[l][0]*p,place[l][1]];
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){ let n=0,tr=0,sum=0,ok=true;
+      for(let dy=0;dy<sc&&ok;dy++) for(let dx=0;dx<sc;dx++){ const v=pages[p][(y*sc+dy)*1024+x*sc+dx]; if(v<128){ ok=false; break } n++; if((v&15)===15) tr++; else sum+=v&15 }
+      if(ok) o[(oy+y)*2048+ox+x]=tr*2>=n?15:Math.round(sum/(n-tr)) } }
+  return o;
+}

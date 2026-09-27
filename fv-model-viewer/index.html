@@ -2080,6 +2080,29 @@ function fvArcLoader(prog,data){
   }
   return {cpu,mem,tex,mask,loadSet};
 }
+// アーケードのテクスチャ: 共通のセット 36、キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）で 2P はページを入れ替え、ステージ OBJ_STGnn はセット 18＋n。
+// （写しの PS2 のテクスチャ用メモリと一致するセットはこれだけ。grace・bahn・picky で確かめた）
+// キャラは RAM の縦 0〜1023、ステージは 1024〜1535 だけ使い（セットは段の小さい版などほかの所にも書く）、ロムで書いた所は値＋128
+// names: [1P のキャラ, 2P のキャラ, ステージ]（OBJ_ROBnn.CMP・OBJ_STGnn.CMP の名前）
+function fvArcPages(rom,names){   // rom: {prog: ROM_CODE1, data: ROM_DATA}（展開したもの）
+  const LC=fvArcLoader(rom.prog,rom.data), LS=fvArcLoader(rom.prog,rom.data);
+  LC.loadSet(36,0);   // どの写しにも載っている共通のセット（ページ1）
+  names.slice(0,2).forEach((f,pl)=>{ if(!f) return; let n=+f.match(/ROB(\d+)/)[1]; if(n>=13) n-=13; LC.loadSet(2*n+1,pl); LC.loadSet(2*n+2,pl) });
+  if(names[2]) LS.loadSet(18+(+names[2].match(/STG(\d+)/)[1]),0);
+  return [0,1].map(p=>{ const o=new Uint8Array(1024*2048);
+    for(let y=0;y<1536;y++){ const src=y<1024?LC:LS;
+      for(let x=0;x<1024;x++){ const h=(y>>1)*512+(x>>1); if(src.mask[p][h]) o[y*1024+x]=128|arcTexel(src.tex[p],x,y) } }
+    return o });
+}
+// ミップマップの小さい版（段 1〜3）を元の大きさの版から作る（VF2 の vapp.js と同じ）。ロムで作った所（値＋128）だけ。ほかは 255（小さい版なし）
+function fvArcMips(pages){
+  const o=new Uint8Array(2048*2048).fill(255), place=[null,[512,0],[256,1024],[128,1536]];
+  for(const p of [0,1]) for(let l=1;l<=3;l++){ const sc=1<<l, W=1024>>l, H=2048>>l, [ox,oy]=[place[l][0]*p,place[l][1]];
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){ let n=0,tr=0,sum=0,ok=true;
+      for(let dy=0;dy<sc&&ok;dy++) for(let dx=0;dx<sc;dx++){ const v=pages[p][(y*sc+dy)*1024+x*sc+dx]; if(v<128){ ok=false; break } n++; if((v&15)===15) tr++; else sum+=v&15 }
+      if(ok) o[(oy+y)*2048+ox+x]=tr*2>=n?15:Math.round(sum/(n-tr)) } }
+  return o;
+}
 // WebGL で描く。明るさは build.js の buildBright・buildLuma と同じ式（VU1 のプログラムを写したもの。pose.mjs も同じ）。
 // 色＝色の変換表[チャンネル][色 RAM の 5bit][明るさ]。光はゲームのカメラの座標で計算する（回して見ても場面に固定）。影は黒の半透明で最後に描く
 const VGL_VS=`
@@ -2220,7 +2243,10 @@ function vglNew(canvas){
     setMesh(body,shadow){ [body,shadow].forEach((m,i)=>{ gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]); gl.bufferData(gl.ARRAY_BUFFER,m?m.data:new Float32Array(0),gl.STATIC_DRAW); counts[i]=m?m.count:0 }); mirror=body&&body.mirror },
     // view: 4×4（列優先）、focal: [x,y]（クリップ座標の倍率）
     draw(view,focal,light,back,opt={}){
-      const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+      // opt.noClear: 消さずに重ねて描く（VF2 と FV の 2 人を 1 つの画面に。同じ canvas の vglNew は同じ WebGL を使うので、奥行きも共通になる）
+      const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); if(!opt.noClear){ gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT) }
+      // 自分のテクスチャを置き場 0〜2 に結び付け直す（同じ WebGL を使うほかの vglNew が上書きしていることがある）
+      [["tex",0],["clut",1],["xlat",2]].forEach(([n,k])=>{ if(tex[n]){ gl.activeTexture(gl.TEXTURE0+k); gl.bindTexture(gl.TEXTURE_2D,tex[n]) } });
       if(!counts[0]&&!counts[1]) return;
       for(let l=0;l<8;l++) gl.disableVertexAttribArray(l);
       if(back&&hasBack){   // いちばん先に、奥行きを書かずに画面いっぱいに貼る（ゲームも 3D より先に描く）
@@ -2251,7 +2277,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て（VF2 の vapp.js を元に、FV のモデルの選び方とアーケードのテクスチャに合わせたもの）
-const VERSION="0.6.1";
+const VERSION="0.6.2";
 const $=id=>document.getElementById(id);
 const APP={disc:null, objCache:new Map(), rom:null, states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -2274,30 +2300,11 @@ async function chooseModels(sc){
     sceneAssignCommon(sc,id=>common.has(id),(p,id)=>!!(own[p]&&own[p].has(id)||rr[p]&&rr[p].has(id))); sc.commonFixed=true }
   return {models,names:used};
 }
-// アーケードのテクスチャ（fvarc.js）: 共通のセット 36、キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）で 2P はページを入れ替え、ステージ OBJ_STGnn はセット 18＋n。
-// （写しの PS2 のテクスチャ用メモリと一致するセットはこれだけ。grace・bahn・picky で確かめた）
-// キャラは RAM の縦 0〜1023、ステージは 1024〜1535 だけ使い（セットは段の小さい版などほかの所にも書く）、ロムで書いた所は値＋128
-// names: [1P のキャラ, 2P のキャラ, ステージ]（OBJ_ROBnn.CMP・OBJ_STGnn.CMP の名前）
 async function arcPages(names){
   if(!APP.rom){ status("アーケードのテクスチャを展開中…"); APP.rom={prog:await readDec("ROM_CODE1.CMP"), data:await readDec("ROM_DATA.CMP")} }
-  const LC=fvArcLoader(APP.rom.prog,APP.rom.data), LS=fvArcLoader(APP.rom.prog,APP.rom.data);
-  LC.loadSet(36,0);   // どの写しにも載っている共通のセット（ページ1）
-  names.slice(0,2).forEach((f,pl)=>{ if(!f) return; let n=+f.match(/ROB(\d+)/)[1]; if(n>=13) n-=13; LC.loadSet(2*n+1,pl); LC.loadSet(2*n+2,pl) });
-  if(names[2]) LS.loadSet(18+(+names[2].match(/STG(\d+)/)[1]),0);
-  return [0,1].map(p=>{ const o=new Uint8Array(1024*2048);
-    for(let y=0;y<1536;y++){ const src=y<1024?LC:LS;
-      for(let x=0;x<1024;x++){ const h=(y>>1)*512+(x>>1); if(src.mask[p][h]) o[y*1024+x]=128|arcTexel(src.tex[p],x,y) } }
-    return o });
+  return fvArcPages(APP.rom,names);
 }
-// ミップマップの小さい版（段 1〜3）を元の大きさの版から作る（VF2 の vapp.js と同じ）。ロムで作った所（値＋128）だけ。ほかは 255（小さい版なし）
-function arcMips(pages){
-  const o=new Uint8Array(2048*2048).fill(255), place=[null,[512,0],[256,1024],[128,1536]];
-  for(const p of [0,1]) for(let l=1;l<=3;l++){ const sc=1<<l, W=1024>>l, H=2048>>l, [ox,oy]=[place[l][0]*p,place[l][1]];
-    for(let y=0;y<H;y++) for(let x=0;x<W;x++){ let n=0,tr=0,sum=0,ok=true;
-      for(let dy=0;dy<sc&&ok;dy++) for(let dx=0;dx<sc;dx++){ const v=pages[p][(y*sc+dy)*1024+x*sc+dx]; if(v<128){ ok=false; break } n++; if((v&15)===15) tr++; else sum+=v&15 }
-      if(ok) o[(oy+y)*2048+ox+x]=tr*2>=n?15:Math.round(sum/(n-tr)) } }
-  return o;
-}
+const arcMips=fvArcMips;
 // ===== ディスクだけで見る =====
 function listChars(){
   const names=[...APP.disc.keys()].filter(n=>/^OBJ_(ROB\d+|STG\d+|COMMON)\.CMP$/.test(n)).sort(), sel=$("s-char");

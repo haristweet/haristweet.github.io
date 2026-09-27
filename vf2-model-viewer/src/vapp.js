@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.14.3";
+const VERSION="0.15.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -69,16 +69,17 @@ async function show(){
     APP.gl.setColors(col); APP.gl.setBack(scrBack(scrRead(st.mem))); applyArc(); rebuild(); resetView();
     $("shot").src=st.shot||""; $("shot").hidden=!st.shot; $("empty").hidden=true; $("hint").hidden=false;
     motShowUI(st);
-    status("");
+    status(""); if(xOn()) await xRefresh();
   }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
 }
 function rebuild(){
   const S=APP.scene; if(!S) return;
-  const o={players:[$("c-p1").checked,$("c-p2").checked],stage:$("c-stage").checked,light:S.light};
-  const body=sceneMesh(S.sc,S.col,S.models,{...o,which:"body"}), shadow=$("c-shadow").checked?sceneMesh(S.sc,S.col,S.models,{...o,which:"shadow"}):null;
-  APP.gl.setMesh(body,shadow);
+  // 2P を FV のキャラにしているとき（cross.js）は、VF2 の分は 1P だけ（S.xsc）、FV の分は別に作って重ねて描く
+  const x=xOn()&&S.xsc&&S.fsc, sc=x?S.xsc:S.sc, o={players:[$("c-p1").checked,x?false:$("c-p2").checked],stage:$("c-stage").checked,light:S.light};
+  const body=sceneMesh(sc,S.col,S.models,{...o,which:"body"}), shadow=$("c-shadow").checked?sceneMesh(sc,S.col,S.models,{...o,which:"shadow"}):null;
+  APP.gl.setMesh(body,shadow); const xt=x?xMesh({shadow:$("c-shadow").checked}):0;
   if(APP.mode==="disc"){ $("info").textContent=`${S.names[0]}　部品 ${S.sc.draws.length} 個　三角形 ${body.count/3}（ディスクだけ。姿勢なし・色は灰色がち）`; draw(); return }
-  $("info").textContent=`1P ${S.names[0]}・2P ${S.names[1]}・背景 ${S.names[2]}　部品 ${S.sc.draws.length} 個（うち影 ${body.shadows}）　三角形 ${(body.count+(shadow?shadow.count:0))/3}`+(body.missing.length?`　ファイルに無い番号 ${body.missing.length} 個`:"");
+  $("info").textContent=`1P ${S.names[0]}・2P ${x?"FV "+XV.ready.file+"（"+XV.st.name.replace(/\.p2s$/i,"")+" の "+(XV.ready.pl?"2P":"1P")+"）":S.names[1]}・背景 ${S.names[2]}　部品 ${S.sc.draws.length} 個（うち影 ${body.shadows}）　三角形 ${(body.count+(shadow?shadow.count:0))/3+xt}`+(body.missing.length?`　ファイルに無い番号 ${body.missing.length} 個`:"");
   draw();
 }
 // 視点: ゲームのカメラの座標のまま、2人の真ん中を中心に回す
@@ -102,6 +103,7 @@ function draw(){
   // ゲームの画面（496×384 を 622×412 に広げて見せている）と同じ写り方。この欄の縦横比は 622:412
   const f=APP.scene.sc.focal, focal=[f[0]*APP.zoom*2/496, f[1]*APP.zoom*2/384];
   APP.gl.draw(V,focal,APP.scene.light.L,$("c-sky").checked,{bilin:$("c-smooth").checked,arc:$("c-arc").checked});   // 光はゲームのカメラの座標のまま（法線も回す前のもの）
+  if(xOn()&&APP.scene.fsc) XV.gl.draw(V,focal,APP.scene.light.L,false,{noClear:true,bilin:$("c-smooth").checked,arc:true});   // FV のキャラを同じ奥行きで重ねる（cross.js）
 }
 function hookInput(){
   // ドラッグで回す。Shift を押しながら（または右・中ボタンで）ドラッグすると平行に動かす。2本指はピンチで寄り、指の中ほどの移動で平行に動く（tobal ビューアと同じ）
@@ -163,7 +165,7 @@ function listStates(){
 }
 // 技を出す（motion.js）。エンジンは写しごとに最初に触ったときに作る（写しの主メモリを写して使う）
 function motG7Info(mem,pl){ const d=new DataView(mem.buffer,mem.byteOffset,mem.byteLength), W=MOT_WORK, g7=d.getUint32(W+(pl?0x500808:0x500804),true); return {motion:d.getUint16(W+g7+0x1a8,true),frame:d.getUint16(W+g7+0x1aa,true)} }
-function motShowUI(st){ $("motview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
+function motShowUI(st){ $("motview").hidden=false; $("xview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
 async function motEnsure(){
   const st=APP.states[APP.cur]; if(!st||!APP.scene) return null;
   if(APP.mot&&APP.mot.st===st) return APP.mot;
@@ -173,15 +175,18 @@ async function motEnsure(){
   // 写しの部品を関節に付ける。命令の列は関節の行列より 2 コマほど遅れているので、数コマ前までを候補にする
   for(const pl of [0,1]){ const f=eng.info(pl).frame, ids=eng.parts(pl), Us=[eng.units(pl)]; for(const d of [1,2,3]) Us.push(eng.frame(pl,Math.max(1,f-d))); att.push(motAttach(sc,pl,Us,ids)) }
   status("");
-  return APP.mot={st,eng,att,pl:0,m:0,f:1,len:0,play:false};
+  // hips: 写しの 1P・2P の腰（世界の座標）。2P を FV のキャラに入れ替えるとき（cross.js）の置き場所
+  return APP.mot={st,eng,att,pl:0,m:0,f:1,len:0,lenA:0,play:false,hips:[eng.units(0)[0].slice(9),eng.units(1)[0].slice(9)]};
 }
 async function motSet(m,f,smooth=false){
   try{
-    const M=await motEnsure(); if(!M) return; const pl=+$("m-pl").value;
+    const M=await motEnsure(); if(!M) return; const x=xOn(), pl=x?0:+$("m-pl").value;
     if(M.pl!==pl){ M.pl=pl; M.m=0 }
-    if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.len=len; M.eng.start(pl,m,smooth); $("m-frame").max=len; status("") }
+    if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.lenA=len; M.eng.start(pl,m,smooth); status("") }
+    // 2P を FV のキャラにしているときは、長いほうの技に合わせる（先に終わったほうは最後のコマのまま）
+    M.len=x?Math.max(M.lenA,XV.m?XV.len:0):M.lenA; $("m-frame").max=M.len;
     M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len;
-    const S=APP.scene; S.sc=motApply(S.sc0,M.att[pl],M.eng.frame(pl,M.f),M.eng.parts(pl)); rebuild();
+    const S=APP.scene, U=M.eng.frame(pl,Math.min(M.f,M.lenA)); S.sc=motApply(S.sc0,M.att[pl],U,M.eng.parts(pl)); if(x) xCompose(M,U,M.f); rebuild();
   }catch(e){ console.error(e); motStop(); status("技を計算できなかった: "+e.message,true) }
 }
 function motStop(){ if(APP.mot){ APP.mot.play=false; APP.mot.random=false } $("m-play").textContent="▶ 再生"; $("m-rand").textContent="🎲 ランダムに連続" }
@@ -208,7 +213,7 @@ function motPlay(fromRandom){
     requestAnimationFrame(tick) };
   requestAnimationFrame(tick);
 }
-function motBack(){ motStop(); if(APP.mot) APP.mot.m=0; if(APP.scene){ APP.scene.sc=APP.scene.sc0; rebuild() } const st=APP.states[APP.cur]; if(st) motShowUI(st) }
+function motBack(){ motStop(); if(APP.mot) APP.mot.m=0; XV.m=0; XV.len=0; $("x-num").value=0; xNameSync(); if(APP.scene){ APP.scene.sc=APP.scene.sc0; rebuild() } const st=APP.states[APP.cur]; if(st) motShowUI(st); if(xOn()) xRefresh() }
 async function loadDisc(f){ if(!f) return;
   try{ status("ディスクを読み込み中…"); APP.disc=await discOpen(f); APP.robs=null; APP.objCache.clear();
     $("n-disc").textContent=f.name; $("step-disc").classList.add("done"); status(""); APP.dvBase=null; listChars(); if(APP.cur>=0) show(); else showDisc() }
@@ -343,7 +348,7 @@ function init(){
   $("f-disc").onchange=e=>loadDisc(e.target.files[0]);
   $("f-state").onchange=e=>loadStates(e.target.files);
   $("f-arc").onchange=e=>loadArc(e.target.files[0]);
-  hookDrop();
+  hookDrop(); xInit();
   $("c-arc").onchange=draw;
   for(const id of ["c-p1","c-p2","c-shadow","c-stage"]) $(id).onchange=rebuild;
   $("c-sky").onchange=draw; $("c-smooth").onchange=draw;

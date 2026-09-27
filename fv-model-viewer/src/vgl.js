@@ -138,7 +138,10 @@ function vglNew(canvas){
     setMesh(body,shadow){ [body,shadow].forEach((m,i)=>{ gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]); gl.bufferData(gl.ARRAY_BUFFER,m?m.data:new Float32Array(0),gl.STATIC_DRAW); counts[i]=m?m.count:0 }); mirror=body&&body.mirror },
     // view: 4×4（列優先）、focal: [x,y]（クリップ座標の倍率）
     draw(view,focal,light,back,opt={}){
-      const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+      // opt.noClear: 消さずに重ねて描く（VF2 と FV の 2 人を 1 つの画面に。同じ canvas の vglNew は同じ WebGL を使うので、奥行きも共通になる）
+      const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); if(!opt.noClear){ gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT) }
+      // 自分のテクスチャを置き場 0〜2 に結び付け直す（同じ WebGL を使うほかの vglNew が上書きしていることがある）
+      [["tex",0],["clut",1],["xlat",2]].forEach(([n,k])=>{ if(tex[n]){ gl.activeTexture(gl.TEXTURE0+k); gl.bindTexture(gl.TEXTURE_2D,tex[n]) } });
       if(!counts[0]&&!counts[1]) return;
       for(let l=0;l<8;l++) gl.disableVertexAttribArray(l);
       if(back&&hasBack){   // いちばん先に、奥行きを書かずに画面いっぱいに貼る（ゲームも 3D より先に描く）

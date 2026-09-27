@@ -47,6 +47,7 @@ body.drop-over main{opacity:.85}
 .ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
 .discview{margin:12px 0 0;padding:10px 14px;border:1px solid var(--line,#ccc);border-radius:10px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
 .discview small{flex-basis:100%;color:var(--mut)}
+.discview .btn2{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:4px 10px;cursor:pointer}.discview .name{font-size:13px;color:var(--mut);overflow-wrap:anywhere}
 .discview select,.discview button{font:inherit;padding:4px 8px}
 .discview .parts{white-space:nowrap}
 details{margin:16px 0 0;color:var(--mut);font-size:13px}
@@ -93,6 +94,15 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <span class="parts">コマ <button id="m-fprev" aria-label="前のコマ" title="前のコマ（←）">◀</button> <input id="m-frame" type="range" min="1" max="1" value="1" style="width:12em;vertical-align:middle" aria-label="コマ"> <button id="m-fnext" aria-label="次のコマ" title="次のコマ（→）">▶</button> <span id="m-fn">-</span></span>
   <button id="m-play">▶ 再生</button> <button id="m-rand">🎲 ランダムに連続</button> <button id="m-rec" title="いまの技を1回分、動画で保存">🎬 動画</button><span id="rec-menu" hidden> <button data-fmt="video">MP4／WebM</button> <button data-fmt="apng">アニメーション PNG</button></span> <button id="m-back">写しに戻す</button>
   <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形は技の台本どおりに変わります（髪の揺れはその写しのまま）。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま。コマは ◀ ▶ か ← → キーで1つずつ、スペースで再生・止める。「🎬 動画」は、いまの技を頭から最後まで MP4／WebM（1秒60コマ）かアニメーション PNG（30コマ/秒。「背景なし」なら透過）で保存します。「ランダムに連続」は、技が終わるたびに番号をランダムに選び、ゲームの「前の技からのつなぎ」でつないで出し続けます（そのキャラの技でない番号も出るので、崩れたら止めてください）</small></div>
+<div class="discview" id="xview" hidden><b>2P を FV のキャラに</b>
+  <label class="btn2">FV のディスク<input type="file" id="x-disc" accept=".bin,.iso,.cvm,.img,.chd" hidden></label><span class="name" id="x-ndisc">まだ</span>
+  <label class="btn2">FV の写し<input type="file" id="x-state" accept=".p2s" hidden></label><span class="name" id="x-nstate">まだ</span>
+  <select id="x-pl" aria-label="FV の写しのどちら"><option value="0">FV の 1P</option><option value="1">FV の 2P</option></select>
+  <label><input type="checkbox" id="x-on" disabled> 入れ替える</label>
+  <span class="parts">FV の技 <input id="x-num" type="number" min="0" max="1052" value="0" style="width:5.5em" aria-label="FV の技の番号"></span>
+  <select id="x-name" aria-label="FV の技の名前" hidden></select>
+  <span class="parts">押し合い <input id="x-push" type="number" min="0" max="2" step="0.05" value="0.6" style="width:4.5em" aria-label="押し合いの距離"></span>
+  <small>ファイティングバイパーズ（PS2『SEGA AGES 2500 Vol.21』）のディスクと写しを選ぶと、VF2 の 2P の代わりに FV のキャラを置けます（2 人とも、それぞれのゲームのプログラムで姿勢を計算し、色もそれぞれのゲームのもの）。FV のキャラは VF2 の 2P の腰の所に、1P の方を向けて置きます。上の「技を出す」は 1P（VF2）の技、ここの番号は FV のキャラの技で、再生・コマ送り・動画は 2 人いっしょに動きます（0 なら写しの姿勢のまま）。このビューアには体の当たりが無いので、前へ出る技ですれ違わないよう、腰の間が「押し合い」の距離より近いと半分ずつ押し戻します（ゲームの値ではなく仮のもの）。</small></div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表・テクスチャから、ゲームと同じ引き方で付けます。明るさは、ゲームの VU1 のプログラムと同じ式です。背景はステージのモデルのうち、そのコマで描いた部品です。空と遠景は、アーケードの2Dのタイルの面をゲームと同じずらし方で画面に貼ります（視点を回しても動きません）。</p>

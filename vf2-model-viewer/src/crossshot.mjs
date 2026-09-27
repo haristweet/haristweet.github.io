@@ -58,13 +58,13 @@ function frameScenes(fr){
   const sA0=UA?A("motApply")(vsc,attA,UA,EA.parts(0)):vsc, sA={...sA0,draws:sA0.draws.map(d=>d.player===0&&(d.dyn||vmodels[0].has(d.id))?{...d,m:mul(d.m,MA)}:d)};
   const vs={...sA,draws:sA.draws.filter(d=>d.player===0)};   // VF2 の 2P は消す（1P の表のステージは残る）
   const sB=B("motApply")(fsc,attB,UB,null);
-  const fsB={...sB,draws:sB.draws.filter(d=>d.player===fpl&&(d.dyn||own.has(d.id))).map(d=>({...d,player:0,m:mul(toV(d.m),MB)}))};
-  return [{g:A,sc:vs,col:vcol,models:vmodels,light:vlight,stage:true},{g:B,sc:fsB,col:fcol,models:{0:fm},light:flight,stage:false}];
+  const fsB={...sB,draws:sB.draws.filter(d=>d.player===fpl&&(d.dyn||own.has(d.id))).map(d=>({...d,m:mul(toV(d.m),MB)}))};   // 人の番号はそのまま（2P の色は面の 2P 用の属性で付く）
+  return [{g:A,sc:vs,col:vcol,models:vmodels,light:vlight,stage:true},{g:B,sc:fsB,col:fcol,models:{[fpl]:fm},light:flight,stage:false,players:[fpl===0,fpl===1]}];
 }
 function render(parts){
   const px=new Uint8Array(W*H*3).fill(40), zb=new Float32Array(W*H).fill(Infinity), sh=new Uint8Array(W*H);
   for(const which of ["body","shadow"]) for(const P of parts){ const g=P.g;
-    const mesh=g("sceneMesh")(P.sc,P.col,P.models,{which,stage:P.stage,light:P.light,players:[true,false]}), D=mesh.data, S=g("BUILD_STRIDE");
+    const mesh=g("sceneMesh")(P.sc,P.col,P.models,{which,stage:P.stage,light:P.light,players:P.players||[true,false]}), D=mesh.data, S=g("BUILD_STRIDE");
     for(let t=0;t<mesh.count;t+=3){
       const Vv=[0,1,2].map(k=>Array.from(D.subarray((t+k)*S,(t+k+1)*S))); if(Vv.some(v=>v[2]<0.05)) continue;
       const Pp=Vv.map(v=>[W/2+fx*v[0]/v[2],H/2-fy*v[1]/v[2],v[2]]), [a,b,cc]=Pp, d=(b[0]-a[0])*(cc[1]-a[1])-(b[1]-a[1])*(cc[0]-a[0]); if(Math.abs(d)<1e-9) continue;
