@@ -1882,14 +1882,15 @@ const MOT_I=[1,0,0,0,1,0,0,0,1];
 // それ以外（髪など）は、いちばん近い関節からのずれ（rel）をそのまま持って付いていく
 // Us: 関節の候補（写しの命令の列は関節の行列より 2 コマほど遅れているので、今のコマから数コマ前まで。いちばん多く体が付くものを使う）
 // ids: 写しのときの関節ごとの部品の番号（engine.parts）。あればその番号の部品はその関節に付ける（ゲームと同じ）
-function motAttach(sc, pl, Us, ids){
+// keep(d): 付けてよい部品か（キャラのファイルにある番号など）。1P の表に入っているステージの部品が、関節の近くにあると付いてしまい、コマごとに地面が揺れた（写し 01 の 597 など）
+function motAttach(sc, pl, Us, ids, keep=null){
   if(!Array.isArray(Us[0][0])) Us=[Us];
-  let best=null; for(const U of Us){ const a=motAttach1(sc,pl,U,ids); if(!best||a.parts.filter(p=>p.body).length>best.parts.filter(p=>p.body).length) best=a } best.ids=ids||null; return best;
+  let best=null; for(const U of Us){ const a=motAttach1(sc,pl,U,ids,keep); if(!best||a.parts.filter(p=>p.body).length>best.parts.filter(p=>p.body).length) best=a } best.ids=ids||null; return best;
 }
-function motAttach1(sc, pl, U, ids){
+function motAttach1(sc, pl, U, ids, keep=null){
   let V=null, nv=0; for(const d of sc.draws){ let n=0; for(const e of sc.draws) if(motDist(e.m,d.m)<1e-4) n++; if(n>nv){ nv=n; V=d.m } }
   const iV=motInvG(V), out=[], shadows=[], mirrors=[];
-  sc.draws.forEach((d,i)=>{ if(d.player!==pl||d.id<0&&!d.dyn||motDist(d.m,V)<1e-4) return;   // 背景（1P の表に入っている）は除く
+  sc.draws.forEach((d,i)=>{ if(d.player!==pl||d.id<0&&!d.dyn||motDist(d.m,V)<1e-4||keep&&!keep(d)) return;   // 背景（1P の表に入っている）は除く
     const W=motMul(d.m,iV);
     if(Math.min(...U.map(u=>Math.hypot(u[9]-W[9],u[10]-W[10],u[11]-W[11])))>1.5) return;
     if(Math.abs(motDet(d.m))<0.05){ shadows.push({i,W}); return }   // build.js と同じ見分け方
@@ -3245,7 +3246,7 @@ function xInit(){
   $("x-push").onchange=()=>xRefresh();
 }
 // 画面の組み立て
-const VERSION="0.15.0";
+const VERSION="0.15.1";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -3419,7 +3420,7 @@ async function motEnsure(){
   const prog=APP.arcRom?APP.arcRom.prog:(APP.dvBase?.ic||await readDec("IC12_15.CMP"));
   const eng=motEngine(prog,st.mem,APP.arcRom?motRomData(APP.arcRom):null), sc=APP.scene.sc0, att=[];
   // 写しの部品を関節に付ける。命令の列は関節の行列より 2 コマほど遅れているので、数コマ前までを候補にする
-  for(const pl of [0,1]){ const f=eng.info(pl).frame, ids=eng.parts(pl), Us=[eng.units(pl)]; for(const d of [1,2,3]) Us.push(eng.frame(pl,Math.max(1,f-d))); att.push(motAttach(sc,pl,Us,ids)) }
+  for(const pl of [0,1]){ const f=eng.info(pl).frame, ids=eng.parts(pl), Us=[eng.units(pl)]; for(const d of [1,2,3]) Us.push(eng.frame(pl,Math.max(1,f-d))); const mo=APP.scene.models[pl]; att.push(motAttach(sc,pl,Us,ids,mo?d=>d.dyn||mo.has(d.id):null)) }
   status("");
   // hips: 写しの 1P・2P の腰（世界の座標）。2P を FV のキャラに入れ替えるとき（cross.js）の置き場所
   return APP.mot={st,eng,att,pl:0,m:0,f:1,len:0,lenA:0,play:false,hips:[eng.units(0)[0].slice(9),eng.units(1)[0].slice(9)]};

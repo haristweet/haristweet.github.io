@@ -89,14 +89,15 @@ const MOT_I=[1,0,0,0,1,0,0,0,1];
 // それ以外（髪など）は、いちばん近い関節からのずれ（rel）をそのまま持って付いていく
 // Us: 関節の候補（写しの命令の列は関節の行列より 2 コマほど遅れているので、今のコマから数コマ前まで。いちばん多く体が付くものを使う）
 // ids: 写しのときの関節ごとの部品の番号（engine.parts）。あればその番号の部品はその関節に付ける（ゲームと同じ）
-function motAttach(sc, pl, Us, ids){
+// keep(d): 付けてよい部品か（キャラのファイルにある番号など）。1P の表に入っているステージの部品が、関節の近くにあると付いてしまい、コマごとに地面が揺れた（写し 01 の 597 など）
+function motAttach(sc, pl, Us, ids, keep=null){
   if(!Array.isArray(Us[0][0])) Us=[Us];
-  let best=null; for(const U of Us){ const a=motAttach1(sc,pl,U,ids); if(!best||a.parts.filter(p=>p.body).length>best.parts.filter(p=>p.body).length) best=a } best.ids=ids||null; return best;
+  let best=null; for(const U of Us){ const a=motAttach1(sc,pl,U,ids,keep); if(!best||a.parts.filter(p=>p.body).length>best.parts.filter(p=>p.body).length) best=a } best.ids=ids||null; return best;
 }
-function motAttach1(sc, pl, U, ids){
+function motAttach1(sc, pl, U, ids, keep=null){
   let V=null, nv=0; for(const d of sc.draws){ let n=0; for(const e of sc.draws) if(motDist(e.m,d.m)<1e-4) n++; if(n>nv){ nv=n; V=d.m } }
   const iV=motInvG(V), out=[], shadows=[], mirrors=[];
-  sc.draws.forEach((d,i)=>{ if(d.player!==pl||d.id<0&&!d.dyn||motDist(d.m,V)<1e-4) return;   // 背景（1P の表に入っている）は除く
+  sc.draws.forEach((d,i)=>{ if(d.player!==pl||d.id<0&&!d.dyn||motDist(d.m,V)<1e-4||keep&&!keep(d)) return;   // 背景（1P の表に入っている）は除く
     const W=motMul(d.m,iV);
     if(Math.min(...U.map(u=>Math.hypot(u[9]-W[9],u[10]-W[10],u[11]-W[11])))>1.5) return;
     if(Math.abs(motDet(d.m))<0.05){ shadows.push({i,W}); return }   // build.js と同じ見分け方

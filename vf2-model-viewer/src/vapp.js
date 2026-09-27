@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.15.0";
+const VERSION="0.15.1";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -173,7 +173,7 @@ async function motEnsure(){
   const prog=APP.arcRom?APP.arcRom.prog:(APP.dvBase?.ic||await readDec("IC12_15.CMP"));
   const eng=motEngine(prog,st.mem,APP.arcRom?motRomData(APP.arcRom):null), sc=APP.scene.sc0, att=[];
   // 写しの部品を関節に付ける。命令の列は関節の行列より 2 コマほど遅れているので、数コマ前までを候補にする
-  for(const pl of [0,1]){ const f=eng.info(pl).frame, ids=eng.parts(pl), Us=[eng.units(pl)]; for(const d of [1,2,3]) Us.push(eng.frame(pl,Math.max(1,f-d))); att.push(motAttach(sc,pl,Us,ids)) }
+  for(const pl of [0,1]){ const f=eng.info(pl).frame, ids=eng.parts(pl), Us=[eng.units(pl)]; for(const d of [1,2,3]) Us.push(eng.frame(pl,Math.max(1,f-d))); const mo=APP.scene.models[pl]; att.push(motAttach(sc,pl,Us,ids,mo?d=>d.dyn||mo.has(d.id):null)) }
   status("");
   // hips: 写しの 1P・2P の腰（世界の座標）。2P を FV のキャラに入れ替えるとき（cross.js）の置き場所
   return APP.mot={st,eng,att,pl:0,m:0,f:1,len:0,lenA:0,play:false,hips:[eng.units(0)[0].slice(9),eng.units(1)[0].slice(9)]};
