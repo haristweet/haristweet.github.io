@@ -1,9 +1,11 @@
 // 写しの1コマを、VF2 と同じ色の付け方（scene.js の色・build.js の明るさ・tex.js のテクスチャ）で描いて、ゲームの写真と並べる（教訓1）。
-//   node colorshot.mjs disc/states/grace1P_picky1P_round1 out/color.png   （BUF=12c0000 で読む命令の列を選ぶ）
+//   node colorshot.mjs disc/states/grace1P_picky1P_round1 out/color.png   （BUF=12c0000 で読む命令の列を選ぶ。ARC=1 でアーケードのテクスチャ）
+// ARC=1: ディスクの ROM_CODE1・ROM_DATA からアーケードのテクスチャを展開して引く（fvarc.js）。キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）、
+//   2P はページを入れ替えて読む。ステージ OBJ_STGnn はセット 18＋n（PS2 のテクスチャ用メモリと 100% 一致で確かめた）
 // 左＝組んだ絵（影は半分の暗さ）、右＝写真
 import fs from "fs"; import vm from "vm"; import path from "path"; import {pngEncode,pngDecode} from "./png.mjs";
 const here=path.dirname(new URL(import.meta.url).pathname), ctx={console}; vm.createContext(ctx);
-for(const f of ["cricmp.js","obj.js","tex.js","scene.js","build.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
+for(const f of ["cricmp.js","obj.js","tex.js","scene.js","build.js","arcade.js","fvarc.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
 const g=n=>vm.runInContext(n,ctx);
 const [,,dir,outp="out/color.png"]=process.argv, mem=fs.readFileSync(path.join(dir,"eeMemory.bin"));
 const sc=g("sceneRead")(mem,process.env.BUF?parseInt(process.env.BUF,16):undefined), col=g("sceneColors")(mem);
@@ -17,6 +19,11 @@ for(const p of [0,1]){ const ids=sc.draws.filter(d=>d.player===p).map(d=>d.id), 
   const r=f.replace(".CMP","R.CMP"); if(files[r]) for(const [k,v] of files[r]) if(!m.has(k)) m.set(k,v);
   for(const [k,v] of files["OBJ_COMMON.CMP"]) if(!m.has(k)) m.set(k,v); models[p]=m }
 { const ids=sc.draws.filter(d=>d.player===0&&!models[0].has(d.id)).map(d=>d.id), b=best(ids,/^OBJ_STG\d+R?\.CMP$/); if(b&&b[1]){ models.stage=files[b[0]]; used.push(b[0]) } }
+let arc=null;
+if(process.env.ARC){ const L=g("fvArcLoader")(new Uint8Array(fs.readFileSync(path.join(bin,"ROM_CODE1.dec"))),new Uint8Array(fs.readFileSync(path.join(bin,"ROM_DATA.dec"))));
+  used.slice(0,2).forEach((f,pl)=>{ let n=+f.match(/ROB(\d+)/)[1]; if(n>=13) n-=13; L.loadSet(2*n+1,pl); L.loadSet(2*n+2,pl) });
+  if(used[2]){ const n=+used[2].match(/STG(\d+)/)[1]; L.loadSet(18+n,0) }
+  arc=(p,ay,ax)=>{ ax=Math.floor(ax)&1023; ay=Math.floor(ay)&2047; let w=L.tex[p][(ay>>1)*512+(ax>>1)]; if(!(ay&1)) w>>=8; if(!(ax&1)) w>>=4; return w&15 } }
 const W=640,H=480, fx=sc.focal[0]*622/496, fy=sc.focal[1]*412/384;
 function render(which){
   const mesh=g("sceneMesh")(sc,col,models,{which,stage:true,light}), D=mesh.data, S=g("BUILD_STRIDE");
@@ -39,7 +46,7 @@ function render(which){
       if(w0<0||w1<0||w2<0) continue; const z=w0*a[2]+w1*b[2]+w2*c[2], i=y*W+x; if(z>=zb[i]) continue;
       let tv=-1;
       if(tex){ const lx=w0*V[0][9]+w1*V[1][9]+w2*V[2][9], ly=w0*V[0][10]+w1*V[1][10]+w2*V[2][10], sw=V[0][13], sh=V[0][14];
-        const X=Math.floor(V[0][11]+((lx%sw)+sw)%sw), Y=Math.floor(V[0][12]+((ly%sh)+sh)%sh); const tx=g("texRam")(col.tex,V[0][16],X,Y); if(V[0][15]>1.5&&tx===15) continue; tv=tx }
+        const X=Math.floor(V[0][11]+((lx%sw)+sw)%sw), Y=Math.floor(V[0][12]+((ly%sh)+sh)%sh); const tx=arc?arc(V[0][16],X,Y):g("texRam")(col.tex,V[0][16],X,Y); if(V[0][15]>1.5&&tx===15) continue; tv=tx }
       zb[i]=z; const l=g("buildLuma")(Lc,tv,V[0][23]%2>.5);
       for(let ch=0;ch<3;ch++) px[i*4+ch]=col.xlat[ch*0x800+c5[ch]*64+l]; px[i*4+3]=1;
     }
