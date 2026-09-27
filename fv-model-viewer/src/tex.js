@@ -19,17 +19,19 @@ function texNibble(sheet,page,X,Y){
 // ページ内の横 px＝(u'/8+原点Y)/4、縦 py＝v'/8+原点X（GS の S,T を 1024 倍したもの）
 const TEX_SZ=[32,64,128,256,512,1024,2048,2048];
 function texCoords(attr,uv){
+  // FV: 読み込み済みモデルの ST は (UV＋7)÷区画の大きさ（VF2 は ＋10）。loc・org・size はアーケードのテクスチャ RAM のテクセル単位で、
+  // [0]＝u の向き（RAM の y、原点 Y＝(h2>>6&63)×32−1024）、[1]＝v の向き（RAM の x、原点 X＝(h2&63)×32）
   const [h0,,h2]=attr, su=TEX_SZ[h0>>3&7]*8, sv=TEX_SZ[h0&7]*8;
   let X=(h2&63)*32, Y=(h2>>6&63)*32-1024; if(X>=1024){ X-=1024; Y+=1024 }
   const mu=Math.min(...uv.map(a=>a[0])), mv=Math.min(...uv.map(a=>a[1]));
   const ku=Math.floor((mu+7)/su)*su, kv=Math.floor((mv+7)/sv)*sv;
-  // org＝ページ内の原点、size＝ページ内の大きさ（横は 1/4）、loc＝原点からの位置（大きさを越えた分は描くときに折り返す）
-  const loc=uv.map(([u,v])=>[(u+10-ku)/32, (v+10-kv)/8]);
-  return {page:h2>>12&1, org:[Y/4,X], size:[su/32,sv/8], loc, st:loc.map(([a,b])=>[a+Y/4,b+X])};
+  const loc=uv.map(([u,v])=>[(u+7-ku)/8, (v+7-kv)/8]);
+  return {page:h2>>12&1, org:[Y,X], size:[su/8,sv/8], loc, st:loc};
 }
-// テクスチャ用メモリ（g_geo+0xa040 の 512KB）から 4bit を読む
-function texRam(ram,page,px,py){
-  px=Math.floor(px)&511; py=Math.floor(py)&1023;
-  const b=ram[(page<<18)+py*256+(px>>1)];
-  return px&1?b>>4:b&15;
+// テクスチャ用メモリ（g_geo+0xa040 の 512KB）から 4bit を読む。FV の PS2 版はアーケードのテクスチャ RAM を縦横とも 1 つおきに間引いたもの（arcadetex.mjs で確かめた）:
+// RAM の (x, y) → 行 r＝(x を偶数に丸めたもの)＋(y の bit9)、行の中の横 (y&511)>>1。行は 256B おき、ページは 0x40000 ずつ
+function texRam(ram,page,ay,ax){
+  ay=Math.floor(ay)&1023; ax=Math.floor(ax)&1023;
+  const r=(ax&~1)+((ay>>9)&1), c=(ay&511)>>1, b=ram[(page<<18)+r*256+(c>>1)];
+  return c&1?b>>4:b&15;
 }
