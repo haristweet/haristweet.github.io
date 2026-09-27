@@ -26,7 +26,7 @@ if(process.env.ARC){ const L=g("fvArcLoader")(new Uint8Array(fs.readFileSync(pat
   used.slice(0,2).forEach((f,pl)=>{ let n=+f.match(/ROB(\d+)/)[1]; if(n>=13) n-=13; L.loadSet(2*n+1,pl); L.loadSet(2*n+2,pl) });
   if(used[2]){ const n=+used[2].match(/STG(\d+)/)[1]; L.loadSet(18+n,0) }
   arc=(p,ay,ax)=>{ ax=Math.floor(ax)&1023; ay=Math.floor(ay)&2047; let w=L.tex[p][(ay>>1)*512+(ax>>1)]; if(!(ay&1)) w>>=8; if(!(ax&1)) w>>=4; return w&15 } }
-const W=640,H=480, fx=sc.focal[0]*622/496, fy=sc.focal[1]*412/384;
+const CULL=+(process.env.CULL||-1), W=640,H=480, fx=sc.focal[0]*622/496, fy=sc.focal[1]*412/384;
 function render(which){
   const mesh=g("sceneMesh")(sc,col,models,{which,stage:true,light}), D=mesh.data, S=g("BUILD_STRIDE");
   const px=new Float32Array(W*H*4), zb=new Float32Array(W*H).fill(Infinity), tris=[];
@@ -40,6 +40,7 @@ function render(which){
   }
   for(const V of tris){
     const P=V.map(v=>[320+fx*v[0]/v[2],240-fy*v[1]/v[2],v[2]]), [a,b,c]=P, d=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]); if(Math.abs(d)<1e-9) continue;
+    if(V[0][23]>=1024&&CULL*d<0) continue;   // キャラの裏向きの面（build.js の 1024）。CULL＝向き（画面の上の頂点の回り方の符号）
     const c5=[V[0][6],V[0][7],V[0][8]], tex=V[0][15]>.5, Lc=col.clut[V[0][17]*128+g("buildBright")([V[0][3],V[0][4],V[0][5]],[V[0][19],V[0][20],V[0][21],V[0][22]],light)];
     const x0=Math.max(0,Math.floor(Math.min(a[0],b[0],c[0]))), x1=Math.min(W-1,Math.ceil(Math.max(a[0],b[0],c[0])));
     const y0=Math.max(0,Math.floor(Math.min(a[1],b[1],c[1]))), y1=Math.min(H-1,Math.ceil(Math.max(a[1],b[1],c[1])));

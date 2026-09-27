@@ -31,7 +31,9 @@ function sceneMesh(sc,col,models,opt={}){
       const c16=cram.getUint16((p.attr[3]>>6&1023)*2,true), c5=[c16&31,c16>>5&31,c16>>10&31];
       let tx=null; if(p.attr[0]>>14&1) tx=texCoords(p.attr,p.uv);
       const ov=same||(p.attr[1]>>8)||(tx&&(p.attr[0]>>13&1))?++over:0;
-      const ls=p.h>>18&31, lt=opt.light?opt.light.tab[ls]:[63.5,31.5,0,0], lk=[lt[0],lt[1],lt[2],(lt[3]&7&(opt.light?opt.light.flags:0))?1:0,(ls>=10&&ls<=12?1:0)+(ov?2:0)+4*Math.min(ov,255)];
+      // 1024: 裏向きなら描かない（キャラの面。ステージ・影・映り込みは両面。ゲームもキャラは裏向きを描かない。バーンのコートは表と裏地が同じ所に逆向きで重なる）
+      const cull=!isStage&&!shadow&&det>0.05;
+      const ls=p.h>>18&31, lt=opt.light?opt.light.tab[ls]:[63.5,31.5,0,0], lk=[lt[0],lt[1],lt[2],(lt[3]&7&(opt.light?opt.light.flags:0))?1:0,(ls>=10&&ls<=12?1:0)+(ov?2:0)+4*Math.min(ov,255)+(cull?1024:0)];
       const vert=k=>{ out.push(...q[k],...n,...c5);
         if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,(p.attr[0]>>13&1)?2:1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0);
         out.push((p.h>>10&3)|((p.h>>17&63)<<2),...lk) };

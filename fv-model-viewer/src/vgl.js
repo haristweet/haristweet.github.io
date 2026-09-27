@@ -3,13 +3,14 @@
 const VGL_VS=`
 attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol; attribute vec2 aLoc; attribute vec4 aOrgSize; attribute vec3 aMisc; attribute vec4 aLk; attribute float aSpecial;
 uniform mat4 uView; uniform vec2 uFocal; uniform vec3 uLight;
-varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial; varying float vCull;
 void main(){
   vec4 p=uView*vec4(aPos,1.0);
   float d=clamp(dot(uLight,aNrm),0.0,1.0), s=clamp(2.0*d*aNrm.z-uLight.z,0.0,1.0);
   vB=floor(clamp(aLk.x*d+aLk.y+(aLk.w>0.5?aLk.z*pow(s,8.0):0.0),0.0,127.0));
   vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc; vSpecial=mod(aSpecial,2.0);
-  float over=floor(aSpecial/4.0);   // 部品の中で何枚目の重ねる面か（build.js）
+  float over=floor(mod(aSpecial,1024.0)/4.0);   // 部品の中で何枚目の重ねる面か（build.js）
+  vCull=aSpecial>=1023.5?1.0:0.0;   // 裏向きなら描かない面（キャラ。build.js の 1024）
   // 奥行き 0.05〜100 を -1〜1 に
   gl_Position=vec4(uFocal.x*p.x, uFocal.y*p.y, (p.z*100.05-10.0)/99.95, p.z);
   // 重ねる面（貼りもの＝目や眉、透明ありのテクスチャの面＝ウルフの隈取りなど）は肌とまったく同じ所にあるので、ごくわずか手前へ。
@@ -19,7 +20,7 @@ void main(){
 const VGL_FS=`
 precision highp float;
 uniform sampler2D uTex, uClut, uXlat, uTexA, uTexM; uniform float uShadow, uCut, uBilin, uArc, uMip, uMipForce;
-varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial; varying float vCull;
 // テクスチャの値（0〜15）。loc は面の中のテクセルの位置で、テクスチャの大きさで折り返す
 // アーケードのテクスチャ（uArc）: FV は loc・org・size がアーケードのテクスチャ RAM のテクセル単位（tex.js の texCoords。[0]＝u の向き＝RAM の縦、[1]＝v の向き＝RAM の横）。
 // RAM（横 1024・縦 2048、ページ2枚を横に並べた 2048×2048）の (横 org[1]＋loc[1], 縦 org[0]＋loc[0]) を引く（VF2 は横が 4 倍の単位だった）
@@ -44,6 +45,7 @@ float texv(vec2 loc){
 }
 float xl(float row,float luma){ return texture2D(uXlat,vec2((luma+0.5)/64.0,(row+0.5)/96.0)).r; }
 void main(){
+  if(vCull>0.5&&!gl_FrontFacing) discard;   // キャラの裏向きの面（ゲームも描かない。バーンのコートの裏地が表の上に出ていた）
   if(uShadow>0.5){ gl_FragColor=vec4(0.0,0.0,0.0,0.45); return; }
   float L=floor(texture2D(uClut,vec2((vB+0.5)/128.0,(vMisc.z+0.5)/256.0)).r*255.0+0.5), luma;
   if(vMisc.x>0.5){
