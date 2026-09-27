@@ -9,6 +9,8 @@
 :root{--bg:#f4f2ee;--card:#fff;--fg:#1f1e1b;--mut:#6b6860;--line:#dedad2;--acc:#b8452f;--bad:#b3392f;--stage:#2a2926}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1917;--card:#24231f;--fg:#ecebe6;--mut:#a09d94;--line:#3a3833;--acc:#ec8a6f;--bad:#ec7a6f}}
 *{box-sizing:border-box}
+/* ボタンを続けて押したときにブラウザがダブルタップの拡大をしないように（2本指の拡大はできる。3D の欄は touch-action:none のまま） */
+html{touch-action:manipulation}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Hiragino Sans",sans-serif}
 main{max-width:1100px;margin:0 auto;padding:16px}
 h1{font-size:20px;margin:0 0 4px}
