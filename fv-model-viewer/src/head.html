@@ -25,7 +25,7 @@ h1{font-size:20px;margin:0 0 4px}
 #states button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:99px;padding:3px 10px;cursor:pointer;font:inherit;font-size:13px}
 #states button.on{border-color:var(--acc);color:var(--acc);font-weight:600}
 #status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
-.viewer{position:relative;background:radial-gradient(circle at 50% 35%,#3a3833,var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:622/412;touch-action:none;user-select:none}
+.viewer{position:relative;background:radial-gradient(circle at 50% 35%,var(--stage2,#3a3833),var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:622/412;touch-action:none;user-select:none}
 .viewer canvas{position:absolute;inset:0;width:100%;height:100%}
 /* 写真（640×480）のうち、ゲームの絵がある x 9〜630・y 34〜445 をこの欄にぴったり合わせる */
 .viewer img{position:absolute;left:-1.447%;top:-8.252%;width:102.894%;height:116.505%;opacity:0;transition:opacity .2s}
@@ -38,6 +38,13 @@ h1{font-size:20px;margin:0 0 4px}
 .ctrl label{white-space:nowrap}
 .ctrl button{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:5px 12px;cursor:pointer;font:inherit}
 #info{color:var(--mut);font-size:13px;margin:6px 0 0}
+.bgs{display:inline-flex;gap:6px;vertical-align:middle}
+.bgs button{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);padding:0!important;cursor:pointer}
+.bgs button[aria-pressed=true]{border-color:var(--acc)}
+.discview{margin:12px 0 0;padding:10px 14px;border:1px solid var(--line,#ccc);border-radius:10px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.discview small{flex-basis:100%;color:var(--mut)}
+.discview select,.discview button{font:inherit;padding:4px 8px}
+.discview .parts{white-space:nowrap}
 .ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
 details{margin:16px 0 0;color:var(--mut);font-size:13px}
 </style>
@@ -52,9 +59,13 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <div class="step" id="step-state"><b>2. セーブステート</b><small>PCSX2 の .p2s（対戦中のもの。いくつでも）。姿勢と色はここから読みます</small>
     <label class="btn">選ぶ<input type="file" id="f-state" accept=".p2s" multiple></label><span class="name" id="n-state">まだ</span><div id="states"></div></div>
 </div>
+<div class="discview" id="discview" hidden><b>ディスクだけで見る</b>
+  <select id="s-char" aria-label="モデルのファイル"></select>
+  <span class="parts">部品 <button id="b-prev" aria-label="前の部品">◀</button> <span id="n-part">全部</span> <button id="b-next" aria-label="次の部品">▶</button> <button id="b-all">全部</button></span>
+  <small>セーブステートが無くても、キャラやステージの部品を大きさをそろえて並べて見られます。姿勢は無く、肌や服の色は対戦中にゲームが作る表で付くので、ここでは灰色がちになります</small></div>
 <div id="status"></div>
 <div class="viewer" id="viewer"><img id="shot" alt="" hidden><canvas id="cv"></canvas>
-  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます。ファイルはページにドロップしても読み込めます</div>
+  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます（1 だけでも部品を見られます）。ファイルはページにドロップしても読み込めます</div>
   <div class="hint" id="hint" hidden>ドラッグで回す・Shift＋ドラッグ（右ボタン・2本指）で動かす・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
 <div class="ctrl">
   <label><input type="checkbox" id="c-p1" checked> 1P</label>
@@ -65,11 +76,15 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <label><input type="checkbox" id="c-overlay"> ゲームの画面と重ねる</label>
   <button id="b-reset">ゲームの視点に戻す</button>
   <button id="b-png">PNG で保存</button>
+  <label title="PNG を透明な背景で（ステージ・背景の色を描かない）"><input type="checkbox" id="c-clear"> 背景なし</label>
+  <label title="PNG をキャラの周りだけ切り抜く"><input type="checkbox" id="c-crop"> キャラだけ切り抜き</label>
+  <span class="bgs" id="bg-box" aria-label="背景の色"></span>
 </div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表から、ゲームと同じ引き方で付けます（作りは PS2 版バーチャファイター2 と同じ）。</p>
 <p>テクスチャは、ディスクに入っているアーケード（Model 2B）のロムの中身から、アーケードのプログラム（i960）のテクスチャを展開する処理をページの中の小さなエミュレーターでそのまま動かして作ります。PS2 版のテクスチャはこれを縦横1つおきに間引いたものなので、アーケードの細かさで描いています。</p>
+<p>ディスクだけで見るときは、色の材料もディスクから取ります（面の色＝ROM_DATA、明るさの曲線＝ROM_EP1）。ただし色の変換表はステージごとにゲームが作るもので、ディスクには無いので、おおよその値で代わりにしています。</p>
 <p id="ver"></p></details>
 </main>
 <script>

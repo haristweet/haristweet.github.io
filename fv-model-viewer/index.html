@@ -25,7 +25,7 @@ h1{font-size:20px;margin:0 0 4px}
 #states button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:99px;padding:3px 10px;cursor:pointer;font:inherit;font-size:13px}
 #states button.on{border-color:var(--acc);color:var(--acc);font-weight:600}
 #status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
-.viewer{position:relative;background:radial-gradient(circle at 50% 35%,#3a3833,var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:622/412;touch-action:none;user-select:none}
+.viewer{position:relative;background:radial-gradient(circle at 50% 35%,var(--stage2,#3a3833),var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:622/412;touch-action:none;user-select:none}
 .viewer canvas{position:absolute;inset:0;width:100%;height:100%}
 /* 写真（640×480）のうち、ゲームの絵がある x 9〜630・y 34〜445 をこの欄にぴったり合わせる */
 .viewer img{position:absolute;left:-1.447%;top:-8.252%;width:102.894%;height:116.505%;opacity:0;transition:opacity .2s}
@@ -38,6 +38,13 @@ h1{font-size:20px;margin:0 0 4px}
 .ctrl label{white-space:nowrap}
 .ctrl button{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:5px 12px;cursor:pointer;font:inherit}
 #info{color:var(--mut);font-size:13px;margin:6px 0 0}
+.bgs{display:inline-flex;gap:6px;vertical-align:middle}
+.bgs button{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);padding:0!important;cursor:pointer}
+.bgs button[aria-pressed=true]{border-color:var(--acc)}
+.discview{margin:12px 0 0;padding:10px 14px;border:1px solid var(--line,#ccc);border-radius:10px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.discview small{flex-basis:100%;color:var(--mut)}
+.discview select,.discview button{font:inherit;padding:4px 8px}
+.discview .parts{white-space:nowrap}
 .ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
 details{margin:16px 0 0;color:var(--mut);font-size:13px}
 </style>
@@ -52,9 +59,13 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <div class="step" id="step-state"><b>2. セーブステート</b><small>PCSX2 の .p2s（対戦中のもの。いくつでも）。姿勢と色はここから読みます</small>
     <label class="btn">選ぶ<input type="file" id="f-state" accept=".p2s" multiple></label><span class="name" id="n-state">まだ</span><div id="states"></div></div>
 </div>
+<div class="discview" id="discview" hidden><b>ディスクだけで見る</b>
+  <select id="s-char" aria-label="モデルのファイル"></select>
+  <span class="parts">部品 <button id="b-prev" aria-label="前の部品">◀</button> <span id="n-part">全部</span> <button id="b-next" aria-label="次の部品">▶</button> <button id="b-all">全部</button></span>
+  <small>セーブステートが無くても、キャラやステージの部品を大きさをそろえて並べて見られます。姿勢は無く、肌や服の色は対戦中にゲームが作る表で付くので、ここでは灰色がちになります</small></div>
 <div id="status"></div>
 <div class="viewer" id="viewer"><img id="shot" alt="" hidden><canvas id="cv"></canvas>
-  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます。ファイルはページにドロップしても読み込めます</div>
+  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます（1 だけでも部品を見られます）。ファイルはページにドロップしても読み込めます</div>
   <div class="hint" id="hint" hidden>ドラッグで回す・Shift＋ドラッグ（右ボタン・2本指）で動かす・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
 <div class="ctrl">
   <label><input type="checkbox" id="c-p1" checked> 1P</label>
@@ -65,11 +76,15 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <label><input type="checkbox" id="c-overlay"> ゲームの画面と重ねる</label>
   <button id="b-reset">ゲームの視点に戻す</button>
   <button id="b-png">PNG で保存</button>
+  <label title="PNG を透明な背景で（ステージ・背景の色を描かない）"><input type="checkbox" id="c-clear"> 背景なし</label>
+  <label title="PNG をキャラの周りだけ切り抜く"><input type="checkbox" id="c-crop"> キャラだけ切り抜き</label>
+  <span class="bgs" id="bg-box" aria-label="背景の色"></span>
 </div>
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表から、ゲームと同じ引き方で付けます（作りは PS2 版バーチャファイター2 と同じ）。</p>
 <p>テクスチャは、ディスクに入っているアーケード（Model 2B）のロムの中身から、アーケードのプログラム（i960）のテクスチャを展開する処理をページの中の小さなエミュレーターでそのまま動かして作ります。PS2 版のテクスチャはこれを縦横1つおきに間引いたものなので、アーケードの細かさで描いています。</p>
+<p>ディスクだけで見るときは、色の材料もディスクから取ります（面の色＝ROM_DATA、明るさの曲線＝ROM_EP1）。ただし色の変換表はステージごとにゲームが作るもので、ディスクには無いので、おおよその値で代わりにしています。</p>
 <p id="ver"></p></details>
 </main>
 <script>
@@ -1242,6 +1257,36 @@ function sceneLight(vu1,sc){
   for(let q=0;q<32;q++) tab.push([dv.getFloat32(q*16,true),dv.getFloat32(q*16+4,true),dv.getFloat32(q*16+8,true),dv.getUint32(q*16+12,true)]);
   return {tab, L:[0,1,2].map(i=>dv.getFloat32(32*16+i*4,true)), flags:dv.getUint32(32*16+12,true), fromVu:true};
 }
+// ディスクだけで見る（セーブステートなし）。OBJ ファイルの部品を、姿勢なしで大きさをそろえて並べる（VF2 の discview.js と同じ作り）。
+// 色の材料はディスクから: 面の色＝ROM_DATA の 0x100000（写しの色 RAM と 1024 色のうち 1023 色が同じ）、明るさの曲線＝ROM_EP1 の 0x266e0
+// （写しの曲線と 256 本のうち若い番号の 7 本が同じ。キャラが使うのは若い番号）。テクスチャはアーケードのセット（fapp.js）。
+// 色の変換表（明るさ→8bit）はステージごとにゲームが作るのでディスクに無い。ここではおおよその直線で作る（推測）
+const DV_CRAM=0x100000, DV_CURVE=0x266e0;
+function dvXlat(){
+  // [ch][行 0..31][明るさ 0..63]。48 以降（目などの特別な欄）は 0..15 を 0..47 に引き伸ばした値で埋める
+  const x=new Uint8Array(0x1800);
+  for(let ch=0;ch<3;ch++) for(let r=0;r<32;r++) for(let l=0;l<64;l++){
+    const ll=l<48?l:(l-48)*47/15; x[ch*0x800+r*64+l]=Math.min(255,Math.round((r*8+7)*(0.22+0.62*ll/47)));
+  }
+  return x;
+}
+function dvColors(data,ep1){
+  const clut=new Uint8Array(0x8000); clut.set(ep1.subarray(DV_CURVE,Math.min(ep1.length,DV_CURVE+0x8000)));
+  return {tex:new Uint8Array(0x80000), cram:data.slice(DV_CRAM,DV_CRAM+0x800), xlat:dvXlat(), clut};
+}
+// 部品を格子に並べた「場面」。only に番号を渡すとその1つだけを真ん中に置く
+function dvScene(models,only){
+  const ids=[...models.keys()].sort((a,b)=>a-b).filter(id=>only==null||id===only), box=new Map();
+  for(const id of ids){ const e=models.get(id), mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+    for(const p of objPolys(e.ch[3],e.ch[0],e.ch[2])) for(const v of p.v) for(let i=0;i<3;i++){ mn[i]=Math.min(mn[i],v[i]); mx[i]=Math.max(mx[i],v[i]) }
+    if(mn[0]<=mx[0]) box.set(id,{c:mn.map((v,i)=>(v+mx[i])/2), s:Math.max(mx[0]-mn[0],mx[1]-mn[1])}) }
+  const list=ids.filter(id=>box.has(id)), n=list.length||1, cols=Math.ceil(Math.sqrt(n*1.4)), rows=Math.ceil(n/cols);
+  // 部品ごとに大きさをそろえる（欄の 0.85）。縮めすぎると行列の行列式が小さくなり影と見なされるので 0.4 倍までにする
+  const cell=1, D=Math.max(cols*cell/2*480/220, rows*cell/2*480/170);
+  const draws=list.map((id,k)=>{ const b=box.get(id), gx=(k%cols-(cols-1)/2)*cell, gy=((rows-1)/2-Math.floor(k/cols))*cell, s=Math.max(0.4,0.85*cell/Math.max(b.s,1e-4));
+    return {player:0,id,m:[s,0,0,0,s,0,0,0,s,gx-b.c[0]*s,gy-b.c[1]*s,D-b.c[2]*s]} });
+  return {draws, focal:[480,480], light:[-0.88,-0.95,-0.1]};
+}
 // 場面の2人（と背景）を、描くための頂点の配列にする（WebGL でも node の台本でも使う）。
 // 頂点ごとに 24 個の数: 位置3（カメラの座標）・法線3・色 RAM の 5bit×3・テクスチャの loc2・org2・size2・テクスチャ（0 なし・1 あり・2 あり＋値 15 を抜く）・ページ・パレット番号・面の頭の bit10-11 と bit17-22（(h>>10&3)|((h>>17&63)<<2)）・光の表の値4（拡散・環境・光沢・光沢の回数）・旗（1＝光の設定 10〜12、2＝貼りもの＝h1 の上位バイトが 0 でない。目や眉）
 const BUILD_STRIDE=24;
@@ -1745,7 +1790,7 @@ function vglNew(canvas){
   };
 }
 // 画面の組み立て（VF2 の vapp.js を元に、FV のモデルの選び方とアーケードのテクスチャに合わせたもの）
-const VERSION="0.2.0";
+const VERSION="0.3.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, objCache:new Map(), rom:null, states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -1768,6 +1813,7 @@ async function chooseModels(sc){
 // アーケードのテクスチャ（fvarc.js）: 共通のセット 36、キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）で 2P はページを入れ替え、ステージ OBJ_STGnn はセット 18＋n。
 // （写しの PS2 のテクスチャ用メモリと一致するセットはこれだけ。grace・bahn・picky で確かめた）
 // キャラは RAM の縦 0〜1023、ステージは 1024〜1535 だけ使い（セットは段の小さい版などほかの所にも書く）、ロムで書いた所は値＋128
+// names: [1P のキャラ, 2P のキャラ, ステージ]（OBJ_ROBnn.CMP・OBJ_STGnn.CMP の名前）
 async function arcPages(names){
   if(!APP.rom){ status("アーケードのテクスチャを展開中…"); APP.rom={prog:await readDec("ROM_CODE1.CMP"), data:await readDec("ROM_DATA.CMP")} }
   const LC=fvArcLoader(APP.rom.prog,APP.rom.data), LS=fvArcLoader(APP.rom.prog,APP.rom.data);
@@ -1788,13 +1834,41 @@ function arcMips(pages){
       if(ok) o[(oy+y)*2048+ox+x]=tr*2>=n?15:Math.round(sum/(n-tr)) } }
   return o;
 }
+// ===== ディスクだけで見る =====
+function listChars(){
+  const names=[...APP.disc.keys()].filter(n=>/^OBJ_(ROB\d+|STG\d+|COMMON)\.CMP$/.test(n)).sort(), sel=$("s-char");
+  sel.innerHTML=names.map(n=>`<option>${n.replace(".CMP","")}</option>`).join(""); if(names.includes("OBJ_ROB01.CMP")) sel.value="OBJ_ROB01";
+  $("discview").hidden=!names.length;
+}
+async function showDisc(){
+  if(!APP.disc) return; const name=$("s-char").value+".CMP";
+  try{
+    status("読み込み中…");
+    if(!APP.dvBase) APP.dvBase={data:await readDec("ROM_DATA.CMP"), ep1:await readDec("ROM_EP1.CMP")};
+    const models=new Map(await readObj(name));
+    if(/ROB\d+\.CMP$/.test(name)){ const r=await readObj(name.replace(".CMP","R.CMP")); if(r) for(const [k,v] of r) if(!models.has(k)) models.set(k,v) }
+    const ids=[...models.keys()].sort((a,b)=>a-b);
+    if(APP.dv?.name!==name) APP.dv={name,ids,k:-1,arc:null};
+    const only=APP.dv.k<0?null:ids[APP.dv.k], col=dvColors(APP.dvBase.data,APP.dvBase.ep1), sc=dvScene(models,only);
+    if(!APP.dv.arc){ const st=/STG/.test(name), rob=/ROB/.test(name); APP.dv.arc=await arcPages([rob?name:null,null,st?name:null]); APP.dv.mip=arcMips(APP.dv.arc) }
+    APP.mode="disc"; APP.cur=-1; listStates();
+    // ステージのファイルは背景として描く（属性は塊0、裏向きも描く）
+    APP.scene={sc,col,models:/STG/.test(name)?{0:new Map(),1:null,stage:models}:{0:models,1:null,stage:null},names:[name,null,null],light:sceneLight(null,sc)};
+    APP.gl.setColors(col); APP.gl.setArc(APP.dv.arc,APP.dv.mip); rebuild(); resetView();
+    if(only!=null){ APP.rot=[0.6,0.3]; draw() }   // 1つだけのときは斜めから（真横だと薄い部品が見えない）
+    $("n-part").textContent=only==null?`全部（${ids.length}）`:`${APP.dv.k+1}/${ids.length}（番号 ${only}）`;
+    $("shot").hidden=true; $("empty").hidden=true; $("hint").hidden=false;
+    status(APP.states.length?"":"セーブステートを選ぶと、ゲームのその場面の姿勢と色で2人が出ます");
+  }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
+}
+function stepPart(d){ if(!APP.dv) return; const n=APP.dv.ids.length; APP.dv.k=d===0?-1:((APP.dv.k<0?(d>0?-1:0):APP.dv.k)+d+n)%n; showDisc() }
 async function show(){
   const st=APP.states[APP.cur]; if(!st||!APP.disc) return;
   try{
     status("読み込み中…");
     if(!st.mem){ st.mem=await st.zip.get("eeMemory.bin")(); const v1=st.zip.get("vu1Memory.bin"); st.vu1=v1?await v1():null; const sh=st.zip.get("Screenshot.png"); if(sh) st.shot=URL.createObjectURL(new Blob([await sh()],{type:"image/png"})) }
     const sc=sceneRead(st.mem), col=sceneColors(st.mem), light=sceneLight(st.vu1,sc), {models,names}=await chooseModels(sc);
-    APP.scene={sc,col,light,models,names};
+    APP.mode="state"; APP.scene={sc,col,light,models,names};
     if(!st.arc){ st.arc=await arcPages(names); st.arcMip=arcMips(st.arc) }
     APP.gl.setColors(col); APP.gl.setArc(st.arc,st.arcMip);
     $("shot").src=st.shot||""; $("shot").hidden=!st.shot;
@@ -1803,10 +1877,11 @@ async function show(){
 }
 function rebuild(){
   const S=APP.scene; if(!S) return;
-  const o={players:[$("c-p1").checked,$("c-p2").checked],stage:$("c-stage").checked,light:S.light};
+  const o={players:[$("c-p1").checked,$("c-p2").checked],stage:APP.mode==="disc"||$("c-stage").checked,light:S.light};
   const body=sceneMesh(S.sc,S.col,S.models,{...o,which:"body"}), shadow=$("c-shadow").checked?sceneMesh(S.sc,S.col,S.models,{...o,which:"shadow"}):null;
   APP.gl.setMesh(body,shadow);
   const nm=n=>n?n.replace(".CMP",""):"なし";
+  if(APP.mode==="disc"){ $("info").textContent=`${nm(S.names[0])}　部品 ${S.sc.draws.length} 個　三角形 ${body.count/3}（ディスクだけ。姿勢なし・色は灰色がち）`; draw(); return }
   $("info").textContent=`1P ${nm(S.names[0])}・2P ${nm(S.names[1])}・背景 ${nm(S.names[2])}　部品 ${S.sc.draws.length} 個（うち影 ${body.shadows}）　三角形 ${(body.count+(shadow?shadow.count:0))/3}`+(body.missing.length?`　ファイルに無い番号 ${body.missing.length} 個`:"");
   draw();
 }
@@ -1862,7 +1937,7 @@ function listStates(){
 async function loadDisc(f){ if(!f) return;
   try{ status("ディスクを読み込み中…"); APP.disc=await discOpen(f); APP.objCache.clear(); APP.rom=null; for(const s of APP.states) s.arc=null;
     if(!APP.disc.get("ROM_CODE1.CMP")) throw new Error("ディスクの中に ROM_CODE1.CMP が無い（ファイティングバイパーズの PS2 版ではない？）");
-    $("n-disc").textContent=f.name; $("step-disc").classList.add("done"); status(APP.cur<0?"次にセーブステートを選んでください":""); if(APP.cur>=0) show() }
+    $("n-disc").textContent=f.name; $("step-disc").classList.add("done"); APP.dvBase=null; listChars(); if(APP.cur>=0) show(); else showDisc() }
   catch(err){ APP.disc=null; status("ディスクを読めなかった: "+err.message,true) } }
 async function loadStates(files){ if(!files||!files.length) return;
   for(const f of files){ try{ APP.states.push({name:f.name,zip:await p2sOpen(await f.arrayBuffer())}) }catch(err){ status(f.name+" を読めなかった: "+err.message,true) } }
@@ -1879,21 +1954,56 @@ function hookDrop(){
     const st=fs.filter(f=>/\.p2s$/i.test(f.name)), disc=fs.find(f=>!/\.p2s$/i.test(f.name));
     if(disc) await loadDisc(disc); if(st.length) await loadStates(st) });
 }
-function savePng(){
-  if(!APP.scene) return; draw();
-  $("cv").toBlob(b=>{ const a=document.createElement("a"), st=APP.states[APP.cur]; a.href=URL.createObjectURL(b);
-    a.download=`FV_${(st?st.name:"view").replace(/\.p2s$/i,"").replace(/[^\w.-]+/g,"_")}_v${VERSION}.png`; document.body.appendChild(a); a.click(); a.remove() },"image/png");
+// 背景の色（VF2・tobal2 のビューアと同じ8種。選んだものは覚えておく）。背景を消したとき・「背景なし」でないスクショに出る
+const BG_PRESETS=[{name:"ダーク",c:"#3a3834",e:"#2a2926"},{name:"黒",c:"#111111",e:"#000000"},{name:"グレー",c:"#8a8a8a",e:"#6a6a6a"},{name:"白",c:"#ffffff",e:"#e6e4df"},
+  {name:"空",c:"#bfe3ff",e:"#5a9fd6"},{name:"夕焼け",c:"#ffcf8a",e:"#c4533a"},{name:"夜",c:"#35407a",e:"#0d1030"},{name:"グリーンバック",c:"#00b140",e:"#00b140"}];
+function setBackground(i){ const p=BG_PRESETS[i]||BG_PRESETS[0], v=$("viewer").style; v.setProperty("--stage2",p.c); v.setProperty("--stage",p.e); APP.bg=p;
+  [...$("bg-box").children].forEach((b,k)=>b.setAttribute("aria-pressed",String(k===i))); try{ localStorage.setItem("fvbg",String(i)) }catch(_){} }
+function hookBackground(){
+  BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.name; b.setAttribute("aria-label","背景の色: "+p.name);
+    b.style.background=`radial-gradient(circle at 40% 35%,${p.c},${p.e})`; b.onclick=()=>setBackground(i); $("bg-box").append(b) });
+  let i=0; try{ i=+localStorage.getItem("fvbg")||0 }catch(_){} setBackground(i);
+}
+// 枠と同じ背景（CSS の radial-gradient（50% 35%、いちばん遠い角まで））をキャンバスに塗る。x,y,w,h＝切り抜く範囲
+function paintBackground(g,W,H,x,y,w,h){ const p=APP.bg||BG_PRESETS[0], cx=W/2-x, cy=H*.35-y, grd=g.createRadialGradient(cx,cy,0,cx,cy,Math.hypot(W/2,H*.65));
+  grd.addColorStop(0,p.c); grd.addColorStop(1,p.e); g.fillStyle=grd; g.fillRect(0,0,w,h) }
+// 一時的に表示を変えて fn を呼ぶ（キャラだけで範囲を測る・背景なしで撮る）
+async function withView(opt,fn){ const keep={}; for(const [id,v] of Object.entries(opt)){ keep[id]=$(id).checked; $(id).checked=v }
+  if(Object.keys(opt).length) rebuild(); else draw();
+  try{ return await fn() } finally{ if(Object.keys(keep).length){ for(const id in keep) $(id).checked=keep[id]; rebuild() } } }
+const CHARS_ONLY={"c-stage":false};
+// 描いたキャンバスで不透明な画素の範囲（box があれば広げる）と、余白を足して偶数にそろえた範囲（tobal2 と同じ）
+const probe=document.createElement("canvas"), probeG=probe.getContext("2d",{willReadFrequently:true});
+function opaqueBox(box){ const cv=$("cv"), W=cv.width, H=cv.height; probe.width=W; probe.height=H; probeG.clearRect(0,0,W,H); probeG.drawImage(cv,0,0);
+  const d=probeG.getImageData(0,0,W,H).data; let x0=W,y0=H,x1=-1,y1=-1;
+  for(let y=0;y<H;y+=2){ const row=y*W; for(let x=0;x<W;x+=2) if(d[(row+x)*4+3]>8){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y } }
+  if(x1<0) return box; x1=Math.min(W,x1+2); y1=Math.min(H,y1+2);
+  return box?{x0:Math.min(box.x0,x0),y0:Math.min(box.y0,y0),x1:Math.max(box.x1,x1),y1:Math.max(box.y1,y1)}:{x0,y0,x1,y1} }
+function padBox(b){ const cv=$("cv"), W=cv.width, H=cv.height, m=Math.round(Math.max(b.x1-b.x0,b.y1-b.y0)*.04)+4;
+  let x0=Math.max(0,b.x0-m), y0=Math.max(0,b.y0-m), x1=Math.min(W,b.x1+m), y1=Math.min(H,b.y1+m);
+  if((x1-x0)%2) x1<W?x1++:x0--; if((y1-y0)%2) y1<H?y1++:y0--; return {x:x0,y:y0,w:x1-x0,h:y1-y0} }
+// 保存の名前（ASCII だけ。日本語だと「download」になるブラウザがあった）
+function fileBase(){ const st=APP.states[APP.cur], b=APP.mode==="disc"?(APP.scene?.names[0]||"fv").replace(".CMP",""):(st?st.name:"fv"); return "FV_"+b.replace(/\.p2s$/i,"").replace(/[^\w.-]+/g,"_")+"_v"+VERSION }
+function saveBlob(b,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name; a.hidden=true; document.body.append(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),60000) }
+async function savePng(){
+  if(!APP.scene) return; const cv=$("cv"), clear=$("c-clear").checked, crop=$("c-crop").checked, only=APP.mode==="disc"?{}:CHARS_ONLY;
+  let r=null; if(crop) await withView(only,()=>{ const b=opaqueBox(null); if(b) r=padBox(b) });
+  const blob=await withView(clear?only:{},()=>{ const W=cv.width,H=cv.height; r=r||{x:0,y:0,w:W,h:H};
+    const out=document.createElement("canvas"); out.width=r.w; out.height=r.h; const g=out.getContext("2d");
+    if(!clear) paintBackground(g,W,H,r.x,r.y,r.w,r.h); g.drawImage(cv,r.x,r.y,r.w,r.h,0,0,r.w,r.h); return new Promise(res=>out.toBlob(res,"image/png")) });
+  saveBlob(blob,fileBase()+".png");
 }
 function init(){
   $("ver").textContent="版 "+VERSION; $("ver-h").textContent="v"+VERSION;
   try{ APP.gl=vglNew($("cv")) }catch(e){ status(e.message,true); return }
-  hookInput(); hookDrop(); draw();
+  hookInput(); hookDrop(); hookBackground(); draw();
   $("f-disc").onchange=e=>loadDisc(e.target.files[0]);
   $("f-state").onchange=e=>loadStates(e.target.files);
   for(const id of ["c-p1","c-p2","c-shadow","c-stage"]) $(id).onchange=rebuild;
   $("c-smooth").onchange=draw;
   $("c-overlay").onchange=()=>$("viewer").classList.toggle("overlay",$("c-overlay").checked);
   $("b-reset").onclick=resetView; $("b-png").onclick=savePng;
+  $("s-char").onchange=()=>{ APP.dv=null; showDisc() }; $("b-prev").onclick=()=>stepPart(-1); $("b-next").onclick=()=>stepPart(1); $("b-all").onclick=()=>stepPart(0);
 }
 init();
 </script>
