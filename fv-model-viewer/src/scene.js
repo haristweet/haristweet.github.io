@@ -22,10 +22,23 @@ function sceneRead(mem,from=0x1280000){
     if(op===11) mat=Array.from(F32.subarray(j+1,j+13));
     if(op===10&&!light) light=Array.from(F32.subarray(j+1,j+4));
     if(op===3) windows.push(Array.from(W32.subarray(j+1,j+7)));
-    if(op===1){ const a=W32[j+4], o=inv.get(a); if(o&&mat) draws.push({player:o.player,id:o.id,m:mat,addr:a}); else if(a!==0xffffffff) unknown++ }
+    if(op===1){ const a=W32[j+4], o=inv.get(a);
+      if(o&&mat) draws.push({player:o.player,id:o.id,m:mat,addr:a});
+      else if(a===0xa&&mat){ const dyn=sceneDyn(mem,W32,W32[j+1],W32[j+2],W32[j+3]); if(dyn){ dyn.player=draws.filter(d=>d.dyn).length?1:0; draws.push({player:dyn.player,id:-1,m:mat,dyn}) } else unknown++ }
+      else if(a!==0xffffffff) unknown++ }
     j+=1+LEN[op];
   }
   return {focal,light,draws,windows,unknown};
+}
+// 毎コマ作る部品（物体の命令の 4 つ目が 0xa。VF2 の腹の帯にあたる）: 1 つ目＝テクスチャの座標の塊、2 つ目＝属性の塊（どちらも読み込んだ OBJ_ROBnnR の中を指す）、
+// 3 つ目＝その コマの形（ファイルと同じ 40B の面の記録）。1P・2P は描く順（1 つ目が 1P）。同じキャラ同士では 2 人とも同じ属性の塊を指すことがある（tokio 同士）ので、属性の塊からは決めない。
+// 塊の長さは塊の前の語。形の長さは R のモデルの 4 つ目の塊の長さ（座標の塊のすぐ後ろ）
+function sceneDyn(mem,W32,uv,attr,geo){
+  if(uv<16||attr<16||uv+8>mem.length||attr+8>mem.length) return null;
+  const la=W32[(attr-4)>>2], lu=W32[(uv-4)>>2]; if(!la||!lu||la>0x10000||lu>0x10000) return null;
+  const lg=W32[(uv+lu)>>2]; if(!lg||lg>0x10000||geo+lg>mem.length) return null;
+  const a=mem.subarray(attr,attr+la);
+  return {ch:[a,a,mem.subarray(uv,uv+lu),mem.subarray(geo,geo+lg)]};
 }
 // 色とテクスチャ（VF2 の g_geo と同じ並びの塊。FV は 0x12e7a80）: +0x40 色 RAM（16bit×1024）・+0x840 色の変換表（R・G・B、各 32 行×64）・
 // +0x2040 明るさの曲線（128B ずつ）・+0xa040 テクスチャ（ページ 2 枚、各 幅 512・高さ 1024 の 4bit）。
