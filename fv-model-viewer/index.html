@@ -1,0 +1,1886 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ファイティングバイパーズ モデルビューア</title>
+<meta name="description" content="PS2『SEGA AGES 2500 ファイティングバイパーズ』のディスクとセーブステートから、対戦中の2人をそのまま取り出して見る">
+<style>
+:root{--bg:#f4f2ee;--card:#fff;--fg:#1f1e1b;--mut:#6b6860;--line:#dedad2;--acc:#b8452f;--bad:#b3392f;--stage:#2a2926}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1917;--card:#24231f;--fg:#ecebe6;--mut:#a09d94;--line:#3a3833;--acc:#ec8a6f;--bad:#ec7a6f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Hiragino Sans",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 14px}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 12px}
+@media (max-width:640px){.steps{grid-template-columns:1fr}}
+.step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.step b{display:block;margin:0 0 2px}.step small{color:var(--mut);display:block;margin:0 0 8px}
+.step.done{border-color:var(--acc)}
+.step label.btn{display:inline-block;background:var(--acc);color:#fff;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600}
+.step input[type=file]{display:none}
+.step .name{margin-left:8px;font-size:13px;color:var(--mut);overflow-wrap:anywhere}
+#states{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+#states button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:99px;padding:3px 10px;cursor:pointer;font:inherit;font-size:13px}
+#states button.on{border-color:var(--acc);color:var(--acc);font-weight:600}
+#status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
+.viewer{position:relative;background:radial-gradient(circle at 50% 35%,#3a3833,var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:622/412;touch-action:none;user-select:none}
+.viewer canvas{position:absolute;inset:0;width:100%;height:100%}
+/* 写真（640×480）のうち、ゲームの絵がある x 9〜630・y 34〜445 をこの欄にぴったり合わせる */
+.viewer img{position:absolute;left:-1.447%;top:-8.252%;width:102.894%;height:116.505%;opacity:0;transition:opacity .2s}
+.viewer [hidden]{display:none!important}
+.viewer.overlay img{opacity:.55}
+.viewer .hint{position:absolute;left:12px;bottom:10px;color:#cfccc4;font-size:12px;pointer-events:none}
+.viewer .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a8a49a;text-align:center;padding:20px}
+.viewer.drop-over{outline:3px dashed var(--acc);outline-offset:-3px}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:10px 0}
+.ctrl label{white-space:nowrap}
+.ctrl button{border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:5px 12px;cursor:pointer;font:inherit}
+#info{color:var(--mut);font-size:13px;margin:6px 0 0}
+.ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
+details{margin:16px 0 0;color:var(--mut);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<h1>ファイティングバイパーズ モデルビューア <span id="ver-h" class="ver"></span></h1>
+<p class="sub">PS2『SEGA AGES 2500 Vol.19 ファイティングバイパーズ』のディスクと、対戦中のセーブステート（PCSX2）から、ゲームがそのコマで描いた2人をそのまま取り出して見ます。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
+<div class="steps">
+  <div class="step" id="step-disc"><b>1. ディスクのイメージ</b><small>.chd・.bin（2352）・.iso、または中の BIN.CVM。モデルの形とテクスチャはここから読みます</small>
+    <label class="btn">選ぶ<input type="file" id="f-disc" accept=".chd,.bin,.iso,.cvm,.img"></label><span class="name" id="n-disc">まだ</span></div>
+  <div class="step" id="step-state"><b>2. セーブステート</b><small>PCSX2 の .p2s（対戦中のもの。いくつでも）。姿勢と色はここから読みます</small>
+    <label class="btn">選ぶ<input type="file" id="f-state" accept=".p2s" multiple></label><span class="name" id="n-state">まだ</span><div id="states"></div></div>
+</div>
+<div id="status"></div>
+<div class="viewer" id="viewer"><img id="shot" alt="" hidden><canvas id="cv"></canvas>
+  <div class="empty" id="empty">1 と 2 を選ぶと、ここに2人が出ます。ファイルはページにドロップしても読み込めます</div>
+  <div class="hint" id="hint" hidden>ドラッグで回す・Shift＋ドラッグ（右ボタン・2本指）で動かす・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
+<div class="ctrl">
+  <label><input type="checkbox" id="c-p1" checked> 1P</label>
+  <label><input type="checkbox" id="c-p2" checked> 2P</label>
+  <label><input type="checkbox" id="c-shadow" checked> 影</label>
+  <label><input type="checkbox" id="c-stage" checked> 背景</label>
+  <label title="ゲームと同じく、テクスチャを周りの4つのテクセルでなめらかに引く（外すと最寄りのテクセルでくっきり）"><input type="checkbox" id="c-smooth" checked> なめらか</label>
+  <label><input type="checkbox" id="c-overlay"> ゲームの画面と重ねる</label>
+  <button id="b-reset">ゲームの視点に戻す</button>
+  <button id="b-png">PNG で保存</button>
+</div>
+<div id="info"></div>
+<details><summary>しくみ</summary>
+<p>セーブステートの主メモリに残っている、そのコマでアーケードのプログラムがジオメトライザに送った命令の列（部品ごとの行列とモデルの番号）で、ディスクのモデルを組みます。色は、同じ主メモリにある面の色・色の変換表から、ゲームと同じ引き方で付けます（作りは PS2 版バーチャファイター2 と同じ）。</p>
+<p>テクスチャは、ディスクに入っているアーケード（Model 2B）のロムの中身から、アーケードのプログラム（i960）のテクスチャを展開する処理をページの中の小さなエミュレーターでそのまま動かして作ります。PS2 版のテクスチャはこれを縦横1つおきに間引いたものなので、アーケードの細かさで描いています。</p>
+<p id="ver"></p></details>
+</main>
+<script>
+
+// fzstd 0.1.1（https://github.com/101arrowz/fzstd）— zstd の展開。セーブステート（.p2s）の中身に使う
+/*
+MIT License
+
+Copyright (c) 2020 Arjun Barrett
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.*/
+const fzstd=(()=>{
+// Some numerical data is initialized as -1 even when it doesn't need initialization to help the JIT infer types
+// aliases for shorter compressed code (most minifers don't do this)
+var ab = ArrayBuffer, u8 = Uint8Array, u16 = Uint16Array, i16 = Int16Array, u32 = Uint32Array, i32 = Int32Array;
+var slc = function (v, s, e) {
+    if (u8.prototype.slice)
+        return u8.prototype.slice.call(v, s, e);
+    if (s == null || s < 0)
+        s = 0;
+    if (e == null || e > v.length)
+        e = v.length;
+    var n = new u8(e - s);
+    n.set(v.subarray(s, e));
+    return n;
+};
+var fill = function (v, n, s, e) {
+    if (u8.prototype.fill)
+        return u8.prototype.fill.call(v, n, s, e);
+    if (s == null || s < 0)
+        s = 0;
+    if (e == null || e > v.length)
+        e = v.length;
+    for (; s < e; ++s)
+        v[s] = n;
+    return v;
+};
+var cpw = function (v, t, s, e) {
+    if (u8.prototype.copyWithin)
+        return u8.prototype.copyWithin.call(v, t, s, e);
+    if (s == null || s < 0)
+        s = 0;
+    if (e == null || e > v.length)
+        e = v.length;
+    while (s < e) {
+        v[t++] = v[s++];
+    }
+};
+/**
+ * Codes for errors generated within this library
+ */
+var ZstdErrorCode = {
+    InvalidData: 0,
+    WindowSizeTooLarge: 1,
+    InvalidBlockType: 2,
+    FSEAccuracyTooHigh: 3,
+    DistanceTooFarBack: 4,
+    UnexpectedEOF: 5
+};
+// error codes
+var ec = [
+    'invalid zstd data',
+    'window size too large (>2046MB)',
+    'invalid block type',
+    'FSE accuracy too high',
+    'match distance too far back',
+    'unexpected EOF'
+];
+var err = function (ind, msg, nt) {
+    var e = new Error(msg || ec[ind]);
+    e.code = ind;
+    if (Error.captureStackTrace)
+        Error.captureStackTrace(e, err);
+    if (!nt)
+        throw e;
+    return e;
+};
+var rb = function (d, b, n) {
+    var i = 0, o = 0;
+    for (; i < n; ++i)
+        o |= d[b++] << (i << 3);
+    return o;
+};
+var b4 = function (d, b) { return (d[b] | (d[b + 1] << 8) | (d[b + 2] << 16) | (d[b + 3] << 24)) >>> 0; };
+// read Zstandard frame header
+var rzfh = function (dat, w) {
+    var n3 = dat[0] | (dat[1] << 8) | (dat[2] << 16);
+    if (n3 == 0x2FB528 && dat[3] == 253) {
+        // Zstandard
+        var flg = dat[4];
+        //    single segment       checksum             dict flag     frame content flag
+        var ss = (flg >> 5) & 1, cc = (flg >> 2) & 1, df = flg & 3, fcf = flg >> 6;
+        if (flg & 8)
+            err(0);
+        // byte
+        var bt = 6 - ss;
+        // dict bytes
+        var db = df == 3 ? 4 : df;
+        // dictionary id
+        var di = rb(dat, bt, db);
+        bt += db;
+        // frame size bytes
+        var fsb = fcf ? (1 << fcf) : ss;
+        // frame source size
+        var fss = rb(dat, bt, fsb) + ((fcf == 1) && 256);
+        // window size
+        var ws = fss;
+        if (!ss) {
+            // window descriptor
+            var wb = 1 << (10 + (dat[5] >> 3));
+            ws = wb + (wb >> 3) * (dat[5] & 7);
+        }
+        if (ws > 2145386496)
+            err(1);
+        var buf = new u8((w == 1 ? (fss || ws) : w ? 0 : ws) + 12);
+        buf[0] = 1, buf[4] = 4, buf[8] = 8;
+        return {
+            b: bt + fsb,
+            y: 0,
+            l: 0,
+            d: di,
+            w: (w && w != 1) ? w : buf.subarray(12),
+            e: ws,
+            o: new i32(buf.buffer, 0, 3),
+            u: fss,
+            c: cc,
+            m: Math.min(131072, ws)
+        };
+    }
+    else if (((n3 >> 4) | (dat[3] << 20)) == 0x184D2A5) {
+        // skippable
+        return b4(dat, 4) + 8;
+    }
+    err(0);
+};
+// most significant bit for nonzero
+var msb = function (val) {
+    var bits = 0;
+    for (; (1 << bits) <= val; ++bits)
+        ;
+    return bits - 1;
+};
+// read finite state entropy
+var rfse = function (dat, bt, mal) {
+    // table pos
+    var tpos = (bt << 3) + 4;
+    // accuracy log
+    var al = (dat[bt] & 15) + 5;
+    if (al > mal)
+        err(3);
+    // size
+    var sz = 1 << al;
+    // probabilities symbols  repeat   index   high threshold
+    var probs = sz, sym = -1, re = -1, i = -1, ht = sz;
+    // optimization: single allocation is much faster
+    var buf = new ab(512 + (sz << 2));
+    var freq = new i16(buf, 0, 256);
+    // same view as freq
+    var dstate = new u16(buf, 0, 256);
+    var nstate = new u16(buf, 512, sz);
+    var bb1 = 512 + (sz << 1);
+    var syms = new u8(buf, bb1, sz);
+    var nbits = new u8(buf, bb1 + sz);
+    while (sym < 255 && probs > 0) {
+        var bits = msb(probs + 1);
+        var cbt = tpos >> 3;
+        // mask
+        var msk = (1 << (bits + 1)) - 1;
+        var val = ((dat[cbt] | (dat[cbt + 1] << 8) | (dat[cbt + 2] << 16)) >> (tpos & 7)) & msk;
+        // mask (1 fewer bit)
+        var msk1fb = (1 << bits) - 1;
+        // max small value
+        var msv = msk - probs - 1;
+        // small value
+        var sval = val & msk1fb;
+        if (sval < msv)
+            tpos += bits, val = sval;
+        else {
+            tpos += bits + 1;
+            if (val > msk1fb)
+                val -= msv;
+        }
+        freq[++sym] = --val;
+        if (val == -1) {
+            probs += val;
+            syms[--ht] = sym;
+        }
+        else
+            probs -= val;
+        if (!val) {
+            do {
+                // repeat byte
+                var rbt = tpos >> 3;
+                re = ((dat[rbt] | (dat[rbt + 1] << 8)) >> (tpos & 7)) & 3;
+                tpos += 2;
+                sym += re;
+            } while (re == 3);
+        }
+    }
+    if (sym > 255 || probs)
+        err(0);
+    var sympos = 0;
+    // sym step (coprime with sz - formula from zstd source)
+    var sstep = (sz >> 1) + (sz >> 3) + 3;
+    // sym mask
+    var smask = sz - 1;
+    for (var s = 0; s <= sym; ++s) {
+        var sf = freq[s];
+        if (sf < 1) {
+            dstate[s] = -sf;
+            continue;
+        }
+        // This is split into two loops in zstd to avoid branching, but as JS is higher-level that is unnecessary
+        for (i = 0; i < sf; ++i) {
+            syms[sympos] = s;
+            do {
+                sympos = (sympos + sstep) & smask;
+            } while (sympos >= ht);
+        }
+    }
+    // After spreading symbols, should be zero again
+    if (sympos)
+        err(0);
+    for (i = 0; i < sz; ++i) {
+        // next state
+        var ns = dstate[syms[i]]++;
+        // num bits
+        var nb = nbits[i] = al - msb(ns);
+        nstate[i] = (ns << nb) - sz;
+    }
+    return [(tpos + 7) >> 3, {
+            b: al,
+            s: syms,
+            n: nbits,
+            t: nstate
+        }];
+};
+// read huffman
+var rhu = function (dat, bt) {
+    //  index  weight count
+    var i = 0, wc = -1;
+    //    buffer             header byte
+    var buf = new u8(292), hb = dat[bt];
+    // huffman weights
+    var hw = buf.subarray(0, 256);
+    // rank count
+    var rc = buf.subarray(256, 268);
+    // rank index
+    var ri = new u16(buf.buffer, 268);
+    // NOTE: at this point bt is 1 less than expected
+    if (hb < 128) {
+        // end byte, fse decode table
+        var _a = rfse(dat, bt + 1, 6), ebt = _a[0], fdt = _a[1];
+        bt += hb;
+        var epos = ebt << 3;
+        // last byte
+        var lb = dat[bt];
+        if (!lb)
+            err(0);
+        //  state1   state2   state1 bits   state2 bits
+        var st1 = 0, st2 = 0, btr1 = fdt.b, btr2 = btr1;
+        // fse pos
+        // pre-increment to account for original deficit of 1
+        var fpos = (++bt << 3) - 8 + msb(lb);
+        for (;;) {
+            fpos -= btr1;
+            if (fpos < epos)
+                break;
+            var cbt = fpos >> 3;
+            st1 += ((dat[cbt] | (dat[cbt + 1] << 8)) >> (fpos & 7)) & ((1 << btr1) - 1);
+            hw[++wc] = fdt.s[st1];
+            fpos -= btr2;
+            if (fpos < epos)
+                break;
+            cbt = fpos >> 3;
+            st2 += ((dat[cbt] | (dat[cbt + 1] << 8)) >> (fpos & 7)) & ((1 << btr2) - 1);
+            hw[++wc] = fdt.s[st2];
+            btr1 = fdt.n[st1];
+            st1 = fdt.t[st1];
+            btr2 = fdt.n[st2];
+            st2 = fdt.t[st2];
+        }
+        if (++wc > 255)
+            err(0);
+    }
+    else {
+        wc = hb - 127;
+        for (; i < wc; i += 2) {
+            var byte = dat[++bt];
+            hw[i] = byte >> 4;
+            hw[i + 1] = byte & 15;
+        }
+        ++bt;
+    }
+    // weight exponential sum
+    var wes = 0;
+    for (i = 0; i < wc; ++i) {
+        var wt = hw[i];
+        // bits must be at most 11, same as weight
+        if (wt > 11)
+            err(0);
+        wes += wt && (1 << (wt - 1));
+    }
+    // max bits
+    var mb = msb(wes) + 1;
+    // table size
+    var ts = 1 << mb;
+    // remaining sum
+    var rem = ts - wes;
+    // must be power of 2
+    if (rem & (rem - 1))
+        err(0);
+    hw[wc++] = msb(rem) + 1;
+    for (i = 0; i < wc; ++i) {
+        var wt = hw[i];
+        ++rc[hw[i] = wt && (mb + 1 - wt)];
+    }
+    // huf buf
+    var hbuf = new u8(ts << 1);
+    //    symbols                      num bits
+    var syms = hbuf.subarray(0, ts), nb = hbuf.subarray(ts);
+    ri[mb] = 0;
+    for (i = mb; i > 0; --i) {
+        var pv = ri[i];
+        fill(nb, i, pv, ri[i - 1] = pv + rc[i] * (1 << (mb - i)));
+    }
+    if (ri[0] != ts)
+        err(0);
+    for (i = 0; i < wc; ++i) {
+        var bits = hw[i];
+        if (bits) {
+            var code = ri[bits];
+            fill(syms, i, code, ri[bits] = code + (1 << (mb - bits)));
+        }
+    }
+    return [bt, {
+            n: nb,
+            b: mb,
+            s: syms
+        }];
+};
+// Tables generated using this:
+// https://gist.github.com/101arrowz/a979452d4355992cbf8f257cbffc9edd
+// default literal length table
+var dllt = /*#__PURE__*/ rfse(/*#__PURE__*/ new u8([
+    81, 16, 99, 140, 49, 198, 24, 99, 12, 33, 196, 24, 99, 102, 102, 134, 70, 146, 4
+]), 0, 6)[1];
+// default match length table
+var dmlt = /*#__PURE__*/ rfse(/*#__PURE__*/ new u8([
+    33, 20, 196, 24, 99, 140, 33, 132, 16, 66, 8, 33, 132, 16, 66, 8, 33, 68, 68, 68, 68, 68, 68, 68, 68, 36, 9
+]), 0, 6)[1];
+// default offset code table
+var doct = /*#__PURE__ */ rfse(/*#__PURE__*/ new u8([
+    32, 132, 16, 66, 102, 70, 68, 68, 68, 68, 36, 73, 2
+]), 0, 5)[1];
+// bits to baseline
+var b2bl = function (b, s) {
+    var len = b.length, bl = new i32(len);
+    for (var i = 0; i < len; ++i) {
+        bl[i] = s;
+        s += 1 << b[i];
+    }
+    return bl;
+};
+// literal length bits
+var llb = /*#__PURE__ */ new u8(( /*#__PURE__ */new i32([
+    0, 0, 0, 0, 16843009, 50528770, 134678020, 202050057, 269422093
+])).buffer, 0, 36);
+// literal length baseline
+var llbl = /*#__PURE__ */ b2bl(llb, 0);
+// match length bits
+var mlb = /*#__PURE__ */ new u8(( /*#__PURE__ */new i32([
+    0, 0, 0, 0, 0, 0, 0, 0, 16843009, 50528770, 117769220, 185207048, 252579084, 16
+])).buffer, 0, 53);
+// match length baseline
+var mlbl = /*#__PURE__ */ b2bl(mlb, 3);
+// decode huffman stream
+var dhu = function (dat, out, hu) {
+    var len = dat.length, ss = out.length, lb = dat[len - 1], msk = (1 << hu.b) - 1, eb = -hu.b;
+    if (!lb)
+        err(0);
+    var st = 0, btr = hu.b, pos = (len << 3) - 8 + msb(lb) - btr, i = -1;
+    for (; pos > eb && i < ss;) {
+        var cbt = pos >> 3;
+        var val = (dat[cbt] | (dat[cbt + 1] << 8) | (dat[cbt + 2] << 16)) >> (pos & 7);
+        st = ((st << btr) | val) & msk;
+        out[++i] = hu.s[st];
+        pos -= (btr = hu.n[st]);
+    }
+    if (pos != eb || i + 1 != ss)
+        err(0);
+};
+// decode huffman stream 4x
+// TODO: use workers to parallelize
+var dhu4 = function (dat, out, hu) {
+    var bt = 6;
+    var ss = out.length, sz1 = (ss + 3) >> 2, sz2 = sz1 << 1, sz3 = sz1 + sz2;
+    dhu(dat.subarray(bt, bt += dat[0] | (dat[1] << 8)), out.subarray(0, sz1), hu);
+    dhu(dat.subarray(bt, bt += dat[2] | (dat[3] << 8)), out.subarray(sz1, sz2), hu);
+    dhu(dat.subarray(bt, bt += dat[4] | (dat[5] << 8)), out.subarray(sz2, sz3), hu);
+    dhu(dat.subarray(bt), out.subarray(sz3), hu);
+};
+// read Zstandard block
+var rzb = function (dat, st, out) {
+    var _a;
+    var bt = st.b;
+    //    byte 0        block type
+    var b0 = dat[bt], btype = (b0 >> 1) & 3;
+    st.l = b0 & 1;
+    var sz = (b0 >> 3) | (dat[bt + 1] << 5) | (dat[bt + 2] << 13);
+    // end byte for block
+    var ebt = (bt += 3) + sz;
+    if (btype == 1) {
+        if (bt >= dat.length)
+            return;
+        st.b = bt + 1;
+        if (out) {
+            fill(out, dat[bt], st.y, st.y += sz);
+            return out;
+        }
+        return fill(new u8(sz), dat[bt]);
+    }
+    if (ebt > dat.length)
+        return;
+    if (btype == 0) {
+        st.b = ebt;
+        if (out) {
+            out.set(dat.subarray(bt, ebt), st.y);
+            st.y += sz;
+            return out;
+        }
+        return slc(dat, bt, ebt);
+    }
+    if (btype == 2) {
+        //    byte 3        lit btype     size format
+        var b3 = dat[bt], lbt = b3 & 3, sf = (b3 >> 2) & 3;
+        // lit src size  lit cmp sz 4 streams
+        var lss = b3 >> 4, lcs = 0, s4 = 0;
+        if (lbt < 2) {
+            if (sf & 1)
+                lss |= (dat[++bt] << 4) | ((sf & 2) && (dat[++bt] << 12));
+            else
+                lss = b3 >> 3;
+        }
+        else {
+            s4 = sf;
+            if (sf < 2)
+                lss |= ((dat[++bt] & 63) << 4), lcs = (dat[bt] >> 6) | (dat[++bt] << 2);
+            else if (sf == 2)
+                lss |= (dat[++bt] << 4) | ((dat[++bt] & 3) << 12), lcs = (dat[bt] >> 2) | (dat[++bt] << 6);
+            else
+                lss |= (dat[++bt] << 4) | ((dat[++bt] & 63) << 12), lcs = (dat[bt] >> 6) | (dat[++bt] << 2) | (dat[++bt] << 10);
+        }
+        ++bt;
+        // add literals to end - can never overlap with backreferences because unused literals always appended
+        var buf = out ? out.subarray(st.y, st.y + st.m) : new u8(st.m);
+        // starting point for literals
+        var spl = buf.length - lss;
+        if (lbt == 0)
+            buf.set(dat.subarray(bt, bt += lss), spl);
+        else if (lbt == 1)
+            fill(buf, dat[bt++], spl);
+        else {
+            // huffman table
+            var hu = st.h;
+            if (lbt == 2) {
+                var hud = rhu(dat, bt);
+                // subtract description length
+                lcs += bt - (bt = hud[0]);
+                st.h = hu = hud[1];
+            }
+            else if (!hu)
+                err(0);
+            (s4 ? dhu4 : dhu)(dat.subarray(bt, bt += lcs), buf.subarray(spl), hu);
+        }
+        // num sequences
+        var ns = dat[bt++];
+        if (ns) {
+            if (ns == 255)
+                ns = (dat[bt++] | (dat[bt++] << 8)) + 0x7F00;
+            else if (ns > 127)
+                ns = ((ns - 128) << 8) | dat[bt++];
+            // symbol compression modes
+            var scm = dat[bt++];
+            if (scm & 3)
+                err(0);
+            var dts = [dmlt, doct, dllt];
+            for (var i = 2; i > -1; --i) {
+                var md = (scm >> ((i << 1) + 2)) & 3;
+                if (md == 1) {
+                    // rle buf
+                    var rbuf = new u8([0, 0, dat[bt++]]);
+                    dts[i] = {
+                        s: rbuf.subarray(2, 3),
+                        n: rbuf.subarray(0, 1),
+                        t: new u16(rbuf.buffer, 0, 1),
+                        b: 0
+                    };
+                }
+                else if (md == 2) {
+                    // accuracy log 8 for offsets, 9 for others
+                    _a = rfse(dat, bt, 9 - (i & 1)), bt = _a[0], dts[i] = _a[1];
+                }
+                else if (md == 3) {
+                    if (!st.t)
+                        err(0);
+                    dts[i] = st.t[i];
+                }
+            }
+            var _b = st.t = dts, mlt = _b[0], oct = _b[1], llt = _b[2];
+            var lb = dat[ebt - 1];
+            if (!lb)
+                err(0);
+            var spos = (ebt << 3) - 8 + msb(lb) - llt.b, cbt = spos >> 3, oubt = 0;
+            var lst = ((dat[cbt] | (dat[cbt + 1] << 8)) >> (spos & 7)) & ((1 << llt.b) - 1);
+            cbt = (spos -= oct.b) >> 3;
+            var ost = ((dat[cbt] | (dat[cbt + 1] << 8)) >> (spos & 7)) & ((1 << oct.b) - 1);
+            cbt = (spos -= mlt.b) >> 3;
+            var mst = ((dat[cbt] | (dat[cbt + 1] << 8)) >> (spos & 7)) & ((1 << mlt.b) - 1);
+            for (++ns; --ns;) {
+                var llc = llt.s[lst];
+                var lbtr = llt.n[lst];
+                var mlc = mlt.s[mst];
+                var mbtr = mlt.n[mst];
+                var ofc = oct.s[ost];
+                var obtr = oct.n[ost];
+                cbt = (spos -= ofc) >> 3;
+                var ofp = 1 << ofc;
+                var off = ofp + (((dat[cbt] | (dat[cbt + 1] << 8) | (dat[cbt + 2] << 16) | (dat[cbt + 3] << 24)) >>> (spos & 7)) & (ofp - 1));
+                cbt = (spos -= mlb[mlc]) >> 3;
+                var ml = mlbl[mlc] + (((dat[cbt] | (dat[cbt + 1] << 8) | (dat[cbt + 2] << 16)) >> (spos & 7)) & ((1 << mlb[mlc]) - 1));
+                cbt = (spos -= llb[llc]) >> 3;
+                var ll = llbl[llc] + (((dat[cbt] | (dat[cbt + 1] << 8) | (dat[cbt + 2] << 16)) >> (spos & 7)) & ((1 << llb[llc]) - 1));
+                cbt = (spos -= lbtr) >> 3;
+                lst = llt.t[lst] + (((dat[cbt] | (dat[cbt + 1] << 8)) >> (spos & 7)) & ((1 << lbtr) - 1));
+                cbt = (spos -= mbtr) >> 3;
+                mst = mlt.t[mst] + (((dat[cbt] | (dat[cbt + 1] << 8)) >> (spos & 7)) & ((1 << mbtr) - 1));
+                cbt = (spos -= obtr) >> 3;
+                ost = oct.t[ost] + (((dat[cbt] | (dat[cbt + 1] << 8)) >> (spos & 7)) & ((1 << obtr) - 1));
+                if (off > 3) {
+                    st.o[2] = st.o[1];
+                    st.o[1] = st.o[0];
+                    st.o[0] = off -= 3;
+                }
+                else {
+                    var idx = off - (ll != 0);
+                    if (idx) {
+                        off = idx == 3 ? st.o[0] - 1 : st.o[idx];
+                        if (idx > 1)
+                            st.o[2] = st.o[1];
+                        st.o[1] = st.o[0];
+                        st.o[0] = off;
+                    }
+                    else
+                        off = st.o[0];
+                }
+                for (var i = 0; i < ll; ++i) {
+                    buf[oubt + i] = buf[spl + i];
+                }
+                oubt += ll, spl += ll;
+                var stin = oubt - off;
+                if (stin < 0) {
+                    var len = -stin;
+                    var bs = st.e + stin;
+                    if (len > ml)
+                        len = ml;
+                    for (var i = 0; i < len; ++i) {
+                        buf[oubt + i] = st.w[bs + i];
+                    }
+                    oubt += len, ml -= len, stin = 0;
+                }
+                for (var i = 0; i < ml; ++i) {
+                    buf[oubt + i] = buf[stin + i];
+                }
+                oubt += ml;
+            }
+            if (oubt != spl) {
+                while (spl < buf.length) {
+                    buf[oubt++] = buf[spl++];
+                }
+            }
+            else
+                oubt = buf.length;
+            if (out)
+                st.y += oubt;
+            else
+                buf = slc(buf, 0, oubt);
+        }
+        else if (out) {
+            st.y += lss;
+            if (spl) {
+                for (var i = 0; i < lss; ++i) {
+                    buf[i] = buf[spl + i];
+                }
+            }
+        }
+        else if (spl)
+            buf = slc(buf, spl);
+        st.b = ebt;
+        return buf;
+    }
+    err(2);
+};
+// concat
+var cct = function (bufs, ol) {
+    if (bufs.length == 1)
+        return bufs[0];
+    var buf = new u8(ol);
+    for (var i = 0, b = 0; i < bufs.length; ++i) {
+        var chk = bufs[i];
+        buf.set(chk, b);
+        b += chk.length;
+    }
+    return buf;
+};
+/**
+ * Decompresses Zstandard data
+ * @param dat The input data
+ * @param buf The output buffer. If unspecified, the function will allocate
+ *            exactly enough memory to fit the decompressed data. If your
+ *            data has multiple frames and you know the output size, specifying
+ *            it will yield better performance.
+ * @returns The decompressed data
+ */
+function decompress(dat, buf) {
+    var bufs = [], nb = +!buf;
+    var bt = 0, ol = 0;
+    for (; dat.length;) {
+        var st = rzfh(dat, nb || buf);
+        if (typeof st == 'object') {
+            if (nb) {
+                buf = null;
+                if (st.w.length == st.u) {
+                    bufs.push(buf = st.w);
+                    ol += st.u;
+                }
+            }
+            else {
+                bufs.push(buf);
+                st.e = 0;
+            }
+            for (; !st.l;) {
+                var blk = rzb(dat, st, buf);
+                if (!blk)
+                    err(5);
+                if (buf)
+                    st.e = st.y;
+                else {
+                    bufs.push(blk);
+                    ol += blk.length;
+                    cpw(st.w, 0, blk.length);
+                    st.w.set(blk, st.w.length - blk.length);
+                }
+            }
+            bt = st.b + (st.c * 4);
+        }
+        else
+            bt = st;
+        dat = dat.subarray(bt);
+    }
+    return cct(bufs, ol);
+}
+/**
+ * Decompressor for Zstandard streamed data
+ */
+var Decompress = /*#__PURE__*/ (function () {
+    /**
+     * Creates a Zstandard decompressor
+     * @param ondata The handler for stream data
+     */
+    function Decompress(ondata) {
+        this.ondata = ondata;
+        this.c = [];
+        this.l = 0;
+        this.z = 0;
+    }
+    /**
+     * Pushes data to be decompressed
+     * @param chunk The chunk of data to push
+     * @param final Whether or not this is the last chunk in the stream
+     */
+    Decompress.prototype.push = function (chunk, final) {
+        if (typeof this.s == 'number') {
+            var sub = Math.min(chunk.length, this.s);
+            chunk = chunk.subarray(sub);
+            this.s -= sub;
+        }
+        var sl = chunk.length;
+        var ncs = sl + this.l;
+        if (!this.s) {
+            if (final) {
+                if (!ncs) {
+                    this.ondata(new u8(0), true);
+                    return;
+                }
+                // min for frame + one block
+                if (ncs < 5)
+                    err(5);
+            }
+            else if (ncs < 18) {
+                this.c.push(chunk);
+                this.l = ncs;
+                return;
+            }
+            if (this.l) {
+                this.c.push(chunk);
+                chunk = cct(this.c, ncs);
+                this.c = [];
+                this.l = 0;
+            }
+            if (typeof (this.s = rzfh(chunk)) == 'number')
+                return this.push(chunk, final);
+        }
+        if (typeof this.s != 'number') {
+            if (ncs < (this.z || 3)) {
+                if (final)
+                    err(5);
+                this.c.push(chunk);
+                this.l = ncs;
+                return;
+            }
+            if (this.l) {
+                this.c.push(chunk);
+                chunk = cct(this.c, ncs);
+                this.c = [];
+                this.l = 0;
+            }
+            if (!this.z && ncs < (this.z = (chunk[this.s.b] & 2) ? 4 : 3 + ((chunk[this.s.b] >> 3) | (chunk[this.s.b + 1] << 5) | (chunk[this.s.b + 2] << 13)))) {
+                if (final)
+                    err(5);
+                this.c.push(chunk);
+                this.l = ncs;
+                return;
+            }
+            else
+                this.z = 0;
+            for (;;) {
+                var blk = rzb(chunk, this.s);
+                if (!blk) {
+                    if (final)
+                        err(5);
+                    var adc = chunk.subarray(this.s.b);
+                    this.s.b = 0;
+                    this.c.push(adc), this.l += adc.length;
+                    return;
+                }
+                else {
+                    this.ondata(blk, false);
+                    cpw(this.s.w, 0, blk.length);
+                    this.s.w.set(blk, this.s.w.length - blk.length);
+                }
+                if (this.s.l) {
+                    var rest = chunk.subarray(this.s.b);
+                    this.s = this.s.c * 4;
+                    this.push(rest, final);
+                    return;
+                }
+            }
+        }
+        else if (final)
+            err(5);
+    };
+    return Decompress;
+}());
+return {decompress,Decompress};
+})();
+// PCSX2 のセーブステート（.p2s）を読む。中身は zip で、各ファイルは zstd（形式番号 93）か無圧縮（0）か deflate（8）。
+// 返り値: Map(名前 → () => Promise<Uint8Array>)
+async function p2sOpen(buf){
+  const u8=buf instanceof Uint8Array?buf:new Uint8Array(buf), dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
+  let e=u8.length-22; while(e>=0&&dv.getUint32(e,true)!==0x06054b50) e--;
+  if(e<0) throw new Error("zip の形をしていない（.p2s ではない？）");
+  const n=dv.getUint16(e+10,true); let p=dv.getUint32(e+16,true); const out=new Map();
+  for(let k=0;k<n;k++){
+    if(dv.getUint32(p,true)!==0x02014b50) throw new Error("zip の目次が壊れている");
+    const method=dv.getUint16(p+10,true), csize=dv.getUint32(p+20,true), size=dv.getUint32(p+24,true);
+    const nl=dv.getUint16(p+28,true), xl=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true), loc=dv.getUint32(p+42,true);
+    const name=new TextDecoder().decode(u8.subarray(p+46,p+46+nl));
+    out.set(name,async()=>{
+      const d0=loc+30+dv.getUint16(loc+26,true)+dv.getUint16(loc+28,true), raw=u8.subarray(d0,d0+csize);
+      if(method===0) return raw;
+      if(method===93) return fzstd.decompress(raw,new Uint8Array(size));
+      if(method===8){ const s=new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw")); return new Uint8Array(await new Response(s).arrayBuffer()) }
+      throw new Error("知らない圧縮の形式 "+method+"（"+name+"）");
+    });
+    p+=46+nl+xl+cl;
+  }
+  return out;
+}
+// ディスクのイメージを読む。CHD（MAME の圧縮イメージ v5・CD。cdlz/cdzl）は tobal1-model-viewer/src/disc.js の読み取りを写したもの、
+// .bin（2352）・.iso（2048）・BIN.CVM は VF2 の vdisc.js と同じ。返り値: Map(名前 → () => Promise<Uint8Array>)
+// ============================================================
+//  CHD（MAME の圧縮ディスクイメージ、v5・CD）
+// ============================================================
+class MsbBits{
+  constructor(d){this.d=d;this.pos=0}
+  peek(n){let v=0;for(let i=0;i<n;i++){const p=this.pos+i;v=v*2+(((this.d[p>>3]||0)>>(7-(p&7)))&1)}return v}
+  read(n){const v=this.peek(n);this.pos+=n;return v}
+}
+function huffmanFromRle(br,numcodes,maxbits){
+  const nb=maxbits>=16?5:maxbits>=8?4:3, len=new Array(numcodes).fill(0);
+  for(let cur=0;cur<numcodes;){
+    let b=br.read(nb);
+    if(b!==1){len[cur++]=b;continue}
+    b=br.read(nb);
+    if(b===1){len[cur++]=1;continue}
+    for(let r=br.read(nb)+3;r>0&&cur<numcodes;r--) len[cur++]=b;
+  }
+  const hist=new Array(33).fill(0); for(const l of len) if(l) hist[l]++;
+  let start=0; for(let l=32;l>0;l--){const next=(start+hist[l])>>1; hist[l]=start; start=next}
+  const table=new Array(1<<maxbits).fill(0);
+  len.forEach((l,sym)=>{ if(!l) return; const code=hist[l]++, sh=maxbits-l; for(let k=code<<sh;k<((code+1)<<sh);k++) table[k]=[sym,l] });
+  return ()=>{const e=table[br.peek(maxbits)]; if(!e) throw new Error("CHD の目次が壊れています"); br.pos+=e[1]; return e[0]};
+}
+function lzmaDecode(src,outLen,lc=3,lp=0,pb=2){
+  const out=new Uint8Array(outLen);
+  let ip=5, range=0xFFFFFFFF, code=((src[1]<<24)>>>0)+(src[2]<<16)+(src[3]<<8)+src[4];
+  const P=n=>new Uint16Array(n).fill(1024);
+  const bit=(p,i)=>{
+    const b=(range>>>11)*p[i]; let r;
+    if(code<b){range=b; p[i]+=(2048-p[i])>>5; r=0} else {range-=b; code-=b; p[i]-=p[i]>>5; r=1}
+    if(range<16777216){range*=256; code=code*256+(src[ip++]||0)}
+    return r;
+  };
+  const tree=(p,base,n)=>{let m=1;for(let i=0;i<n;i++)m=(m<<1)+bit(p,base+m);return m-(1<<n)};
+  const rtree=(p,base,n)=>{let m=1,s=0;for(let i=0;i<n;i++){const b=bit(p,base+m);m=(m<<1)+b;s|=b<<i}return s};
+  const isMatch=P(192),isRep=P(12),isRepG0=P(12),isRepG1=P(12),isRepG2=P(12),isRep0Long=P(192);
+  const posSlot=P(256),specPos=P(114),align=P(16),lenC=P(514),repLenC=P(514),lit=P(0x300<<(lc+lp));
+  const len=(p,ps)=>!bit(p,0)?tree(p,2+(ps<<3),3):!bit(p,1)?8+tree(p,130+(ps<<3),3):16+tree(p,258,8);
+  let state=0,r0=0,r1=0,r2=0,r3=0,op=0;
+  const pbMask=(1<<pb)-1, lpMask=(1<<lp)-1;
+  while(op<outLen){
+    const ps=op&pbMask;
+    if(!bit(isMatch,(state<<4)+ps)){
+      const base=0x300*(((op&lpMask)<<lc)+((op?out[op-1]:0)>>(8-lc)));
+      let s=1;
+      if(state<7){ while(s<0x100) s=(s<<1)|bit(lit,base+s) }
+      else{
+        let mb=out[op-r0-1];
+        while(s<0x100){ const m=(mb>>7)&1; mb<<=1; const b=bit(lit,base+0x100+(m<<8)+s); s=(s<<1)|b; if(m!==b){ while(s<0x100) s=(s<<1)|bit(lit,base+s); break } }
+      }
+      out[op++]=s&255; state=state<4?0:state<10?state-3:state-6; continue;
+    }
+    let n;
+    if(bit(isRep,state)){
+      if(!bit(isRepG0,state)){
+        if(!bit(isRep0Long,(state<<4)+ps)){ state=state<7?9:11; out[op]=out[op-r0-1]; op++; continue }
+      }else{
+        let d;
+        if(!bit(isRepG1,state)) d=r1; else { if(!bit(isRepG2,state)) d=r2; else {d=r3; r3=r2} r2=r1 }
+        r1=r0; r0=d;
+      }
+      n=len(repLenC,ps); state=state<7?8:11;
+    }else{
+      r3=r2; r2=r1; r1=r0;
+      n=len(lenC,ps); state=state<7?7:10;
+      const slot=tree(posSlot,Math.min(n,3)<<6,6);
+      if(slot<4) r0=slot;
+      else{
+        const nd=(slot>>1)-1; let d=(2|(slot&1))*2**nd;
+        if(slot<14) d+=rtree(specPos,d-slot-1,nd);
+        else{
+          let direct=0;
+          for(let i=0;i<nd-4;i++){ range=range>>>1; let b=0; if(code>=range){code-=range;b=1} direct=direct*2+b; if(range<16777216){range*=256; code=code*256+(src[ip++]||0)} }
+          d+=direct*16+rtree(align,0,4);
+        }
+        if(d>=0xFFFFFFFF) break;
+        r0=d;
+      }
+    }
+    for(n+=2;n>0&&op<outLen;n--,op++) out[op]=out[op-r0-1];
+  }
+  return out;
+}
+async function inflateRaw(data){
+  if(typeof DecompressionStream==="undefined") throw new Error("このブラウザは CHD の展開に必要な機能に対応していません。iPhone は iOS 16.4 以降にしてください（.bin なら読めます）");
+  const s=new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+class ChdDisc{
+  constructor(file){this.file=file;this.cache=new Map()}
+  async bytes(off,n){return new Uint8Array(await this.file.slice(off,off+n).arrayBuffer())}
+  async init(){
+    const h=await this.bytes(0,124), dv=new DataView(h.buffer);
+    if(String.fromCharCode(...h.subarray(0,8))!=="MComprHD") throw new Error("CHD ファイルとして読めませんでした");
+    if(dv.getUint32(12)!==5) throw new Error("この版の CHD にはまだ対応していません（v5 のみ）");
+    this.codecs=[0,1,2,3].map(i=>String.fromCharCode(...h.subarray(16+i*4,20+i*4)).replace(/\0/g,""));
+    const logical=Number(dv.getBigUint64(32)), mapoff=Number(dv.getBigUint64(40));
+    this.hunkBytes=dv.getUint32(56); this.unitBytes=dv.getUint32(60);
+    if(dv.getBigUint64(104)|dv.getBigUint64(112)) throw new Error("差分形式（親ファイルが必要）の CHD には対応していません");
+    if(!this.codecs[0]) throw new Error("非圧縮の CHD にはまだ対応していません");
+    const count=Math.ceil(logical/this.hunkBytes);
+    const mh=await this.bytes(mapoff,16), mdv=new DataView(mh.buffer);
+    const mapLen=mdv.getUint32(0), lengthBits=mh[12], selfBits=mh[13], parentBits=mh[14];
+    let cur=mdv.getUint32(4)*65536+mdv.getUint16(8);
+    const br=new MsbBits(await this.bytes(mapoff+16,mapLen)), dec=huffmanFromRle(br,16,8);
+    const types=new Uint8Array(count);
+    for(let i=0,last=0,rep=0;i<count;i++){
+      if(rep>0){types[i]=last;rep--;continue}
+      const v=dec();
+      if(v===7){types[i]=last;rep=2+dec()}
+      else if(v===8){types[i]=last;rep=2+16+(dec()<<4);rep+=dec()}
+      else types[i]=last=v;
+    }
+    this.map=[];
+    for(let i=0,lastSelf=0;i<count;i++){
+      let t=types[i], off=0, len=0;
+      if(t<=3){len=br.read(lengthBits);off=cur;cur+=len;br.read(16)}
+      else if(t===4){len=this.hunkBytes;off=cur;cur+=len;br.read(16)}
+      else if(t===5){off=lastSelf=br.read(selfBits)}
+      else if(t===9||t===10){if(t===10)lastSelf++;t=5;off=lastSelf}
+      else throw new Error("親ファイルを参照する CHD には対応していません");
+      this.map.push([t,off,len]);
+    }
+    const f0=await this.hunk(0);
+    this.dataOff=f0[15]===1?16:24;
+  }
+  async hunk(i){
+    if(this.cache.has(i)) return this.cache.get(i);
+    const [t,off,len]=this.map[i]; let out;
+    if(t===5) out=await this.hunk(off);
+    else if(t===4) out=await this.bytes(off,len);
+    else{
+      const src=await this.bytes(off,len), codec=this.codecs[t], hb=this.hunkBytes;
+      if(!/^cd(lz|zl)$/.test(codec)) throw new Error(`この圧縮形式（${codec}）の部分はまだ読めません`);
+      const frames=hb/2448, eccBytes=(frames+7)>>3, clBytes=hb<65536?2:3;
+      let cl=0; for(let k=0;k<clBytes;k++) cl=cl*256+src[eccBytes+k];
+      const body=src.subarray(eccBytes+clBytes,eccBytes+clBytes+cl);
+      const sect=codec==="cdlz"?lzmaDecode(body,frames*2352):await inflateRaw(body);
+      out=new Uint8Array(hb);
+      for(let f=0;f<frames;f++) out.set(sect.subarray(f*2352,(f+1)*2352),f*2448);
+    }
+    if(this.cache.size>64) this.cache.delete(this.cache.keys().next().value);
+    this.cache.set(i,out); return out;
+  }
+  async read(lba,count){
+    const out=new Uint8Array(count*2048);
+    for(let k=0;k<count;k++){
+      const pos=(lba+k)*this.unitBytes, h=await this.hunk(Math.floor(pos/this.hunkBytes)), o=pos%this.hunkBytes;
+      out.set(h.subarray(o+this.dataOff,o+this.dataOff+2048),k*2048);
+    }
+    return out;
+  }
+  async readRaw(lba){ const pos=lba*this.unitBytes, h=await this.hunk(Math.floor(pos/this.hunkBytes)), o=pos%this.hunkBytes; return h.subarray(o,o+2352) }
+  async rootFiles(){return BinDisc.prototype.rootFiles.call(this)}
+}
+async function vdSlice(file,off,len){ return new Uint8Array(await file.slice(off,off+len).arrayBuffer()) }
+function vdWalk(readSec,root){   // ISO9660 のファイルを全部たどる。readSec(lba,count)→Promise<Uint8Array>
+  const out=[];
+  const walk=async(lba,size,pre)=>{
+    const d=await readSec(lba,Math.ceil(size/2048)), dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+    for(let p=0;p<d.length;){
+      const L=d[p]; if(!L){ p=(Math.floor(p/2048)+1)*2048; continue }
+      const el=dv.getUint32(p+2,true), es=dv.getUint32(p+10,true), fl=d[p+25], nl=d[p+32];
+      const nm=String.fromCharCode(...d.subarray(p+33,p+33+nl)).split(";")[0];
+      if(nl===1&&d[p+33]<2){ p+=L; continue }
+      if(fl&2) await walk(el,es,pre+nm+"/"); else out.push({name:pre+nm,lba:el,size:es});
+      p+=L;
+    }
+  };
+  return walk(root[0],root[1],"").then(()=>out);
+}
+function vdRootOf(pvd){ const dv=new DataView(pvd.buffer,pvd.byteOffset,pvd.byteLength); return [dv.getUint32(156+2,true),dv.getUint32(156+10,true)] }
+// 2048 バイトのセクタを読む関数から、File と同じ slice(a,b).arrayBuffer() で読める物を作る（CHD の中の BIN.CVM を全部展開せずに読む）
+function fdSectorFile(readSec,lba,size){
+  return {size, slice(a,b){ return {arrayBuffer:async()=>{ b=Math.min(b,size); if(b<=a) return new ArrayBuffer(0);
+    const s0=Math.floor(a/2048), s1=Math.ceil(b/2048), d=await readSec(lba+s0,s1-s0); return d.slice(a-s0*2048,b-s0*2048).buffer } } } };
+}
+async function discOpen(file){
+  const head=await vdSlice(file,0,16);
+  let cvm=null;
+  if(String.fromCharCode(...head.subarray(0,4))==="CVMH") cvm=file;
+  else {
+    let readSec;
+    if(String.fromCharCode(...head.subarray(0,8))==="MComprHD"){ const chd=new ChdDisc(file); await chd.init(); readSec=(lba,n)=>chd.read(lba,n) }
+    else {
+      let sec,base;
+      if(String.fromCharCode(...(await vdSlice(file,16*2352+25,5)))==="CD001"){ sec=2352; base=24 }
+      else if(String.fromCharCode(...(await vdSlice(file,16*2048+1,5)))==="CD001"){ sec=2048; base=0 }
+      else throw new Error("ディスクのイメージ（.chd・.bin・.iso）か BIN.CVM ではない");
+      readSec=async(lba,n)=>{ const raw=await vdSlice(file,lba*sec,n*sec); if(sec===2048) return raw;
+        const o=new Uint8Array(n*2048); for(let i=0;i<n;i++) o.set(raw.subarray(i*sec+base,i*sec+base+2048),i*2048); return o };
+    }
+    const list=await vdWalk(readSec,vdRootOf(await readSec(16,1)));
+    const e=list.find(f=>f.name.toUpperCase()==="BIN.CVM");
+    if(!e) throw new Error("ディスクの中に BIN.CVM が無い（ファイティングバイパーズの PS2 版ではない？）");
+    cvm=fdSectorFile(readSec,e.lba,e.size);
+  }
+  const ch=await vdSlice(cvm,0,0x20000); let at=-1;
+  for(let i=0;i<ch.length-6;i++) if(ch[i]===1&&ch[i+1]===0x43&&ch[i+2]===0x44&&ch[i+3]===0x30&&ch[i+4]===0x30&&ch[i+5]===0x31){ at=i; break }
+  if(at<0) throw new Error("BIN.CVM の中に ISO9660 が見つからない");
+  const base=at-16*2048, readSec=(lba,n)=>vdSlice(cvm,base+lba*2048,n*2048), files=new Map();
+  for(const f of await vdWalk(readSec,vdRootOf(await readSec(16,1))))
+    files.set(f.name,()=>vdSlice(cvm,base+f.lba*2048,f.size));
+  return files;
+}
+// CRICMP 2.10 の展開（本体 SLPM_625.47 の 0x1547c0・0x154e80 を写したもの）。u8: Uint8Array → Uint8Array
+function cricmpUnpack(u8){
+  const dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
+  if(String.fromCharCode(...u8.subarray(0,6))!=="CRICMP") throw new Error("CRICMP ではない");
+  const size=dv.getUint32(0x14,true), ver=parseFloat(String.fromCharCode(...u8.subarray(8,12)).replace(/\0.*/,""));
+  let p=dv.getUint32(0x18,true)+2, n;
+  if(ver>2){ n=dv.getUint32(p,false); p+=4 } else { n=dv.getUint16(p,false); p+=2 }
+  const out=new Uint8Array(size+0x20000); let o=0;
+  const group=items=>{
+    const flags=dv.getUint16(p,false); p+=2;
+    for(let i=0;i<items;i++){
+      const w=dv.getUint16(p,false); p+=2;
+      if(flags>>i&1){ out[o++]=w>>8; out[o++]=w&255 }
+      else if(!(w&0xf000)){ const b=out[o-1]; for(let k=w+3;k>0;k--) out[o++]=b }
+      else { const off=w&0xfff; for(let k=(w>>12)+2;k>0;k--){ out[o]=out[o-off]; o++ } }
+    }
+  };
+  for(let k=0;k<n;k++) group(16);
+  const trim=dv.getInt8(p), rest=u8[p+1]; p+=2;
+  if(rest>0) group(rest);
+  if(trim>0) o-=trim;
+  if(o!==size) throw new Error(`展開の大きさが合わない ${o} ≠ ${size}`);
+  return out.slice(0,o);
+}
+// OBJ_*.CMP（展開後）のモデル。1ファイル＝[数][モデル…]、モデル＝[番号][塊×4]、塊＝[長さ][中身]。
+// 塊0: 面ごとの属性 8B、塊1: 同じ形の表（用途未確定）、塊2: 面ごとの UV 4組（16bit×2×4）、塊3: 面の記録 40B
+function objModels(u8){
+  const dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength), n=dv.getUint32(0,true), out=[];
+  let p=4;
+  for(let k=0;k<n;k++){
+    const id=dv.getUint32(p,true), ch=[]; p+=4;
+    for(let c=0;c<4;c++){ const L=dv.getUint32(p,true); ch.push(u8.subarray(p+4,p+4+L)); p+=4+L }
+    out.push({id,ch});
+  }
+  if(p!==u8.length) throw new Error(`モデルの区切りが合わない ${p} ≠ ${u8.length}`);
+  return out;
+}
+// 面の記録: +0 頭（bit0-1 形 0=終わり 1=四角 2=三角、bit8-9 つなぎ方）、+4 法線、+0x10 頂点A、+0x1c 頂点B。
+// 手元の2点 P0,P1 と A,B で面 (P0,P1,B,A) を作る。つなぎ方 0=描かずに P0=A,P1=B、2=P0=A,P1=B、1=P1=A、3=P0=B
+// （本体 SLPM_625.47 の 0x1c9cc0 を写したもの）
+// 面ごとの属性（塊0 の 8B＝16bit×4）と UV（塊2、1/8 画素）も返す。
+// 属性の位置は面の頭の bit12-16（符号付き）×8B ずつ進む。UV は描いた面ごとに四角 16B・三角 12B、
+// つなぎ方 0 の記録も（最初の1つを除き）1つぶん進む（本体 0x1c6380）
+function objPolys(g,A,U){
+  const dv=new DataView(g.buffer,g.byteOffset,g.byteLength), out=[];
+  const av=A&&new DataView(A.buffer,A.byteOffset,A.byteLength), uvv=U&&new DataView(U.buffer,U.byteOffset,U.byteLength);
+  let P0=null, P1=null, ai=0, fp=0, drawn=false;
+  const v=o=>[dv.getFloat32(o,true),dv.getFloat32(o+4,true),dv.getFloat32(o+8,true)];
+  for(let r=0;r+40<=g.length;r+=40){
+    const h=dv.getUint32(r,true), kind=h&3, link=h>>8&3, step=kind===1?16:12;
+    if(!kind) break;
+    const n=v(r+4), A_=v(r+16), B=v(r+28);
+    if(!link){ P0=A_; P1=B; if(drawn) fp+=step }
+    else {
+      const p={h,n,v:kind===2?[P0,P1,A_]:[P0,P1,B,A_]};
+      if(av){ p.attr=[0,2,4,6].map(k=>av.getUint16(ai*8+k,true)) }
+      if(uvv){ const uv=[]; for(let j=0;j<(kind===1?4:3);j++) uv.push([uvv.getUint16(fp+j*4,true),uvv.getUint16(fp+j*4+2,true)]);
+        // UV の並びは (P1,P0,A,B)（写しの中の変換済みモデルの ST と照らして確かめた）。頂点の順 (P0,P1,B,A) に合わせる
+        p.uv=kind===1?[uv[1],uv[0],uv[3],uv[2]]:[uv[1],uv[0],uv[2]] }
+      out.push(p); drawn=true; fp+=step;
+      if(link===2){ P0=A_; P1=B } else if(link===1) P1=A_; else P0=B;
+    }
+    const d=h>>12&31; ai+=d>=16?d-32:d;
+  }
+  return out;
+}
+// テクスチャのシート（本体のテクスチャ用メモリ g_geo+0xa040 と同じ並び）。1024×512 の 4bit が2ページ、1行 512B。
+// TEX_ROB.MRG の1人ぶん（展開 98304B）は、128B の行 r をシートの行 r>>1・横 (r&1)*512 画素に置く（本体 sysGeoWriteRobTex）。
+// 1P（player 0）はページ1、2P はページ0
+function texSheetNew(){ return new Uint8Array(0x80000) }
+function texPutRob(sheet,rob,player){
+  const base=(player^1)<<18;
+  for(let r=0;r<768;r++) sheet.set(rob.subarray(r*128,r*128+128),base+r*256);
+}
+function texNibble(sheet,page,X,Y){
+  X&=1023; Y&=511;
+  const b=sheet[(page<<18)+Y*512+(X>>1)];
+  return X&1?b>>4:b&15;
+}
+
+// 面の UV（1/8 画素）から、テクスチャ用メモリの画素の位置を出す（本体 0x1c6380・0x1c6e40 を写し、写しの ST と一致を確かめた）。
+// 属性 h0: bit0-2 縦の大きさ・bit3-5 横の大きさ（32..2048）。h2: 下位6bit×32＝原点X（T 側）、次の6bit×32−1024＝原点Y（S 側）、
+// 原点X≥1024 なら X−=1024・Y+=1024。bit12＝ページ。UV は +10 して、面の中の最小値が大きさの外なら大きさの倍数ぶん戻す。
+// テクスチャ用メモリの1ページ＝幅 512・高さ 1024 の 4bit（1行 256B）。S*1024＝ページ*512＋(u'/8+Y)/4？ ではなく
+// ページ内の横 px＝(u'/8+原点Y)/4、縦 py＝v'/8+原点X（GS の S,T を 1024 倍したもの）
+const TEX_SZ=[32,64,128,256,512,1024,2048,2048];
+function texCoords(attr,uv){
+  // FV: 読み込み済みモデルの ST は (UV＋7)÷区画の大きさ（VF2 は ＋10）。loc・org・size はアーケードのテクスチャ RAM のテクセル単位で、
+  // [0]＝u の向き（RAM の y、原点 Y＝(h2>>6&63)×32−1024）、[1]＝v の向き（RAM の x、原点 X＝(h2&63)×32）
+  const [h0,,h2]=attr, su=TEX_SZ[h0>>3&7]*8, sv=TEX_SZ[h0&7]*8;
+  let X=(h2&63)*32, Y=(h2>>6&63)*32-1024; if(X>=1024){ X-=1024; Y+=1024 }
+  const mu=Math.min(...uv.map(a=>a[0])), mv=Math.min(...uv.map(a=>a[1]));
+  const ku=Math.floor((mu+7)/su)*su, kv=Math.floor((mv+7)/sv)*sv;
+  const loc=uv.map(([u,v])=>[(u+7-ku)/8, (v+7-kv)/8]);
+  return {page:h2>>12&1, org:[Y,X], size:[su/8,sv/8], loc, st:loc};
+}
+// テクスチャ用メモリ（g_geo+0xa040 の 512KB）から 4bit を読む。FV の PS2 版はアーケードのテクスチャ RAM を縦横とも 1 つおきに間引いたもの（arcadetex.mjs で確かめた）:
+// RAM の (x, y) → 行 r＝(x を偶数に丸めたもの)＋(y の bit9)、行の中の横 (y&511)>>1。行は 256B おき、ページは 0x40000 ずつ
+function texRam(ram,page,ay,ax){
+  ay=Math.floor(ay)&1023; ax=Math.floor(ax)&1023;
+  const r=(ax&~1)+((ay>>9)&1), c=(ay&511)>>1, b=ram[(page<<18)+r*256+(c>>1)];
+  return c&1?b>>4:b&15;
+}
+// セーブステートの主メモリから、そのコマでゲームがジオメトライザに送った命令の列を読む（VF2 の scene.js と同じ作り。番地だけ FV のもの）。
+// 命令の語の上位 9bit（w>>>23）が番号。引数の語数: 物体1=4・枠3=6・モード7=1・8=1・焦点9=2・光10=3・行列11=12・12=3・LOD22=1、
+// 13・16 は 1 語だけ。4 は [番地][語数 n][n 語]。bit31 の立った語は 1 語。15 で終わり。
+const SC_OBJTBL=0x1f834f0, SC_OBJN=5413;   // 番号→読み込んだモデルの番地の表（2人 × 5413 語。モデルの頂点で確かめた）
+// from: 読み始める番地（命令の列は 0x1288000 から 0x8000 おきにいくつもあり、コマが違う。どれが画面のコマかは調べ中）
+function sceneRead(mem,from=0x1280000){
+  const W32=new Uint32Array(mem.buffer,mem.byteOffset,mem.length>>2), F32=new Float32Array(mem.buffer,mem.byteOffset,mem.length>>2);
+  const inv=new Map(), T=SC_OBJTBL>>2;
+  for(let i=0;i<2*SC_OBJN;i++){ const v=W32[T+i]; if(v&&!inv.has(v)) inv.set(v,{player:(i/SC_OBJN)|0,id:i%SC_OBJN}) }
+  const LEN={0:0,1:4,3:6,7:1,8:1,9:2,10:3,11:12,12:3,13:0,16:0,22:1};
+  let start=-1; for(let j=from>>2;j<0x1300000>>2;j++) if(W32[j]===0x04800000){ start=j; break }
+  if(start<0) throw new Error("命令の列が見つからない（対戦中のセーブステートではない？）");
+  const draws=[], focal=[F32[start+1],F32[start+2]], windows=[]; let mat=null, light=null, n=0, unknown=0;
+  for(let j=start;;){
+    if(++n>100000) throw new Error("命令の列が終わらない");
+    const w=W32[j];
+    if(w>>>31){ j++; continue }
+    const op=w>>>23;
+    if(op===15) break;
+    if(op===4){ j+=3+W32[j+2]; continue }
+    if(!(op in LEN)) throw new Error("知らない命令 "+op+" at 0x"+(j*4).toString(16));
+    if(op===11) mat=Array.from(F32.subarray(j+1,j+13));
+    if(op===10&&!light) light=Array.from(F32.subarray(j+1,j+4));
+    if(op===3) windows.push(Array.from(W32.subarray(j+1,j+7)));
+    if(op===1){ const a=W32[j+4], o=inv.get(a); if(o&&mat) draws.push({player:o.player,id:o.id,m:mat,addr:a}); else if(a!==0xffffffff) unknown++ }
+    j+=1+LEN[op];
+  }
+  return {focal,light,draws,windows,unknown};
+}
+// 色とテクスチャ（VF2 の g_geo と同じ並びの塊。FV は 0x12e7a80）: +0x40 色 RAM（16bit×1024）・+0x840 色の変換表（R・G・B、各 32 行×64）・
+// +0x2040 明るさの曲線（128B ずつ）・+0xa040 テクスチャ（ページ 2 枚、各 幅 512・高さ 1024 の 4bit）。
+// テクスチャのファイル（TEX_ROBnn）が 1P は +0xa040+0x40000、2P は +0xa040 に、128B ずつ行の間隔 256B で載っている所から逆算した
+const SC_GEO=0x12e7a80;
+function sceneColors(mem){
+  const g=mem.subarray(SC_GEO,SC_GEO+0xa040+0x80000);
+  return {tex:g.subarray(0xa040,0xa040+0x80000), cram:g.subarray(0x40,0x840), xlat:g.subarray(0x840,0x2040), clut:g.subarray(0x2040,0x2040+0x8000)};
+}
+// 光の設定（VU1 のデータの 0〜31 番＝拡散・環境・光沢・回数、32 番＝光の向き）。VF2 と同じ読み方
+function sceneLight(vu1,sc){
+  if(!vu1||vu1.length<34*16) return {tab:Array.from({length:32},()=>[63.5,31.5,0,0]), L:sc?sc.light:[0,-1,0], flags:7, fromVu:false};
+  const dv=new DataView(vu1.buffer,vu1.byteOffset,vu1.byteLength), tab=[];
+  for(let q=0;q<32;q++) tab.push([dv.getFloat32(q*16,true),dv.getFloat32(q*16+4,true),dv.getFloat32(q*16+8,true),dv.getUint32(q*16+12,true)]);
+  return {tab, L:[0,1,2].map(i=>dv.getFloat32(32*16+i*4,true)), flags:dv.getUint32(32*16+12,true), fromVu:true};
+}
+// 場面の2人（と背景）を、描くための頂点の配列にする（WebGL でも node の台本でも使う）。
+// 頂点ごとに 24 個の数: 位置3（カメラの座標）・法線3・色 RAM の 5bit×3・テクスチャの loc2・org2・size2・テクスチャ（0 なし・1 あり・2 あり＋値 15 を抜く）・ページ・パレット番号・面の頭の bit10-11 と bit17-22（(h>>10&3)|((h>>17&63)<<2)）・光の表の値4（拡散・環境・光沢・光沢の回数）・旗（1＝光の設定 10〜12、2＝貼りもの＝h1 の上位バイトが 0 でない。目や眉）
+const BUILD_STRIDE=24;
+// models: {0: 1P のモデル, 1: 2P のモデル, stage: ステージのモデル}（どれも Map 番号→モデル）。
+// opt.which: "body"（影以外）か "shadow"（影だけ）。opt.players: [1P を出すか, 2P を出すか]。opt.stage: 背景を出すか（false で出さない）
+function sceneMesh(sc,col,models,opt={}){
+  const out=[], missing=new Set(), mirror=[-1,-1]; let shadows=0; const which=opt.which||"body";
+  const cram=new DataView(col.cram.buffer,col.cram.byteOffset,col.cram.byteLength);
+  for(const d of sc.draws){
+    let e=d.dyn||(models[d.player]&&models[d.player].get(d.id)), isStage=false;
+    if(!e&&d.player===0&&models.stage){ e=models.stage.get(d.id); isStage=!!e }   // ステージの部品は 1P の表に入っている
+    if(!e){ missing.add(d.id); continue }
+    const m=d.m, det=m[0]*(m[4]*m[8]-m[5]*m[7])-m[1]*(m[3]*m[8]-m[5]*m[6])+m[2]*(m[3]*m[7]-m[4]*m[6]);
+    const shadow=!isStage&&Math.abs(det)<0.05;   // 床に潰した影（行列の縦がほぼ 0。01 の写しで 343〜354 など）
+    if(shadow) shadows++;
+    if((which==="shadow")!==shadow) continue;
+    if(isStage?opt.stage===false:(opt.players&&!opt.players[d.player])) continue;
+    // 映り込み（行列式が負の部品。OBJ_*B）: ゲームは命令の列の組の順に描き、映り込みの組のあとにリングの床の組が来るので床に隠れる。
+    // 映り込みの前の組（縁の帯など）の上には、帯の方が手前でも塗る。ページでは映り込みを奥行きを比べず・書かずに描いて（vgl.js）、あとの部品に上から塗らせる。その頂点の範囲を覚えておく
+    const mir=!shadow&&det<-0.05; if(mir&&mirror[0]<0) mirror[0]=out.length/BUILD_STRIDE;
+    const T=v=>[v[0]*m[0]+v[1]*m[3]+v[2]*m[6]+m[9], v[0]*m[1]+v[1]*m[4]+v[2]*m[7]+m[10], v[0]*m[2]+v[1]*m[5]+v[2]*m[8]+m[11]];
+    // 属性の表は 1P（とステージ）が塊0、2P が塊1
+    let over=0;   // 部品の中で何枚目の「重ねる面」か（透明ありのテクスチャの面と貼りもの。ゲームは部品の中をファイルの順に上塗りする）
+    // 前の面と同じ平面に乗っている面・同じ頂点の面も重ねる面（影丸の覆面は、顔の肌の面と同じ頂点の面を旗無しで重ねてあり、ファイルで後ろにある。頂点の並びの始まりは違う）
+    const planes=new Set();
+    for(const p of objPolys(e.ch[3],e.ch[d.player?1:0],e.ch[2])){
+      let same=false; if(!isStage){ const v=p.v, a=v[1].map((x,i)=>x-v[0][i]), b=v[2].map((x,i)=>x-v[0][i]), n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=Math.hypot(...n);
+        if(l>1e-12){ const key=n.map(x=>(x/l).toFixed(3)).join()+"/"+((n[0]*v[0][0]+n[1]*v[0][1]+n[2]*v[0][2])/l).toFixed(4); const vk=v.map(u=>u.map(x=>x.toFixed(4)).join()).sort().join("|"); same=planes.has(key)||planes.has(vk); planes.add(key); planes.add(vk) } }
+      const q=p.v.map(T), a=q[1].map((x,i)=>x-q[0][i]), b=q[2].map((x,i)=>x-q[0][i]);
+      const n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], l=(det<0?-1:1)*(Math.hypot(...n)||1); for(let i=0;i<3;i++) n[i]/=l;   // 映り込み（行列式が負）は頂点の並びが裏返るので法線を戻す
+      const c16=cram.getUint16((p.attr[3]>>6&1023)*2,true), c5=[c16&31,c16>>5&31,c16>>10&31];
+      let tx=null; if(p.attr[0]>>14&1) tx=texCoords(p.attr,p.uv);
+      const ov=same||(p.attr[1]>>8)||(tx&&(p.attr[0]>>13&1))?++over:0;
+      const ls=p.h>>18&31, lt=opt.light?opt.light.tab[ls]:[63.5,31.5,0,0], lk=[lt[0],lt[1],lt[2],(lt[3]&7&(opt.light?opt.light.flags:0))?1:0,(ls>=10&&ls<=12?1:0)+(ov?2:0)+4*Math.min(ov,255)];
+      const vert=k=>{ out.push(...q[k],...n,...c5);
+        if(tx) out.push(...tx.loc[k],...tx.org,...tx.size,(p.attr[0]>>13&1)?2:1,tx.page,p.attr[1]&255); else out.push(0,0,0,0,1,1,0,0,0);
+        out.push((p.h>>10&3)|((p.h>>17&63)<<2),...lk) };
+      for(let i=1;i+1<q.length;i++){ vert(0); vert(i); vert(i+1) }
+    }
+    if(mir) mirror[1]=out.length/BUILD_STRIDE;
+  }
+  return {data:new Float32Array(out), count:out.length/BUILD_STRIDE, missing:[...missing], shadows, mirror:mirror[0]<0?null:mirror};
+}
+// 明るさ（0〜63）。VU1 のプログラム（calcBrightnessMainMdl2・m2CalcCont・m2mdlQuadPoly…m2mdlTex）を読んで写したもの:
+//   B＝clamp(拡散×d＋環境＋光沢×s^8, 0, 127)（d・s は scene.js の sceneLight の説明）→ L＝曲線[h1 の番号][B]（g_geo+0x2040＋番号×128）
+//   テクスチャあり: 光の設定が 10〜12 か L＜48 なら L×(テクスチャの値×17)×8/2048、それ以外は 48＋テクスチャの値（色の変換表の特別な欄）
+//   テクスチャなし: L。光沢の回数は s^8 と近似（7つの写しでは結果に影響しなかった）
+// 7つの写しで、写真とのずれが当てはめた式より減る（light.mjs。当てはめに使わなかった 06 で 11.45→8.78）
+function buildBright(n,lk,light){
+  const L=light.L, d=Math.max(0,Math.min(1,L[0]*n[0]+L[1]*n[1]+L[2]*n[2])), s=Math.max(0,Math.min(1,2*d*n[2]-L[2]));
+  return Math.floor(Math.max(0,Math.min(127,lk[0]*d+lk[1]+(lk[3]?lk[2]*Math.pow(s,8):0))));
+}
+function buildLuma(curveVal,tex,special){
+  if(tex<0) return Math.min(63,curveVal);
+  const v=special||curveVal<48?Math.floor(curveVal*tex*17*8/2048):48+tex; return Math.max(0,Math.min(63,v));
+}
+// OBJ ファイル（展開後のモデルの一覧）の候補から、そのプレイヤーが描いた番号をいちばん多く含むものを選ぶ
+// （1P の表にはステージの部品も入っているので「全部」は求めない。同じ数なら先の候補＝1色目）。skip の番号は数えない
+// キャラのファイルに無い番号を、同じ名前に1文字足したファイル（OBJ_JAC1B の映り込み、E・A など）から足す。files: [{name,models}]
+function sceneAddCompanions(ch,sc,player,files){
+  if(!ch) return ch; const map=new Map(ch.map), used=[];
+  const need=new Set(sc.draws.filter(d=>d.player===player&&!map.has(d.id)).map(d=>d.id));
+  for(const f of files){ let n=0; for(const m of f.models) if(need.has(m.id)&&!map.has(m.id)){ map.set(m.id,m); n++ } if(n) used.push(f.name) }
+  return {...ch,map,used};
+}
+function sceneChooseModels(sc,player,candidates,skip){
+  const need=new Set(sc.draws.filter(d=>d.player===player&&!(skip&&skip.has(d.id))).map(d=>d.id)); let best=null;
+  for(const c of candidates){ const map=new Map(c.models.map(m=>[m.id,m])); let n=0; for(const id of need) if(map.has(id)) n++;
+    if(n>0&&(!best||n>best.n)) best={name:c.name,map,n} }
+  return best;
+}
+// アーケード（Model 2A）のテクスチャを、ユーザーが用意したロム（vf2.zip）から作る。ロムはページの中で読むだけ（リポジトリに入れない）
+// i960 のプログラム（ロム epr-18385〜18388。PS2 の IC12_15 と同じ）の展開処理を、下のエミュレーターでそのまま動かす（CLAUDE.md「アーケードのロム」）
+const ARC_PAIRS=[["mpr-17560.10","mpr-17561.11"],["mpr-17558.8","mpr-17559.9"],["mpr-17566.6","mpr-17567.7"],["mpr-17564.4","mpr-17565.5"]];
+const ARC_PROG=["epr-18385.12","epr-18386.13","epr-18387.14","epr-18388.15"];
+// キャラのテクスチャのセット（2つ1組）の並び。セット 2k+1・2k+2 が ARC_CHARS[k]
+const ARC_CHARS=["AKI","JAC","SAR","KAG","LAU","JEF","PAI","WOL","SUI","TOU","DUR"];
+// ステージ（OBJ_STAGEn・TEX_STAGEn の n）のテクスチャのセット。TEX_STAGEn の中身がそのセットを展開した中にすべてある（CLAUDE.md）
+const ARC_STAGE_SETS={1:34,2:30,3:31,4:33,5:24,6:23,7:29,8:27,9:32,10:28,11:26,13:25};
+// files: 名前→Uint8Array。i960 のプログラム（2本ずつ 16bit 交互）と main_data の8本
+function arcRom(files){
+  const need=[...ARC_PROG,...ARC_PAIRS.flat()].filter(n=>!files[n]); if(need.length) throw new Error("ロムに無いファイル: "+need.join(" "));
+  const prog=new Uint8Array(0x80000);
+  for(let h=0;h<2;h++){ const A=files[ARC_PROG[2*h]], B=files[ARC_PROG[2*h+1]]; for(let i=0;i<A.length;i+=2){ const o=h*0x40000+i*2; prog[o]=A[i]; prog[o+1]=A[i+1]; prog[o+2]=B[i]; prog[o+3]=B[i+1] } }
+  return {prog, chips:ARC_PAIRS.map(p=>p.map(n=>files[n]))};
+}
+// テクスチャ RAM 2枚（16bit の語に 2×2 テクセル。MAME: 語＝(y>>1)*512＋(x>>1)、y 偶数で上位バイト、x 偶数で上位ニブル）
+function arcTexel(s,x,y){ let w=s[((y>>1)*512+(x>>1))&0x7ffff]; if(!(y&1)) w>>=8; if(!(x&1)) w>>=4; return w&15 }
+function arcLoader(rom){
+  const code={readUInt32LE:a=>(rom.prog[a]|rom.prog[a+1]<<8|rom.prog[a+2]<<16|rom.prog[a+3]<<24)>>>0};
+  const half=k=>{ const c=rom.chips[k>>21][k&1], j=(k>>1)&0xfffff; return c[2*j]|c[2*j+1]<<8 };
+  const ram=new Uint8Array(0x100000), ram2=new Uint8Array(0x40000), tex=[new Uint16Array(0x80000),new Uint16Array(0x80000)], mask=[new Uint8Array(0x80000),new Uint8Array(0x80000)];
+  const md=o=>o<0x1000000?(half(o>>1)>>(8*(o&1)))&255:0;
+  const r8=A=>{ A>>>=0;
+    if(A<0x80000) return rom.prog[A];
+    if(A>=0x500000&&A<0x600000) return ram[A-0x500000];
+    if(A>=0x200000&&A<0x240000) return ram2[A-0x200000];
+    if(A>=0x2000000&&A<0x4000000) return md(A-0x2000000);
+    if(A>=0x6000000&&A<0x7000000) return md(A-0x6000000+0x1000000);
+    if(A>=0xf00000&&A<0xf00010) return 0xff;   // タイマー: いつも「まだ時間がある」（0xb6c・0x4cb64 などが時間切れで処理を譲らないように）
+    return 0 };
+  const texw=(A,v)=>{ const s=(A>>>22)&1, h=((A&0x1fffff)>>>2)&0x7ffff; tex[s][h]=v&0xffff; mask[s][h]=1 };
+  const mem={ r8, r16:A=>r8(A)|r8(A+1)<<8, r32:A=>(r8(A)|r8(A+1)<<8|r8(A+2)<<16|r8(A+3)<<24)>>>0,
+    w8(A,v){ A>>>=0; if(A>=0x500000&&A<0x600000) ram[A-0x500000]=v; else if(A>=0x200000&&A<0x240000) ram2[A-0x200000]=v },
+    w16(A,v){ A>>>=0; if(A>=0x12000000&&A<0x12800000) return texw(A,v); this.w8(A,v&255); this.w8(A+1,v>>>8&255) },
+    w32(A,v){ A>>>=0; if(A>=0x12000000&&A<0x12800000) return texw(A,v); for(let k=0;k<4;k++) this.w8(A+k,(v>>>(8*k))&255) } };
+  const cpu=new I960(code,mem);
+  // テクスチャのセット s を読み込む（0x4bd60〜0x4bf64 の流れ）。flip＝1 ならページを入れ替える（要求の旗の bit0。2P）
+  function loadSet(s,flip=0){
+    const R=cpu.r, r32=mem.r32;
+    let r10=r32(r32(0x230000c)+s*4); const first=r32(r10); r10+=4;
+    let r9=r32(r32(0x2300008)+first*4); const n=r32(r9); r9+=4;
+    for(let e=0;e<n;e++){
+      const g2=r32(r9), g0=(g2<<16)>>>17;
+      // 処理を譲る旗は下ろし、持ち時間（0x4c10c が入れる値）を入れておく
+      R[1]=R[31]=0x5f0000; mem.w32(0x550080,0); mem.w32(0x5500f4,0); mem.w8(0x500000,0); mem.w8(0x50008c,0); mem.w32(0x55c2f4,flip&1); mem.w32(0x550004,0x12a8); mem.w32(0x550008,0x4e20);
+      R[24]=(g2^flip)&1; R[22]=(mem.r16(0x4c120+g0*4)+(g2>>>24))>>>0; R[23]=(mem.r16(0x4c122+g0*4)+((g2<<8)>>>24))>>>0;
+      cpu.run(0x4d16c);
+      let g3=r32(r10); const t=r32(g3); R[19]=g3+4;
+      if(t===0){ cpu.run(0x4c180); cpu.run(0x4cb64); cpu.run(0x4cd18) } else cpu.run(0x4c9dc);
+      r9+=4; r10+=4;
+    }
+    return n;
+  }
+  return {cpu,mem,tex,mask,loadSet};
+}
+// キャラ（SC_ROB の名前。[1P, 2P]）のテクスチャを作る。1P はページ1、2P はページ0（PS2 と同じ。要求の旗の bit0 でページが入れ替わる）
+function arcCharSheets(rom,chars){
+  const L=arcLoader(rom);
+  chars.forEach((c,i)=>{ const k=ARC_CHARS.indexOf(c); if(k<0) return; L.loadSet(2*k+1,i); L.loadSet(2*k+2,i) });
+  return L;
+}
+
+// i960（Model 2 の主 CPU）の小さなエミュレーター。アーケードのプログラムの一部（テクスチャの展開と写し）をそのまま動かすためのもの。
+// 浮動小数点・割り込み・特権命令は無い。呼び出し（call/ret）の局所レジスターは JS の配列に積む（メモリには置かない）
+// mem: { r8(a), r16(a), r32(a), w8(a,v), w16(a,v), w32(a,v) }
+class I960 {
+  constructor(code, mem){ this.code=code; this.mem=mem; this.r=new Uint32Array(32); this.cc=0; this.frames=[]; this.steps=0; this.fp=[0,0,0,0] }
+  // 浮動小数点（i960 KB）。m＝1 なら番号 0〜3 が fp0〜fp3（拡張精度。JS の数で持つ）、16 が 0.0、22 が 1.0。m＝0 なら g/r に 32bit（rl は2語の 64bit）
+  fget(m,i,dbl){
+    if(m) return i<4?this.fp[i]:i===16?0:i===22?1:NaN;
+    const u=new Uint32Array(2), R=this.r; if(!dbl){ u[0]=R[i]; return new Float32Array(u.buffer)[0] } u[0]=R[i]; u[1]=R[i+1]; return new Float64Array(u.buffer)[0];
+  }
+  fset(m,i,v,dbl){
+    if(m){ this.fp[i&3]=v; return }
+    const R=this.r; if(!dbl){ const f=new Float32Array([v]); R[i]=new Uint32Array(f.buffer)[0]; return } const f=new Float64Array([v]), u=new Uint32Array(f.buffer); R[i]=u[0]; R[i+1]=u[1];
+  }
+  freg(o,w){ // 浮動小数点の REG 命令。扱ったら true
+    const dst=(w>>>19)&31, s2=(w>>>14)&31, s1=w&31, m1=(w>>>11)&1, m2=(w>>>12)&1, m3=(w>>>13)&1, R=this.r;
+    const dbl=(o>=0x790&&o<=0x79f)||o===0x6d9||o===0x675||o===0x6c1||o===0x6c3||o===0x694||o===0x695||(o>=0x690&&o<=0x69f);
+    const A=()=>this.fget(m1,s1,dbl), B=()=>this.fget(m2,s2,dbl), S=v=>this.fset(m3,dst,v,dbl&&o!==0x6c1&&o!==0x6c3);
+    const cmp=(a,b)=>{ this.cc=a<b?4:a===b?2:a>b?1:0 };
+    switch(o){
+      case 0x78b: case 0x79b: S(B()/A()); return true; case 0x78c: case 0x79c: S(B()*A()); return true;
+      case 0x78d: case 0x79d: S(B()-A()); return true; case 0x78f: case 0x79f: S(B()+A()); return true;
+      case 0x674: S(m1?s1:(R[s1]|0)); return true;                 // cvtir
+      case 0x675: this.fset(m3,dst,m1?s1:(R[s1]|0),true); return true;   // cvtilr
+      case 0x6c0: { const v=A(); R[dst]=Math.round(v)|0; return true }          // cvtri（偶数への丸めは近似）
+      case 0x6c2: { const v=A(); R[dst]=Math.trunc(v)|0; return true }          // cvtzri
+      case 0x6c9: case 0x6d9: S(A()); return true;                 // movr / movrl
+      case 0x6e1: this.fp[dst&3]=this.fget(m1,s1,false); return true;   // movre（近似）
+      case 0x685: case 0x684: case 0x695: case 0x694: cmp(A(),B()); return true;   // cmpr / cmpor
+      case 0x688: case 0x698: S(Math.sqrt(A())); return true;
+      case 0x68c: case 0x69c: S(Math.sin(A())); return true; case 0x68d: case 0x69d: S(Math.cos(A())); return true;
+      case 0x68e: case 0x69e: S(Math.tan(A())); return true;
+      case 0x680: case 0x690: S(Math.atan2(B(),A())); return true;    // atanr: atan(src2/src1)
+      case 0x68b: case 0x69b: S(Math.round(A())); return true;
+      case 0x677: case 0x676: { const n=m1?s1:(R[s1]|0); this.fset(m3,dst,this.fget(m2,s2,o===0x676)*Math.pow(2,n),o===0x676); return true }   // scaler
+      case 0x6e2: S(Math.abs(B())*(A()<0?-1:1)); return true;  // cpysre
+      case 0x6e3: S(Math.abs(B())*(A()<0?1:-1)); return true;  // cpyrsre
+    }
+    return false;
+  }
+  ea(w, a){ // MEM 形式の実効番地と命令長
+    const ab=(w>>>14)&31, R=this.r;
+    if(!((w>>>12)&1)){ const off=w&0xfff; return [(w>>>13)&1 ? (R[ab]+off)>>>0 : off, 4] }
+    const mode=(w>>>10)&15, sc=1<<((w>>>7)&7), ix=w&31;
+    const disp=()=>this.code.readUInt32LE(a+4);
+    switch(mode){
+      case 4: return [R[ab], 4];
+      case 5: return [(a+8+disp())>>>0, 8];
+      case 7: return [(R[ab]+R[ix]*sc)>>>0, 4];
+      case 12: return [disp(), 8];
+      case 13: return [(disp()+R[ab])>>>0, 8];
+      case 14: return [(disp()+R[ix]*sc)>>>0, 8];
+      case 15: return [(disp()+R[ab]+R[ix]*sc)>>>0, 8];
+    }
+    throw new Error("MEM の番地の形式 "+mode+" at "+a.toString(16));
+  }
+  cmp(a,b,signed){ if(signed){ a|=0; b|=0 } else { a>>>=0; b>>>=0 } this.cc=a<b?4:a===b?2:1 }
+  call(target, ret){
+    this.frames.push({loc:this.r.slice(0,16), fp:this.r[31], ret});
+    const nfp=((this.r[1]+63)&~63)>>>0;
+    this.r.fill(0,0,16); this.r[0]=this.frames[this.frames.length-1].fp; this.r[31]=nfp; this.r[1]=(nfp+64)>>>0; this.r[2]=ret;
+    return target;
+  }
+  // 番地 pc から、ret で最初の深さに戻るまで動かす
+  // 途中で止まったら（知らない命令・命令が多すぎる）呼び出しの積み上げを戻す。戻さないと次からの呼び出しがどこへ戻るか狂う
+  run(pc, maxSteps=5e8){ const depth0=this.frames.length; try{ return this.run1(pc,maxSteps) }catch(e){ this.frames.length=depth0; throw e } }
+  run1(pc, maxSteps){
+    const R=this.r, M=this.mem, C=this.code, depth0=this.frames.length, lim=this.steps+maxSteps;   // 上限は 1 回の呼び出しごと（累計だと使い続けるうちに必ず当たる）
+    this.frames.push({loc:R.slice(0,16), fp:R[31], stop:true});
+    { const nfp=((R[1]+63)&~63)>>>0; R.fill(0,0,16); R[31]=nfp; R[1]=(nfp+64)>>>0 }
+    for(;;){
+      if(++this.steps>lim) throw new Error("命令が多すぎる at "+pc.toString(16));
+      if(this.trace) this.trace(pc);
+      const w=C.readUInt32LE(pc), op=w>>>24;
+      if(op<0x20){ // CTRL
+        const d=((w&0xfffffc)<<8)>>8, t=(pc+d)>>>0;
+        switch(op){
+          case 0x08: pc=t; continue;
+          case 0x09: pc=this.call(t,pc+4); continue;
+          case 0x0a: { const f=this.frames.pop(); R.set(f.loc,0); R[31]=f.fp; if(f.stop) return; pc=f.ret; continue }
+          case 0x0b: R[30]=pc+4; pc=t; continue;
+        }
+        if(op>=0x10&&op<=0x17){ const m=op&7; if(m===0?this.cc===0:(this.cc&m)) { pc=t; continue } pc+=4; continue }
+        throw new Error("CTRL "+op.toString(16)+" at "+pc.toString(16));
+      }
+      if(op<0x40){ // COBR
+        const s1=(w>>>19)&31, s2=(w>>>14)&31, m1=(w>>>13)&1, d=((w&0x1ffc)<<19)>>19, t=(pc+d)>>>0;
+        const a=m1?s1:R[s1], b=R[s2];
+        if(op>=0x30&&op<=0x37&&(op===0x30||op===0x37)){ const bit=(b>>>(a&31))&1; this.cc=bit?2:0; if((op===0x37)===!!bit){ pc=t; continue } pc+=4; continue }
+        if(op>=0x31&&op<=0x36){ this.cmp(a,b,false); if(this.cc&(op&7)){ pc=t; continue } pc+=4; continue }
+        if(op>=0x38){ this.cmp(a,b,true); const m=op&7; if(m===0?this.cc===0:(this.cc&m)){ pc=t; continue } pc+=4; continue }
+        if(op>=0x20&&op<=0x27){ const m=op&7; R[s1]=(m===0?this.cc===0:(this.cc&m))?1:0; pc+=4; continue }
+        throw new Error("COBR "+op.toString(16)+" at "+pc.toString(16));
+      }
+      if(op<0x80){ // REG
+        const o=(op<<4)|((w>>>7)&15), dst=(w>>>19)&31, s2i=(w>>>14)&31, s1i=w&31;
+        const a=((w>>>11)&1)?s1i:R[s1i], b=((w>>>12)&1)?s2i:R[s2i];
+        let v;
+        switch(o){
+          case 0x581: v=a&b; break; case 0x582: v=b&~a; break; case 0x584: v=~b&a; break; case 0x586: v=a^b; break; case 0x587: v=a|b; break;
+          case 0x588: v=~(a|b); break; case 0x589: v=~(a^b); break; case 0x58a: v=~a; break; case 0x58b: v=b|~a; break; case 0x58d: v=~b|a; break; case 0x58e: v=~(a&b); break;
+          case 0x583: v=b|(1<<(a&31)); break; case 0x58c: v=b&~(1<<(a&31)); break; case 0x580: v=b^(1<<(a&31)); break; case 0x58f: v=(this.cc&2)?b|(1<<(a&31)):b&~(1<<(a&31)); break;
+          case 0x590: case 0x591: v=a+b; break; case 0x592: case 0x593: v=b-a; break;
+          case 0x598: v=a>31?0:b>>>a; break; case 0x59b: v=a>31?((b|0)>>31):((b|0)>>a); break; case 0x59c: case 0x59e: v=a>31?0:b<<a; break;
+          case 0x59a: { let x=(b|0)>>(a>31?31:a); if((b|0)<0&&a&&(b&((1<<a)-1))) x+=1; v=x; break }
+          case 0x59d: v=(b<<(a&31))|(a&31?b>>>(32-(a&31)):0); break;
+          case 0x5a0: this.cmp(a,b,false); pc+=4; continue; case 0x5a1: this.cmp(a,b,true); pc+=4; continue;
+          case 0x5a4: this.cmp(a,b,false); v=b+1; break; case 0x5a5: this.cmp(a,b,true); v=b+1; break;
+          case 0x5a6: this.cmp(a,b,false); v=b-1; break; case 0x5a7: this.cmp(a,b,true); v=b-1; break;
+          case 0x5ae: this.cc=((b>>>(a&31))&1)?2:0; pc+=4; continue;
+          case 0x5b0: { const s=(a>>>0)+(b>>>0)+((this.cc>>1)&1); v=s>>>0; this.cc=(s>0xffffffff?2:0); break }
+          case 0x5cc: v=a; break;
+          case 0x5dc: R[dst]=a; R[dst+1]=((w>>>11)&1)?0:R[s1i+1]; pc+=4; continue;
+          case 0x5ec: for(let k=0;k<3;k++) R[dst+k]=((w>>>11)&1)?(k?0:a):R[s1i+k]; pc+=4; continue;
+          case 0x5fc: for(let k=0;k<4;k++) R[dst+k]=((w>>>11)&1)?(k?0:a):R[s1i+k]; pc+=4; continue;
+          case 0x641: { v=0xffffffff; for(let k=31;k>=0;k--) if((a>>>k)&1){ v=k; break } this.cc=v===0xffffffff?0:2; break }
+          case 0x651: v=(R[dst]>>>(a&31))&((b>=32)?0xffffffff:((1<<b)-1)); break;
+          case 0x650: v=(b&a)|(R[dst]&~a); break;
+          case 0x701: v=Math.imul(a,b); break; case 0x741: v=Math.imul(a,b); break;
+          case 0x70b: v=a?Math.floor((b>>>0)/(a>>>0)):0; break; case 0x708: v=a?(b>>>0)%(a>>>0):0; break;
+          case 0x74b: v=a?Math.trunc((b|0)/(a|0)):0; break; case 0x748: v=a?(b|0)%(a|0):0; break;
+          case 0x670: { const x=BigInt(a>>>0)*BigInt(b>>>0); R[dst]=Number(x&0xffffffffn); R[dst+1]=Number(x>>32n); pc+=4; continue }   // emul（64bit の積を dst・dst+1 へ）
+          case 0x671: { const hi=((w>>>12)&1)?0:R[s2i+1], x=(BigInt(hi>>>0)<<32n)|BigInt(b>>>0), d=BigInt(a>>>0); if(!d){ pc+=4; continue }
+            R[dst]=Number(x%d); R[dst+1]=Number((x/d)&0xffffffffn); pc+=4; continue }   // ediv（64bit を割り、余り→dst・商→dst+1。数字を 10 進に直す所 0x18ae8 で使う）
+          case 0x66d: case 0x66b: case 0x66c: case 0x66f: pc+=4; continue;   // flushreg など
+          default: if(this.freg(o,w)){ pc+=4; continue } throw new Error("REG "+o.toString(16)+" at "+pc.toString(16));
+        }
+        R[dst]=v>>>0; pc+=4; continue;
+      }
+      // MEM
+      const sd=(w>>>19)&31, [A,len]=this.ea(w,pc);
+      switch(op){
+        case 0x80: R[sd]=M.r8(A); break; case 0xc0: R[sd]=(M.r8(A)<<24)>>24; break;
+        case 0x88: R[sd]=M.r16(A); break; case 0xc8: R[sd]=(M.r16(A)<<16)>>16; break;
+        case 0x90: R[sd]=M.r32(A); break;
+        case 0x98: R[sd]=M.r32(A); R[sd+1]=M.r32(A+4); break;
+        case 0xa0: for(let k=0;k<3;k++) R[sd+k]=M.r32(A+4*k); break;
+        case 0xb0: for(let k=0;k<4;k++) R[sd+k]=M.r32(A+4*k); break;
+        case 0x82: case 0xc2: M.w8(A,R[sd]&255); break;
+        case 0x8a: case 0xca: M.w16(A,R[sd]&0xffff); break;
+        case 0x92: M.w32(A,R[sd]); break;
+        case 0x9a: M.w32(A,R[sd]); M.w32(A+4,R[sd+1]); break;
+        case 0xa2: for(let k=0;k<3;k++) M.w32(A+4*k,R[sd+k]); break;
+        case 0xb2: for(let k=0;k<4;k++) M.w32(A+4*k,R[sd+k]); break;
+        case 0x8c: R[sd]=A; break;
+        case 0x84: pc=A; continue;
+        case 0x85: R[sd]=pc+len; pc=A; continue;
+        case 0x86: pc=this.call(A,pc+len); continue;
+        default: throw new Error("MEM "+op.toString(16)+" at "+pc.toString(16));
+      }
+      pc+=len;
+    }
+  }
+}
+// ステージのテクスチャを作る（ページ 0・1 の両方。PS2 と同じく各ページの横 256〜383 に当たる所＝RAM の縦 1024〜1535）
+function arcStageSheets(rom,n){ const L=arcLoader(rom), s=ARC_STAGE_SETS[n]; if(s) L.loadSet(s,0); return L }
+// そのコマで使うテクスチャを、アーケードと同じく1つのテクスチャ RAM に展開する（ステージ→1P→2P。ミップマップの段もぶつからない。CLAUDE.md）
+function arcSceneSheets(rom,chars,stageN){
+  const L=arcLoader(rom), s=ARC_STAGE_SETS[stageN]; if(s) L.loadSet(s,0);
+  chars.forEach((c,i)=>{ const k=ARC_CHARS.indexOf(c); if(k<0) return; L.loadSet(2*k+1,i); L.loadSet(2*k+2,i) });
+  return L;
+}
+// FV のアーケードのテクスチャを、ディスクの ROM_CODE1（i960 のプログラム）と ROM_DATA（main_data、0x2000000〜）から作る。
+// 読み込みの流れ（FV 0x4b5ec〜）は VF2 の 0x4bd60〜 と命令単位で同じで、関数の番地だけ違う（arcade.js の I960 を使う）:
+// テクスチャ RAM の書き先の頭は、VF2 は定数（0x12200000・0x12600000）だが FV は RAM の [0x500254]（ページ0）・[0x500258]（ページ1）から読み、
+// 16bit の語を 2 バイトおきに書く（VF2 は 4 バイトおき）。段（ミップマップ）ごとの進みは 0xc0000（VF2 は 0x180000）。ここでは 0x40000000・0x48000000 を入れて受ける
+//   VF2 0x4d16c→FV 0x4ca74（段ごとの写し先）・0x4c180→0x4ba2c（符号の木で展開）・0x4cb64→0x4c470・0x4cd18→0x4c620・0x4c9dc→0x4c2a0・表 0x4c120→0x4b9c0
+const FVA={place:0x4ca74, huff:0x4ba2c, b:0x4c470, c:0x4c620, other:0x4c2a0, tbl:0x4b9c0};
+function fvArcLoader(prog,data){
+  const code={readUInt32LE:a=>(prog[a]|prog[a+1]<<8|prog[a+2]<<16|prog[a+3]<<24)>>>0};
+  const ram=new Uint8Array(0x100000), ram2=new Uint8Array(0x40000), tex=[new Uint16Array(0x80000),new Uint16Array(0x80000)], mask=[new Uint8Array(0x80000),new Uint8Array(0x80000)];
+  const r8=A=>{ A>>>=0;
+    if(A<0x80000) return prog[A];
+    if(A>=0x500000&&A<0x600000) return ram[A-0x500000];
+    if(A>=0x200000&&A<0x240000) return ram2[A-0x200000];
+    if(A>=0x2000000&&A<0x3000000) return data[A-0x2000000];
+    if(A>=0xf00000&&A<0xf00010) return 0xff;   // タイマー: いつも「まだ時間がある」
+    return 0 };
+  const texw=(A,v)=>{ const s=(A>>>27)&1, h=((A&0x7ffffff)>>>1)&0x7ffff; tex[s][h]=v&0xffff; mask[s][h]=1 };
+  const mem={ r8, r16:A=>r8(A)|r8(A+1)<<8, r32:A=>(r8(A)|r8(A+1)<<8|r8(A+2)<<16|r8(A+3)<<24)>>>0,
+    w8(A,v){ A>>>=0; if(A>=0x500000&&A<0x600000) ram[A-0x500000]=v; else if(A>=0x200000&&A<0x240000) ram2[A-0x200000]=v },
+    w16(A,v){ A>>>=0; if(A>=0x40000000&&A<0x50000000) return texw(A,v); this.w8(A,v&255); this.w8(A+1,v>>>8&255) },
+    w32(A,v){ A>>>=0; if(A>=0x40000000&&A<0x50000000) return texw(A,v); for(let k=0;k<4;k++) this.w8(A+k,(v>>>(8*k))&255) } };
+  const cpu=new I960(code,mem); mem.w32(0x500254,0x40000000); mem.w32(0x500258,0x48000000);
+  function loadSet(s,flip=0){
+    const R=cpu.r, r32=mem.r32;
+    let r10=r32(r32(0x230000c)+s*4); const first=r32(r10); r10+=4;
+    let r9=r32(r32(0x2300008)+first*4); const n=r32(r9); r9+=4;
+    for(let e=0;e<n;e++){
+      const g2=r32(r9), g0=(g2<<16)>>>17;
+      R[1]=R[31]=0x5f0000; mem.w32(0x550080,0); mem.w32(0x5500f4,0); mem.w8(0x500000,0); mem.w8(0x50008c,0); mem.w32(0x55c2f4,flip&1); mem.w32(0x550004,0x12a8); mem.w32(0x550008,0x4e20);
+      R[24]=(g2^flip)&1; R[22]=(mem.r16(FVA.tbl+g0*4)+(g2>>>24))>>>0; R[23]=(mem.r16(FVA.tbl+2+g0*4)+((g2<<8)>>>24))>>>0;
+      cpu.run(FVA.place);
+      let g3=r32(r10); const t=r32(g3); R[19]=g3+4;
+      if(t===0){ cpu.run(FVA.huff); cpu.run(FVA.b); cpu.run(FVA.c) } else cpu.run(FVA.other);
+      r9+=4; r10+=4;
+    }
+    return n;
+  }
+  return {cpu,mem,tex,mask,loadSet};
+}
+// WebGL で描く。明るさは build.js の buildBright・buildLuma と同じ式（VU1 のプログラムを写したもの。pose.mjs も同じ）。
+// 色＝色の変換表[チャンネル][色 RAM の 5bit][明るさ]。光はゲームのカメラの座標で計算する（回して見ても場面に固定）。影は黒の半透明で最後に描く
+const VGL_VS=`
+attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol; attribute vec2 aLoc; attribute vec4 aOrgSize; attribute vec3 aMisc; attribute vec4 aLk; attribute float aSpecial;
+uniform mat4 uView; uniform vec2 uFocal; uniform vec3 uLight;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial;
+void main(){
+  vec4 p=uView*vec4(aPos,1.0);
+  float d=clamp(dot(uLight,aNrm),0.0,1.0), s=clamp(2.0*d*aNrm.z-uLight.z,0.0,1.0);
+  vB=floor(clamp(aLk.x*d+aLk.y+(aLk.w>0.5?aLk.z*pow(s,8.0):0.0),0.0,127.0));
+  vCol=aCol; vLoc=aLoc; vOrgSize=aOrgSize; vMisc=aMisc; vSpecial=mod(aSpecial,2.0);
+  float over=floor(aSpecial/4.0);   // 部品の中で何枚目の重ねる面か（build.js）
+  // 奥行き 0.05〜100 を -1〜1 に
+  gl_Position=vec4(uFocal.x*p.x, uFocal.y*p.y, (p.z*100.05-10.0)/99.95, p.z);
+  // 重ねる面（貼りもの＝目や眉、透明ありのテクスチャの面＝ウルフの隈取りなど）は肌とまったく同じ所にあるので、ごくわずか手前へ。
+  // ゲームは部品の中をファイルの順に上塗りする（VU1 の m2mdlSetSameZval）ので、後の面ほど少しずつ手前へ（深さの刻み 1 つ強ずつ）
+  if(mod(aSpecial,4.0)>1.5) gl_Position.z-=(0.00002+over*1.5e-7)*p.z;
+}`;
+const VGL_FS=`
+precision highp float;
+uniform sampler2D uTex, uClut, uXlat, uTexA, uTexM; uniform float uShadow, uCut, uBilin, uArc, uMip, uMipForce;
+varying vec3 vCol; varying vec2 vLoc; varying vec4 vOrgSize; varying vec3 vMisc; varying float vB; varying float vSpecial;
+// テクスチャの値（0〜15）。loc は面の中のテクセルの位置で、テクスチャの大きさで折り返す
+// アーケードのテクスチャ（uArc）: FV は loc・org・size がアーケードのテクスチャ RAM のテクセル単位（tex.js の texCoords。[0]＝u の向き＝RAM の縦、[1]＝v の向き＝RAM の横）。
+// RAM（横 1024・縦 2048、ページ2枚を横に並べた 2048×2048）の (横 org[1]＋loc[1], 縦 org[0]＋loc[0]) を引く（VF2 は横が 4 倍の単位だった）
+// 折り返しは整数のテクセル番号で（mod に整数ちょうどを渡すと誤差で1つ先を読むことがある。なめらかのとき点々になった）
+vec2 wrapi(vec2 loc,vec2 sz){ vec2 li=floor(loc); return li-sz*floor((li+0.5)/sz); }
+// PS2 のテクスチャ: 座標は UV に +10 した値（横 10/32・縦 10/8 テクセル。PS2 版の変換済みモデルの ST と同じ）。区画の端ちょうどまでの面が
+// この分だけはみ出して、折り返すと反対の端（目や眉の濃い所）を読み、頬に線が出た。何番目の区画かは +10 を引いた位置で決め、はみ出しは端のテクセルで止める
+vec2 wrapb(vec2 loc,vec2 sz){ vec2 li=floor(loc), k=floor((loc-vec2(0.3125,1.25))/sz); return clamp(li-sz*k,vec2(0.0),sz-1.0); }
+// アーケードのテクスチャのミップマップの段（0＝元の大きさ）。小さい版はページで作る（vapp.js の arcMips。アーケードの RAM の小さい版は、ステージのセットを全部展開すると別のテクスチャとぶつかるので使わない）
+float gLev=0.0;
+float texA(vec2 loc){   // loc は段 gLev の単位。値＋128（ロムで作った所）のまま返す。段 1〜 で小さい版が無い所は 255
+  float sc=exp2(gLev); vec2 sz=vOrgSize.zw/sc, o=vOrgSize.xy, li=wrapi(loc,sz);
+  float x=floor(o.y/sc)+li.y, y=floor(o.x/sc)+li.x;   // 格納の座標（横 x＝o.y 側、縦 y＝o.x 側）を段の大きさで
+  if(gLev>0.5){ float w=1024.0/sc, oy=gLev<1.5?0.0:gLev<2.5?1024.0:1536.0;
+    float v=floor(texture2D(uTexM,vec2((vMisc.y*w+x+0.5)/2048.0,(oy+y+0.5)/2048.0)).r*255.0+0.5); return v>254.5?v:v+128.0; }
+  return floor(texture2D(uTexA,vec2((x+vMisc.y*1024.0+0.5)/2048.0,(y+0.5)/2048.0)).r*255.0+0.5);
+}
+float texv(vec2 loc){
+  if(uArc>0.5){ float v=texA(loc); return v>127.5?v-128.0:v; }
+  vec2 t=vOrgSize.xy+wrapb(loc,vOrgSize.zw);
+  return floor(texture2D(uTex,vec2((t.x+vMisc.y*512.0+0.5)/1024.0,(t.y+0.5)/1024.0)).r*255.0/17.0+0.5);
+}
+float xl(float row,float luma){ return texture2D(uXlat,vec2((luma+0.5)/64.0,(row+0.5)/96.0)).r; }
+void main(){
+  if(uShadow>0.5){ gl_FragColor=vec4(0.0,0.0,0.0,0.45); return; }
+  float L=floor(texture2D(uClut,vec2((vB+0.5)/128.0,(vMisc.z+0.5)/256.0)).r*255.0+0.5), luma;
+  if(vMisc.x>0.5){
+    vec2 loc=uArc>0.5?vLoc-0.875:vLoc;   // アーケード: MAME と同じく UV÷8（FV の PS2 の座標の +7 の分を引く）
+#ifdef HAS_DERIV
+    // 微分は if や discard より前に（画素ごとに通り方が違う所では値が決まらない。そこで取ると段がでたらめになり点々が出た）
+    float rho=max(length(dFdx(loc)),length(dFdy(loc)));
+    // アーケードのテクスチャ: 画面の1画素に入るテクセルの数で段を選ぶ。元の大きさの所がロムで展開した所のときだけ（ロムで展開したテクスチャには小さい版が必ずある。
+    // PS2 で埋めた所には無く、段の場所にたまたまロムの別のテクスチャがあるので、段の場所では判定しない）
+    if(uArc>0.5&&uMip>0.5&&texA(loc)>127.5){ float l=clamp(floor(log2(max(rho,1e-6))),0.0,3.0);
+      if(uMipForce>-0.5) l=uMipForce;   // 調べ用（URL の ?mip=段）
+      for(int k=0;k<3;k++){ if(l>0.5){ gLev=l; if(texA(loc/exp2(l))<254.5) break; l-=1.0; } }
+      gLev=l; loc/=exp2(l); }
+#endif
+    float tx=texv(loc);
+    bool cut=vMisc.x>1.5, ramp=vSpecial>0.5||L<48.0;
+    bool mame=uArc>0.5&&uBilin>0.5&&cut;   // アーケードのテクスチャ＋なめらか: 透明は MAME どおり（下）。一番近いテクセルでは抜かない
+    if(abs(tx-uCut)<0.5||(cut&&tx>14.5&&!mame)) discard;   // 値 15 は、属性 h0 の bit13 が立った面では透明（推測。写真で木が抜けるのを確かめた）
+    // なめらか: ゲームは GS にバイリニアで引かせている（ゲームが描いた画面がぼけている）。周りの4つのテクセルの重み付き平均。
+    // 透明のある面では透明のテクセル（15）を混ぜない（混ぜると縁が白っぽく色あせる）
+    if(uBilin>0.5){ vec2 f=loc-0.5, b=floor(f), a=f-b;
+      vec4 t=vec4(texv(b),texv(b+vec2(1.0,0.0)),texv(b+vec2(0.0,1.0)),texv(b+vec2(1.0,1.0))), w=vec4((1.0-a.x)*(1.0-a.y),a.x*(1.0-a.y),(1.0-a.x)*a.y,a.x*a.y);
+      if(mame){
+        // MAME（model2rd.ipp の fetch_bilinear_texel）: 透明のテクセルは横の隣の値を借り、横に混ぜた1行が2つとも透明ならもう1行の値を借りる。
+        // 透明度も同じ重みで混ぜ、50% 未満なら描かない（アーケードは線に幅があるので削れない。PS2 版のテクスチャでは穴が開くので使わない）
+        vec4 op=step(t,vec4(14.5));
+        if(dot(w,op)<0.5) discard;
+        if(op.x<0.5) t.x=t.y; if(op.y<0.5) t.y=t.x; if(op.z<0.5) t.z=t.w; if(op.w<0.5) t.w=t.z;
+        if(op.x+op.y<0.5){ t.x=t.z; t.y=t.w; } if(op.z+op.w<0.5){ t.z=t.x; t.w=t.y; }
+      } else if(cut) w*=step(t,vec4(14.5));
+      float ws=dot(w,vec4(1.0)); if(ws<1e-3){ t=vec4(tx); w=vec4(1.0,0.0,0.0,0.0); } else w/=ws;   // 4つとも透明（重み 0）なら一番近いテクセルだけ
+      if(!ramp){
+        // 目や眉など、値を色の表の特別な欄（48 列目〜）の番号として使う面: 番号を平均すると関係のない色になるので、4つを色にしてから混ぜる
+        vec3 c=vec3(0.0);
+        for(int k=0;k<4;k++){ float tk=k==0?t.x:k==1?t.y:k==2?t.z:t.w, wk=k==0?w.x:k==1?w.y:k==2?w.z:w.w; float lk=clamp(floor(48.0+tk+0.5),0.0,63.0);
+          c+=wk*vec3(xl(vCol.r,lk),xl(32.0+vCol.g,lk),xl(64.0+vCol.b,lk)); }
+        gl_FragColor=vec4(c,1.0); return;
+      }
+      tx=dot(t,w); }
+    luma=ramp?floor(L*tx*17.0*8.0/2048.0):floor(48.0+tx+0.5);
+  } else luma=L;
+  luma=clamp(luma,0.0,63.0);
+  gl_FragColor=vec4(xl(vCol.r,luma),xl(32.0+vCol.g,luma),xl(64.0+vCol.b,luma),1.0);
+}`;
+let vglCut=+(new URLSearchParams(location.search).get("cut")??-1), vglMip=+(new URLSearchParams(location.search).get("mip")??-1);
+function vglNew(canvas){
+  const gl=canvas.getContext("webgl",{antialias:true,preserveDrawingBuffer:true,alpha:true});
+  if(!gl) throw new Error("このブラウザは WebGL に対応していない");
+  const sh=(t,src)=>{ const s=gl.createShader(t); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s };
+  // 描画の微分（ミップマップの段を選ぶのに使う）。無いブラウザでは段は 0 のまま
+  const deriv=!!gl.getExtension("OES_standard_derivatives");
+  const pr=gl.createProgram(); gl.attachShader(pr,sh(gl.VERTEX_SHADER,VGL_VS)); gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,(deriv?"#extension GL_OES_standard_derivatives : enable\n#define HAS_DERIV 1\n":"")+VGL_FS)); gl.linkProgram(pr);
+  if(!gl.getProgramParameter(pr,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  const bufs=[gl.createBuffer(),gl.createBuffer()], counts=[0,0], tex={}; let mirror=null;
+  // 空と遠景（MODEL2 の2Dの面。画面に貼るだけで、視点を回しても動かない）
+  const bp=gl.createProgram();
+  gl.attachShader(bp,sh(gl.VERTEX_SHADER,"attribute vec2 aXY; varying vec2 vUV; void main(){ vUV=vec2(aXY.x*0.5+0.5,0.5-aXY.y*0.5); gl_Position=vec4(aXY,0.999,1.0); }"));
+  gl.attachShader(bp,sh(gl.FRAGMENT_SHADER,"precision mediump float; uniform sampler2D uBack; varying vec2 vUV; void main(){ vec4 c=texture2D(uBack,vUV); if(c.a<0.5) discard; gl_FragColor=vec4(c.rgb,1.0); }"));
+  gl.linkProgram(bp); if(!gl.getProgramParameter(bp,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(bp));
+  const quad=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,quad); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  let hasBack=false, hasArc=false;
+  const lum=(name,unit,w,h,data)=>{ let t=tex[name]; if(!t){ t=tex[name]=gl.createTexture() }
+    gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,w,h,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,data);
+    for(const p of [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D,p,gl.NEAREST);
+    for(const p of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D,p,gl.CLAMP_TO_EDGE) };
+  return {
+    // 色とテクスチャの材料（sceneColors の結果）を GPU に置く
+    setColors(col){
+      const t=new Uint8Array(1024*1024);
+      for(let page=0;page<2;page++) for(let y=0;y<1024;y++) for(let x=0;x<512;x+=2){
+        const b=col.tex[(page<<18)+y*256+(x>>1)], o=y*1024+page*512+x; t[o]=(b&15)*17; t[o+1]=(b>>4)*17 }
+      lum("tex",0,1024,1024,t);
+      lum("clut",1,128,256,col.clut.slice(0,128*256));   // 曲線（明るさの段階 B → L）。番号ごとに 128 段
+      lum("xlat",2,64,96,col.xlat.slice(0,64*96));
+    },
+    // アーケードのテクスチャ（ページ2枚。各 横 1024×縦 2048 の 4bit を1バイトずつ）。null で使わない
+    // mips: ミップマップの小さい版（vapp.js の arcMips の並べ方）
+    setArc(pages,mips){ if(!pages){ hasArc=false; return } const t=new Uint8Array(2048*2048);
+      for(let p=0;p<2;p++) for(let y=0;y<2048;y++) for(let x=0;x<1024;x++) t[y*2048+p*1024+x]=pages[p][y*1024+x];
+      lum("texA",4,2048,2048,t);
+      lum("texM",5,2048,2048,mips||new Uint8Array(2048*2048).fill(255)); hasArc=true },
+    // 空と遠景の絵（496×384 の RGBA。null で消す）
+    setBack(rgba){ hasBack=!!rgba; if(!rgba) return; let t=tex.back; if(!t) t=tex.back=gl.createTexture();
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,496,384,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+      for(const p of [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D,p,gl.NEAREST);
+      for(const p of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T]) gl.texParameteri(gl.TEXTURE_2D,p,gl.CLAMP_TO_EDGE) },
+    // body＝体と背景、shadow＝影
+    setMesh(body,shadow){ [body,shadow].forEach((m,i)=>{ gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]); gl.bufferData(gl.ARRAY_BUFFER,m?m.data:new Float32Array(0),gl.STATIC_DRAW); counts[i]=m?m.count:0 }); mirror=body&&body.mirror },
+    // view: 4×4（列優先）、focal: [x,y]（クリップ座標の倍率）
+    draw(view,focal,light,back,opt={}){
+      const W=canvas.width,H=canvas.height; gl.viewport(0,0,W,H); gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+      if(!counts[0]&&!counts[1]) return;
+      for(let l=0;l<8;l++) gl.disableVertexAttribArray(l);
+      if(back&&hasBack){   // いちばん先に、奥行きを書かずに画面いっぱいに貼る（ゲームも 3D より先に描く）
+        gl.useProgram(bp); gl.disable(gl.DEPTH_TEST); gl.bindBuffer(gl.ARRAY_BUFFER,quad);
+        const l=gl.getAttribLocation(bp,"aXY"); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,2,gl.FLOAT,false,0,0);
+        gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D,tex.back); gl.uniform1i(gl.getUniformLocation(bp,"uBack"),3);
+        gl.drawArrays(gl.TRIANGLE_STRIP,0,4); gl.disableVertexAttribArray(l);
+      }
+      gl.enable(gl.DEPTH_TEST); gl.useProgram(pr);
+      const u=n=>gl.getUniformLocation(pr,n);
+      gl.uniformMatrix4fv(u("uView"),false,view); gl.uniform2fv(u("uFocal"),focal); gl.uniform3fv(u("uLight"),light);
+      gl.uniform1f(u("uCut"),vglCut); gl.uniform1f(u("uBilin"),opt.bilin?1:0);
+      gl.uniform1i(u("uTex"),0); gl.uniform1i(u("uClut"),1); gl.uniform1i(u("uXlat"),2);
+      gl.uniform1f(u("uArc"),opt.arc&&hasArc?1:0); gl.uniform1f(u("uMip"),opt.mip===false||vglMip===-2?0:1); gl.uniform1f(u("uMipForce"),vglMip); if(hasArc){ gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D,tex.texA); gl.activeTexture(gl.TEXTURE5); gl.bindTexture(gl.TEXTURE_2D,tex.texM) } gl.uniform1i(u("uTexA"),4); gl.uniform1i(u("uTexM"),5);
+      const F=4, S=BUILD_STRIDE*F;
+      for(let i=0;i<2;i++){ if(!counts[i]) continue;
+        gl.bindBuffer(gl.ARRAY_BUFFER,bufs[i]);
+        const at=(n,k,o)=>{ const l=gl.getAttribLocation(pr,n); if(l<0) return; gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,k,gl.FLOAT,false,S,o*F) };
+        at("aPos",3,0); at("aNrm",3,3); at("aCol",3,6); at("aLoc",2,9); at("aOrgSize",4,11); at("aMisc",3,15); at("aLk",4,19); at("aSpecial",1,23);
+        gl.uniform1f(u("uShadow"),i);
+        if(i){ gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false) }
+        // 映り込みは奥行きを比べず・書かずに描き（前の組の上に塗る）、あとに来る床に隠させる（build.js の sceneMesh の説明）
+        if(!i&&mirror){ gl.drawArrays(gl.TRIANGLES,0,mirror[0]); gl.depthMask(false); gl.disable(gl.DEPTH_TEST); gl.drawArrays(gl.TRIANGLES,mirror[0],mirror[1]-mirror[0]); gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.drawArrays(gl.TRIANGLES,mirror[1],counts[0]-mirror[1]) }
+        else gl.drawArrays(gl.TRIANGLES,0,counts[i]);
+        if(i){ gl.disable(gl.BLEND); gl.depthMask(true) }
+      }
+    }
+  };
+}
+// 画面の組み立て（VF2 の vapp.js を元に、FV のモデルの選び方とアーケードのテクスチャに合わせたもの）
+const VERSION="0.1.0";
+const $=id=>document.getElementById(id);
+const APP={disc:null, objCache:new Map(), rom:null, states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
+function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
+async function readDec(name){ const f=APP.disc.get(name); if(!f) throw new Error(name+" がディスクに無い"); return cricmpUnpack(await f()) }
+async function readObj(name){
+  if(!APP.objCache.has(name)){ const f=APP.disc.get(name); if(!f) return null; APP.objCache.set(name,new Map(objModels(cricmpUnpack(await f())).map(e=>[e.id,e]))) }
+  return APP.objCache.get(name);
+}
+// モデル: 人ごとに、描いた番号をいちばん多く含む OBJ_ROBnn（＋同じ番号の R・共通 OBJ_COMMON）。背景は、1P の表のうちキャラに無い番号をいちばん多く含む OBJ_STGnn
+async function chooseModels(sc){
+  const names=[...APP.disc.keys()], best=async(ids,re)=>{ let b=[null,0]; for(const n of names.filter(n=>re.test(n)).sort()){ const m=await readObj(n), k=ids.filter(i=>m.has(i)).length; if(k>b[1]) b=[n,k] } return b[0] };
+  const models={}, used=[], common=await readObj("OBJ_COMMON.CMP");
+  for(const p of [0,1]){ const f=await best(sc.draws.filter(d=>d.player===p).map(d=>d.id),/^OBJ_ROB\d+\.CMP$/); used.push(f); if(!f){ models[p]=new Map(); continue }
+    const m=new Map(await readObj(f)), r=await readObj(f.replace(".CMP","R.CMP")); if(r) for(const [k,v] of r) if(!m.has(k)) m.set(k,v);
+    if(common) for(const [k,v] of common) if(!m.has(k)) m.set(k,v); models[p]=m }
+  const f=await best(sc.draws.filter(d=>d.player===0&&!models[0].has(d.id)).map(d=>d.id),/^OBJ_STG\d+R?\.CMP$/); used.push(f);
+  if(f){ models.stage=new Map(await readObj(f)); const r=await readObj(f.replace(/R?\.CMP$/,"R.CMP")); if(r) for(const [k,v] of r) if(!models.stage.has(k)) models.stage.set(k,v) }
+  return {models,names:used};
+}
+// アーケードのテクスチャ（fvarc.js）: キャラ OBJ_ROBnn はセット 2n+1・2n+2（2P の色 nn≥13 は nn−13）で 2P はページを入れ替え、ステージ OBJ_STGnn はセット 18＋n。
+// キャラは RAM の縦 0〜1023、ステージは 1024〜1535 だけ使い（セットは段の小さい版などほかの所にも書く）、ロムで書いた所は値＋128
+async function arcPages(names){
+  if(!APP.rom){ status("アーケードのテクスチャを展開中…"); APP.rom={prog:await readDec("ROM_CODE1.CMP"), data:await readDec("ROM_DATA.CMP")} }
+  const LC=fvArcLoader(APP.rom.prog,APP.rom.data), LS=fvArcLoader(APP.rom.prog,APP.rom.data);
+  names.slice(0,2).forEach((f,pl)=>{ if(!f) return; let n=+f.match(/ROB(\d+)/)[1]; if(n>=13) n-=13; LC.loadSet(2*n+1,pl); LC.loadSet(2*n+2,pl) });
+  if(names[2]) LS.loadSet(18+(+names[2].match(/STG(\d+)/)[1]),0);
+  return [0,1].map(p=>{ const o=new Uint8Array(1024*2048);
+    for(let y=0;y<1536;y++){ const src=y<1024?LC:LS;
+      for(let x=0;x<1024;x++){ const h=(y>>1)*512+(x>>1); if(src.mask[p][h]) o[y*1024+x]=128|arcTexel(src.tex[p],x,y) } }
+    return o });
+}
+// ミップマップの小さい版（段 1〜3）を元の大きさの版から作る（VF2 の vapp.js と同じ）。ロムで作った所（値＋128）だけ。ほかは 255（小さい版なし）
+function arcMips(pages){
+  const o=new Uint8Array(2048*2048).fill(255), place=[null,[512,0],[256,1024],[128,1536]];
+  for(const p of [0,1]) for(let l=1;l<=3;l++){ const sc=1<<l, W=1024>>l, H=2048>>l, [ox,oy]=[place[l][0]*p,place[l][1]];
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){ let n=0,tr=0,sum=0,ok=true;
+      for(let dy=0;dy<sc&&ok;dy++) for(let dx=0;dx<sc;dx++){ const v=pages[p][(y*sc+dy)*1024+x*sc+dx]; if(v<128){ ok=false; break } n++; if((v&15)===15) tr++; else sum+=v&15 }
+      if(ok) o[(oy+y)*2048+ox+x]=tr*2>=n?15:Math.round(sum/(n-tr)) } }
+  return o;
+}
+async function show(){
+  const st=APP.states[APP.cur]; if(!st||!APP.disc) return;
+  try{
+    status("読み込み中…");
+    if(!st.mem){ st.mem=await st.zip.get("eeMemory.bin")(); const v1=st.zip.get("vu1Memory.bin"); st.vu1=v1?await v1():null; const sh=st.zip.get("Screenshot.png"); if(sh) st.shot=URL.createObjectURL(new Blob([await sh()],{type:"image/png"})) }
+    const sc=sceneRead(st.mem), col=sceneColors(st.mem), light=sceneLight(st.vu1,sc), {models,names}=await chooseModels(sc);
+    APP.scene={sc,col,light,models,names};
+    if(!st.arc){ st.arc=await arcPages(names); st.arcMip=arcMips(st.arc) }
+    APP.gl.setColors(col); APP.gl.setArc(st.arc,st.arcMip);
+    $("shot").src=st.shot||""; $("shot").hidden=!st.shot;
+    $("empty").hidden=true; $("hint").hidden=false; status(""); rebuild(); resetView();
+  }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
+}
+function rebuild(){
+  const S=APP.scene; if(!S) return;
+  const o={players:[$("c-p1").checked,$("c-p2").checked],stage:$("c-stage").checked,light:S.light};
+  const body=sceneMesh(S.sc,S.col,S.models,{...o,which:"body"}), shadow=$("c-shadow").checked?sceneMesh(S.sc,S.col,S.models,{...o,which:"shadow"}):null;
+  APP.gl.setMesh(body,shadow);
+  const nm=n=>n?n.replace(".CMP",""):"なし";
+  $("info").textContent=`1P ${nm(S.names[0])}・2P ${nm(S.names[1])}・背景 ${nm(S.names[2])}　部品 ${S.sc.draws.length} 個（うち影 ${body.shadows}）　三角形 ${(body.count+(shadow?shadow.count:0))/3}`+(body.missing.length?`　ファイルに無い番号 ${body.missing.length} 個`:"");
+  draw();
+}
+// 視点: ゲームのカメラの座標のまま、2人の真ん中を中心に回す
+function center(){
+  const S=APP.scene; let s=[0,0,0],n=0;
+  for(const x of S.sc.draws){ const m=x.m; if(Math.abs(m[4])<0.05||!S.models[x.player]||!S.models[x.player].has(x.id)) continue; s[0]+=m[9]; s[1]+=m[10]; s[2]+=m[11]; n++ }
+  return n?s.map(v=>v/n):[0,0,4];
+}
+function resetView(){ APP.rot=[0,0]; APP.zoom=1; APP.pan=[0,0]; draw() }
+function draw(){
+  const cv=$("cv"), r=cv.getBoundingClientRect(), dpr=Math.min(2,devicePixelRatio||1);
+  cv.width=Math.round(r.width*dpr); cv.height=Math.round(r.height*dpr);
+  if(!APP.scene){ APP.gl.draw(new Float32Array(16),[1,1],[0,0,1]); return }
+  const [cx,cy,cz]=center(), [a,b]=APP.rot, ca=Math.cos(a), sa=Math.sin(a), cb=Math.cos(b), sb=Math.sin(b);
+  const R=[ca,sb*sa,-cb*sa, 0,cb,sb, sa,-sb*ca,cb*ca];   // 列優先 3×3。p' = R(p − c) + c
+  const t=[0,1,2].map(i=>[cx,cy,cz][i]-(R[i]*cx+R[3+i]*cy+R[6+i]*cz));
+  const V=new Float32Array([R[0],R[1],R[2],0, R[3],R[4],R[5],0, R[6],R[7],R[8],0, t[0]+APP.pan[0],t[1]+APP.pan[1],t[2],1]);
+  // ゲームの画面（496×384 を 622×412 に広げて見せている）と同じ写り方
+  const f=APP.scene.sc.focal, focal=[f[0]*APP.zoom*2/496, f[1]*APP.zoom*2/384];
+  APP.gl.draw(V,focal,APP.scene.light.L,false,{bilin:$("c-smooth").checked,arc:true});
+}
+function hookInput(){
+  // ドラッグで回す。Shift を押しながら（または右・中ボタンで）ドラッグすると平行に動かす。2本指はピンチで寄り、指の中ほどの移動で平行に動く
+  const v=$("viewer"), pts=new Map(); let last=null, pinch=null, mode=null;
+  const panBy=(dx,dy)=>{ const r=$("cv").getBoundingClientRect(), f=APP.scene?APP.scene.sc.focal:[480,480], z=APP.scene?center()[2]:4;
+    APP.pan[0]+=dx*2/r.width*z/(f[0]*APP.zoom*2/496); APP.pan[1]-=dy*2/r.height*z/(f[1]*APP.zoom*2/384) };
+  v.addEventListener("contextmenu",e=>e.preventDefault());
+  v.addEventListener("pointerdown",e=>{ v.setPointerCapture(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]); last=[e.clientX,e.clientY];
+    mode=pts.size>=2?"pinch":(e.shiftKey||e.button===1||e.button===2)?"pan":"rotate" });
+  v.addEventListener("pointermove",e=>{
+    if(!pts.has(e.pointerId)) return; const prev=pts.get(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]);
+    if(pts.size===2){ const [p,q]=[...pts.values()], d=Math.hypot(p[0]-q[0],p[1]-q[1]); if(pinch) APP.zoom=Math.max(.3,Math.min(20,APP.zoom*d/pinch)); pinch=d;
+      panBy((e.clientX-prev[0])/2,(e.clientY-prev[1])/2); draw(); return }
+    if(!last) return; const dx=e.clientX-last[0], dy=e.clientY-last[1]; last=[e.clientX,e.clientY];
+    if(mode==="pan"||e.shiftKey) panBy(dx,dy);
+    else { APP.rot[0]+=dx*0.01; APP.rot[1]=Math.max(-1.5,Math.min(1.5,APP.rot[1]+dy*0.01)) }
+    draw();
+  });
+  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch=null; last=pts.size?[...pts.values()][0]:null; if(!pts.size) mode=null; else if(mode==="pinch") mode="pan" };
+  v.addEventListener("pointerup",up); v.addEventListener("pointercancel",up);
+  // ホイール: カーソルの下の物が動かないように寄る
+  v.addEventListener("wheel",e=>{ e.preventDefault(); const z0=APP.zoom; APP.zoom=Math.max(.3,Math.min(20,APP.zoom*Math.exp(-e.deltaY*0.001)));
+    const k=APP.zoom/z0, r=$("cv").getBoundingClientRect(), ox=e.clientX-(r.left+r.width/2), oy=e.clientY-(r.top+r.height/2); panBy(ox*(1-k),oy*(1-k)); draw() },{passive:false});
+  v.addEventListener("dblclick",resetView);
+  addEventListener("resize",draw);
+}
+function listStates(){
+  const box=$("states"); box.innerHTML="";
+  APP.states.forEach((s,i)=>{ const b=document.createElement("button"); b.textContent=s.name.replace(/\.p2s$/i,""); if(i===APP.cur) b.className="on";
+    b.onclick=()=>{ APP.cur=i; listStates(); show() }; box.appendChild(b) });
+}
+async function loadDisc(f){ if(!f) return;
+  try{ status("ディスクを読み込み中…"); APP.disc=await discOpen(f); APP.objCache.clear(); APP.rom=null; for(const s of APP.states) s.arc=null;
+    if(!APP.disc.get("ROM_CODE1.CMP")) throw new Error("ディスクの中に ROM_CODE1.CMP が無い（ファイティングバイパーズの PS2 版ではない？）");
+    $("n-disc").textContent=f.name; $("step-disc").classList.add("done"); status(APP.cur<0?"次にセーブステートを選んでください":""); if(APP.cur>=0) show() }
+  catch(err){ APP.disc=null; status("ディスクを読めなかった: "+err.message,true) } }
+async function loadStates(files){ if(!files||!files.length) return;
+  for(const f of files){ try{ APP.states.push({name:f.name,zip:await p2sOpen(await f.arrayBuffer())}) }catch(err){ status(f.name+" を読めなかった: "+err.message,true) } }
+  if(!APP.states.length) return;
+  $("n-state").textContent=APP.states.length+" 個"; $("step-state").classList.add("done");
+  if(APP.cur<0) APP.cur=0; listStates();
+  if(APP.disc) show(); else status("次にディスクのイメージを選んでください") }
+// ファイルのドロップ: .p2s はセーブステート、ほかはディスク
+function hookDrop(){
+  const v=$("viewer");
+  addEventListener("dragover",e=>{ e.preventDefault(); v.classList.add("drop-over") });
+  addEventListener("dragleave",e=>{ if(!e.relatedTarget) v.classList.remove("drop-over") });
+  addEventListener("drop",async e=>{ e.preventDefault(); v.classList.remove("drop-over"); const fs=[...e.dataTransfer.files];
+    const st=fs.filter(f=>/\.p2s$/i.test(f.name)), disc=fs.find(f=>!/\.p2s$/i.test(f.name));
+    if(disc) await loadDisc(disc); if(st.length) await loadStates(st) });
+}
+function savePng(){
+  if(!APP.scene) return; draw();
+  $("cv").toBlob(b=>{ const a=document.createElement("a"), st=APP.states[APP.cur]; a.href=URL.createObjectURL(b);
+    a.download=`FV_${(st?st.name:"view").replace(/\.p2s$/i,"").replace(/[^\w.-]+/g,"_")}_v${VERSION}.png`; document.body.appendChild(a); a.click(); a.remove() },"image/png");
+}
+function init(){
+  $("ver").textContent="版 "+VERSION; $("ver-h").textContent="v"+VERSION;
+  try{ APP.gl=vglNew($("cv")) }catch(e){ status(e.message,true); return }
+  hookInput(); hookDrop(); draw();
+  $("f-disc").onchange=e=>loadDisc(e.target.files[0]);
+  $("f-state").onchange=e=>loadStates(e.target.files);
+  for(const id of ["c-p1","c-p2","c-shadow","c-stage"]) $(id).onchange=rebuild;
+  $("c-smooth").onchange=draw;
+  $("c-overlay").onchange=()=>$("viewer").classList.toggle("overlay",$("c-overlay").checked);
+  $("b-reset").onclick=resetView; $("b-png").onclick=savePng;
+}
+init();
+</script>
+</body>
+</html>

@@ -6,13 +6,22 @@ PS2 版 VF2（`../vf2-model-viewer/`）と同じ作りの移植なので、VF2 �
 
 ## いまの状態
 
-- 作業: ディスクと写し 14 個で、命令の列から 2 人と背景を組み、写真に重なるところまで（`node src/pose.mjs`。色・テクスチャはまだ）
+- 作業: v0.1.0 でページ（ディスクと写しで2人と背景を、アーケードのテクスチャで回して見る）。その前は、ディスクと写し 14 個で、命令の列から 2 人と背景を組み、写真に重なるところまで（`node src/pose.mjs`。色・テクスチャはまだ）
 - 写し（2026-09-27、ユーザーから）: grace1P_picky1P_round1・bahn1P_honey1P_tower・raxel1P_jane1P_tower・tokio1P_sanman1P_tower（どれも構え）。
   ユーザーは基本ソフトウェア描画で撮っている（GS.bin にゲームが描いた画面が入る。`node src/gsframe.mjs 写し out/gs.png`）
 - 写し（2026-09-27 追加）: 同じキャラ同士（raxel_throw・raxel_down・bahn_down・grace_throw・grace_armorbreak・picky・honey・jane・sanman・tokio_armorbreak）。
   grace_throw と tokio_armorbreak は一時停止のメニューが出ている
 - 頼みたいこと: マーラー・ほかの隠れキャラ（ROB08・09・21・22 はまだ写しに出ていない）
 - 次にやること: バーンのコートの縞・空（2D の面）→ ページ → 技（どの命令の列が画面のコマかは技の所でまとめて）。色（色 RAM・色の変換表・パレットの置き場所を探す）→ テクスチャ → ページ → 技（VF2 の motion.js を当てる）
+
+## ページ（`index.html`、版は `src/fapp.js` の VERSION、履歴は CHANGELOG.md）
+
+```
+cd fv-model-viewer/src
+sh check.sh          # 組み立て（assemble.py が head.html と .js を連結）→ 単体試験（node test.mjs）→ ../index.html
+node browser.mjs     # Playwright。何も無し → 写しだけ → ディスク（CHD）も、の順にたどり、PC とスマホの幅で撮る（out/b_*.png）
+```
+- ソース: zstd.js・p2s.js（VF2 と同じ）・fdisc.js（CHD は tobal1 の disc.js）・cricmp.js・obj.js・tex.js・scene.js・build.js・arcade.js（VF2 の i960）・fvarc.js・vgl.js（VF2 のものの、アーケードのテクスチャの単位を FV に）・fapp.js・head.html
 
 ## データの置き場所（リポジトリに入れない。`src/.gitignore` で disc/・out/・*.chd などを外す）
 
