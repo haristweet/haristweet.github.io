@@ -102,6 +102,7 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <span class="parts">FV の技 <input id="x-num" type="number" min="0" max="1052" value="0" style="width:5.5em" aria-label="FV の技の番号"></span>
   <select id="x-name" aria-label="FV の技の名前" hidden></select>
   <label title="FV のキャラの色の変換表を VF2 の写しのものにする（外すと FV の色のまま。FV の表は明るく、白っぽく見える）"><input type="checkbox" id="x-col" checked> 色を VF2 の場面に合わせる</label>
+  <label title="FV のキャラの光の当て方（光の向きの明るさと、どの向きにも足す明るさの割合）を VF2 に寄せる。FV は暗い側も明るく濃淡が小さい。ゲームの値ではなく、このページで決めた変換">光 <select id="x-light" aria-label="光の寄せ方"><option value="1">VF2 と同じ</option><option value="2">半分</option><option value="0">FV のまま</option></select></label>
   <span class="parts">押し合い <input id="x-push" type="number" min="0" max="2" step="0.05" value="0.6" style="width:4.5em" aria-label="押し合いの距離"></span>
   <small>ファイティングバイパーズ（PS2『SEGA AGES 2500 Vol.21』）のディスクと写しを選ぶと、VF2 の 2P の代わりに FV のキャラを置けます（2 人とも、それぞれのゲームのプログラムで姿勢を計算し、色もそれぞれのゲームのもの）。FV のキャラは VF2 の 2P の腰の所に、1P の方を向けて置きます。上の「技を出す」は 1P（VF2）の技、ここの番号は FV のキャラの技で、再生・コマ送り・動画は 2 人いっしょに動きます（0 なら写しの姿勢のまま）。このビューアには体の当たりが無いので、前へ出る技ですれ違わないよう、腰の間が「押し合い」の距離より近いと、前へ出たほうを相手の前で止めます（ゲームの値ではなく仮のもの）。</small></div>
 <div id="info"></div>
@@ -3214,12 +3215,12 @@ async function xSetMove(m){ const R=XV.ready; if(!R||m===XV.m&&(m===0||R.E.info(
   status(""); $("x-num").value=XV.m; xNameSync(); await xRefresh(1) }
 // 今の VF2 の技・コマで組み直す（入れ替えを切り替えたとき・押し合いを変えたときなど）
 // 色の変換表（色の値 5bit × 明るさ → 8bit。ゲームが場面ごとに作る）: 「色を VF2 の場面に合わせる」なら、行 0〜27・明るさ 0〜47 を VF2 の写しの表にする。
-// 行 28〜31（VF2 では写しごとに違う、キャラの肌などの行）と明るさ 48〜（特別な欄）は FV のまま。FV の表は同じ値でも明るく（値 16・明るさ 47 で VF2 200・FV 248）、白っぽく見えた
+// 行 28〜31（キャラの肌などの行。FV のキャラの色の半分近くがここ）は FV の色のまま、明るさの比（行 8〜27 の VF2÷FV）だけ掛ける。明るさ 48〜（特別な欄）は FV のまま。FV の表は同じ値でも明るく（値 16・明るさ 47 で VF2 200・FV 248）、白っぽく見えた
 const XV_ROWS=28, XV_COLS=48;
 function xColors(){ const R=XV.ready, S=APP.scene; if(!R||!XV.gl||!S) return; const on=$("x-col").checked, key=on?S.col:R.col; if(XV.colKey===key) return; XV.colKey=key;
   if(!on){ XV.gl.setColors(R.col); return }
   const f=R.col.xlat, x=f.slice(), v=S.col.xlat; for(let ch=0;ch<3;ch++) for(let r=0;r<XV_ROWS;r++) for(let l=0;l<XV_COLS;l++){ const i=ch*0x800+r*64+l; x[i]=v[i] }
-  if(XV.scale!==false) for(let l=0;l<XV_COLS;l++){ let a=0,b=0; for(let ch=0;ch<3;ch++) for(let r=8;r<XV_ROWS;r++){ a+=v[ch*0x800+r*64+l]; b+=f[ch*0x800+r*64+l] } const k=b?a/b:1;
+  for(let l=0;l<XV_COLS;l++){ let a=0,b=0; for(let ch=0;ch<3;ch++) for(let r=8;r<XV_ROWS;r++){ a+=v[ch*0x800+r*64+l]; b+=f[ch*0x800+r*64+l] } const k=b?a/b:1;
     for(let ch=0;ch<3;ch++) for(let r=XV_ROWS;r<32;r++){ const i=ch*0x800+r*64+l; x[i]=Math.min(255,Math.round(f[i]*k)) } }
   XV.gl.setColors({...R.col,xlat:x}) }
 async function xRefresh(f){ if(!APP.scene||APP.mode!=="state") return; xColors();
@@ -3248,10 +3249,13 @@ function xCompose(M,UA,f){
 function xPushShares(sep,PUSH,advA,advB){ const ov=PUSH-sep; if(ov<=0) return [0,0];
   const a=Math.max(0,advA), b=Math.max(0,advB), t=a+b, use=Math.min(ov,t), rest=(ov-use)/2;
   return [(t>1e-6?use*a/t:0)+rest,(t>1e-6?use*b/t:0)+rest] }
+// 光の寄せ方（ゲームの値ではない【推測】）: FV のキャラの光の設定は拡散 32〜64・環境 80〜88 が多く（VF2 は 63.5・31.5）、暗い側も明るく濃淡が小さい。
+// mode 1＝VF2 と同じ割合（拡散：環境＝2：1。明るい側の拡散＋環境は変えない）、2＝半分だけ寄せる（環境を 31.5 へ半分近づけ、減った分を拡散へ）。
+// 拡散 0（光らない面）・環境 127 以上（いつも明るい面）は変えない
 function xLightTab(t,mode){ const [d,a]=t; if(d<=0||a>=127||d+a<=0) return t; const s=d+a; return mode===1?[s*2/3,s/3,t[2],t[3]]:[d+(a-31.5)*0.5,31.5+(a-31.5)*0.5,t[2],t[3]] }
 // rebuild() から: FV の分のメッシュ（光の向きは VF2 の場面のもの、強さの表は FV のもの）
 function xMesh(o){ const S=APP.scene, R=XV.ready; if(!S.fsc) return null;
-  const light={...R.light0,L:S.light.L,tab:XV.lightMode?R.light0.tab.map(t=>xLightTab(t,XV.lightMode)):R.light0.tab}, on=$("c-p2").checked, p={which:"body",stage:false,light,players:[on&&R.pl===0,on&&R.pl===1]}, models={[R.pl]:R.fm};
+  const light={...R.light0,L:S.light.L,tab:+$("x-light").value?R.light0.tab.map(t=>xLightTab(t,+$("x-light").value)):R.light0.tab}, on=$("c-p2").checked, p={which:"body",stage:false,light,players:[on&&R.pl===0,on&&R.pl===1]}, models={[R.pl]:R.fm};
   const body=FVX.sceneMesh(S.fsc,R.col,models,p), shadow=o.shadow?FVX.sceneMesh(S.fsc,R.col,models,{...p,which:"shadow"}):null;
   XV.gl.setMesh(body,shadow); return (body.count+(shadow?shadow.count:0))/3 }
 function xInit(){
@@ -3262,9 +3266,10 @@ function xInit(){
   $("x-name").onchange=()=>{ if($("x-name").value) xSetMove(+$("x-name").value) };
   $("x-push").onchange=()=>xRefresh();
   $("x-col").onchange=()=>{ xColors(); draw() };
+  $("x-light").onchange=()=>rebuild();
 }
 // 画面の組み立て
-const VERSION="0.15.2";
+const VERSION="0.16.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }

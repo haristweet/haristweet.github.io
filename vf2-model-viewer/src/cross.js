@@ -57,12 +57,12 @@ async function xSetMove(m){ const R=XV.ready; if(!R||m===XV.m&&(m===0||R.E.info(
   status(""); $("x-num").value=XV.m; xNameSync(); await xRefresh(1) }
 // 今の VF2 の技・コマで組み直す（入れ替えを切り替えたとき・押し合いを変えたときなど）
 // 色の変換表（色の値 5bit × 明るさ → 8bit。ゲームが場面ごとに作る）: 「色を VF2 の場面に合わせる」なら、行 0〜27・明るさ 0〜47 を VF2 の写しの表にする。
-// 行 28〜31（VF2 では写しごとに違う、キャラの肌などの行）と明るさ 48〜（特別な欄）は FV のまま。FV の表は同じ値でも明るく（値 16・明るさ 47 で VF2 200・FV 248）、白っぽく見えた
+// 行 28〜31（キャラの肌などの行。FV のキャラの色の半分近くがここ）は FV の色のまま、明るさの比（行 8〜27 の VF2÷FV）だけ掛ける。明るさ 48〜（特別な欄）は FV のまま。FV の表は同じ値でも明るく（値 16・明るさ 47 で VF2 200・FV 248）、白っぽく見えた
 const XV_ROWS=28, XV_COLS=48;
 function xColors(){ const R=XV.ready, S=APP.scene; if(!R||!XV.gl||!S) return; const on=$("x-col").checked, key=on?S.col:R.col; if(XV.colKey===key) return; XV.colKey=key;
   if(!on){ XV.gl.setColors(R.col); return }
   const f=R.col.xlat, x=f.slice(), v=S.col.xlat; for(let ch=0;ch<3;ch++) for(let r=0;r<XV_ROWS;r++) for(let l=0;l<XV_COLS;l++){ const i=ch*0x800+r*64+l; x[i]=v[i] }
-  if(XV.scale!==false) for(let l=0;l<XV_COLS;l++){ let a=0,b=0; for(let ch=0;ch<3;ch++) for(let r=8;r<XV_ROWS;r++){ a+=v[ch*0x800+r*64+l]; b+=f[ch*0x800+r*64+l] } const k=b?a/b:1;
+  for(let l=0;l<XV_COLS;l++){ let a=0,b=0; for(let ch=0;ch<3;ch++) for(let r=8;r<XV_ROWS;r++){ a+=v[ch*0x800+r*64+l]; b+=f[ch*0x800+r*64+l] } const k=b?a/b:1;
     for(let ch=0;ch<3;ch++) for(let r=XV_ROWS;r<32;r++){ const i=ch*0x800+r*64+l; x[i]=Math.min(255,Math.round(f[i]*k)) } }
   XV.gl.setColors({...R.col,xlat:x}) }
 async function xRefresh(f){ if(!APP.scene||APP.mode!=="state") return; xColors();
@@ -91,10 +91,13 @@ function xCompose(M,UA,f){
 function xPushShares(sep,PUSH,advA,advB){ const ov=PUSH-sep; if(ov<=0) return [0,0];
   const a=Math.max(0,advA), b=Math.max(0,advB), t=a+b, use=Math.min(ov,t), rest=(ov-use)/2;
   return [(t>1e-6?use*a/t:0)+rest,(t>1e-6?use*b/t:0)+rest] }
+// 光の寄せ方（ゲームの値ではない【推測】）: FV のキャラの光の設定は拡散 32〜64・環境 80〜88 が多く（VF2 は 63.5・31.5）、暗い側も明るく濃淡が小さい。
+// mode 1＝VF2 と同じ割合（拡散：環境＝2：1。明るい側の拡散＋環境は変えない）、2＝半分だけ寄せる（環境を 31.5 へ半分近づけ、減った分を拡散へ）。
+// 拡散 0（光らない面）・環境 127 以上（いつも明るい面）は変えない
 function xLightTab(t,mode){ const [d,a]=t; if(d<=0||a>=127||d+a<=0) return t; const s=d+a; return mode===1?[s*2/3,s/3,t[2],t[3]]:[d+(a-31.5)*0.5,31.5+(a-31.5)*0.5,t[2],t[3]] }
 // rebuild() から: FV の分のメッシュ（光の向きは VF2 の場面のもの、強さの表は FV のもの）
 function xMesh(o){ const S=APP.scene, R=XV.ready; if(!S.fsc) return null;
-  const light={...R.light0,L:S.light.L,tab:XV.lightMode?R.light0.tab.map(t=>xLightTab(t,XV.lightMode)):R.light0.tab}, on=$("c-p2").checked, p={which:"body",stage:false,light,players:[on&&R.pl===0,on&&R.pl===1]}, models={[R.pl]:R.fm};
+  const light={...R.light0,L:S.light.L,tab:+$("x-light").value?R.light0.tab.map(t=>xLightTab(t,+$("x-light").value)):R.light0.tab}, on=$("c-p2").checked, p={which:"body",stage:false,light,players:[on&&R.pl===0,on&&R.pl===1]}, models={[R.pl]:R.fm};
   const body=FVX.sceneMesh(S.fsc,R.col,models,p), shadow=o.shadow?FVX.sceneMesh(S.fsc,R.col,models,{...p,which:"shadow"}):null;
   XV.gl.setMesh(body,shadow); return (body.count+(shadow?shadow.count:0))/3 }
 function xInit(){
@@ -105,4 +108,5 @@ function xInit(){
   $("x-name").onchange=()=>{ if($("x-name").value) xSetMove(+$("x-name").value) };
   $("x-push").onchange=()=>xRefresh();
   $("x-col").onchange=()=>{ xColors(); draw() };
+  $("x-light").onchange=()=>rebuild();
 }

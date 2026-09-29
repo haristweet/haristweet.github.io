@@ -88,6 +88,8 @@ for(const [w,h,tag] of [[1100,900,"pc"],[390,844,"phone"]]){
     await p.waitForFunction(()=>document.getElementById("info").textContent.length>0,null,{timeout:120000});
     await p.setInputFiles("#x-disc",path.join(FVD,"fv.bin")); await p.setInputFiles("#x-state",path.join(FVD,"states/bahn1P_honey1P_tower.p2s"));
     await p.waitForFunction(()=>/FV /.test(document.getElementById("info").textContent),null,{timeout:300000});
+    console.log("FV 色:",await p.isChecked("#x-col"),"光",await p.inputValue("#x-light"));
+    await p.selectOption("#x-light","0"); await p.uncheck("#x-col"); await p.waitForTimeout(300); await p.locator("#viewer").screenshot({path:"out/b_x_fvcol.png"}); await p.check("#x-col"); await p.selectOption("#x-light","1");
     console.log("FV 入れ替え:",JSON.stringify(await p.textContent("#info")),JSON.stringify(await p.textContent("#status"))); await p.locator("#viewer").screenshot({path:"out/b_x0.png"});
     await p.fill("#m-num","108"); await p.press("#m-num","Enter"); await p.waitForFunction(()=>/\/ \d+/.test(document.getElementById("m-fn").textContent),null,{timeout:60000});
     await p.selectOption("#x-name","727"); await p.waitForFunction(()=>/\/ 81/.test(document.getElementById("m-fn").textContent),null,{timeout:60000});

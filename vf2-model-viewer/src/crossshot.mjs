@@ -42,9 +42,12 @@ const phi=Math.atan2(pA[2]-pL[2],pA[0]-pL[0])-Math.atan2(pH[2]-pB[2],pH[0]-pB[0]
 const T=mul(mul([1,0,0,0,1,0,0,0,1,-pB[0],0,-pB[2]],[c,0,s,0,1,0,-s,0,c,0,0,0]),[1,0,0,0,1,0,0,0,1,pL[0],0,pL[2]]);
 const toV=m=>mul(mul(mul(m,invG(attB.V)),T),V);   // FV のカメラの座標 → VF2 のカメラの座標
 // 光: 向きは VF2 の場面のもの（法線は VF2 のカメラの座標）、強さの表は FV のもの
-const flight={...flight0,L:vlight.L};
-// 色の変換表: 行 0〜27・明るさ 0〜47 を VF2 のものに（cross.js の xColors と同じ。XCOL=0 で FV のまま）
-if(process.env.XCOL!=="0") for(let ch=0;ch<3;ch++) for(let r=0;r<28;r++) for(let l=0;l<48;l++){ const i=ch*0x800+r*64+l; fcol.xlat[i]=vcol.xlat[i] }
+// 光の寄せ方（cross.js の xLightTab と同じ。XLIGHT=0 で FV のまま、2 で半分、既定 1 で VF2 と同じ割合）
+const XL=+(process.env.XLIGHT??1), flight={...flight0,L:vlight.L,tab:XL?flight0.tab.map(t=>{ const [d,a]=t; if(d<=0||a>=127) return t; const s=d+a; return XL===1?[s*2/3,s/3,t[2],t[3]]:[d+(a-31.5)*0.5,31.5+(a-31.5)*0.5,t[2],t[3]] }):flight0.tab};
+// 色の変換表: 行 0〜27・明るさ 0〜47 を VF2 のものに、行 28〜31 は明るさの比で合わせる（cross.js の xColors と同じ。XCOL=0 で FV のまま）
+if(process.env.XCOL!=="0"){ const f=fcol.xlat.slice(), v=vcol.xlat;
+  for(let l=0;l<48;l++){ let a=0,b=0; for(let ch=0;ch<3;ch++) for(let r=8;r<28;r++){ a+=v[ch*0x800+r*64+l]; b+=f[ch*0x800+r*64+l] } const k=b?a/b:1;
+    for(let ch=0;ch<3;ch++){ for(let r=0;r<28;r++){ const i=ch*0x800+r*64+l; fcol.xlat[i]=v[i] } for(let r=28;r<32;r++){ const i=ch*0x800+r*64+l; fcol.xlat[i]=Math.min(255,Math.round(f[i]*k)) } } } }
 console.log("VF2",vst,"1P 技",iA.motion,"→",mAS||"写しのまま","／FV",fst,fpl?"2P":"1P",ffile[0],"技",EB.info(fpl).motion,"→",mBS||"写しのまま","／回す角度",(phi*180/Math.PI).toFixed(1),"°");
 
 // ===== コマごとに組んで描く =====
