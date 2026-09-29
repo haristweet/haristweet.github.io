@@ -33,7 +33,7 @@ async function xPrepare(){
     status("FV のテクスチャを展開中…"); await new Promise(r=>setTimeout(r));
     const pages=FVX.fvArcPages(XV.rom,[pl?null:best[0],pl?best[0]:null,null]);
     if(!XV.gl) XV.gl=FVX.vglNew($("cv"));
-    XV.gl.setColors(col); XV.gl.setArc(pages,FVX.fvArcMips(pages));
+    XV.colKey=null; XV.gl.setArc(pages,FVX.fvArcMips(pages));
     XV.ready={pl,E,sc,col,light0,fm,att,U0,pB:U0[0].slice(9),pH:E.units(1-pl)[0].slice(9),file:best[0].replace(".CMP",""),cid:E.mem.r8(E.g7(pl)+0x1b1)};
     XV.m=0; XV.len=0; $("x-num").value=0;
     $("x-on").disabled=false; $("x-on").checked=true; status("");
@@ -56,7 +56,16 @@ async function xSetMove(m){ const R=XV.ready; if(!R||m===XV.m&&(m===0||R.E.info(
   if(m){ const len=R.E.motionLength(m); if(!len){ status("FV の技 "+m+" は表に無い",true); return } R.E.start(R.pl,m); XV.m=m; XV.len=len } else { XV.m=0; XV.len=0 }
   status(""); $("x-num").value=XV.m; xNameSync(); await xRefresh(1) }
 // 今の VF2 の技・コマで組み直す（入れ替えを切り替えたとき・押し合いを変えたときなど）
-async function xRefresh(f){ if(!APP.scene||APP.mode!=="state") return;
+// 色の変換表（色の値 5bit × 明るさ → 8bit。ゲームが場面ごとに作る）: 「色を VF2 の場面に合わせる」なら、行 0〜27・明るさ 0〜47 を VF2 の写しの表にする。
+// 行 28〜31（VF2 では写しごとに違う、キャラの肌などの行）と明るさ 48〜（特別な欄）は FV のまま。FV の表は同じ値でも明るく（値 16・明るさ 47 で VF2 200・FV 248）、白っぽく見えた
+const XV_ROWS=28, XV_COLS=48;
+function xColors(){ const R=XV.ready, S=APP.scene; if(!R||!XV.gl||!S) return; const on=$("x-col").checked, key=on?S.col:R.col; if(XV.colKey===key) return; XV.colKey=key;
+  if(!on){ XV.gl.setColors(R.col); return }
+  const f=R.col.xlat, x=f.slice(), v=S.col.xlat; for(let ch=0;ch<3;ch++) for(let r=0;r<XV_ROWS;r++) for(let l=0;l<XV_COLS;l++){ const i=ch*0x800+r*64+l; x[i]=v[i] }
+  if(XV.scale!==false) for(let l=0;l<XV_COLS;l++){ let a=0,b=0; for(let ch=0;ch<3;ch++) for(let r=8;r<XV_ROWS;r++){ a+=v[ch*0x800+r*64+l]; b+=f[ch*0x800+r*64+l] } const k=b?a/b:1;
+    for(let ch=0;ch<3;ch++) for(let r=XV_ROWS;r<32;r++){ const i=ch*0x800+r*64+l; x[i]=Math.min(255,Math.round(f[i]*k)) } }
+  XV.gl.setColors({...R.col,xlat:x}) }
+async function xRefresh(f){ if(!APP.scene||APP.mode!=="state") return; xColors();
   $("m-pl").disabled=xOn(); if(xOn()&&+$("m-pl").value!==0){ $("m-pl").value=0; if(APP.mot) APP.mot.m=0 }
   const M=await motEnsure(); if(!M) return;
   if(M.m) await motSet(M.m,f||M.f); else { APP.scene.sc=APP.scene.sc0; if(xOn()) xCompose(M,null,f||1); rebuild() } }
@@ -68,7 +77,7 @@ function xCompose(M,UA,f){
   const phi=Math.atan2(pA[2]-pL[2],pA[0]-pL[0])-Math.atan2(R.pH[2]-R.pB[2],R.pH[0]-R.pB[0]), c=Math.cos(phi), s=Math.sin(phi);
   const T=mul(mul([1,0,0,0,1,0,0,0,1,-R.pB[0],0,-R.pB[2]],[c,0,s,0,1,0,-s,0,c,0,0,0]),[1,0,0,0,1,0,0,0,1,pL[0],0,pL[2]]);
   const toV=mul(mul(invG(R.att.V),T),V);   // FV のカメラの座標 → VF2 のカメラの座標
-  // 押し合い（仮）: 体の当たりが無いので、2 人を結ぶ向きの腰の間が x-push より近いと半分ずつ押し戻す（ゲームの値ではない）
+  // 押し合い（仮）: 体の当たりが無いので、2 人を結ぶ向きの腰の間が x-push より近いと押し戻す（ゲームの値ではない。分け方は xPushShares）
   const PUSH=Math.max(0,+$("x-push").value||0), ua=UA?UA[0].slice(9):pA, ub=mul(UB[0],T).slice(9), ax=[pL[0]-pA[0],pL[2]-pA[2]], al=Math.hypot(...ax)||1, u=[ax[0]/al,ax[1]/al];
   const sep=(ub[0]-ua[0])*u[0]+(ub[2]-ua[2])*u[1], [shA,shB]=xPushShares(sep,PUSH,(ua[0]-pA[0])*u[0]+(ua[2]-pA[2])*u[1],-((ub[0]-pL[0])*u[0]+(ub[2]-pL[2])*u[1]));
   const move=d=>mul(mul(invG(V),[1,0,0,0,1,0,0,0,1,d*u[0],0,d*u[1]]),V);
@@ -82,9 +91,10 @@ function xCompose(M,UA,f){
 function xPushShares(sep,PUSH,advA,advB){ const ov=PUSH-sep; if(ov<=0) return [0,0];
   const a=Math.max(0,advA), b=Math.max(0,advB), t=a+b, use=Math.min(ov,t), rest=(ov-use)/2;
   return [(t>1e-6?use*a/t:0)+rest,(t>1e-6?use*b/t:0)+rest] }
+function xLightTab(t,mode){ const [d,a]=t; if(d<=0||a>=127||d+a<=0) return t; const s=d+a; return mode===1?[s*2/3,s/3,t[2],t[3]]:[d+(a-31.5)*0.5,31.5+(a-31.5)*0.5,t[2],t[3]] }
 // rebuild() から: FV の分のメッシュ（光の向きは VF2 の場面のもの、強さの表は FV のもの）
 function xMesh(o){ const S=APP.scene, R=XV.ready; if(!S.fsc) return null;
-  const light={...R.light0,L:S.light.L}, on=$("c-p2").checked, p={which:"body",stage:false,light,players:[on&&R.pl===0,on&&R.pl===1]}, models={[R.pl]:R.fm};
+  const light={...R.light0,L:S.light.L,tab:XV.lightMode?R.light0.tab.map(t=>xLightTab(t,XV.lightMode)):R.light0.tab}, on=$("c-p2").checked, p={which:"body",stage:false,light,players:[on&&R.pl===0,on&&R.pl===1]}, models={[R.pl]:R.fm};
   const body=FVX.sceneMesh(S.fsc,R.col,models,p), shadow=o.shadow?FVX.sceneMesh(S.fsc,R.col,models,{...p,which:"shadow"}):null;
   XV.gl.setMesh(body,shadow); return (body.count+(shadow?shadow.count:0))/3 }
 function xInit(){
@@ -94,4 +104,5 @@ function xInit(){
   $("x-num").onchange=()=>xSetMove(Math.max(0,+$("x-num").value|0));
   $("x-name").onchange=()=>{ if($("x-name").value) xSetMove(+$("x-name").value) };
   $("x-push").onchange=()=>xRefresh();
+  $("x-col").onchange=()=>{ xColors(); draw() };
 }

@@ -43,6 +43,8 @@ const T=mul(mul([1,0,0,0,1,0,0,0,1,-pB[0],0,-pB[2]],[c,0,s,0,1,0,-s,0,c,0,0,0]),
 const toV=m=>mul(mul(mul(m,invG(attB.V)),T),V);   // FV のカメラの座標 → VF2 のカメラの座標
 // 光: 向きは VF2 の場面のもの（法線は VF2 のカメラの座標）、強さの表は FV のもの
 const flight={...flight0,L:vlight.L};
+// 色の変換表: 行 0〜27・明るさ 0〜47 を VF2 のものに（cross.js の xColors と同じ。XCOL=0 で FV のまま）
+if(process.env.XCOL!=="0") for(let ch=0;ch<3;ch++) for(let r=0;r<28;r++) for(let l=0;l<48;l++){ const i=ch*0x800+r*64+l; fcol.xlat[i]=vcol.xlat[i] }
 console.log("VF2",vst,"1P 技",iA.motion,"→",mAS||"写しのまま","／FV",fst,fpl?"2P":"1P",ffile[0],"技",EB.info(fpl).motion,"→",mBS||"写しのまま","／回す角度",(phi*180/Math.PI).toFixed(1),"°");
 
 // ===== コマごとに組んで描く =====
