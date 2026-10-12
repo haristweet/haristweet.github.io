@@ -16,6 +16,9 @@ for(const [name,vp] of [["pc",{width:1100,height:900}],["phone",{width:390,heigh
   await p.waitForFunction(()=>/面/.test(document.getElementById("info").textContent)||document.getElementById("status").className==="err",null,{timeout:300000});
   console.log(name,"ディスク（"+(Date.now()-t0)+"ms）:",JSON.stringify(await p.textContent("#info")),JSON.stringify(await p.textContent("#status")),"チーム",await p.$$eval("#s-team option",o=>o.length),"選手",await p.$$eval("#s-player option",o=>o.length));
   await p.waitForTimeout(300); await p.screenshot({path:`out/b_${name}_1.png`,fullPage:true});
+  // 鹿島のキーパー（高桑）を GK の服 2 で（集合写真の画面では灰色の袖に緑の胸）
+  await p.selectOption("#s-player","0"); await p.selectOption("#s-gk",{value:"1"}); await p.waitForTimeout(300); await p.locator("#viewer").screenshot({path:`out/b_${name}_gk.png`});
+  console.log(name,"鹿島 GK 2:",JSON.stringify(await p.textContent("#info"))); await p.selectOption("#s-gk",{value:"0"});
   await p.selectOption("#s-team","9"); await p.selectOption("#s-player","9"); await p.selectOption("#s-alt","1");
   await p.waitForTimeout(300); console.log(name,"磐田・中山・2着目:",JSON.stringify(await p.textContent("#info")),"背番号",await p.inputValue("#n-num")); await p.locator("#viewer").screenshot({path:`out/b_${name}_2.png`});
   await p.click("#detail summary"); await p.selectOption("#s-face","6"); await p.waitForTimeout(200); console.log(name,"顔 6:",JSON.stringify(await p.textContent("#info")),"選手の欄",JSON.stringify(await p.inputValue("#s-player")));
