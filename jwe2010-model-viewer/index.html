@@ -74,7 +74,8 @@ progress{width:12em;vertical-align:middle}
 <p>選手の表は、ステートセーブの中の PS2 のメモリ（eeMemory.bin）から読みます。1 人 124 バイトの記録が並んでいて（関口 訓充のセーブでは 4,609 人）、名前・背中の名前・能力値と、顔と髪の番号が入っています。ディスクの中の表は混ぜてあるらしく、まだ読めていません。</p>
 <p>顔は記録の 0x64 の上 11 ビットに、0x73 の区分ごとの始まり（J リーグの選手などは 2804）を、髪は 0x5C の下 12 ビットに 4733 を足すと、0_TEXT.AFS のファイルの番号になります。ゲームがメモリに持っている「読み込み済みの顔・髪」の表（画面に出ている選手の印つき）と照らして決めました。</p>
 <p>形と絵の読み方は「ウイニングイレブン2012 モデルビューア」と同じです。光は当てず、絵の色をそのまま描きます。</p>
-<p>まだのこと: 顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、チームごとの分け方、体とユニフォーム、目。</p>
+<p>目・耳・口の中、後ろ髪の地、生え際は、ゲームが全員で共通に使う絵（0_TEXT.AFS の #8234・#8226・#8231 と色表 #8227）を貼ります。どの部品にどの絵かは、ステートセーブの描く命令と画面用メモリから読みました。肌・髪・目の色は 3 人のセーブに合わせたもので、選手ごとの違いはまだ反映していません。</p>
+<p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、チームごとの分け方、体とユニフォーム。</p>
 <p id="ver"></p></details>
 </main>
 <script>
@@ -346,6 +347,63 @@ function jwPlayers(m){
   if(t.n<100) throw new Error("ステートセーブのメモリに選手の表が見つかりません（ゲームの画面が出ているときに取ったセーブを使ってください）");
   return Array.from({length:t.n},(_,i)=>jwPlayer(m,t.at+i*JW_REC,i));
 }
+// 顔・髪の部品ごとの絵（JWE2010）。ゲームが描くときの指定（GS の TEX0）をステートセーブの描く命令の並びから読んで決めた（v0.2.0）
+//   顔: sel 0＝顔のファイルの絵、sel 1・3・4（目・耳・口の中）＝共通の絵 #8234、sel 2（あごの重ね）＝透明（描かない）
+//   髪: sel 1（前髪）＝髪のファイルの絵、sel 2（後ろ髪）＝共通の髪の地 #8226（512×256）、sel 0（生え際の帯）＝頭の肌 #8231
+// #8226・#8234 の点は PS2 の画面用メモリの並べ替え（PSMCT32 で書いて PSMT8 で読む形）のまましまってある。戻すと画面用メモリと一致
+const JW_COMMON={parts:8234,partsPal:8227,back:8226,ring:8231};
+const JW_BT=[[0,1,4,5,16,17,20,21],[2,3,6,7,18,19,22,23],[8,9,12,13,24,25,28,29],[10,11,14,15,26,27,30,31]];
+const JW_CT32=[[0,1,4,5,8,9,12,13],[2,3,6,7,10,11,14,15],[16,17,20,21,24,25,28,29],[18,19,22,23,26,27,30,31],[32,33,36,37,40,41,44,45],[34,35,38,39,42,43,46,47],[48,49,52,53,56,57,60,61],[50,51,54,55,58,59,62,63]];
+const JW_CT8=[[0,4,16,20,32,36,48,52,2,6,18,22,34,38,50,54],[8,12,24,28,40,44,56,60,10,14,26,30,42,46,58,62],[33,37,1,5,49,53,17,21,35,39,3,7,51,55,19,23],[41,45,9,13,57,61,25,29,43,47,11,15,59,63,27,31],[96,100,112,116,64,68,80,84,98,102,114,118,66,70,82,86],[104,108,120,124,72,76,88,92,106,110,122,126,74,78,90,94],[65,69,81,85,97,101,113,117,67,71,83,87,99,103,115,119],[73,77,89,93,105,109,121,125,75,79,91,95,107,111,123,127],[128,132,144,148,160,164,176,180,130,134,146,150,162,166,178,182],[136,140,152,156,168,172,184,188,138,142,154,158,170,174,186,190],[161,165,129,133,177,181,145,149,163,167,131,135,179,183,147,151],[169,173,137,141,185,189,153,157,171,175,139,143,187,191,155,159],[224,228,240,244,192,196,208,212,226,230,242,246,194,198,210,214],[232,236,248,252,200,204,216,220,234,238,250,254,202,206,218,222],[193,197,209,213,225,229,241,245,195,199,211,215,227,231,243,247],[201,205,217,221,233,237,249,253,203,207,219,223,235,239,251,255]];
+// 8 ビットの絵 w×h（w は 128 の倍数）を、PSMCT32（w/2×h/2、幅 w/128 ページ）で書いた並びから戻す
+function jwUnswizzle8(src,w,h){
+  const mem=new Uint8Array(src.length), bw32=w/128, out=new Uint8Array(w*h), W=w/2, H=h/2;
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){ const a=((x>>6)+(y>>5)*bw32)*8192+JW_BT[(y&31)>>3][(x&63)>>3]*256+JW_CT32[y&7][x&7]*4, i=(y*W+x)*4;
+    mem[a]=src[i]; mem[a+1]=src[i+1]; mem[a+2]=src[i+2]; mem[a+3]=src[i+3] }
+  const bw8=w/64;
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++) out[y*w+x]=mem[((x>>7)+(y>>6)*(bw8>>1))*8192+JW_BT[(y&63)>>4][(x&127)>>4]*256+JW_CT8[y&15][x&15]];
+  return out;
+}
+// ファイルの中の絵の頭（0x29857294）を全部: {at,W,H,pix,pal}（pal は色表の位置が無ければ null）
+function jwTexHeads(u){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength), out=[];
+  for(let o=0;o+32<=u.length;o+=16){ if(dv.getUint32(o,true)!==0x29857294) continue;
+    const a=dv.getUint32(o+16,true), wh=dv.getUint32(o+20,true), W=wh&0xffff, H=wh>>>16, po=a&0xffff, pa=a>>>16;
+    out.push({at:o,W,H,pix:po&&o+po+W*H<=u.length?u.subarray(o+po,o+po+W*H):null,pal:pa&&o+pa+1024<=u.length?u.subarray(o+pa,o+pa+1024):null}) }
+  return out;
+}
+// 8 ビットの点と色表（PS2 の並べ替え、α 0x80＝不透明）から RGBA
+function jwRGBA(pix,pal){
+  const out=new Uint8Array(pix.length*4);
+  for(let i=0;i<pix.length;i++){ const v=pix[i], j=((v&0xe7)|((v&0x10)>>1)|((v&0x08)<<1))*4;
+    out[i*4]=pal[j]; out[i*4+1]=pal[j+1]; out[i*4+2]=pal[j+2]; out[i*4+3]=Math.min(255,pal[j+3]*2) }
+  return out;
+}
+// 共通の絵 3 枚を作る。色表の選び方は 3 人のセーブ（田村・関口・永井。どれも同じ）に合わせた【その 3 人で確認・ほかは推測】
+//   目・耳・口: #8227 の 4 つ目の色表、ただし 192〜255 番（目のあたり）は 8・14・6 つ目から（画面用メモリの色表と同じ並び）
+//   髪の地: #8226 の 2 つ目の色表の α に、0〜95 番の色を黒（3 人とも黒だった）。生え際の帯: #8231 の 256×128 と 9 つ目の色表
+function jwCommonTextures(f){
+  const parts=jwTexHeads(f.parts)[0], pp=jwTexHeads(f.partsPal).map(t=>t.pal).filter(Boolean);
+  const pal=new Uint8Array(pp[3]), seg=[...Array(10).fill(7),...Array(5).fill(13),5,...Array(8).fill(7),...Array(40).fill(5)];
+  seg.forEach((k,i)=>pal.set(pp[k].subarray((192+i)*4,(192+i)*4+4),(192+i)*4));
+  const bt=jwTexHeads(f.back), back=bt[0], bp=new Uint8Array(bt.map(t=>t.pal).filter(Boolean)[1]);
+  for(let j=0;j<96;j++){ bp[j*4]=0; bp[j*4+1]=0; bp[j*4+2]=0 }
+  const rt=jwTexHeads(f.ring), ring=rt.find(t=>t.W===256&&t.H===128), rp=rt.map(t=>t.pal).filter(Boolean)[8];
+  return {
+    parts:{W:256,H:128,rgba:jwRGBA(jwUnswizzle8(parts.pix,256,128),pal)},
+    back:{W:512,H:256,rgba:jwRGBA(jwUnswizzle8(back.pix,512,256),bp)},
+    ring:{W:256,H:128,rgba:jwRGBA(ring.pix,rp)} };
+}
+// 顔＋髪の形を、部品ごとの絵で（weMeshes を sel ごとに分けて呼び、絵を差し替える）
+function jwHeadMeshes(faceU,hairU,common,all){
+  const ms=[], sub=(u,keep)=>weMeshes(u,all,[0,1,2,3,4].filter(s=>!keep.includes(s)));
+  const put=(r,tex)=>{ for(const m of r.meshes){ if(tex) m.tex=tex; if(m.f.length) ms.push(m) } return r };
+  const face=put(sub(faceU,[0]),null);
+  if(common) put(sub(faceU,[1,3,4]),common.parts);
+  let hair=null;
+  if(hairU){ if(common){ put(sub(hairU,[2]),common.back); put(sub(hairU,[0]),common.ring) } hair=put(sub(hairU,[1]),null) }
+  return {meshes:ms,faceTexs:face.texs,hairTexs:hair?hair.texs:[]};
+}
 // ページの描画（WebGL1）。形ごとに [x,y,z,u,v] の列と、その形の絵（RGBA）を持つ。光は当てない（絵の色をそのまま）。
 // 髪の絵は α が段々（0〜0x80）なので半透明で重ねる。並べた順（顔→髪）に描く
 function weGL(canvas){
@@ -400,7 +458,7 @@ function weViewMatrix(v,aspect){
   return M;
 }
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表）を開く → 選手を選ぶ → その選手の顔と髪を描く
-const VERSION="0.1.3";
+const VERSION="0.2.0";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -410,11 +468,18 @@ async function getFile(i){
   if(APP.cache.size>40) APP.cache.delete(APP.cache.keys().next().value);
   APP.cache.set(i,u); return u;
 }
+// 共通の絵（目・耳・口、髪の地、頭の肌）。ディスクごとに 1 回だけ作る。読めなければ null
+async function getCommon(){
+  if(APP.common!==undefined) return APP.common;
+  try{ const f={}; for(const [k,i] of Object.entries(JW_COMMON)) f[k]=await getFile(i); APP.common=jwCommonTextures(f) }
+  catch(e){ console.warn("共通の絵が読めません",e); APP.common=null }
+  return APP.common;
+}
 async function openDisc(file){
   status("ディスクを開いています…"); $("n-disc").textContent=file.name;
   try{
     const disc=await weOpen(file);
-    Object.assign(APP,{file,disc,cache:new Map(),base:null});
+    Object.assign(APP,{file,disc,cache:new Map(),base:null,common:undefined});
     $("step-disc").classList.add("done"); $("anyfile").hidden=false; $("n-file").max=disc.ents.length-1;
     status(`${disc.from==="ISO"?"ISO の中の ":""}0_TEXT.AFS: ${disc.ents.length} 個のファイル`+(APP.players.length?"":"。次にステートセーブを選んでください"));
     if(APP.players.length) show(); else $("empty").textContent="ステートセーブを選ぶと、選手の一覧が出ます（「番号で見る」でファイルの中身も見られます）";
@@ -447,19 +512,29 @@ async function show(what){
   try{
     const ids=c.kind==="player"?[c.p.face,c.p.hair]:[c.n];
     const all=$("c-all").checked, ms=[], texs=[], warn=[]; let ntri=0;
+    const us=[];
     for(const [k,i] of ids.entries()){
-      if(i<0||i>=APP.disc.ents.length){ warn.push(`#${i} はディスクにありません`); continue }
+      if(i<0||i>=APP.disc.ents.length){ warn.push(`#${i} はディスクにありません`); us.push(null); continue }
       const u=await getFile(i);
       // 顔は MMT、髪は MTT の並び。違うときは描かずに知らせる（表の読み方が外れている印）
-      if(c.kind==="player"){ const want=k?"MTT":"MMT", sig=weSig(u); if(sig!==want){ warn.push(`#${i} は${k?"髪":"顔"}のファイルではありません（並び ${sig||"-"}）`); continue } }
-      // 顔の sel 2（あごまわりの重ね）は描かない。ゲームの画面の田村の顔に、あごの先の V は無い（v0.1.3）
-      // 髪の sel 2（後ろ髪）は絵の透明な所も髪の色なので、α を使わずに塗る。前髪（1）と生え際の帯（0）は半透明のまま、あとから重ねる
+      if(c.kind==="player"){ const want=k?"MTT":"MMT", sig=weSig(u); if(sig!==want){ warn.push(`#${i} は${k?"髪":"顔"}のファイルではありません（並び ${sig||"-"}）`); us.push(null); continue } }
+      us.push(u) }
+    if(c.kind==="player"){
+      // 部品ごとにゲームと同じ絵を貼る（jw.js）。共通の絵のファイルが読めないときは、前の描き方（顔の絵だけ）にする
+      const common=await getCommon(), [fu,hu]=us;
       let r;
-      if(c.kind==="player"&&k===1){ const back=weMeshes(u,all,[0,1]), front=weMeshes(u,all,[2]); back.meshes.forEach(m=>m.opaque=true); r={meshes:[...back.meshes,...front.meshes],texs:back.texs} }
-      else r=weMeshes(u,all,c.kind==="player"&&k===0?[2]:null);
+      if(fu&&common){ const h=jwHeadMeshes(fu,hu,common,all); r={meshes:h.meshes,texs:[...h.faceTexs.map(t=>({...t,from:c.p.face})),...h.hairTexs.map(t=>({...t,from:c.p.hair}))]} }
+      else{ r={meshes:[],texs:[]};
+        // 前の描き方（v0.1.3）: 顔の sel 2 を描かない。髪の sel 2 は α を使わずに塗る
+        if(fu){ const f=weMeshes(fu,all,[2]); r.meshes.push(...f.meshes); r.texs.push(...f.texs.map(t=>({...t,from:c.p.face}))) }
+        if(hu){ const back=weMeshes(hu,all,[0,1]), front=weMeshes(hu,all,[2]); back.meshes.forEach(m=>m.opaque=true); r.meshes.push(...back.meshes,...front.meshes); r.texs.push(...back.texs.map(t=>({...t,from:c.p.hair}))) } }
       ms.push(...r.meshes); ntri+=r.meshes.reduce((a,m)=>a+m.ntri,0);
-      // 番号で見るときは入れ子の中の絵も全部出す
-      texs.push(...(c.kind==="file"?weFindTex(u):r.texs).map(t=>({...t,from:i}))) }
+      texs.push(...r.texs);
+      if(common) texs.push(...[["8234（目・耳・口）",common.parts],["8226（髪の地）",common.back],["8231（頭の肌）",common.ring]].map(([n,t])=>({...t,from:n})));
+      else warn.push("共通の絵（#8226・#8227・#8231・#8234）が読めないので、目・耳・後ろ髪は仮の描き方");
+    }else{
+      const u=us[0];
+      if(u){ const r=weMeshes(u,all); ms.push(...r.meshes); ntri+=r.meshes.reduce((a,m)=>a+m.ntri,0); texs.push(...weFindTex(u).map(t=>({...t,from:ids[0]}))) } }
     if(seq!==APP.drawSeq) return;
     APP.gl.set(ms);
     // 見る位置: 形の箱の真ん中。大きさで距離を決める。選手を変えたときは同じ向きのまま

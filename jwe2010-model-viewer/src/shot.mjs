@@ -4,7 +4,7 @@
 // 列は「前・横・後ろ・上」と、1 つ目のファイルの絵。ゲームの Y は下向きなので、画面では上下を返す
 import fs from "fs"; import vm from "vm"; import path from "path"; import {pngEncode} from "./png.mjs";
 const here=path.dirname(new URL(import.meta.url).pathname), ctx={}; vm.createContext(ctx);
-for(const f of ["we12.js","raster.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
+for(const f of ["we12.js","jw.js","raster.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
 const [,,outp,...inps]=process.argv, C=+(process.env.C||200);
 const views=[[-90,0],[0,0],[90,0],[-90,90]];
 const R=ctx.rasterNew((views.length+1)*C,inps.length*C,[40,38,34]);
@@ -12,6 +12,10 @@ const R=ctx.rasterNew((views.length+1)*C,inps.length*C,[40,38,34]);
 const sampler=tx=>tx?(s,t)=>{ const x=((Math.floor(s*tx.W)%tx.W)+tx.W)%tx.W, y=((Math.floor(t*tx.H)%tx.H)+tx.H)%tx.H, i=(y*tx.W+x)*4;
   if(process.env.ALPHA&&tx.rgba[i+3]<128) return [255,0,200];
   return [tx.rgba[i],tx.rgba[i+1],tx.rgba[i+2]] }:null;
+// 共通の絵（data/ に #8226・#8227・#8231・#8234 があれば）。顔＋髪の組では部品ごとにゲームと同じ絵を貼る（ページと同じ。jw.js）。COMMON=0 で使わない
+const cf=Object.fromEntries(Object.entries(ctx.JW_COMMON||{}).map(([k,i])=>[k,path.join(here,`data/${String(i).padStart(5,"0")}.bin`)]));
+const common=process.env.COMMON!=="0"&&Object.values(cf).length&&Object.values(cf).every(f=>fs.existsSync(f))?ctx.jwCommonTextures(Object.fromEntries(Object.entries(cf).map(([k,f])=>[k,new Uint8Array(fs.readFileSync(f))]))):null;
+const csamp=tx=>(s,t)=>{ const x=((Math.floor(s*tx.W)%tx.W)+tx.W)%tx.W, y=((Math.floor(t*tx.H)%tx.H)+tx.H)%tx.H, i=(y*tx.W+x)*4; return tx.rgba[i+3]<64?null:[tx.rgba[i],tx.rgba[i+1],tx.rgba[i+2]] };
 inps.forEach((inp,row)=>{
   const tris=[], firsts=[];
   for(const f of inp.split("+")){
@@ -25,7 +29,12 @@ inps.forEach((inp,row)=>{
     // SKIPSEL: 1 つ目のファイル（顔）で描かない sel（ふだんは 2＝あごまわりの重ね。ページと同じ。SKIPSEL=none で全部）
     const skip=(process.env.SKIPSEL??"2");
     if(skip!=="none"&&f===inp.split("+")[0]) mine.splice(0,mine.length,...mine.filter(t=>!skip.split(",").includes(String(t.sel))));
-    for(const t of mine){ t.sample=(process.env.TEX0?null:sms[t.texi])||sampler(tx); tris.push(t) }
+    const isFace=f===inp.split("+")[0], pair=inp.includes("+");
+    for(const t of mine){ t.sample=(process.env.TEX0?null:sms[t.texi])||sampler(tx);
+      if(common&&pair){ if(isFace&&[1,3,4].includes(t.sel)) t.sample=csamp(common.parts);
+        if(!isFace&&t.sel===2) t.sample=csamp(common.back); if(!isFace&&t.sel===0) t.sample=csamp(common.ring);
+        if(!isFace&&t.sel===1){ const b=t.sample; t.sample=(a,c)=>{ const tx2=texs.find(x=>x.rgba); const x=((Math.floor(a*tx2.W)%tx2.W)+tx2.W)%tx2.W, y=((Math.floor(c*tx2.H)%tx2.H)+tx2.H)%tx2.H, i=(y*tx2.W+x)*4; return tx2.rgba[i+3]<64?null:b(a,c) } } }
+      tris.push(t) }
     console.log(f,"三角形",mine.length,"絵",texs.map(t=>`${t.W}x${t.H}/${t.psm.toString(16)}`).join(" "));
   }
   const all=tris.flatMap(t=>t.p), mn=[0,1,2].map(i=>Math.min(...all.map(v=>v[i]))), mx=[0,1,2].map(i=>Math.max(...all.map(v=>v[i])));

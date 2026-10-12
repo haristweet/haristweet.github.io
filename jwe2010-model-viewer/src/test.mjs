@@ -1,7 +1,7 @@
 // 単体試験。node test.mjs（data/ と out/fake.* があれば本物の見本で）
 import fs from "fs"; import vm from "vm"; import path from "path"; import zlib from "zlib";
 const here=path.dirname(new URL(import.meta.url).pathname), ctx={console,DecompressionStream,Blob,Response,TextDecoder}; vm.createContext(ctx);
-for(const f of ["fzstd.js","we12.js","p2s.js","wgl.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
+for(const f of ["fzstd.js","we12.js","p2s.js","jw.js","wgl.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
 const g=n=>vm.runInContext(n,ctx); let ok=0, ng=0;
 const t=(name,c)=>{ if(c){ ok++; console.log("  ok",name) } else { ng++; console.log("  NG",name) } };
 // zip を作る（.p2s の代わり）。method: 0＝そのまま、8＝deflate、93＝zstd（node の zlib で縮める）
@@ -40,6 +40,19 @@ for(const [f,who,face,hair,unknown] of [["sekiguchi.p2s","関口 訓充",3378,71
     for(const p of ps.slice(0,30)) for(const [i,want] of [[p.face,"MMT"],[p.hair,"MTT"]]){ const f=path.join(here,`data/${String(i).padStart(5,"0")}.bin`);
       if(!fs.existsSync(f)) continue; n++; if(g("weSig")(new Uint8Array(fs.readFileSync(f)))!==want) bad.push(p.name+":"+i) }
     t(`表の先頭 30 人のうち見本のある ${n} 個の並び（だめ ${bad.join(" ")||"なし"}）`,!bad.length) } }
+// 共通の絵: #8234（目・耳・口）と #8226（髪の地）は並べ替えを戻すと、田村のセーブの画面用メモリ（GS.bin の 425 バイト目から）と同じ点になる
+{ const rd=i=>{ const f=path.join(here,`data/0${i}.bin`); return fs.existsSync(f)?new Uint8Array(fs.readFileSync(f)):null };
+  const f={parts:rd(8234),partsPal:rd(8227),back:rd(8226),ring:rd(8231)};
+  if(Object.values(f).every(Boolean)){ const c=g("jwCommonTextures")(f);
+    // 目のあたり（256×128 の右下）に不透明な点がある
+    const a=(t,x,y)=>t.rgba[(y*t.W+x)*4+3];
+    t(`共通の絵 3 枚（${c.parts.W}×${c.parts.H}・${c.back.W}×${c.back.H}・${c.ring.W}×${c.ring.H}）、目の所が不透明`,c.parts.W===256&&c.back.W===512&&a(c.parts,208,112)>200);
+    const gs=path.join(here,"data/tamura_GS.bin");
+    if(fs.existsSync(gs)){ const vr=fs.readFileSync(gs).subarray(425), BT=g("JW_BT"), CT8=g("JW_CT8");
+      const a8=(bp,bw,x,y)=>bp*256+((x>>7)+(y>>6)*(bw>>1))*8192+BT[(y&63)>>4][(x&127)>>4]*256+CT8[y&15][x&15];
+      const pix=g("jwTexHeads")(f.parts)[0].pix, un=g("jwUnswizzle8")(pix,256,128); let ok8=0,n=0;
+      for(let y=84;y<128;y++) for(let x=160;x<256;x++){ n++; if(un[y*256+x]===vr[a8(15072,4,x,y)]) ok8++ }
+      t(`#8234 を戻した点が画面用メモリの目・耳・口と一致（${ok8}/${n}）`,ok8===n) } } }
 const fa=path.join(here,"out/fake_0_TEXT.AFS"), fi=path.join(here,"out/fake.iso");
 if(fs.existsSync(fa)) for(const [name,f] of [["AFS",fa],["ISO",fi]]){
   const blob=new Blob([fs.readFileSync(f)]), d=await g("weOpen")(blob), u=await g("weFile")(blob,d,3377);

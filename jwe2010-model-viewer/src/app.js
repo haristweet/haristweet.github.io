@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表）を開く → 選手を選ぶ → その選手の顔と髪を描く
-const VERSION="0.1.3";
+const VERSION="0.2.0";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -9,11 +9,18 @@ async function getFile(i){
   if(APP.cache.size>40) APP.cache.delete(APP.cache.keys().next().value);
   APP.cache.set(i,u); return u;
 }
+// 共通の絵（目・耳・口、髪の地、頭の肌）。ディスクごとに 1 回だけ作る。読めなければ null
+async function getCommon(){
+  if(APP.common!==undefined) return APP.common;
+  try{ const f={}; for(const [k,i] of Object.entries(JW_COMMON)) f[k]=await getFile(i); APP.common=jwCommonTextures(f) }
+  catch(e){ console.warn("共通の絵が読めません",e); APP.common=null }
+  return APP.common;
+}
 async function openDisc(file){
   status("ディスクを開いています…"); $("n-disc").textContent=file.name;
   try{
     const disc=await weOpen(file);
-    Object.assign(APP,{file,disc,cache:new Map(),base:null});
+    Object.assign(APP,{file,disc,cache:new Map(),base:null,common:undefined});
     $("step-disc").classList.add("done"); $("anyfile").hidden=false; $("n-file").max=disc.ents.length-1;
     status(`${disc.from==="ISO"?"ISO の中の ":""}0_TEXT.AFS: ${disc.ents.length} 個のファイル`+(APP.players.length?"":"。次にステートセーブを選んでください"));
     if(APP.players.length) show(); else $("empty").textContent="ステートセーブを選ぶと、選手の一覧が出ます（「番号で見る」でファイルの中身も見られます）";
@@ -46,19 +53,29 @@ async function show(what){
   try{
     const ids=c.kind==="player"?[c.p.face,c.p.hair]:[c.n];
     const all=$("c-all").checked, ms=[], texs=[], warn=[]; let ntri=0;
+    const us=[];
     for(const [k,i] of ids.entries()){
-      if(i<0||i>=APP.disc.ents.length){ warn.push(`#${i} はディスクにありません`); continue }
+      if(i<0||i>=APP.disc.ents.length){ warn.push(`#${i} はディスクにありません`); us.push(null); continue }
       const u=await getFile(i);
       // 顔は MMT、髪は MTT の並び。違うときは描かずに知らせる（表の読み方が外れている印）
-      if(c.kind==="player"){ const want=k?"MTT":"MMT", sig=weSig(u); if(sig!==want){ warn.push(`#${i} は${k?"髪":"顔"}のファイルではありません（並び ${sig||"-"}）`); continue } }
-      // 顔の sel 2（あごまわりの重ね）は描かない。ゲームの画面の田村の顔に、あごの先の V は無い（v0.1.3）
-      // 髪の sel 2（後ろ髪）は絵の透明な所も髪の色なので、α を使わずに塗る。前髪（1）と生え際の帯（0）は半透明のまま、あとから重ねる
+      if(c.kind==="player"){ const want=k?"MTT":"MMT", sig=weSig(u); if(sig!==want){ warn.push(`#${i} は${k?"髪":"顔"}のファイルではありません（並び ${sig||"-"}）`); us.push(null); continue } }
+      us.push(u) }
+    if(c.kind==="player"){
+      // 部品ごとにゲームと同じ絵を貼る（jw.js）。共通の絵のファイルが読めないときは、前の描き方（顔の絵だけ）にする
+      const common=await getCommon(), [fu,hu]=us;
       let r;
-      if(c.kind==="player"&&k===1){ const back=weMeshes(u,all,[0,1]), front=weMeshes(u,all,[2]); back.meshes.forEach(m=>m.opaque=true); r={meshes:[...back.meshes,...front.meshes],texs:back.texs} }
-      else r=weMeshes(u,all,c.kind==="player"&&k===0?[2]:null);
+      if(fu&&common){ const h=jwHeadMeshes(fu,hu,common,all); r={meshes:h.meshes,texs:[...h.faceTexs.map(t=>({...t,from:c.p.face})),...h.hairTexs.map(t=>({...t,from:c.p.hair}))]} }
+      else{ r={meshes:[],texs:[]};
+        // 前の描き方（v0.1.3）: 顔の sel 2 を描かない。髪の sel 2 は α を使わずに塗る
+        if(fu){ const f=weMeshes(fu,all,[2]); r.meshes.push(...f.meshes); r.texs.push(...f.texs.map(t=>({...t,from:c.p.face}))) }
+        if(hu){ const back=weMeshes(hu,all,[0,1]), front=weMeshes(hu,all,[2]); back.meshes.forEach(m=>m.opaque=true); r.meshes.push(...back.meshes,...front.meshes); r.texs.push(...back.texs.map(t=>({...t,from:c.p.hair}))) } }
       ms.push(...r.meshes); ntri+=r.meshes.reduce((a,m)=>a+m.ntri,0);
-      // 番号で見るときは入れ子の中の絵も全部出す
-      texs.push(...(c.kind==="file"?weFindTex(u):r.texs).map(t=>({...t,from:i}))) }
+      texs.push(...r.texs);
+      if(common) texs.push(...[["8234（目・耳・口）",common.parts],["8226（髪の地）",common.back],["8231（頭の肌）",common.ring]].map(([n,t])=>({...t,from:n})));
+      else warn.push("共通の絵（#8226・#8227・#8231・#8234）が読めないので、目・耳・後ろ髪は仮の描き方");
+    }else{
+      const u=us[0];
+      if(u){ const r=weMeshes(u,all); ms.push(...r.meshes); ntri+=r.meshes.reduce((a,m)=>a+m.ntri,0); texs.push(...weFindTex(u).map(t=>({...t,from:ids[0]}))) } }
     if(seq!==APP.drawSeq) return;
     APP.gl.set(ms);
     // 見る位置: 形の箱の真ん中。大きさで距離を決める。選手を変えたときは同じ向きのまま
