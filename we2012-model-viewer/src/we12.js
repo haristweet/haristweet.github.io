@@ -79,20 +79,91 @@ function weModel(u,b){
       for(let i=0;i<P.num;i++){ V.push([s16(P.at+i*6),s16(P.at+i*6+2),s16(P.at+i*6+4)]);
         NV.push(N?[s16(N.at+i*6)/32768,s16(N.at+i*6+2)/32768,s16(N.at+i*6+4)/32768]:[0,0,1]);
         UV.push(T?[s16(T.at+i*4)/4096,s16(T.at+i*4+2)/4096]:[0,0]) }
-      const nIdx=dv.getUint32(po+12,true), idx=[];
+      // 包みの頭の [16] の上 8 ビット（見本では 3600 の 1 つの包みだけ 1。絵の番号かと思ったが、2 枚目を貼ると色が崩れる。意味は未解決）
+      const texi=dv.getUint32(po+64,true)>>>24, nIdx=dv.getUint32(po+12,true), idx=[];
       for(let i=0;i<I.num*4;i++) idx.push(dv.getUint16(I.at+i*2,true));
       let a=-1,c=-1,nt=0;
       for(let i=0;i<idx.length;i++){
         const w=idx[i], v=((w&0x7fff)>>2)-1;
         if(!(w&0x8000)&&a>=0&&c>=0&&v>=0&&v<V.length&&a<V.length&&c<V.length){
           const f=nt++&1?[c,a,v]:[a,c,v];
-          tris.push({p:f.map(j=>V[j]),uv:f.map(j=>UV[j]),n:f.map(j=>NV[j]),pk:k}) }
+          tris.push({p:f.map(j=>V[j]),uv:f.map(j=>UV[j]),n:f.map(j=>NV[j]),pk:k,texi}) }
         else if(w&0x8000) nt=0;
         a=c; c=v;
       }
-      packets.push({at:po,nv:P.num,nIdx,idx});
+      packets.push({at:po,nv:P.num,nIdx,idx,texi});
     }
     po+=size;
   }
   return {tris,packets};
+}
+
+// ── ディスク: ISO（2048 バイトの区切り、ISO9660）か、0_TEXT.AFS そのもの。File.slice で要る所だけ読む ──
+async function weBytes(file,off,n){ return new Uint8Array(await file.slice(off,off+n).arrayBuffer()) }
+// ISO の根の一覧から name を探す（PS2 の DVD は根に直に並ぶ）。{off,size}
+async function weIsoFind(file,name){
+  const pvd=await weBytes(file,16*2048,2048);
+  if(String.fromCharCode(...pvd.subarray(1,6))!=="CD001") return null;
+  const dv=new DataView(pvd.buffer), lba=dv.getUint32(156+2,true), len=dv.getUint32(156+10,true);
+  const dir=await weBytes(file,lba*2048,len), dd=new DataView(dir.buffer);
+  for(let p=0;p<dir.length;){
+    const L=dir[p]; if(!L){ p=(Math.floor(p/2048)+1)*2048; continue }
+    const nl=dir[p+32], nm=String.fromCharCode(...dir.subarray(p+33,p+33+nl)).replace(/;1$/,"");
+    if(nm.toUpperCase()===name) return {off:dd.getUint32(p+2,true)*2048,size:dd.getUint32(p+10,true)};
+    p+=L;
+  }
+  return null;
+}
+// ISO でも AFS でも開く。{base, ents, from}
+async function weOpen(file){
+  let base=0, from="AFS";
+  const h=await weBytes(file,0,4);
+  if(!(h[0]===0x41&&h[1]===0x46&&h[2]===0x53&&h[3]===0)){
+    const f=await weIsoFind(file,"0_TEXT.AFS");
+    if(!f) throw new Error("ISO の中に 0_TEXT.AFS が無い（ウイニングイレブン2012 の PS2 のディスクではない？）か、ISO でも AFS でもないファイルです");
+    base=f.off; from="ISO";
+  }
+  const n=new DataView((await weBytes(file,base+4,4)).buffer).getUint32(0,true);
+  if(!(n>0&&n<100000)) throw new Error("AFS の個数が変です");
+  const ents=weAfsIndex(await weBytes(file,base,8+n*8));
+  return {base,ents,from};
+}
+// zlib をほどく（ブラウザも node 18 以降も DecompressionStream がある）
+async function weInflate(b){
+  const s=new Blob([b]).stream().pipeThrough(new DecompressionStream("deflate"));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+// AFS の i 番目をほどいて返す。頭が圧縮の印で zlib の頭（0x78）があればほどく。ほどけなければそのまま
+async function weFile(file,disc,i){
+  const e=disc.ents[i]; if(!e||!e.size) return new Uint8Array(0);
+  const b=await weBytes(file,disc.base+e.off,e.size);
+  if(b.length>34&&b[32]===0x78){ const h=weAfsHead(b);
+    try{ return await weInflate(b.subarray(32,32+h.csize)) }catch(err){} }
+  return b;
+}
+// ほどいた中身の並び（M＝形、T＝絵、?＝ほか）。「MMT」＝顔、「MTT」＝髪（見本 3 つずつで絵で確かめた形）
+function weSig(u){
+  if(u.length<16) return "";
+  try{ return weParts(u).map(p=>p.off+4<=u.length?{model:"M",tex:"T"}[weKind(u,p.off)]||"?":"?").join("") }catch(e){ return "?" }
+}
+// 形と絵を、ページで描ける形にする。1 つ目の形だけ（顔の 2 つ目は細かさ違いと推測）。all なら全部。
+// 座標はゲーム（Y 下・顔が +X）→ 画面（Y 上・顔が手前 +Z）: (x,y,z)→(z,−y,x)。鏡写しにはしない
+function weMeshes(u,all){
+  const parts=weParts(u), texs=[], models=[];
+  for(const p of parts){ const k=weKind(u,p.off); if(k==="tex") texs.push(weTex(u,p.off)); if(k==="model") models.push(p.off) }
+  const tex=texs.find(t=>t.rgba)||null, meshes=[];
+  for(const off of all?models:models.slice(0,1)){
+    const m=weModel(u,off), f=new Float32Array(m.tris.length*15); let k=0;
+    for(const t of m.tris) for(let j=0;j<3;j++){ const p=t.p[j]; f[k++]=p[2]; f[k++]=-p[1]; f[k++]=p[0]; f[k++]=t.uv[j][0]; f[k++]=t.uv[j][1] }
+    meshes.push({f,ntri:m.tris.length,tex});
+  }
+  return {meshes,texs};
+}
+// ファイルの中の絵を全部探す（入れものが入れ子のときも）。頭の印と、幅・高さが 2 のべき乗で 1024 以下のものだけ
+function weFindTex(u){
+  const out=[], dv=new DataView(u.buffer,u.byteOffset,u.byteLength), p2=x=>x>=8&&x<=1024&&!(x&(x-1));
+  for(let o=0;o+32<=u.length;o+=16){ if(dv.getUint32(o,true)!==0x29857294) continue;
+    const wh=dv.getUint32(o+20,true); if(!p2(wh&0xffff)||!p2(wh>>>16)) continue;
+    try{ out.push({...weTex(u,o),at:o}) }catch(e){} }
+  return out;
 }

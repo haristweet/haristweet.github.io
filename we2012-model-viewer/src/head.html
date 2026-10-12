@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ウイニングイレブン2012 モデルビューア</title>
+<meta name="description" content="PS2『ワールドサッカー ウイニングイレブン2012』のディスクから、選手の顔と髪を見る">
+<style>
+:root{--bg:#f4f2ee;--card:#fff;--fg:#1f1e1b;--mut:#6b6860;--line:#dedad2;--acc:#2f7a4a;--bad:#b3392f;--stage:#2a2926}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1917;--card:#24231f;--fg:#ecebe6;--mut:#a09d94;--line:#3a3833;--acc:#6fcf93;--bad:#ec7a6f}}
+*{box-sizing:border-box}
+html{touch-action:manipulation}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Hiragino Sans",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 14px}
+.step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 12px}
+.step b{display:block;margin:0 0 2px}.step small{color:var(--mut);display:block;margin:0 0 8px}
+.step.done{border-color:var(--acc)}
+.step label.btn{display:inline-block;background:var(--acc);color:#fff;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600}
+.step input[type=file]{display:none}
+.step .name{margin-left:8px;font-size:13px;color:var(--mut);overflow-wrap:anywhere}
+#status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
+.viewer{position:relative;background:radial-gradient(circle at 50% 35%,#3a3833,var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:4/3;max-height:70vh;margin:0 auto;touch-action:none;user-select:none}
+.viewer canvas{position:absolute;inset:0;width:100%;height:100%}
+.viewer [hidden]{display:none!important}
+.viewer .hint{position:absolute;left:12px;bottom:10px;color:#cfccc4;font-size:12px;pointer-events:none}
+@media (max-width:640px){.viewer .hint{display:none}}
+.viewer .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a8a49a;text-align:center;padding:20px}
+.viewer.drop-over{outline:3px dashed var(--acc);outline-offset:-3px}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:10px 0}
+.ctrl[hidden]{display:none}
+.ctrl label{white-space:nowrap}
+.ctrl select,.ctrl button,.ctrl input[type=number]{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
+.ctrl button{cursor:pointer}
+.ctrl .grp{white-space:nowrap}
+#info{color:var(--mut);font-size:13px;margin:6px 0 0}
+.ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
+details{margin:16px 0 0;color:var(--mut);font-size:13px}
+details.more{margin:0 0 6px;color:var(--fg);font-size:14px}details.more[hidden]{display:none}
+.texs{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0}.texs figure{margin:0;font-size:12px;color:var(--mut);text-align:center}
+.texs canvas{display:block;image-rendering:pixelated;background:repeating-conic-gradient(#8884 0 25%,#0000 0 50%) 0 0/12px 12px;border:1px solid var(--line);border-radius:4px;max-width:160px}
+progress{width:12em;vertical-align:middle}
+</style>
+</head>
+<body>
+<main>
+<h1>ウイニングイレブン2012 モデルビューア <span id="ver-h" class="ver"></span></h1>
+<p class="sub">PS2『ワールドサッカー ウイニングイレブン2012』のディスクのイメージから、選手の顔と髪を見ます（作りはじめ）。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
+<div class="step" id="step-disc"><b>ディスクのイメージ</b><small>.iso か、その中の 0_TEXT.AFS。ページにドロップしても読み込めます</small>
+  <label class="btn">選ぶ<input type="file" id="f-disc" accept=".iso,.afs,.AFS,.img"></label><span class="name" id="n-disc">まだ</span></div>
+<div id="status"></div>
+<div class="viewer" id="viewer"><canvas id="cv"></canvas>
+  <div class="empty" id="empty">ディスクのイメージを選ぶと、ここに顔が出ます</div>
+  <div class="hint" id="hint" hidden>ドラッグで回す・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
+<div class="ctrl" id="scan" hidden><span>中身を調べています <progress id="p-scan" max="1" value="0"></progress> <span id="t-scan"></span></span></div>
+<div class="ctrl" id="pick" hidden>
+  <span class="grp">顔 <button id="f-prev" aria-label="前の顔">◀</button> <select id="s-face" aria-label="顔"></select> <button id="f-next" aria-label="次の顔">▶</button></span>
+  <span class="grp" title="どの顔にどの髪かはまだ分かっていません。最初は顔と同じ順番の髪を出します（仮）">髪 <button id="h-prev" aria-label="前の髪">◀</button> <select id="s-hair" aria-label="髪"></select> <button id="h-next" aria-label="次の髪">▶</button></span>
+  <label title="顔を選んだとき、同じ順番の髪に合わせる"><input type="checkbox" id="c-link" checked> 髪も合わせる</label>
+  <button id="b-rand">🎲 おまかせ</button>
+</div>
+<div class="ctrl" id="anyfile" hidden>
+  <span class="grp">番号で見る <input id="n-file" type="number" min="0" value="0" style="width:6em" aria-label="ファイルの番号"> <button id="b-file">見る</button></span>
+  <label title="顔のファイルには同じ大きさの形が 2 つある（細かさ違いと推測）。重ねると縞になる"><input type="checkbox" id="c-all"> 2 つ目からの形も</label>
+</div>
+<div class="ctrl" id="savebar" hidden><button id="b-png">PNG で保存</button>
+  <label title="PNG を透明な背景で"><input type="checkbox" id="c-clear"> 背景なし</label></div>
+<div id="info"></div>
+<div class="texs" id="texs"></div>
+<details><summary>しくみ</summary>
+<p>0_TEXT.AFS は 10,232 個のファイルを束ねたもので、ファイルの名前はありません。1 つずつ zlib でほどき、中に入っている「形」と「絵」の並びから、形 2 つ＋絵 1 枚のものを顔、形 1 つ＋絵 2 枚のものを髪として一覧にしています（見本の数人分で、そうなっていることを絵で確かめました。全部を確かめたわけではありません）。</p>
+<p>形は PS2 の描画用の命令の列（VIF）から、頂点の位置・UV と、頂点のつなぎ方（帯）を読みます。顔のファイルの 2 つ目の形は細かさ違いと見て、ふだんは描きません。光は当てず、絵の色をそのまま描きます。</p>
+<p>まだのこと: どの選手がどの顔・髪かの表（ゲームの本体にあるはず）、体とユニフォーム、目、髪の 2 枚目の絵の使いどころ、あごの下に出る細かい縞。</p>
+<p id="ver"></p></details>
+</main>
+<script>
