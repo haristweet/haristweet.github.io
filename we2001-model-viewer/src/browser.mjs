@@ -31,6 +31,16 @@ for(const [name,vp] of [["pc",{width:1100,height:900}],["phone",{width:390,heigh
   await p.waitForTimeout(200); await p.locator("#viewer").screenshot({path:`out/b_${name}_4.png`});
   await p.check("#c-clear"); const [dl]=await Promise.all([p.waitForEvent("download"),p.click("#b-png")]); const f=`out/b_${name}_save.png`; await dl.saveAs(f);
   const hd=fs.readFileSync(f); console.log(name,"保存:",dl.suggestedFilename(),hd.readUInt32BE(16)+"×"+hd.readUInt32BE(20),"透過",hd[25]===6);
+  // 集合写真: 仙台（1P・正面）→ 山形（2P・最初の斜め）→ 並べ直す → PNG
+  await p.selectOption("#s-mode","photo"); await p.selectOption("#s-team","16"); await p.selectOption("#s-alt",{value:"0"}); await p.selectOption("#s-gk",{value:"0"});
+  await p.waitForFunction(()=>/集合写真: ベガルタ/.test(document.getElementById("info").textContent),null,{timeout:60000}); await p.waitForTimeout(300);
+  console.log(name,"集合写真:",JSON.stringify(await p.textContent("#info")).slice(0,160),"1人用の欄",await p.isVisible("#s-player"),"動き",await p.isVisible("#motion"));
+  await p.locator("#viewer").screenshot({path:`out/b_${name}_photo1.png`});
+  await p.selectOption("#s-team","17"); await p.selectOption("#s-side",{value:"1"}); await p.locator("#r-cam").fill("0"); await p.waitForTimeout(400);
+  await p.locator("#viewer").screenshot({path:`out/b_${name}_photo2.png`});
+  await p.click("#b-pose"); await p.waitForTimeout(300); await p.locator("#viewer").screenshot({path:`out/b_${name}_photo3.png`});
+  { const [d]=await Promise.all([p.waitForEvent("download"),p.click("#b-png")]); console.log(name,"写真の保存:",d.suggestedFilename()) }
+  await p.selectOption("#s-mode","one"); await p.waitForTimeout(300); console.log(name,"1人に戻す:",JSON.stringify(await p.textContent("#info")).slice(0,80));
   console.log(name,"エラー",errs); await p.close();
 }
 await b.close();

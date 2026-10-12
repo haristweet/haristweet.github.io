@@ -1,10 +1,10 @@
 // ページの描画（WebGL1）。テクスチャは「(tsb,cba) の組ごとに 256×256 にほどいた絵」を 1 枚の大きな絵（4×4 欄）に並べて使う。
 // 三角形は [x,y,z, u,v, 明るさ] を CPU で作って毎回送る（選手 1 人で 600 面ほどなので軽い）
-const WE_ATLAS=1024, WE_TILE=256;
+const WE_ATLAS=2048, WE_TILE=256;   // 8×8 欄（集合写真は 11 人で色の表の組が増える）
 // VRAM と (tsb,cba) の並びから、RGBA の大きな絵と「組→欄の番号」を作る。色 0 は透明
 function weAtlas(vram,combos){
   const px=new Uint8Array(WE_ATLAS*WE_ATLAS*4), slot=new Map();
-  combos.slice(0,16).forEach((k,n)=>{ const [tsb,cba]=k.split(",").map(Number), ox=(n&3)*WE_TILE, oy=(n>>2)*WE_TILE; slot.set(k,n);
+  combos.slice(0,64).forEach((k,n)=>{ const [tsb,cba]=k.split(",").map(Number), ox=(n&7)*WE_TILE, oy=(n>>3)*WE_TILE; slot.set(k,n);
     for(let v=0;v<256;v++) for(let u=0;u<256;u++){ const c=weTexel(vram,tsb,cba,u,v), i=((oy+v)*WE_ATLAS+ox+u)*4; if(c){ px[i]=c[0]; px[i+1]=c[1]; px[i+2]=c[2]; px[i+3]=255 } } });
   return {px,slot};
 }
@@ -19,7 +19,7 @@ function weTris(tmds,parts,slot,light,look){
       const P=p.v.map(i=>weXform(pt.m,pt.t,o.verts[i]||[0,0,0]));
       // 明るさ: ゲームは選手に光を当てず、どの面も色 127,127,127 でテクスチャを描く（本体 0x8001235c。光の計算の命令が無い）＝ほぼそのまま
       const sh=127/128;
-      const ox=((n??0)&3)*WE_TILE, oy=((n??0)>>2)*WE_TILE;
+      const ox=((n??0)&7)*WE_TILE, oy=((n??0)>>3)*WE_TILE;
       const V=P.map((q,j)=>[q[0],q[1],q[2],(ox+p.uv[j][0]+.5)/WE_ATLAS,(oy+p.uv[j][1]+.5)/WE_ATLAS,sh]);
       for(let i=1;i+1<V.length;i++) out.push(...V[0],...V[i],...V[i+1]);
     } }
@@ -54,7 +54,7 @@ function weGL(canvas){
     }
   };
 }
-// 列優先の 4×4。体の座標 → 画面
+// 列優先の 4×4。体の座標 → 画面。v.fx・v.fy があれば、画面の横・縦の倍率をそのまま使う（PS1 の 512×240・奥行き 603 を 4:3 に引き伸ばす投影＝fx 603/256・fy 603/120）
 function weViewMatrix(v,aspect){
   const cy=Math.cos(v.yaw), sy=Math.sin(v.yaw), cp=Math.cos(v.pitch), sp=Math.sin(v.pitch), [tx,ty,tz]=v.target;
   // 回す: まず X 軸まわりに半回転（Y を上向きに、正面をカメラへ）、ヨー（縦の軸）、ピッチ（横の軸）、カメラは -Z を向く
@@ -63,7 +63,7 @@ function weViewMatrix(v,aspect){
     const x1=x*cy-z*sy, z1=x*sy+z*cy, y2=y*cp-z1*sp, z2=y*sp+z1*cp; return [x1,y2,z2-v.dist] };
   const o=tr([0,0,0]), ex=tr([1,0,0]).map((a,i)=>a-o[i]), ey=tr([0,1,0]).map((a,i)=>a-o[i]), ez=tr([0,0,1]).map((a,i)=>a-o[i]);
   const V=[ex[0],ex[1],ex[2],0, ey[0],ey[1],ey[2],0, ez[0],ez[1],ez[2],0, o[0],o[1],o[2],1];
-  const P=[f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0];
+  const P=[v.fx?v.fx*(4/3)/aspect:f/aspect,0,0,0, 0,v.fy||f,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0];
   const M=new Float32Array(16);
   for(let c=0;c<4;c++) for(let r=0;r<4;r++){ let s=0; for(let k=0;k<4;k++) s+=P[k*4+r]*V[c*4+k]; M[c*4+r]=s }
   return M;

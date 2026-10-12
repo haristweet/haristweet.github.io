@@ -41,10 +41,10 @@ function weRotMatrix([x,y,z]){
   return [[cz*cy,cz*sy*sx-sz*cx,cz*sy*cx+sz*sx],[sz*cy,sz*sy*sx+cz*cx,sz*sy*cx-cz*sx],[-sy,cy*sx,cy*cx]];
 }
 function weXform(m,t,p){ return [0,1,2].map(i=>m[i][0]*p[0]+m[i][1]*p[1]+m[i][2]*p[2]+t[i]) }
-// 選手 1 人を組む。set＝MODEL.BIN の組の番号、head＝頭の番号、anim/frame＝動き。
+// 選手 1 人を組む。set＝MODEL.BIN の組の番号、head＝頭の番号、anim/frame＝動き（frameOff を渡すと anime の中のその位置のコマを直接読む）。
 // 返すのは [{part:番号, off, m, t}]（m,t は体の基準からの行列と位置）
-function wePose(model,anime,set,head,anim,frame){
-  const list=weModelSet(model,set), fo=weAnimFrame(anime,anim,frame), out=[];
+function wePose(model,anime,set,head,anim,frame,frameOff){
+  const list=weModelSet(model,set), fo=frameOff??weAnimFrame(anime,anim,frame), out=[];
   list.forEach((e,k)=>{
     let off=e.off; if(e.type===0x80) off=weHeadOff(model,e.off,head); else if(e.type!==2) return;
     const {rot,t}=weDecodePart(anime,fo+k*8);

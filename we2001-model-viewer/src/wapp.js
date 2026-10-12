@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.2.2";
+const VERSION="0.3.0";
 const $=id=>document.getElementById(id);
 // 体の組（MODEL.BIN の先頭の 18 個。0,1 は球）。名前は絵で見た印象（推測）。2・3・16・17 は服の色の表がディスクのどこから来るかまだ分からず、服が抜ける
 const WE_SETS=[[6,"フィールド・半袖"],[8,"フィールド・長袖"],[12,"フィールド・半袖 2"],[14,"フィールド・長袖 2"],[7,"フィールド 3"],[9,"フィールド 4"],[13,"フィールド 5"],[15,"フィールド 6"],
@@ -19,7 +19,7 @@ async function openDisc(file){
     APP.files=await discOpen(file);
     status("モデルと動きを読んでいます…");
     APP.model=await readFile("BIN/MODEL.BIN"); APP.anime=await readFile("BIN/ANIME.BIN"); APP.dat2d=await readFile("BIN/DAT2D.BIN");
-    APP.sel=await readFile("SELECT.BIN"); APP.exe=await readFile("SLPM_868.35");
+    APP.sel=await readFile("SELECT.BIN"); APP.exe=await readFile("SLPM_868.35"); APP.enter=await readFile("ENTER.BIN");
     APP.tmds.clear(); APP.texFiles.clear(); APP.atlasKey="";
     // チーム: 名前の表（43）と TEX_00〜45。名前の無い TEX は番号で
     const kits=[...APP.files.keys()].filter(n=>/^BIN\/TEX_\d+\.BIN$/.test(n)).sort(); APP.teams=weTeamNames(APP.sel);
@@ -27,7 +27,7 @@ async function openDisc(file){
     $("s-set").innerHTML=WE_SETS.map(([k,n])=>`<option value="${k}">${n}</option>`).join("");
     const opts=(n,f)=>Array.from({length:n},(_,i)=>`<option value="${i}">${f?f(i):i}</option>`).join("");
     $("s-hair").innerHTML=opts(16); $("s-face").innerHTML=opts(16,i=>i>=5?i+"（ひげ）":i); $("s-skin").innerHTML=opts(4); $("s-hcol").innerHTML=opts(16); $("s-s112").innerHTML=opts(8); $("s-boots").innerHTML=opts(8);
-    $("step-disc").classList.add("done"); $("pick").hidden=false; $("detail").hidden=false; $("motion").hidden=false; $("empty").hidden=true; $("hint").hidden=false;
+    $("step-disc").classList.add("done"); $("pick").hidden=false; $("detail").hidden=false; $("motion").hidden=false; $("savebar").hidden=false; $("empty").hidden=true; $("hint").hidden=false;
     $("s-team").value="1"; listPlayers(); $("s-player").value="8"; pickPlayer();
     APP.base=null; await refresh(true); status("");
   }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
@@ -69,6 +69,7 @@ function setAnim(){
 async function refresh(resetView){
   if(!APP.model) return;
   const seq=APP.seq=(APP.seq||0)+1;
+  if($("s-mode").value==="photo") return refreshPhoto(seq,resetView);
   const c=cur(); if(APP.nFrames==null||resetView) setAnim();
   if(!APP.nFrames){ $("m-fn").textContent="この番号にはコマが無い"; return }
   const parts=wePose(APP.model,APP.anime,c.set,c.head,c.anim,+$("m-frame").value), tm=new Map(parts.map(p=>[p.off,tmdAt(p.off)]));
@@ -85,6 +86,41 @@ async function refresh(resetView){
   $("info").textContent=`${$("s-team").selectedOptions[0]?.textContent||""}（${c.kit.slice(4,-4)}・${c.alt+1} 着目・GK ${c.gkKit+1}）・体の組 ${c.set}・頭 ${c.head}・背番号 ${c.num||"なし"}・動き ${c.anim}・面 ${tris.length/18|0}`;
   draw();
 }
+// ===== 集合写真 =====
+// 11 人を、ENTER.BIN の立ち位置・姿勢と、ゲームのカメラで描く（photo.js）。テクスチャは 11 人ぶんの背番号を組み立てた 1 枚
+async function refreshPhoto(seq,resetView){
+  const team=+$("s-team").value, alt=+$("s-alt").value, gkKit=+$("s-gk").value, side=+$("s-side").value;
+  const kit=[...APP.files.keys()].filter(n=>/^BIN\/TEX_\d+\.BIN$/.test(n)).sort()[team];
+  const sc=wePhotoScene(APP.model,APP.enter,APP.sel,APP.exe,team,APP.photoPoses||null,side);
+  const light=[0,-1,0], all=[];
+  for(const p of sc.players){ const parts=p.parts.map(pt=>({...pt,t:[pt.t[0]+p.pos[0],pt.t[1]+p.pos[1],pt.t[2]+p.pos[2]]}));
+    all.push({p,parts,tm:new Map(parts.map(q=>[q.off,tmdAt(q.off)]))}) }
+  const used=[...new Set(all.flatMap(a=>weTris(a.tm,a.parts,null,light,a.p.look).used))];
+  const key="photo|"+kit+"|"+alt+"|"+gkKit+"|"+sc.players.map(p=>p.num).join(",")+"|"+used.join(";");
+  if(key!==APP.atlasKey){
+    if(!APP.texFiles.has(kit)){ const f=await readFile(kit); APP.texFiles.set(kit,f) } if(seq!==APP.seq) return;
+    const vram=weVramNew(); weTexLoadRun(vram,APP.dat2d,WE_TEX_BASE,0); weTexLoadRun(vram,APP.dat2d,WE_TEX_BASE,1);
+    weTexLoad(vram,APP.texFiles.get(kit),WE_TEX_BASE,new Set([...WE_KIT_REC[alt],4+gkKit]));
+    for(const p of sc.players) if(p.num) weComposeNumber(vram,p.look.cell??10,p.num);
+    const a=weAtlas(vram,used); APP.gl.setAtlas(a.px); APP.slot=a.slot; APP.atlasKey=key;
+  }
+  const parts=all.map(a=>weTris(a.tm,a.parts,APP.slot,light,a.p.look).tris), n=parts.reduce((s,t)=>s+t.length,0), tris=new Float32Array(n);
+  let o=0; for(const t of parts){ tris.set(t,o); o+=t.length }
+  APP.gl.setTris(tris);
+  if(resetView) photoCam();
+  $("info").textContent=`集合写真: ${$("s-team").selectedOptions[0]?.textContent||""}（${kit.slice(4,-4)}・${alt+1} 着目・GK ${gkKit+1}・${side?"2P":"1P"} 側）・`+sc.players.map(p=>(p.num||"-")+" "+p.name).join("・");
+  draw();
+}
+// ゲームのカメラ（場面 64/65）を、回せる形（見る点・向き・距離）に直す。見る点は列の奥行きのところに置く
+function photoCam(){
+  const C=wePhotoCamera(+$("r-cam").value,+$("s-side").value), D=-3088-C.eye[2], dist=D/C.f[2], tgt=C.eye.map((v,i)=>v+C.f[i]*dist);
+  const a=C.f[0], b=-C.f[1], c=-C.f[2], yaw=Math.atan2(-a,-c), z1=-Math.hypot(a,c), pitch=Math.atan2(-b,-z1);
+  Object.assign(APP.view,{yaw,pitch,dist,target:tgt,fx:603/256,fy:603/120}); draw();
+}
+function setMode(){
+  const ph=$("s-mode").value==="photo"; document.body.classList.toggle("photo",ph); play(false);
+  if(!ph){ delete APP.view.fx; delete APP.view.fy } APP.atlasKey=""; refresh(true);
+}
 function resetCam(){ Object.assign(APP.view,{yaw:0,pitch:0.08,target:APP.base.target.slice(),dist:APP.base.h*2.6}); draw() }
 function draw(){ if(APP.gl) APP.gl.draw(APP.view,$("c-clear").checked?[0,0,0,0]:null) }
 function play(on){
@@ -100,7 +136,7 @@ function stepAnim(d){ const e=$("m-num"); e.value=(Math.max(0,Math.min(203,+e.va
 function savePng(){
   APP.gl.draw(APP.view,$("c-clear").checked?[0,0,0,0]:[0.17,0.165,0.15,1]);
   $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); const c=cur();
-    a.download=`we2001_${c.kit.slice(8,-4)}_${c.alt+1}_${c.num}_${c.head}_${c.anim}_${c.frame+1}.png`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); draw() },"image/png");
+    a.download=$("s-mode").value==="photo"?`we2001_photo_${c.kit.slice(8,-4)}_${c.alt+1}.png`:`we2001_${c.kit.slice(8,-4)}_${c.alt+1}_${c.num}_${c.head}_${c.anim}_${c.frame+1}.png`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); draw() },"image/png");
 }
 // おまかせ: 選手の表のあるチームから 1 人と、1 着目か 2 着目
 function randomPick(){
@@ -114,6 +150,9 @@ function init(){
   $("f-disc").onchange=e=>{ const f=e.target.files[0]; if(f) openDisc(f) };
   $("s-team").onchange=()=>{ const keep=$("s-player").value; listPlayers(); if(keep!==""&&[...$("s-player").options].some(o=>o.value===keep)) $("s-player").value=keep; pickPlayer(); refresh(false) };
   $("s-player").onchange=()=>{ pickPlayer(); refresh(false) };
+  $("s-mode").onchange=setMode; $("s-side").onchange=()=>refresh(true); $("r-cam").oninput=photoCam;
+  $("b-pose").onclick=()=>{ APP.photoPoses=Array.from({length:11},(_,i)=>wePhotoRandomPose(i,n=>Math.floor(Math.random()*n))); refresh(false) };
+  $("b-pose0").onclick=()=>{ APP.photoPoses=null; refresh(false) };
   for(const id of ["s-alt","s-gk","s-set","s-hair","s-face","s-skin","s-hcol","s-s112","s-boots","n-num"]) $(id).onchange=()=>{ if(!["s-alt","s-gk","s-set"].includes(id)) $("s-player").value=""; refresh(false) };
   $("m-num").onchange=()=>{ $("m-frame").value=0; setAnim(); refresh(false) };
   $("m-prev").onclick=()=>stepAnim(-1); $("m-next").onclick=()=>stepAnim(1);
@@ -129,7 +168,7 @@ function init(){
   const up=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch=0 };
   cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
   cv.addEventListener("wheel",e=>{ e.preventDefault(); APP.view.dist=Math.max(200,Math.min(8000,APP.view.dist*Math.exp(e.deltaY*0.001))); draw() },{passive:false});
-  cv.addEventListener("dblclick",()=>{ if(APP.base) resetCam() });
+  cv.addEventListener("dblclick",()=>{ if($("s-mode").value==="photo") photoCam(); else if(APP.base) resetCam() });
   // ドロップ
   const vw=$("viewer");
   document.addEventListener("dragover",e=>{ e.preventDefault(); vw.classList.add("drop-over") });

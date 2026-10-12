@@ -19,7 +19,7 @@ function loadTex(name){ texName=name; vram=ctx.weVramNew(); if(name==="none") re
 const C=+(process.env.C||200), per=yaws.length+1, G=+(process.env.GRID||1), cols=per*G, R=ctx.rasterNew(cols*C,Math.ceil(anims.length/G)*C,[40,38,34]);
 const L=(()=>{ const l=[-.4,-.6,-.7], n=Math.hypot(...l); return l.map(x=>x/n) })();
 const PCOL=[[230,200,170],[200,60,60],[230,190,160],[230,190,160],[230,190,160],[230,190,160],[60,60,200],[230,190,160],[50,50,50],[60,60,200],[230,190,160],[50,50,50]];
-let LOOK=null;
+let LOOK=null; const animX=process.env.ANIMFILE?new Uint8Array(fs.readFileSync(process.env.ANIMFILE)):null;
 function draw(parts,OX,OY,yawDeg,zoomHead){
   const D=ctx.rasterNew(C,C,[40,38,34]), ox=0, oy=0;   // 欄ごとに描いてから貼る（はみ出さない）
   const yaw=yawDeg*Math.PI/180, rot=p=>[p[0]*Math.cos(yaw)+p[2]*Math.sin(yaw), p[1], -p[0]*Math.sin(yaw)+p[2]*Math.cos(yaw)];
@@ -49,7 +49,8 @@ anims.forEach((row,r)=>{
     LOOK={...pl.look,cell:[4,5,10,11].includes(st)?null:0} }   // キーパーの体は欄 10（UV は書き換えない）
   if(tx!==texName||!vram) loadTex(tx);
   if(NUM) ctx.weComposeNumber(vram,LOOK.cell??10,NUM);
-  const parts=ctx.wePose(model,anime,st,hd,a,f);
+  // 動きを x<16 進の位置> と書くと、環境変数 ANIMFILE（既定 ANIME.BIN）のその位置のコマを直接読む
+  const parts=/^x/.test(row[0])?ctx.wePose(model,animX,st,hd,0,0,parseInt(row[0].slice(1),16)):ctx.wePose(model,anime,st,hd,a,f);
   const X=(r%G)*per*C, Y=Math.floor(r/G)*C;
   yaws.forEach((y,c)=>draw(parts,X+c*C,Y,y,false)); draw(parts,X+yaws.length*C,Y,yaws[0],true);
   ctx.rasterText(R,X+4,Y+4,row.join(" ").replace(/TEX_/,""),[150,150,140],2);
