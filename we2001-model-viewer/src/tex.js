@@ -5,7 +5,7 @@
 const WE_TEX_BASE=0x800f0000;
 function weUnlz(s,p){
   const out=[]; let f=0;
-  for(;;){
+  while(p<s.length){
     f>>>=1; if(!(f&0x100)){ f=s[p++]|0xff00 }
     const c=s[p];
     if(!(f&1)){ out.push(c); p++; continue }
@@ -28,13 +28,13 @@ function weTexPut(vram,u8,base,o,put,i){
   }
   return true;
 }
-// TEX_xx: 先頭の番地の並び（0 は飛ばす）が札を 1 枚ずつ指す
-function weTexLoad(vram,u8,base){
+// TEX_xx: 先頭の番地の並び（0 は飛ばす）が札を 1 枚ずつ指す。only に番号の集合を渡すとそれだけ置く
+function weTexLoad(vram,u8,base,only){
   const u32=o=>(u8[o]|u8[o+1]<<8|u8[o+2]<<16|u8[o+3]<<24)>>>0, put=[];
   for(let i=0;;i++){
     const p=u32(i*4); if(p===0) continue; if(p<0x80000000||p>=0x80200000) break;
     const o=p-base; if(o<0||o+16>u8.length) break;
-    weTexPut(vram,u8,base,o,put,i);
+    if(!only||only.has(i)) weTexPut(vram,u8,base,o,put,i);
   }
   return put;
 }

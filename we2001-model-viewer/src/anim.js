@@ -6,7 +6,8 @@
 //      位置 x＝v の 0-10 ビット（符号付き 11 ビット）
 //           y＝(w の 30 ビット)×4096＋(v の 11-15 ビット)×32＋(v の 16-20 ビット)、w の 31 ビットが立てば負
 //           z＝v の 21-31 ビット（符号付き 11 ビット）
-//  - 部品ごとの行列は RotMatrix（0x8003c560、Rx·Ry·Rz）＋位置で、選手全体の行列に掛ける（親子はたどらない）
+//  - 部品ごとの行列は RotMatrix（0x8003c560）＋位置で、選手全体の行列に掛ける（親子はたどらない）。
+//    掛ける順は Rz·Ry·Rx（x を先に回す）。全コマで「ももから見たすねの付け根」がいちばんぶれない順を 48 通りから選んだ（数字。2 番目の約半分のぶれ）
 //  - MODEL.BIN は 0x8016ab80 に読まれる。先頭 18 個の番地が「組」（型と番地の並び。0xff で終わり）
 //      型 0x80＝頭（0x68 からの 64 個の表から選ぶ）、2＝部品、0＝無し
 const WE_MODEL_BASE=0x8016ab80, WE_ANIME_BASE=0x8017ee80;
@@ -34,10 +35,10 @@ function weDecodePart(anime,o){
   let y=((w>>>30)&1)*4096+((v>>>11)&31)*32+((v>>>16)&31); if(w>>>31) y=-y;
   return {rot, t:[weSext(v&2047,11), y, weSext(v>>>21,11)]};
 }
-// RotMatrix（PsyQ）: Rx·Ry·Rz。角度は 4096＝1 周
+// RotMatrix（PsyQ）: Rz·Ry·Rx。角度は 4096＝1 周
 function weRotMatrix([x,y,z]){
   const a=k=>k*Math.PI*2/4096, sx=Math.sin(a(x)), cx=Math.cos(a(x)), sy=Math.sin(a(y)), cy=Math.cos(a(y)), sz=Math.sin(a(z)), cz=Math.cos(a(z));
-  return [[cy*cz,-cy*sz,sy],[sx*sy*cz+cx*sz,-sx*sy*sz+cx*cz,-sx*cy],[-cx*sy*cz+sx*sz,cx*sy*sz+sx*cz,cx*cy]];
+  return [[cz*cy,cz*sy*sx-sz*cx,cz*sy*cx+sz*sx],[sz*cy,sz*sy*sx+cz*cx,sz*sy*cx-cz*sx],[-sy,cy*sx,cy*cx]];
 }
 function weXform(m,t,p){ return [0,1,2].map(i=>m[i][0]*p[0]+m[i][1]*p[1]+m[i][2]*p[2]+t[i]) }
 // 選手 1 人を組む。set＝MODEL.BIN の組の番号、head＝頭の番号、anim/frame＝動き。

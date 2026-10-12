@@ -13,7 +13,8 @@ const set=+(setA??2), head=+(headA??0), anims=(animA||"0:0").split(",").map(s=>s
 const texDefault=process.env.TEX||"TEX_00"; let vram=null, texName=texDefault;
 function loadTex(name){ texName=name; vram=ctx.weVramNew(); if(name==="none") return;
   const d2=new Uint8Array(fs.readFileSync(disc+"/DAT2D.BIN")); ctx.weTexLoadRun(vram,d2,0x800f0000,0); ctx.weTexLoadRun(vram,d2,0x800f0000,1);
-  ctx.weTexLoad(vram,new Uint8Array(fs.readFileSync(disc+"/"+name+".BIN")),0x800f0000) }
+  const sel=new Set((process.env.TEXSEL||"0,1,4,7,8,9,11").split(",").map(Number));   // TEX_xx の札を選ぶ。既定はページの「1 着目」（2 着目は 2,3,5,7,8,10,11）
+  ctx.weTexLoad(vram,new Uint8Array(fs.readFileSync(disc+"/"+name+".BIN")),0x800f0000,sel) }
 const C=+(process.env.C||200), per=yaws.length+1, G=+(process.env.GRID||1), cols=per*G, R=ctx.rasterNew(cols*C,Math.ceil(anims.length/G)*C,[40,38,34]);
 const L=(()=>{ const l=[-.4,-.6,-.7], n=Math.hypot(...l); return l.map(x=>x/n) })();
 const PCOL=[[230,200,170],[200,60,60],[230,190,160],[230,190,160],[230,190,160],[230,190,160],[60,60,200],[230,190,160],[50,50,50],[60,60,200],[230,190,160],[50,50,50]];
