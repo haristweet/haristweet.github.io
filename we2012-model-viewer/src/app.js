@@ -6,7 +6,7 @@ function weLongestRun(list){
   return s.slice(best[0],best[1]);
 }
 // ページの操作。開く → 全ファイルをほどいて顔・髪の一覧を作る（順に増える）→ 選んで描く
-const VERSION="0.1.3";
+const VERSION="0.1.4";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,faces:[],hairs:[],mmt:[],mtt:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,seq:0,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }

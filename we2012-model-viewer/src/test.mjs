@@ -26,4 +26,8 @@ for(const [name,f] of [["AFS",fa],["ISO",fi]]){
   const f=r.meshes[0].f; let zi=2; for(let k=2;k<f.length;k+=5) if(f[k]>f[zi]) zi=k;
   const xs=[]; for(let k=0;k<f.length;k+=5) xs.push(f[k]); const cx=(Math.max(...xs)+Math.min(...xs))/2, w=Math.max(...xs)-Math.min(...xs);
   t(`いちばん手前の点が左右の真ん中（ずれ ${(f[zi-2]-cx).toFixed(0)}／幅 ${w}）`,Math.abs(f[zi-2]-cx)<w*0.1) }
+// 見本の全部の形で、包みの数だけ読める（小さい包みの並びは 0x40 番地より前にある。v0.1.4 まで読み落としていた）
+{ let n=0,bad=[]; for(const f of fs.readdirSync(path.join(here,"data"))){ const u=new Uint8Array(fs.readFileSync(path.join(here,"data",f))), dv=new DataView(u.buffer);
+    for(const p of g("weParts")(u)) if(p.off+4<=u.length&&g("weKind")(u,p.off)==="model"){ const npk=dv.getUint32(p.off+0x20,true), m=g("weModel")(u,p.off); n++; if(m.packets.length!==npk) bad.push(f+":"+m.packets.length+"/"+npk) } }
+  t(`形 ${n} 個の包みを全部読める（だめ ${bad.join(" ")||"なし"}）`,!bad.filter(x=>!/^0900/.test(x)).length) }
 console.log(ok,"件 ok",ng?ng+" 件 NG":""); if(ng) process.exit(1);

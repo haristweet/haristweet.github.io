@@ -13,7 +13,7 @@ for(const [name,vp] of [["pc",{width:1100,height:900}],["phone",{width:390,heigh
   await p.screenshot({path:`out/b_${name}_0.png`,fullPage:true});
   if(!fs.existsSync(disc)){ console.log("ディスクが無いので、ここまで"); await p.close(); continue }
   let t0=Date.now(); await p.setInputFiles("#f-disc",disc);
-  await p.waitForFunction(()=>/顔 \d+・髪 \d+$/.test(document.getElementById("status").textContent)||document.getElementById("status").className==="err",null,{timeout:600000});
+  await p.waitForFunction(()=>/顔 \d+・髪 \d+/.test(document.getElementById("status").textContent)||document.getElementById("status").className==="err",null,{timeout:120000});
   console.log(name,"開く（"+(Date.now()-t0)+"ms）:",JSON.stringify(await p.textContent("#status")),JSON.stringify(await info(p)),"顔",await p.$$eval("#s-face option",o=>o.length),"髪",await p.$$eval("#s-hair option",o=>o.length));
   await p.waitForTimeout(300); await p.screenshot({path:`out/b_${name}_1.png`,fullPage:true});
   await p.click("#f-next"); await p.waitForTimeout(300); console.log(name,"次の顔:",JSON.stringify(await info(p)));

@@ -49,7 +49,7 @@ function weTex(u,o,palFrom){
 
 // ── 形: 頭 0xffff0003。[8]=包みの数、[9]=最初の包みの位置。包み＝[大きさ, 0, VIF の位置, …] のあとに VIF の命令列 ──
 // VIF の UNPACK: 0x69（V3-16）を 4 番地に＝位置、5 番地＝法線、0x65（V2-16）を 7 番地＝UV（/4096）。
-// 0x6d（V4-16）を 0xc0xx 以降に＝頂点の並び（値/4−1 が頂点の番号、0x8000 の印は「三角形を閉じない」）。並びは帯（ストリップ）
+// 0x6d（V4-16）を頂点の後ろ（8＋4×頂点数 番地）に＝頂点の並び（値/4−1 が頂点の番号、0x8000 の印は「三角形を閉じない」）。並びは帯（ストリップ）
 function weVifSize(cmd,num){ const vn=(cmd>>2)&3, vl=cmd&3, bits=vl===3?16:(vn+1)*(32>>vl); return Math.ceil(num*bits/32)*4 }
 function weVifWalk(u,p,end){
   const dv=new DataView(u.buffer,u.byteOffset,u.byteLength), out=[];
@@ -74,7 +74,7 @@ function weModel(u,b){
     const size=dv.getUint32(po,true), vifAt=po+dv.getUint32(po+8,true);
     const un=weVifWalk(u,vifAt,po+size);
     const get=(cmd,addr)=>un.find(x=>x.cmd===cmd&&x.addr===addr);
-    const P=get(0x69,4), N=get(0x69,5), T=get(0x65,7), I=un.filter(x=>x.cmd===0x6d&&x.addr>=0x40).pop();
+    const P=get(0x69,4), N=get(0x69,5), T=get(0x65,7), I=un.filter(x=>x.cmd===0x6d&&x.addr===8+4*(P?P.num:0)).pop();   // 並びは頂点の後ろ（8＋4×頂点数 番地。見本の全部の包みで合う）。小さい包みでは 0x40 より前になる
     if(P&&I){
       const s16=a=>dv.getInt16(a,true), V=[], NV=[], UV=[];
       for(let i=0;i<P.num;i++){ V.push([s16(P.at+i*6),s16(P.at+i*6+2),s16(P.at+i*6+4)]);
