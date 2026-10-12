@@ -16,6 +16,7 @@ for(const [name,vp] of [["pc",{width:1100,height:900}],["phone",{width:390,heigh
   if(!fs.existsSync(save)||!fs.existsSync(disc)){ console.log("セーブかディスクが無いので、ここまで"); await p.close(); continue }
   let t0=Date.now(); await p.setInputFiles("#f-save",save); await settle(p);
   console.log(name,"セーブ（"+(Date.now()-t0)+"ms）:",JSON.stringify(await st(p)),JSON.stringify(await p.textContent("#empty")),"一覧",await p.$$eval("#s-player option",o=>o.length),JSON.stringify(await info(p)));
+  console.log(name,"チーム:",await p.$$eval("#s-team option",o=>o.length),"選んでいる",JSON.stringify(await p.$eval("#s-team",s=>s.options[s.selectedIndex].text)),"一覧",await p.$$eval("#s-player option",o=>o.map(x=>x.textContent).slice(0,3).join("／")));
   t0=Date.now(); await p.setInputFiles("#f-disc",disc); await settle(p);
   console.log(name,"ディスク（"+(Date.now()-t0)+"ms）:",JSON.stringify(await st(p)),JSON.stringify(await info(p)));
   await p.screenshot({path:`out/b_${name}_1.png`,fullPage:true});
@@ -26,6 +27,8 @@ for(const [name,vp] of [["pc",{width:1100,height:900}],["phone",{width:390,heigh
   await p.fill("#q","中島 裕希"); await p.waitForTimeout(500); console.log(name,"中島:",JSON.stringify(await info(p))); await p.locator("#viewer").screenshot({path:`out/b_${name}_nakajima.png`});
   // 横から（ドラッグで 4 分の 1 周）
   { const bb=await p.locator("#cv").boundingBox(); await p.mouse.move(bb.x+20,bb.y+bb.height/2); await p.mouse.down(); await p.mouse.move(bb.x+20+157,bb.y+bb.height/2,{steps:6}); await p.mouse.up(); await p.waitForTimeout(200); await p.locator("#viewer").screenshot({path:`out/b_${name}_side.png`}); await p.dblclick("#cv") }
+  await p.selectOption("#s-team",{label:"鹿島アントラーズ（31）"}); await p.waitForTimeout(400); console.log(name,"鹿島:",await p.$$eval("#s-player option",o=>o.length),JSON.stringify(await info(p)));
+  await p.selectOption("#s-team",{index:1}); await p.waitForTimeout(300);
   await p.fill("#n-file","7188"); await p.click("#b-file"); await p.waitForTimeout(400); console.log(name,"#7188:",JSON.stringify(await info(p)),"絵",await p.$$eval("#texs canvas",c=>c.length));
   await p.screenshot({path:`out/b_${name}_3.png`,fullPage:true});
   await p.selectOption("#s-player",{index:0}); await p.waitForTimeout(400); console.log(name,"1 人目:",JSON.stringify(await info(p)));

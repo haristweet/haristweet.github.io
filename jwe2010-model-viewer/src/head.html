@@ -43,6 +43,7 @@ details.more{margin:0 0 6px;color:var(--fg);font-size:14px}details.more[hidden]{
 progress{width:12em;vertical-align:middle}
 .ctrl input[type=search]{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;width:10em}
 #s-player{max-width:min(22em,60vw)}
+#s-team{max-width:min(16em,60vw)}
 </style>
 </head>
 <body>
@@ -58,6 +59,7 @@ progress{width:12em;vertical-align:middle}
   <div class="empty" id="empty">ディスクのイメージとステートセーブを選ぶと、ここに選手の顔が出ます</div>
   <div class="hint" id="hint" hidden>ドラッグで回す・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
 <div class="ctrl" id="pick" hidden>
+  <select id="s-team" aria-label="チーム"></select>
   <input type="search" id="q" placeholder="名前で探す" aria-label="名前で探す">
   <span class="grp"><button id="p-prev" aria-label="前の選手">◀</button> <select id="s-player" aria-label="選手"></select> <button id="p-next" aria-label="次の選手">▶</button></span>
   <button id="b-rand">🎲 おまかせ</button>
@@ -75,7 +77,8 @@ progress{width:12em;vertical-align:middle}
 <p>顔は記録の 0x64 の上 11 ビットに、0x73 の区分ごとの始まり（J リーグの選手などは 2804）を、髪は 0x5C の下 12 ビットに 4733 を足すと、0_TEXT.AFS のファイルの番号になります。ゲームがメモリに持っている「読み込み済みの顔・髪」の表（画面に出ている選手の印つき）と照らして決めました。</p>
 <p>形と絵の読み方は「ウイニングイレブン2012 モデルビューア」と同じです。光は当てず、絵の色をそのまま描きます。</p>
 <p>目・耳・口の中、後ろ髪の地、生え際は、ゲームが全員で共通に使う絵（0_TEXT.AFS の #8234・#8226・#8231 と色表 #8227）を貼ります。どの部品にどの絵かは、ステートセーブの描く命令と画面用メモリから読みました。肌・髪・目の色は 3 人のセーブに合わせたもので、選手ごとの違いはまだ反映していません。</p>
-<p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、チームごとの分け方、体とユニフォーム。</p>
+<p>チームの一覧と名簿も、ステートセーブのメモリから読みます（チーム名の表と、1 チーム 32 枠の名簿）。名簿の並びが崩れている選抜チームなどは出しません。</p>
+<p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、体とユニフォーム。</p>
 <p id="ver"></p></details>
 </main>
 <script>

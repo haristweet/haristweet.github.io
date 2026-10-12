@@ -61,3 +61,42 @@ function jwPlayers(m){
   if(t.n<100) throw new Error("ステートセーブのメモリに選手の表が見つかりません（ゲームの画面が出ているときに取ったセーブを使ってください）");
   return Array.from({length:t.n},(_,i)=>jwPlayer(m,t.at+i*JW_REC,i));
 }
+// チーム名の表と名簿（v0.3.0）。どちらもセーブのメモリから読む
+//   チーム名: 1 チーム 0x5C バイト。0＝名前（UTF-8、48 バイトまで）、0x31＝短い名前、0x3C＝チームの番号（0,1,2,…と並ぶ）。0 番がベガルタ仙台
+//   名簿: 1 チーム 32 枠（u16）。中身は選手の表の何番目か＋1（0＝空き）。関口のセーブでは 0x19D8CA0（選手の表の後ろ）。
+//   同じ並びの写しが 0xA51210 にもあるが、174 番目のチームから中身が違うので、選手の表にいちばん近い方を使う
+function jwFindTeams(m){
+  const dv=new DataView(m.buffer,m.byteOffset,m.byteLength), U=a=>dv.getUint32(a,true);
+  for(let a=0;a+0x5c*100<=m.length;a+=4){
+    if(U(a+0x3c)!==0||U(a+0x5c+0x3c)!==1||U(a+0xb8+0x3c)!==2) continue;
+    let n=3; while(a+(n+1)*0x5c<=m.length&&U(a+n*0x5c+0x3c)===n) n++;
+    if(n>=100) return {at:a,n};
+  }
+  return null;
+}
+function jwFindRosters(m,np,near){
+  const dv=new DataView(m.buffer,m.byteOffset,m.byteLength), H=a=>dv.getUint16(a,true), out=[];
+  for(let r=0;r+64*100<=m.length;r+=2){
+    if(H(r)!==1||H(r+2)!==2||H(r+4)!==3) continue;
+    let good=0;
+    for(let t=0;t<100;t++){ const v=[]; for(let k=0;k<32;k++){ const w=H(r+t*64+k*2); if(w) v.push(w) }
+      if(v.length>=10&&v.every((w,i)=>w<=np&&(!i||v[i-1]<w))) good++ }
+    if(good>=90) out.push(r);
+  }
+  out.sort((a,b)=>Math.abs(a-near)-Math.abs(b-near));
+  return out[0]??null;
+}
+function jwTeams(m,players){
+  const t=jwFindTeams(m); if(!t) return [];
+  const np=players.length, r=jwFindRosters(m,np,players[0]?.at??0); if(r===null) return [];
+  const dec=new TextDecoder("utf-8",{fatal:true}), out=[];
+  for(let i=0;i<t.n;i++){
+    const a=t.at+i*0x5c; let name;
+    try{ let e=0; while(e<48&&m[a+e]) e++; name=dec.decode(m.subarray(a,a+e)) }catch(e){ continue }
+    const mem=[]; let ok=true;
+    for(let k=0;k<32;k++){ const w=m[r+i*64+k*2]|m[r+i*64+k*2+1]<<8; if(!w) continue; if(w>np||(mem.length&&w-1<=mem.at(-1))){ ok=false; break } mem.push(w-1) }
+    // 名簿の並びが崩れているチーム（選抜・オールスターなど）は出さない
+    if(ok&&mem.length&&name) out.push({i,name,members:mem});
+  }
+  return out;
+}

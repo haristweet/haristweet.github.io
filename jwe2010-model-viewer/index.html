@@ -43,6 +43,7 @@ details.more{margin:0 0 6px;color:var(--fg);font-size:14px}details.more[hidden]{
 progress{width:12em;vertical-align:middle}
 .ctrl input[type=search]{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;width:10em}
 #s-player{max-width:min(22em,60vw)}
+#s-team{max-width:min(16em,60vw)}
 </style>
 </head>
 <body>
@@ -58,6 +59,7 @@ progress{width:12em;vertical-align:middle}
   <div class="empty" id="empty">ディスクのイメージとステートセーブを選ぶと、ここに選手の顔が出ます</div>
   <div class="hint" id="hint" hidden>ドラッグで回す・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
 <div class="ctrl" id="pick" hidden>
+  <select id="s-team" aria-label="チーム"></select>
   <input type="search" id="q" placeholder="名前で探す" aria-label="名前で探す">
   <span class="grp"><button id="p-prev" aria-label="前の選手">◀</button> <select id="s-player" aria-label="選手"></select> <button id="p-next" aria-label="次の選手">▶</button></span>
   <button id="b-rand">🎲 おまかせ</button>
@@ -75,7 +77,8 @@ progress{width:12em;vertical-align:middle}
 <p>顔は記録の 0x64 の上 11 ビットに、0x73 の区分ごとの始まり（J リーグの選手などは 2804）を、髪は 0x5C の下 12 ビットに 4733 を足すと、0_TEXT.AFS のファイルの番号になります。ゲームがメモリに持っている「読み込み済みの顔・髪」の表（画面に出ている選手の印つき）と照らして決めました。</p>
 <p>形と絵の読み方は「ウイニングイレブン2012 モデルビューア」と同じです。光は当てず、絵の色をそのまま描きます。</p>
 <p>目・耳・口の中、後ろ髪の地、生え際は、ゲームが全員で共通に使う絵（0_TEXT.AFS の #8234・#8226・#8231 と色表 #8227）を貼ります。どの部品にどの絵かは、ステートセーブの描く命令と画面用メモリから読みました。肌・髪・目の色は 3 人のセーブに合わせたもので、選手ごとの違いはまだ反映していません。</p>
-<p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、チームごとの分け方、体とユニフォーム。</p>
+<p>チームの一覧と名簿も、ステートセーブのメモリから読みます（チーム名の表と、1 チーム 32 枠の名簿）。名簿の並びが崩れている選抜チームなどは出しません。</p>
+<p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、体とユニフォーム。</p>
 <p id="ver"></p></details>
 </main>
 <script>
@@ -347,6 +350,45 @@ function jwPlayers(m){
   if(t.n<100) throw new Error("ステートセーブのメモリに選手の表が見つかりません（ゲームの画面が出ているときに取ったセーブを使ってください）");
   return Array.from({length:t.n},(_,i)=>jwPlayer(m,t.at+i*JW_REC,i));
 }
+// チーム名の表と名簿（v0.3.0）。どちらもセーブのメモリから読む
+//   チーム名: 1 チーム 0x5C バイト。0＝名前（UTF-8、48 バイトまで）、0x31＝短い名前、0x3C＝チームの番号（0,1,2,…と並ぶ）。0 番がベガルタ仙台
+//   名簿: 1 チーム 32 枠（u16）。中身は選手の表の何番目か＋1（0＝空き）。関口のセーブでは 0x19D8CA0（選手の表の後ろ）。
+//   同じ並びの写しが 0xA51210 にもあるが、174 番目のチームから中身が違うので、選手の表にいちばん近い方を使う
+function jwFindTeams(m){
+  const dv=new DataView(m.buffer,m.byteOffset,m.byteLength), U=a=>dv.getUint32(a,true);
+  for(let a=0;a+0x5c*100<=m.length;a+=4){
+    if(U(a+0x3c)!==0||U(a+0x5c+0x3c)!==1||U(a+0xb8+0x3c)!==2) continue;
+    let n=3; while(a+(n+1)*0x5c<=m.length&&U(a+n*0x5c+0x3c)===n) n++;
+    if(n>=100) return {at:a,n};
+  }
+  return null;
+}
+function jwFindRosters(m,np,near){
+  const dv=new DataView(m.buffer,m.byteOffset,m.byteLength), H=a=>dv.getUint16(a,true), out=[];
+  for(let r=0;r+64*100<=m.length;r+=2){
+    if(H(r)!==1||H(r+2)!==2||H(r+4)!==3) continue;
+    let good=0;
+    for(let t=0;t<100;t++){ const v=[]; for(let k=0;k<32;k++){ const w=H(r+t*64+k*2); if(w) v.push(w) }
+      if(v.length>=10&&v.every((w,i)=>w<=np&&(!i||v[i-1]<w))) good++ }
+    if(good>=90) out.push(r);
+  }
+  out.sort((a,b)=>Math.abs(a-near)-Math.abs(b-near));
+  return out[0]??null;
+}
+function jwTeams(m,players){
+  const t=jwFindTeams(m); if(!t) return [];
+  const np=players.length, r=jwFindRosters(m,np,players[0]?.at??0); if(r===null) return [];
+  const dec=new TextDecoder("utf-8",{fatal:true}), out=[];
+  for(let i=0;i<t.n;i++){
+    const a=t.at+i*0x5c; let name;
+    try{ let e=0; while(e<48&&m[a+e]) e++; name=dec.decode(m.subarray(a,a+e)) }catch(e){ continue }
+    const mem=[]; let ok=true;
+    for(let k=0;k<32;k++){ const w=m[r+i*64+k*2]|m[r+i*64+k*2+1]<<8; if(!w) continue; if(w>np||(mem.length&&w-1<=mem.at(-1))){ ok=false; break } mem.push(w-1) }
+    // 名簿の並びが崩れているチーム（選抜・オールスターなど）は出さない
+    if(ok&&mem.length&&name) out.push({i,name,members:mem});
+  }
+  return out;
+}
 // 顔・髪の部品ごとの絵（JWE2010）。ゲームが描くときの指定（GS の TEX0）をステートセーブの描く命令の並びから読んで決めた（v0.2.0）
 //   顔: sel 0＝顔のファイルの絵、sel 1・3・4（目・耳・口の中）＝共通の絵 #8234、sel 2（あごの重ね）＝透明（描かない）
 //   髪: sel 1（前髪）＝髪のファイルの絵、sel 2（後ろ髪）＝共通の髪の地 #8226（512×256）、sel 0（生え際の帯）＝頭の肌 #8231
@@ -458,9 +500,9 @@ function weViewMatrix(v,aspect){
   return M;
 }
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表）を開く → 選手を選ぶ → その選手の顔と髪を描く
-const VERSION="0.2.0";
+const VERSION="0.3.0";
 const $=id=>document.getElementById(id);
-const APP={drawSeq:0,file:null,disc:null,players:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
+const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
 async function getFile(i){
   if(APP.cache.has(i)) return APP.cache.get(i);
@@ -489,17 +531,24 @@ async function openSave(file){
   status("ステートセーブを読んでいます…"); $("n-save").textContent=file.name;
   try{
     const mem=await jwP2sMemory(file), players=jwPlayers(mem);
-    APP.players=players; $("step-save").classList.add("done");
-    $("q").value=""; fillPlayers(); $("pick").hidden=false;
-    status(`選手 ${players.length} 人`+(APP.disc?"":"。次にディスクのイメージを選んでください"));
+    APP.players=players; APP.teams=jwTeams(mem,players); $("step-save").classList.add("done");
+    fillTeams(); $("q").value=""; fillPlayers(); $("pick").hidden=false;
+    status(`選手 ${players.length} 人・チーム ${APP.teams.length}`+(APP.disc?"":"。次にディスクのイメージを選んでください"));
     show(); if(!APP.disc) $("empty").textContent="ディスクのイメージを選ぶと、顔と髪が出ます";
   }catch(e){ status(e.message,true); console.error(e) }
 }
 function openAny(file){ if(/\.p2s$/i.test(file.name)) openSave(file); else openDisc(file) }
-// 名前で絞った一覧。表の順番（番号）も出す
+// チームの一覧。最初は 0 番（ベガルタ仙台）。「全員」で選手の表の全部
+function fillTeams(){
+  const esc=x=>x.replace(/[&<]/g,c=>c==="&"?"&amp;":"&lt;");
+  $("s-team").innerHTML=['<option value="">全員</option>',...APP.teams.map(t=>`<option value="${t.i}">${esc(t.name)}（${t.members.length}）</option>`)].join("");
+  $("s-team").hidden=!APP.teams.length; if(APP.teams.length) $("s-team").value=String(APP.teams[0].i);
+}
+// チームと名前で絞った一覧。チームは名簿の並び、全員は選手の表の順。表の順番（番号）も出す
 function fillPlayers(){
-  const q=$("q").value.trim().toLowerCase(), keep=$("s-player").value;
-  APP.shown=APP.players.filter(p=>!q||p.name.toLowerCase().includes(q)||p.shirt.toLowerCase().includes(q));
+  const q=$("q").value.trim().toLowerCase(), keep=$("s-player").value, tm=APP.teams.find(t=>String(t.i)===$("s-team").value);
+  const base=tm?tm.members.map(i=>APP.players[i]):APP.players;
+  APP.shown=base.filter(p=>!q||p.name.toLowerCase().includes(q)||p.shirt.toLowerCase().includes(q));
   $("s-player").innerHTML=APP.shown.map(p=>`<option value="${p.i}">${p.i+1}. ${p.name.replace(/[&<]/g,c=>c==="&"?"&amp;":"&lt;")}</option>`).join("");
   if(APP.shown.some(p=>String(p.i)===keep)) $("s-player").value=keep;
 }
@@ -571,6 +620,8 @@ function init(){
   $("f-disc").onchange=e=>{ const f=e.target.files[0]; if(f) openDisc(f) };
   $("f-save").onchange=e=>{ const f=e.target.files[0]; if(f) openSave(f) };
   $("s-player").onchange=()=>show();
+  // チームを変えたら名前の絞り込みは消す（前の名前が残って 0 人にならないように）
+  $("s-team").onchange=()=>{ $("q").value=""; fillPlayers(); if(APP.shown.length) show() };
   $("q").oninput=()=>{ fillPlayers(); if(APP.shown.length&&(APP.cur?.kind!=="player"||String(APP.cur.p.i)!==$("s-player").value)) show() };
   $("p-prev").onclick=()=>step($("s-player"),-1); $("p-next").onclick=()=>step($("s-player"),1);
   $("b-rand").onclick=()=>{ const o=$("s-player").options; if(!o.length) return; $("s-player").selectedIndex=Math.floor(Math.random()*o.length); show() };

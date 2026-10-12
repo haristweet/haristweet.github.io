@@ -1,7 +1,7 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表）を開く → 選手を選ぶ → その選手の顔と髪を描く
-const VERSION="0.2.0";
+const VERSION="0.3.0";
 const $=id=>document.getElementById(id);
-const APP={drawSeq:0,file:null,disc:null,players:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
+const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
 async function getFile(i){
   if(APP.cache.has(i)) return APP.cache.get(i);
@@ -30,17 +30,24 @@ async function openSave(file){
   status("ステートセーブを読んでいます…"); $("n-save").textContent=file.name;
   try{
     const mem=await jwP2sMemory(file), players=jwPlayers(mem);
-    APP.players=players; $("step-save").classList.add("done");
-    $("q").value=""; fillPlayers(); $("pick").hidden=false;
-    status(`選手 ${players.length} 人`+(APP.disc?"":"。次にディスクのイメージを選んでください"));
+    APP.players=players; APP.teams=jwTeams(mem,players); $("step-save").classList.add("done");
+    fillTeams(); $("q").value=""; fillPlayers(); $("pick").hidden=false;
+    status(`選手 ${players.length} 人・チーム ${APP.teams.length}`+(APP.disc?"":"。次にディスクのイメージを選んでください"));
     show(); if(!APP.disc) $("empty").textContent="ディスクのイメージを選ぶと、顔と髪が出ます";
   }catch(e){ status(e.message,true); console.error(e) }
 }
 function openAny(file){ if(/\.p2s$/i.test(file.name)) openSave(file); else openDisc(file) }
-// 名前で絞った一覧。表の順番（番号）も出す
+// チームの一覧。最初は 0 番（ベガルタ仙台）。「全員」で選手の表の全部
+function fillTeams(){
+  const esc=x=>x.replace(/[&<]/g,c=>c==="&"?"&amp;":"&lt;");
+  $("s-team").innerHTML=['<option value="">全員</option>',...APP.teams.map(t=>`<option value="${t.i}">${esc(t.name)}（${t.members.length}）</option>`)].join("");
+  $("s-team").hidden=!APP.teams.length; if(APP.teams.length) $("s-team").value=String(APP.teams[0].i);
+}
+// チームと名前で絞った一覧。チームは名簿の並び、全員は選手の表の順。表の順番（番号）も出す
 function fillPlayers(){
-  const q=$("q").value.trim().toLowerCase(), keep=$("s-player").value;
-  APP.shown=APP.players.filter(p=>!q||p.name.toLowerCase().includes(q)||p.shirt.toLowerCase().includes(q));
+  const q=$("q").value.trim().toLowerCase(), keep=$("s-player").value, tm=APP.teams.find(t=>String(t.i)===$("s-team").value);
+  const base=tm?tm.members.map(i=>APP.players[i]):APP.players;
+  APP.shown=base.filter(p=>!q||p.name.toLowerCase().includes(q)||p.shirt.toLowerCase().includes(q));
   $("s-player").innerHTML=APP.shown.map(p=>`<option value="${p.i}">${p.i+1}. ${p.name.replace(/[&<]/g,c=>c==="&"?"&amp;":"&lt;")}</option>`).join("");
   if(APP.shown.some(p=>String(p.i)===keep)) $("s-player").value=keep;
 }
@@ -112,6 +119,8 @@ function init(){
   $("f-disc").onchange=e=>{ const f=e.target.files[0]; if(f) openDisc(f) };
   $("f-save").onchange=e=>{ const f=e.target.files[0]; if(f) openSave(f) };
   $("s-player").onchange=()=>show();
+  // チームを変えたら名前の絞り込みは消す（前の名前が残って 0 人にならないように）
+  $("s-team").onchange=()=>{ $("q").value=""; fillPlayers(); if(APP.shown.length) show() };
   $("q").oninput=()=>{ fillPlayers(); if(APP.shown.length&&(APP.cur?.kind!=="player"||String(APP.cur.p.i)!==$("s-player").value)) show() };
   $("p-prev").onclick=()=>step($("s-player"),-1); $("p-next").onclick=()=>step($("s-player"),1);
   $("b-rand").onclick=()=>{ const o=$("s-player").options; if(!o.length) return; $("s-player").selectedIndex=Math.floor(Math.random()*o.length); show() };

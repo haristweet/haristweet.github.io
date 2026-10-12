@@ -30,6 +30,8 @@ for(const [f,who,face,hair,unknown] of [["sekiguchi.p2s","関口 訓充",3378,71
   const sv=path.join(here,"data",f); if(!fs.existsSync(sv)){ console.log(`data/${f} が無いので本物のセーブでの試験はしない`); continue }
   const mem=await g("jwP2sMemory")(new Blob([fs.readFileSync(sv)])), ps=g("jwPlayers")(mem), p=ps.find(x=>x.name===who), c=cache(mem);
   const on=c.face.find(x=>x.on===1)?.file, fs_=new Set(ps.map(x=>x.face)), hs=new Set(ps.map(x=>x.hair));
+  const ts=g("jwTeams")(mem,ps), v=ts[0], k=ts.find(x=>x.name==="鹿島アントラーズ");
+  t(`${f}: チーム ${ts.length}、先頭 ${v?.name}（${v?.members.length} 人、8 人目 ${ps[v?.members[7]]?.name}）・鹿島 ${k?.members.length} 人（1 人目 ${ps[k?.members[0]]?.name}）`,ts.length>=150&&v.name==="ベガルタ仙台"&&v.members.length===26&&ps[v.members[7]].name==="関口 訓充"&&ps[k.members[0]].name==="曽ヶ端 準");
   t(`${f}: ${ps.length} 人、${who} 顔 #${p.face}・髪 #${p.hair}、画面の顔 #${on}`,ps.length===4609&&p.face===face&&p.hair===hair&&on===face);
   const nf=c.face.filter(x=>!fs_.has(x.file)&&!unknown.includes(x.file)).map(x=>x.file), nh=c.hair.filter(x=>!hs.has(x));
   t(`${f}: 読み込まれていた顔 ${c.face.length}・髪 ${c.hair.length} がだれかの番号（分からないまま ${unknown.join(",")||"なし"}・だめ 顔 ${nf.join(",")||"なし"}・髪 ${nh.join(",")||"なし"}）`,c.face.length>=6&&!nf.length&&!nh.length);
