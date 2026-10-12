@@ -22,6 +22,9 @@ inps.forEach((inp,row)=>{
       if(k==="tex") texs.push(ctx.weTex(u,p.off,texs.at(-1)?.pal)) }
     const tx=texs.find(t=>t.rgba), sms=texs.map(t=>t.rgba?sampler(t):null); firsts.push(tx);
     // 絵は包みの頭の番号（texi）で選ぶ。TEX0=1 で全部 1 枚目（比べる用）
+    // SKIPSEL: 1 つ目のファイル（顔）で描かない sel（ふだんは 2＝あごまわりの重ね。ページと同じ。SKIPSEL=none で全部）
+    const skip=(process.env.SKIPSEL??"2");
+    if(skip!=="none"&&f===inp.split("+")[0]) mine.splice(0,mine.length,...mine.filter(t=>!skip.split(",").includes(String(t.sel))));
     for(const t of mine){ t.sample=(process.env.TEX0?null:sms[t.texi])||sampler(tx); tris.push(t) }
     console.log(f,"三角形",mine.length,"絵",texs.map(t=>`${t.W}x${t.H}/${t.psm.toString(16)}`).join(" "));
   }

@@ -6,12 +6,12 @@ function weGL(canvas){
   const sh=(t,s)=>{ const o=gl.createShader(t); gl.shaderSource(o,s); gl.compileShader(o); if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o };
   const pr=gl.createProgram();
   gl.attachShader(pr,sh(gl.VERTEX_SHADER,"attribute vec3 p;attribute vec2 t;uniform mat4 M;varying vec2 vt;void main(){gl_Position=M*vec4(p,1.);vt=t;}"));
-  gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,"precision mediump float;uniform sampler2D T;uniform float useT;varying vec2 vt;void main(){vec4 c=useT>.5?texture2D(T,vt):vec4(.78,.75,.68,1.);if(c.a<.02)discard;gl_FragColor=c;}"));
+  gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,"precision mediump float;uniform sampler2D T;uniform float useT;uniform float opq;varying vec2 vt;void main(){vec4 c=useT>.5?texture2D(T,vt):vec4(.78,.75,.68,1.);if(opq>.5)c.a=1.;if(c.a<.02)discard;gl_FragColor=c;}"));
   gl.linkProgram(pr); gl.useProgram(pr);
-  const A={p:gl.getAttribLocation(pr,"p"),t:gl.getAttribLocation(pr,"t")}, uM=gl.getUniformLocation(pr,"M"), uT=gl.getUniformLocation(pr,"useT");
+  const A={p:gl.getAttribLocation(pr,"p"),t:gl.getAttribLocation(pr,"t")}, uM=gl.getUniformLocation(pr,"M"), uT=gl.getUniformLocation(pr,"useT"), uO=gl.getUniformLocation(pr,"opq");
   let items=[];
   return {
-    // ms: [{f:Float32Array, tex:{W,H,rgba}|null}]
+    // ms: [{f:Float32Array, tex:{W,H,rgba}|null, opaque?}]。opaque は絵の α を使わずに塗る（JWE2010 の後ろ髪）
     set(ms){
       for(const it of items){ gl.deleteBuffer(it.buf); if(it.tex) gl.deleteTexture(it.tex) }
       items=ms.map(m=>{ const buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf); gl.bufferData(gl.ARRAY_BUFFER,m.f,gl.STATIC_DRAW);
@@ -20,7 +20,7 @@ function weGL(canvas){
           // 絵は 2 のべき乗の大きさなので、くり返し（REPEAT）が使える
           for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.REPEAT],[gl.TEXTURE_WRAP_T,gl.REPEAT]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
           gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,m.tex.W,m.tex.H,0,gl.RGBA,gl.UNSIGNED_BYTE,m.tex.rgba) }
-        return {buf,tex,n:m.f.length/5} });
+        return {buf,tex,n:m.f.length/5,opaque:!!m.opaque} });
     },
     draw(view,bg){
       const W=canvas.width=Math.round(canvas.clientWidth*devicePixelRatio), H=canvas.height=Math.round(canvas.clientHeight*devicePixelRatio);
@@ -33,7 +33,7 @@ function weGL(canvas){
         gl.bindBuffer(gl.ARRAY_BUFFER,it.buf);
         gl.enableVertexAttribArray(A.p); gl.vertexAttribPointer(A.p,3,gl.FLOAT,false,20,0);
         gl.enableVertexAttribArray(A.t); gl.vertexAttribPointer(A.t,2,gl.FLOAT,false,20,12);
-        gl.uniform1f(uT,it.tex?1:0); if(it.tex) gl.bindTexture(gl.TEXTURE_2D,it.tex);
+        gl.uniform1f(uT,it.tex?1:0); gl.uniform1f(uO,it.opaque?1:0); if(it.tex) gl.bindTexture(gl.TEXTURE_2D,it.tex);
         gl.drawArrays(gl.TRIANGLES,0,it.n);
       }
     }

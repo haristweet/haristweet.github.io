@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表）を開く → 選手を選ぶ → その選手の顔と髪を描く
-const VERSION="0.1.2";
+const VERSION="0.1.3";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -51,7 +51,12 @@ async function show(what){
       const u=await getFile(i);
       // 顔は MMT、髪は MTT の並び。違うときは描かずに知らせる（表の読み方が外れている印）
       if(c.kind==="player"){ const want=k?"MTT":"MMT", sig=weSig(u); if(sig!==want){ warn.push(`#${i} は${k?"髪":"顔"}のファイルではありません（並び ${sig||"-"}）`); continue } }
-      const r=weMeshes(u,all); ms.push(...r.meshes); ntri+=r.meshes.reduce((a,m)=>a+m.ntri,0);
+      // 顔の sel 2（あごまわりの重ね）は描かない。ゲームの画面の田村の顔に、あごの先の V は無い（v0.1.3）
+      // 髪の sel 2（後ろ髪）は絵の透明な所も髪の色なので、α を使わずに塗る。前髪（1）と生え際の帯（0）は半透明のまま、あとから重ねる
+      let r;
+      if(c.kind==="player"&&k===1){ const back=weMeshes(u,all,[0,1]), front=weMeshes(u,all,[2]); back.meshes.forEach(m=>m.opaque=true); r={meshes:[...back.meshes,...front.meshes],texs:back.texs} }
+      else r=weMeshes(u,all,c.kind==="player"&&k===0?[2]:null);
+      ms.push(...r.meshes); ntri+=r.meshes.reduce((a,m)=>a+m.ntri,0);
       // 番号で見るときは入れ子の中の絵も全部出す
       texs.push(...(c.kind==="file"?weFindTex(u):r.texs).map(t=>({...t,from:i}))) }
     if(seq!==APP.drawSeq) return;

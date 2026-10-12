@@ -155,14 +155,15 @@ function weSig(u){
 }
 // 形と絵を、ページで描ける形にする。1 つ目の形だけ（顔の 2 つ目は細かさ違いと推測）。all なら全部。
 // 座標はゲーム（Y 下・顔が +X）→ 画面（Y 上・顔が手前 +Z）: (x,y,z)→(z,−y,x)。鏡写しにはしない
-function weMeshes(u,all){
+// skip: 描かない包みの sel の一覧（JWE2010 の顔は [2]。あごまわりの重ねで、あごの先に肌色の V と細かい縞が出る）
+function weMeshes(u,all,skip){
   const parts=weParts(u), texs=[], models=[];
   for(const p of parts){ const k=weKind(u,p.off); if(k==="tex") texs.push(weTex(u,p.off,texs.at(-1)?.pal)); if(k==="model") models.push(p.off) }
   // 包みの頭の [16] の上 8 ビット＝絵の番号（髪の 64×64 は 1。絵で確認）。絵ごとに形を分ける
   const meshes=[];
   for(const off of all?models:models.slice(0,1)){
     const m=weModel(u,off), by=new Map();
-    for(const t of m.tris){ const k=texs[t.texi]?.rgba?t.texi:0; if(!by.has(k)) by.set(k,[]); by.get(k).push(t) }
+    for(const t of m.tris){ if(skip&&skip.includes(t.sel)) continue; const k=texs[t.texi]?.rgba?t.texi:0; if(!by.has(k)) by.set(k,[]); by.get(k).push(t) }
     for(const [k,ts] of by){ const f=new Float32Array(ts.length*15); let n=0;
       for(const t of ts) for(let j=0;j<3;j++){ const p=t.p[j]; f[n++]=p[2]; f[n++]=-p[1]; f[n++]=p[0]; f[n++]=t.uv[j][0]; f[n++]=t.uv[j][1] }
       meshes.push({f,ntri:ts.length,tex:texs[k]?.rgba?texs[k]:null}) }
