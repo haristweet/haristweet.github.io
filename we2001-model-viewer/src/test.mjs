@@ -1,7 +1,7 @@
 // 単体試験（disc/ にデータがあれば本物で）。node test.mjs
 import fs from "fs"; import vm from "vm"; import path from "path";
 const here=path.dirname(new URL(import.meta.url).pathname), ctx={console,TextDecoder,DecompressionStream,Blob,Response}; vm.createContext(ctx);
-for(const f of ["wdisc.js","tmd.js","anim.js","tex.js","wgl.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
+for(const f of ["wdisc.js","tmd.js","anim.js","tex.js","look.js","wgl.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
 const g=n=>vm.runInContext(n,ctx); let ok=0, ng=0;
 const t=(name,c)=>{ if(c){ ok++; console.log("  ok",name) } else { ng++; console.log("  NG",name) } };
 // 圧縮: 旗 0x0b（1,1,0,1）: 生のまま 8 つ（0xc0）・近くの写し（0x80＝1 つ前を 2 つ）・文字 9・終わり（0xff）
@@ -33,4 +33,12 @@ if(fs.existsSync(x)) t("CHD から読んだ MODEL.BIN が iso.py で取り出し
       for(let i=0;i<3;i++){ A.push([mp[i][0],mp[i][1],mp[i][2],-mq[i][0],-mq[i][1],-mq[i][2]]); b.push(Q.t[i]-P.t[i]) } } }
     const x=solve(A,b); let e=0; for(let r=0;r<A.length;r++){ const d=A[r].reduce((s,v,i)=>s+v*x[i],0)-b[r]; e+=d*d } worst=Math.max(worst,Math.sqrt(e/A.length)) }
   t(`膝・足首・首・肩・ひじのずれ（二乗平均）最大 ${worst.toFixed(2)}（すねの長さ 120 ほどに対して）`,worst<1.5) }
+// 選手の表: 鹿島（1）の小笠原は背番号 8、ジュビロ（9）の中山は 9、マンチェスター（34）のベッカム（7 人目）は 7。各チームの 1 人目はキーパー
+{ const sel=await files.get("SELECT.BIN")(), exe=await files.get("SLPM_868.35")(), P=(t,i)=>g("wePlayer")(sel,exe,t,i), T=g("weTeamNames")(sel);
+  t(`チーム名 43（${T[1]}・${T[9]}・${T[34]}）`,T.length===43&&T[1]==="鹿島アントラーズ"&&T[34]==="マンチェスター");
+  t(`小笠原 ${P(1,8).num}・中山 ${P(9,9).num}・ベッカム ${P(34,7).num}`,P(1,8).name==="小笠原 満男"&&P(1,8).num===8&&P(9,9).num===9&&P(34,7).num===7);
+  let gk=0; for(let k=0;k<28;k++) if(P(k,0).gk) gk++; t(`各チームの 1 人目がキーパー（${gk}/28）`,gk===28);
+  // 背番号の UV: 欄 0 は元の UV と同じ（ゲームの式を 0 で計算すると TMD の値に戻る）
+  const set=g("weModelSet")(model,6), tm=g("tmdRead")(model,set[1].off), p3=tm.objs[0].prims[2], L=g("weLookPrim")(p3,1,3,{skin:1,hcol:0,s112:0,boots:0,face:0,hmap:0,cell:0});
+  t("背番号の欄 0 の UV が TMD の元の値と同じ",JSON.stringify(L.uv)===JSON.stringify(p3.uv)) }
 console.log(ok,"件 ok",ng?ng+" 件 NG":""); if(ng) process.exit(1);

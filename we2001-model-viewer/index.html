@@ -37,12 +37,13 @@ h1{font-size:20px;margin:0 0 4px}
 #info{color:var(--mut);font-size:13px;margin:6px 0 0}
 .ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
 details{margin:16px 0 0;color:var(--mut);font-size:13px}
+details.more{margin:0 0 6px;color:var(--fg);font-size:14px}details.more[hidden]{display:none}
 </style>
 </head>
 <body>
 <main>
 <h1>ウイニングイレブン2001 モデルビューア <span id="ver-h" class="ver"></span></h1>
-<p class="sub">PS1『Jリーグ実況ウイニングイレブン2001』のディスクのイメージから、選手を組んで見ます。ユニフォーム・髪型・動きを選べます。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
+<p class="sub">PS1『Jリーグ実況ウイニングイレブン2001』のディスクのイメージから、選手を組んで見ます。チーム・選手・動きを選べます。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
 <div class="step" id="step-disc"><b>ディスクのイメージ</b><small>.chd・.bin（2352、1 つ目のトラック）・.iso。ページにドロップしても読み込めます</small>
   <label class="btn">選ぶ<input type="file" id="f-disc" accept=".chd,.bin,.iso,.img"></label><span class="name" id="n-disc">まだ</span></div>
 <div id="status"></div>
@@ -50,13 +51,21 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <div class="empty" id="empty">ディスクのイメージを選ぶと、ここに選手が出ます</div>
   <div class="hint" id="hint" hidden>ドラッグで回す・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
 <div class="ctrl" id="pick" hidden>
-  <label>ユニフォーム <select id="s-kit" aria-label="ユニフォーム"></select></label>
+  <label>チーム <select id="s-team" aria-label="チーム"></select></label>
+  <label>選手 <select id="s-player" aria-label="選手"></select></label>
   <label>着 <select id="s-alt" aria-label="何着目"><option value="0">1 着目</option><option value="1">2 着目</option></select></label>
   <label>体 <select id="s-set" aria-label="体の組"></select></label>
-  <label>髪型 <select id="s-hair" aria-label="髪型"></select></label>
-  <label><input type="checkbox" id="c-beard"> ひげ</label>
   <button id="b-rand">🎲 おまかせ</button>
 </div>
+<details class="more" id="detail" hidden><summary>見た目を手で変える</summary><div class="ctrl">
+  <label>髪型 <select id="s-hair" aria-label="髪型"></select></label>
+  <label title="顔の模様。5 以上はひげのある頭になる（ゲームと同じ）">顔 <select id="s-face" aria-label="顔"></select></label>
+  <label>肌 <select id="s-skin" aria-label="肌"></select></label>
+  <label>髪の色 <select id="s-hcol" aria-label="髪の色"></select></label>
+  <label title="色の表の 9 番目より後ろを選ぶ値。ひげや眉の色かもしれない（確かめていない）">色 2 <select id="s-s112" aria-label="色 2"></select></label>
+  <label>スパイク <select id="s-boots" aria-label="スパイク"></select></label>
+  <label>背番号 <input id="n-num" type="number" min="0" max="99" style="width:4.5em" aria-label="背番号"></label>
+</div></details>
 <div class="ctrl" id="motion" hidden>
   <span class="grp">動き <button id="m-prev" aria-label="前の動き">◀</button> <input id="m-num" type="number" min="0" max="203" value="0" style="width:5em" aria-label="動きの番号"> <button id="m-next" aria-label="次の動き">▶</button></span>
   <span class="grp">コマ <input id="m-frame" type="range" min="0" max="0" value="0" style="width:12em;vertical-align:middle" aria-label="コマ"> <span id="m-fn">-</span></span>
@@ -67,7 +76,8 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>モデルは MODEL.BIN（PS1 標準の TMD が 104 個）、動きは ANIME.BIN、顔・肌・髪の絵は DAT2D.BIN、ユニフォームの絵は TEX_00〜45.BIN から読みます。どれも読み方は、ゲームのプログラム（SLPM_868.35）で選手を描く処理・動きを読む処理・絵の圧縮をほどく処理を読んで、そのとおりにしています。</p>
-<p>まだのこと: どのユニフォームがどのチームか・背番号（背中の四角は番号を貼る場所と思われます）・選手ごとの肌や髪の色・光の当たり方（ここでは仮の値）・動きの速さ（ここでは 1 秒 30 コマとしています。確かめていません）。</p>
+<p>選手は、チーム名・選手名・背番号の表（SELECT.BIN と本体）と、選手ごとの見た目の値（髪型・顔・肌・髪の色・スパイク）から、ゲームが描くときと同じように色の表の位置と顔・背番号の UV を書き換えて描きます。背番号の絵も、ゲームと同じく小さな数字の絵をシャツの空いた所に組み立てます。</p>
+<p>まだのこと: チームとユニフォームの対応は、チームの並び順と TEX の番号が同じとしています（色を見比べた範囲では合います。ゲームの対応表は見つけていません）。名前はゲーム独自の文字があるので、崩れて出るものがあります。キーパーかどうかは選手の値の 1 つから推測しています。光の当たり方は仮の値、動きの速さは 1 秒 30 コマとしています（確かめていません）。</p>
 <p id="ver"></p></details>
 </main>
 <script>
@@ -262,7 +272,7 @@ async function discOpen(file){
   return files;
 }
 // PS1 の標準のモデル形式 TMD を読む（MODEL.BIN の中身はこれが並んだもの）。
-// tmdRead(u8, off) → {objs:[{verts:[[x,y,z]], prims:[{v:[番号], uv:[[u,v]]|null, cba, tsb, col, mode, flag}], bad}]}
+// tmdRead(u8, off) → {objs:[{verts:[[x,y,z]], prims:[{v:[番号], uv:[[u,v]]|null, uvRaw（TMD の並びのまま）, quad, cba, tsb, col, mode, flag}], bad}]}
 // 1 つの部品の並び（ilen）と、モード・フラグから計算した長さが合わないものは bad に数える（読み方の確かめ）
 function tmdRead(u8,off){
   const dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
@@ -290,7 +300,7 @@ function tmdRead(u8,off){
         if(len!==ilen) bad++;
         // 四角は頂点 0,1,2,3 が Z の字の並び（0-1-3-2 で一周）
         const v=quad?[idx[0],idx[1],idx[3],idx[2]]:idx, uvs=uv&&(quad?[uv[0],uv[1],uv[3],uv[2]]:uv);
-        prims.push({v,uv:uvs,cba,tsb,col,mode,flag});
+        prims.push({v,uv:uvs,uvRaw:uv,quad,cba,tsb,col,mode,flag});
       } else bad++;
       p=d+ilen*4;
     }
@@ -409,6 +419,74 @@ function weTexel(vram,tsb,cba,u,v){
   if(!c) return null;
   return [(c&31)<<3,(c>>5&31)<<3,(c>>10&31)<<3];
 }
+// 背番号を VRAM に組み立てる（本体の 0x8001f204。1P 側）。cell＝欄（0〜9。並びの 2〜11 番目の選手。10＝並びの 1 番目＝キーパーの欄 (626,360)）、num＝背番号
+//  欄は (576＋(cell%5)×10, 336＋⌊cell/5⌋×24) の 10×24（16 ビット単位。8 ビットの絵で 20×24 点）。まずシャツの無地 (598,262)（キーパーの欄は (630,262)）を写し、
+//  数字の絵 (608＋3×数字, 324) の 3×12 を、1 桁なら欄の (+3,+7)、2 桁なら (+1,+7) と (+5,+7) へ、1 点右にずらして色 0 を抜いて重ねる
+function weComposeNumber(vram,cell,num){
+  if(num===100) num=0; else if(num>100) num=14;
+  const cx=cell===10?626:576+(cell%5)*10, cy=cell===10?360:336+Math.floor(cell/5)*24;
+  const bx=cell===10?630:598;
+  for(let y=0;y<24;y++) for(let x=0;x<10;x++) vram[(cy+y)*1024+cx+x]=vram[(262+y)*1024+bx+x];
+  const glyph=(d,dx)=>{ const sx=608+3*d, tx=cx+dx, ty=cy+7;
+    for(let y=0;y<12;y++){ const row=[]; for(let x=0;x<3;x++){ const w=vram[(324+y)*1024+sx+x]; row.push(w&255,w>>8) }
+      const dst=[]; for(let x=0;x<4;x++){ const w=vram[(ty+y)*1024+tx+x]; dst.push(w&255,w>>8) }
+      for(let i=0;i<6;i++) if(row[i]) dst[i+1]=row[i];
+      for(let x=0;x<4;x++) vram[(ty+y)*1024+tx+x]=dst[x*2]|dst[x*2+1]<<8 } };
+  if(num<10) glyph(num,3); else { glyph(Math.floor(num/10),1); glyph(num%10,5) }
+}
+// 選手ごとの見た目（肌・髪の色・髪型・ひげ・顔・スパイク・背番号）。読み方は本体と SELECT.BIN から。
+//  - チーム名: SELECT.BIN（0x8007a558 に読む）の 0x3b1e0 からの番地の表（43 チーム）
+//  - 選手の表（12 バイト＝3 語 A,B,C）: J の 28 チームは SELECT.BIN の 0x26e28＋(t×26＋i)×12、34〜40 は 0x29048＋((t−34)×26＋i)×12（SELECT の 0x80087060）
+//    試合の前に本体の 0x80079948 へ写す（SELECT の 0x80081e48）
+//  - 名前: J は SELECT.BIN の 0x439a0 からの番地の表（728 人）、34〜40 は本体の 0x80052bc8＋t×260＋i×10（10 バイト）
+//  - 値の意味（本体の 0x80011444 と 0x8001b640）: 髪型＝本体 0x800516e8 の表[(A>>4)&31]（0〜15）、髪の色＝(A>>9)&15、
+//    顔＝(A>>13)&15（5 以上でひげのある頭）、もう 1 つの色＝(A>>17)&7、肌＝B&3、スパイク＝(C>>27)&7。
+//    キーパーかどうかは A&15＝0 で見ている（推測。各チームの GK とされる選手が 0 だった）
+//  - 背番号: 本体の 0x80055e5c＋t×26＋i の値＋1（SELECT の 0x80087f7c が 0x800611a0 へ写し、0x8002fcb0 で 0x8001f204 に渡す）。0xff は空き
+const WE_SELECT_BASE=0x8007a558, WE_EXE_BASE=0x8000f800;
+function weSjis(u8,o){ let e=o; while(e<u8.length&&u8[e]) e++; try{ return new TextDecoder("shift_jis").decode(u8.subarray(o,e)).normalize("NFKC") }catch(_){ return "" } }
+function weTeamNames(sel){
+  const out=[]; for(let i=0;i<43;i++) out.push(weSjis(sel,weU32(sel,0x3b1e0+i*4)-WE_SELECT_BASE)); return out;
+}
+function weHasRoster(t){ return t<28||(t>=34&&t<=40) }
+function wePlayer(sel,exe,t,i){
+  const o=t<28?0x26e28+(t*26+i)*12:0x29048+((t-34)*26+i)*12, A=weU32(sel,o), B=weU32(sel,o+4), C=weU32(sel,o+8);
+  const name=t<28?weSjis(sel,weU32(sel,0x439a0+(t*26+i)*4)-WE_SELECT_BASE):weSjis(exe.subarray(0,exe.length),0x80052bc8+t*260+i*10-WE_EXE_BASE).slice(0,10);
+  const hmap=exe[0x800516e8-WE_EXE_BASE+((A>>4)&31)], face=(A>>13)&15;
+  const nb=exe[0x80055e5c-WE_EXE_BASE+t*26+i];
+  return {name, num:nb===255?0:nb+1, gk:(A&15)===0, look:{hmap, hcol:(A>>9)&15, face, beard:face>=5, s112:(A>>17)&7, skin:B&3, boots:(C>>>27)&7}, raw:[A,B,C]};
+}
+// 面 1 つの UV・CBA・TSB を、選手の見た目に合わせて書き換えた値で返す。part＝組の中の番号（0 頭・1 胴）、k＝部品の中の面の番号（1 から）
+// look が null なら書き換えない。書き換えは本体と同じく TMD の並び（Z の字）の UV に対して行い、最後に描く並び（0-1-3-2）に直す
+function weLookPrim(p,part,k,look){
+  if(!look||!p.uvRaw) return {uv:p.uv,cba:p.cba,tsb:p.tsb};
+  const uv=p.uvRaw.map(a=>a.slice()); let cba=p.cba, tsb=p.tsb;
+  const cls=cba&0xffc0, low=cba&15;
+  // 色の表の位置（0x800125b4〜0x80012674）
+  if(cls>=0x7800&&cls<=0x78c0){ const t4=0x7800|look.skin<<6; cba=low===0?t4:low<9?t4|(look.hcol+1):t4|(look.s112+9) }
+  else if(cls===0x7900){ if(low<8) cba=0x7900|look.boots }
+  else if(cls===0x7980||cls===0x79c0){ cba=0x7980; tsb=153 }     // 1P 側（2P 側は 0x79c0・154）
+  else if(cls===0x7a00||cls===0x7a40){ cba=0x7a00; tsb=153 }
+  const V=(j,v)=>{ if(uv[j]) uv[j][1]=v&255 }, U=(j,u)=>{ if(uv[j]) uv[j][0]=u&255 };
+  if(part===0){   // 顔と髪の模様（0x800112a4）
+    const lo=uv[0][1]&15, u0=uv[0][0], F=look.face*16, H=look.hmap*16;
+    if(lo>=14){ if(look.hmap<9){
+        const T2=[1,1,0,0,0,0,0,0,1,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1];
+        if(u0>=176&&u0<216&&T2[u0-176]){ V(0,H+15); V(1,H+1); V(2,H+15); V(3,H+1) }
+        if(u0===212||u0===200){ V(0,H+15); V(1,H+5); V(2,H+15); V(3,H+5) } } }
+    else if(lo===0){ const c=u0-160;
+      if(c===0||c===4){ V(0,F); V(1,F+16); V(2,F); V(3,F+12) }
+      else if(c===14||c===15){ V(0,F); V(1,F+12); V(2,F); V(3,F+16) }
+      else if(c===7){ V(0,F); V(1,F+16); V(2,F); V(3,F+16) } }
+    else if(lo===12){ if(u0>=171&&u0<=173){ V(0,F+12); V(1,F+16); V(2,F); V(3,F) } }
+  }
+  if(part===1&&look.cell!=null&&(k===3||k===15)){   // 背番号の欄（0x80011184。本体は並びの 2〜11 番目の選手に欄 0〜9 を指す。番号の絵は weComposeNumber が欄に描く）
+    const n=look.cell, q=Math.floor(n/5), r=n%5, a0=r*20, b=q*24;
+    if(k===3){ U(0,a0+10); V(0,b+103); U(1,a0+2); V(1,b+103); U(2,a0+10); V(2,b+86); U(3,a0); V(3,b+82) }
+    else { U(0,a0+10); V(0,b+86); U(1,a0+19); V(1,b+82); U(2,a0+10); V(2,b+103); U(3,a0+17); V(3,b+103) }
+  }
+  return {uv:p.quad?[uv[0],uv[1],uv[3],uv[2]]:uv, cba, tsb};
+}
 // ページの描画（WebGL1）。テクスチャは「(tsb,cba) の組ごとに 256×256 にほどいた絵」を 1 枚の大きな絵（4×4 欄）に並べて使う。
 // 三角形は [x,y,z, u,v, 明るさ] を CPU で作って毎回送る（選手 1 人で 600 面ほどなので軽い）
 const WE_ATLAS=1024, WE_TILE=256;
@@ -419,11 +497,13 @@ function weAtlas(vram,combos){
     for(let v=0;v<256;v++) for(let u=0;u<256;u++){ const c=weTexel(vram,tsb,cba,u,v), i=((oy+v)*WE_ATLAS+ox+u)*4; if(c){ px[i]=c[0]; px[i+1]=c[1]; px[i+2]=c[2]; px[i+3]=255 } } });
   return {px,slot};
 }
-// 組んだ部品（wePose の返り値）から三角形の列を作る。tmds は 位置→tmdRead の結果。light は体の座標での光の向き
-function weTris(tmds,parts,slot,light){
+// 組んだ部品（wePose の返り値）から三角形の列を作る。tmds は 位置→tmdRead の結果。light は体の座標での光の向き。
+// look は選手の見た目（look.js の weLookPrim で面ごとに UV・色の表の位置を書き換える。null なら書き換えない）
+function weTris(tmds,parts,slot,light,look){
   const out=[], used=new Set();
-  for(const pt of parts){ const t=tmds.get(pt.off); if(!t) continue;
-    for(const o of t.objs) for(const p of o.prims){ if(!p.uv) continue;
+  for(const pt of parts){ const t=tmds.get(pt.off); if(!t) continue; let pk=0;
+    for(const o of t.objs) for(const p0 of o.prims){ pk++; if(!p0.uv) continue;
+      const L=weLookPrim(p0,pt.part,pk,look), p={...p0,uv:L.uv,cba:L.cba,tsb:L.tsb};
       const k=p.tsb+","+p.cba; used.add(k); const n=slot?slot.get(k):undefined; if(slot&&n===undefined) continue;
       const P=p.v.map(i=>weXform(pt.m,pt.t,o.verts[i]||[0,0,0]));
       const e1=P[1].map((x,i)=>x-P[0][i]), e2=P[2].map((x,i)=>x-P[0][i]);
@@ -480,7 +560,7 @@ function weViewMatrix(v,aspect){
   return M;
 }
 // 画面の組み立て
-const VERSION="0.1.0";
+const VERSION="0.2.0";
 const $=id=>document.getElementById(id);
 // 体の組（MODEL.BIN の先頭の 18 個。0,1 は球）。名前は絵で見た印象（推測）。2・3・16・17 は服の色の表がディスクのどこから来るかまだ分からず、服が抜ける
 const WE_SETS=[[6,"フィールド・半袖"],[8,"フィールド・長袖"],[12,"フィールド・半袖 2"],[14,"フィールド・長袖 2"],[7,"フィールド 3"],[9,"フィールド 4"],[13,"フィールド 5"],[15,"フィールド 6"],
@@ -488,7 +568,7 @@ const WE_SETS=[[6,"フィールド・半袖"],[8,"フィールド・長袖"],[12
 // TEX_xx の札のうち、1 着目・2 着目に使うもの（同じ VRAM の場所へ置く札が 2 組ある。どちらがホームかは確かめていない）
 const WE_KIT_REC=[new Set([0,1,4,7,8,9,11]),new Set([2,3,5,7,8,10,11])];
 const WE_FPS=30;   // 推測
-const APP={files:null, model:null, anime:null, dat2d:null, texFiles:new Map(), tmds:new Map(), gl:null, atlasKey:"", slot:null,
+const APP={files:null, model:null, anime:null, dat2d:null, sel:null, exe:null, teams:[], texFiles:new Map(), tmds:new Map(), gl:null, atlasKey:"", slot:null,
   view:{yaw:0,pitch:0.08,dist:1400,target:[0,0,0],fov:30}, base:null, playing:false, last:0};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
 async function readFile(name){ const f=APP.files.get(name); if(!f) throw new Error(name+" がディスクに無い（ウイニングイレブン2001 のディスクではない？）"); return f() }
@@ -499,22 +579,44 @@ async function openDisc(file){
     APP.files=await discOpen(file);
     status("モデルと動きを読んでいます…");
     APP.model=await readFile("BIN/MODEL.BIN"); APP.anime=await readFile("BIN/ANIME.BIN"); APP.dat2d=await readFile("BIN/DAT2D.BIN");
+    APP.sel=await readFile("SELECT.BIN"); APP.exe=await readFile("SLPM_868.35");
     APP.tmds.clear(); APP.texFiles.clear(); APP.atlasKey="";
-    const kits=[...APP.files.keys()].filter(n=>/^BIN\/TEX_\d+\.BIN$/.test(n)).sort();
-    $("s-kit").innerHTML=kits.map(n=>`<option value="${n}">${n.slice(4,-4).replace("TEX_","")}</option>`).join("");
+    // チーム: 名前の表（43）と TEX_00〜45。名前の無い TEX は番号で
+    const kits=[...APP.files.keys()].filter(n=>/^BIN\/TEX_\d+\.BIN$/.test(n)).sort(); APP.teams=weTeamNames(APP.sel);
+    $("s-team").innerHTML=kits.map((n,t)=>`<option value="${t}">${APP.teams[t]||"ユニフォーム "+n.slice(8,-4)}</option>`).join("");
     $("s-set").innerHTML=WE_SETS.map(([k,n])=>`<option value="${k}">${n}</option>`).join("");
-    $("s-hair").innerHTML=Array.from({length:32},(_,i)=>`<option value="${i}">${i}</option>`).join("");
-    $("step-disc").classList.add("done"); $("pick").hidden=false; $("motion").hidden=false; $("empty").hidden=true; $("hint").hidden=false;
+    const opts=(n,f)=>Array.from({length:n},(_,i)=>`<option value="${i}">${f?f(i):i}</option>`).join("");
+    $("s-hair").innerHTML=opts(16); $("s-face").innerHTML=opts(16,i=>i>=5?i+"（ひげ）":i); $("s-skin").innerHTML=opts(4); $("s-hcol").innerHTML=opts(16); $("s-s112").innerHTML=opts(8); $("s-boots").innerHTML=opts(8);
+    $("step-disc").classList.add("done"); $("pick").hidden=false; $("detail").hidden=false; $("motion").hidden=false; $("empty").hidden=true; $("hint").hidden=false;
+    $("s-team").value="1"; listPlayers(); $("s-player").value="8"; pickPlayer();
     APP.base=null; await refresh(true); status("");
   }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
 }
-function cur(){ return {kit:$("s-kit").value, alt:+$("s-alt").value, set:+$("s-set").value, head:+$("s-hair").value*2+($("c-beard").checked?1:0),
-  anim:Math.max(0,Math.min(203,+$("m-num").value|0)), frame:+$("m-frame").value} }
+// 選手の一覧（選手の表があるチームだけ）。値は 選手の番号、"" は手で選ぶ
+function listPlayers(){
+  const t=+$("s-team").value, sp=$("s-player"); let h='<option value="">（手で選ぶ）</option>';
+  if(weHasRoster(t)) for(let i=0;i<26;i++){ const p=wePlayer(APP.sel,APP.exe,t,i); if(p.name) h+=`<option value="${i}">${p.num||"-"} ${p.name}</option>` }
+  sp.innerHTML=h; sp.disabled=!weHasRoster(t);
+}
+// 選手を選んだら、その選手の値を細かい欄に入れる（体はキーパーなら 4、ほかは 6）
+function pickPlayer(){
+  const t=+$("s-team").value, i=$("s-player").value; if(i===""||!weHasRoster(t)) return;
+  const p=wePlayer(APP.sel,APP.exe,t,+i), L=p.look;
+  $("s-hair").value=L.hmap; $("s-face").value=L.face; $("s-skin").value=L.skin; $("s-hcol").value=L.hcol; $("s-s112").value=L.s112; $("s-boots").value=L.boots; $("n-num").value=p.num;
+  $("s-set").value=p.gk?4:6;
+}
+function cur(){
+  const set=+$("s-set").value, face=+$("s-face").value, hmap=+$("s-hair").value, gk=[4,5,10,11].includes(set);
+  const look={hmap, face, beard:face>=5, skin:+$("s-skin").value, hcol:+$("s-hcol").value, s112:+$("s-s112").value, boots:+$("s-boots").value, cell:gk?null:0};
+  return {team:+$("s-team").value, kit:[...APP.files.keys()].filter(n=>/^BIN\/TEX_\d+\.BIN$/.test(n)).sort()[+$("s-team").value], alt:+$("s-alt").value, set, head:hmap*2+(look.beard?1:0),
+    look, num:Math.max(0,Math.min(99,+$("n-num").value|0)), anim:Math.max(0,Math.min(203,+$("m-num").value|0)), frame:+$("m-frame").value};
+}
 async function loadAtlas(c,used){
-  const key=c.kit+"|"+c.alt+"|"+used.join(";"); if(key===APP.atlasKey) return;
+  const key=c.kit+"|"+c.alt+"|"+c.num+"|"+c.look.cell+"|"+used.join(";"); if(key===APP.atlasKey) return;
   if(!APP.texFiles.has(c.kit)) APP.texFiles.set(c.kit,await readFile(c.kit));
   const vram=weVramNew(); weTexLoadRun(vram,APP.dat2d,WE_TEX_BASE,0); weTexLoadRun(vram,APP.dat2d,WE_TEX_BASE,1);
   weTexLoad(vram,APP.texFiles.get(c.kit),WE_TEX_BASE,WE_KIT_REC[c.alt]);
+  if(c.num) weComposeNumber(vram,c.look.cell??10,c.num);   // 背番号（キーパーの体は欄 10）
   const a=weAtlas(vram,used); APP.gl.setAtlas(a.px); APP.slot=a.slot; APP.atlasKey=key;
 }
 // 動きの番号が変わったらコマの数を数え直す
@@ -527,9 +629,9 @@ async function refresh(resetView){
   const c=cur(); if(APP.nFrames==null||resetView) setAnim();
   if(!APP.nFrames){ $("m-fn").textContent="この番号にはコマが無い"; return }
   const parts=wePose(APP.model,APP.anime,c.set,c.head,c.anim,+$("m-frame").value), tm=new Map(parts.map(p=>[p.off,tmdAt(p.off)]));
-  const light=[0.35,-0.6,0.7], first=weTris(tm,parts,null,light);
+  const light=[0.35,-0.6,0.7], first=weTris(tm,parts,null,light,c.look);
   await loadAtlas(c,first.used);
-  const {tris}=weTris(tm,parts,APP.slot,light); APP.gl.setTris(tris);
+  const {tris}=weTris(tm,parts,APP.slot,light,c.look); APP.gl.setTris(tris);
   if(!APP.base||resetView){ // 立ち姿（動き 0 のコマ 0）の大きさで、見る所と距離を決める
     const p0=wePose(APP.model,APP.anime,c.set,c.head,0,0), b=weTris(new Map(p0.map(p=>[p.off,tmdAt(p.off)])),p0,null,light).tris, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
     for(let i=0;i<b.length;i+=6) for(let k=0;k<3;k++){ mn[k]=Math.min(mn[k],b[i+k]); mx[k]=Math.max(mx[k],b[i+k]) }
@@ -537,7 +639,7 @@ async function refresh(resetView){
     if(resetView) resetCam();
   }
   $("m-fn").textContent=`${+$("m-frame").value+1} / ${APP.nFrames}`;
-  $("info").textContent=`ユニフォーム ${c.kit.slice(4,-4)}（${c.alt+1} 着目）・体の組 ${c.set}・頭 ${c.head}・動き ${c.anim}・面 ${tris.length/18|0}`;
+  $("info").textContent=`${$("s-team").selectedOptions[0]?.textContent||""}（${c.kit.slice(4,-4)}・${c.alt+1} 着目）・体の組 ${c.set}・頭 ${c.head}・背番号 ${c.num||"なし"}・動き ${c.anim}・面 ${tris.length/18|0}`;
   draw();
 }
 function resetCam(){ Object.assign(APP.view,{yaw:0,pitch:0.08,target:APP.base.target.slice(),dist:APP.base.h*2.6}); draw() }
@@ -555,18 +657,21 @@ function stepAnim(d){ const e=$("m-num"); e.value=(Math.max(0,Math.min(203,+e.va
 function savePng(){
   APP.gl.draw(APP.view,$("c-clear").checked?[0,0,0,0]:[0.17,0.165,0.15,1]);
   $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); const c=cur();
-    a.download=`we2001_${c.kit.slice(8,-4)}_${c.alt+1}_${c.set}_${c.head}_${c.anim}_${c.frame+1}.png`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); draw() },"image/png");
+    a.download=`we2001_${c.kit.slice(8,-4)}_${c.alt+1}_${c.num}_${c.head}_${c.anim}_${c.frame+1}.png`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); draw() },"image/png");
 }
+// おまかせ: 選手の表のあるチームから 1 人と、1 着目か 2 着目
 function randomPick(){
-  const r=n=>Math.floor(Math.random()*n), sk=$("s-kit");
-  sk.selectedIndex=r(sk.options.length); $("s-alt").value=r(2); $("s-set").value=[6,8,12,14][r(4)]; $("s-hair").value=r(32); $("c-beard").checked=Math.random()<.3;
-  refresh(false);
+  const r=n=>Math.floor(Math.random()*n), teams=[...Array(28).keys(),34,35,36,37,38,39,40];
+  $("s-team").value=teams[r(teams.length)]; listPlayers(); const sp=$("s-player"); sp.selectedIndex=1+r(sp.options.length-1); $("s-alt").value=r(2);
+  pickPlayer(); refresh(false);
 }
 function init(){
   $("ver-h").textContent="v"+VERSION; $("ver").textContent="版 "+VERSION;
   try{ APP.gl=weGL($("cv")) }catch(e){ status(e.message,true) }
   $("f-disc").onchange=e=>{ const f=e.target.files[0]; if(f) openDisc(f) };
-  for(const id of ["s-kit","s-alt","s-set","s-hair","c-beard"]) $(id).onchange=()=>refresh(false);
+  $("s-team").onchange=()=>{ const keep=$("s-player").value; listPlayers(); if(keep!==""&&[...$("s-player").options].some(o=>o.value===keep)) $("s-player").value=keep; pickPlayer(); refresh(false) };
+  $("s-player").onchange=()=>{ pickPlayer(); refresh(false) };
+  for(const id of ["s-alt","s-set","s-hair","s-face","s-skin","s-hcol","s-s112","s-boots","n-num"]) $(id).onchange=()=>{ if(!["s-alt","s-set"].includes(id)) $("s-player").value=""; refresh(false) };
   $("m-num").onchange=()=>{ $("m-frame").value=0; setAnim(); refresh(false) };
   $("m-prev").onclick=()=>stepAnim(-1); $("m-next").onclick=()=>stepAnim(1);
   $("m-frame").oninput=()=>refresh(false);

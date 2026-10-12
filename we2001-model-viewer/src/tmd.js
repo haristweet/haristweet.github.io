@@ -1,5 +1,5 @@
 // PS1 の標準のモデル形式 TMD を読む（MODEL.BIN の中身はこれが並んだもの）。
-// tmdRead(u8, off) → {objs:[{verts:[[x,y,z]], prims:[{v:[番号], uv:[[u,v]]|null, cba, tsb, col, mode, flag}], bad}]}
+// tmdRead(u8, off) → {objs:[{verts:[[x,y,z]], prims:[{v:[番号], uv:[[u,v]]|null, uvRaw（TMD の並びのまま）, quad, cba, tsb, col, mode, flag}], bad}]}
 // 1 つの部品の並び（ilen）と、モード・フラグから計算した長さが合わないものは bad に数える（読み方の確かめ）
 function tmdRead(u8,off){
   const dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
@@ -27,7 +27,7 @@ function tmdRead(u8,off){
         if(len!==ilen) bad++;
         // 四角は頂点 0,1,2,3 が Z の字の並び（0-1-3-2 で一周）
         const v=quad?[idx[0],idx[1],idx[3],idx[2]]:idx, uvs=uv&&(quad?[uv[0],uv[1],uv[3],uv[2]]:uv);
-        prims.push({v,uv:uvs,cba,tsb,col,mode,flag});
+        prims.push({v,uv:uvs,uvRaw:uv,quad,cba,tsb,col,mode,flag});
       } else bad++;
       p=d+ilen*4;
     }

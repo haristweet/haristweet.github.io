@@ -1,5 +1,5 @@
 // Playwright でページをたどる（教訓5: 何も読み込んでいない状態から）。PC とスマホの幅で撮る（out/b_*.png）
-//   何も無し → ディスク（CHD）→ ユニフォーム・2 着目・髪型・ひげを変える → 動き 3 を再生 → 回す → PNG
+//   何も無し → ディスク（CHD）→ チーム・選手・2 着目を変える → 手で顔を変える → おまかせ → 動き 3 を再生 → 回す → PNG
 import {chromium} from "/opt/node22/lib/node_modules/playwright/index.mjs";
 import fs from "fs"; import path from "path";
 const here=path.dirname(new URL(import.meta.url).pathname);
@@ -14,10 +14,14 @@ for(const [name,vp] of [["pc",{width:1100,height:900}],["phone",{width:390,heigh
   if(!disc){ console.log("ディスクが無いので、ここまで"); await p.close(); continue }
   let t0=Date.now(); await p.setInputFiles("#f-disc",disc);
   await p.waitForFunction(()=>/面/.test(document.getElementById("info").textContent)||document.getElementById("status").className==="err",null,{timeout:300000});
-  console.log(name,"ディスク（"+(Date.now()-t0)+"ms）:",JSON.stringify(await p.textContent("#info")),JSON.stringify(await p.textContent("#status")),"ユニフォーム",await p.$$eval("#s-kit option",o=>o.length));
+  console.log(name,"ディスク（"+(Date.now()-t0)+"ms）:",JSON.stringify(await p.textContent("#info")),JSON.stringify(await p.textContent("#status")),"チーム",await p.$$eval("#s-team option",o=>o.length),"選手",await p.$$eval("#s-player option",o=>o.length));
   await p.waitForTimeout(300); await p.screenshot({path:`out/b_${name}_1.png`,fullPage:true});
-  await p.selectOption("#s-kit",{index:28}); await p.selectOption("#s-alt","1"); await p.selectOption("#s-hair","16"); await p.check("#c-beard");
-  await p.waitForTimeout(300); console.log(name,"変えた:",JSON.stringify(await p.textContent("#info"))); await p.locator("#viewer").screenshot({path:`out/b_${name}_2.png`});
+  await p.selectOption("#s-team","9"); await p.selectOption("#s-player","9"); await p.selectOption("#s-alt","1");
+  await p.waitForTimeout(300); console.log(name,"磐田・中山・2着目:",JSON.stringify(await p.textContent("#info")),"背番号",await p.inputValue("#n-num")); await p.locator("#viewer").screenshot({path:`out/b_${name}_2.png`});
+  await p.click("#detail summary"); await p.selectOption("#s-face","6"); await p.waitForTimeout(200); console.log(name,"顔 6:",JSON.stringify(await p.textContent("#info")),"選手の欄",JSON.stringify(await p.inputValue("#s-player")));
+  await p.click("#b-rand"); await p.waitForTimeout(300); console.log(name,"おまかせ:",JSON.stringify(await p.textContent("#info"))); await p.locator("#viewer").screenshot({path:`out/b_${name}_r.png`});
+  // 背中から（ドラッグで半周）
+  { const bb=await p.locator("#cv").boundingBox(); await p.mouse.move(bb.x+20,bb.y+bb.height/2); await p.mouse.down(); await p.mouse.move(bb.x+20+314,bb.y+bb.height/2,{steps:6}); await p.mouse.up(); await p.waitForTimeout(200); await p.locator("#viewer").screenshot({path:`out/b_${name}_back.png`}); await p.dblclick("#cv") }
   await p.fill("#m-num","3"); await p.dispatchEvent("#m-num","change"); await p.click("#m-play"); await p.waitForTimeout(600); const f1=await p.textContent("#m-fn"); await p.waitForTimeout(400); const f2=await p.textContent("#m-fn"); await p.click("#m-play");
   console.log(name,"再生:",f1,"→",f2); await p.locator("#viewer").screenshot({path:`out/b_${name}_3.png`});
   const box=await p.locator("#cv").boundingBox(); await p.mouse.move(box.x+box.width/2,box.y+box.height/2); await p.mouse.down(); await p.mouse.move(box.x+box.width/2+150,box.y+box.height/2,{steps:5}); await p.mouse.up();

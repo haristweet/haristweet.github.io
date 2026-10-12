@@ -11,5 +11,7 @@ rows=$(for i in $(seq -w 0 45); do printf "0:0:6:0:TEX_%s," $i; done | sed 's/,$
 GRID=8 C=120 node pose.mjs out/shots/kits.png 6 0 "$rows" 0
 rows=$(for i in $(seq 0 31); do printf "0:0:6:%d," $i; done | sed 's/,$//')
 GRID=8 C=120 node pose.mjs out/shots/heads.png 6 0 "$rows" 0
+# ゲームの選手の表から（チーム-選手）: 鹿島の GK・小笠原・ビスマルク、札幌のビジュ、磐田の GK・中山・高原、マンチェスターの GK・ベッカム。正面・背中・頭の寄り
+node pose.mjs out/shots/look.png 6 0 "0:0::::1-0,0:0::::1-8,0:0::::1-7,0:0::::0-4,0:0::::9-0,0:0::::9-9,0:0::::9-10,0:0::::34-0,0:0::::34-7" 0,180
 # 部品（MODEL.BIN の TMD 104 個、単色）
 node sheet.mjs disc/x/BIN/MODEL.BIN out/shots/parts.png 13 30 15 120

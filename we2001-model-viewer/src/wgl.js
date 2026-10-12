@@ -8,11 +8,13 @@ function weAtlas(vram,combos){
     for(let v=0;v<256;v++) for(let u=0;u<256;u++){ const c=weTexel(vram,tsb,cba,u,v), i=((oy+v)*WE_ATLAS+ox+u)*4; if(c){ px[i]=c[0]; px[i+1]=c[1]; px[i+2]=c[2]; px[i+3]=255 } } });
   return {px,slot};
 }
-// 組んだ部品（wePose の返り値）から三角形の列を作る。tmds は 位置→tmdRead の結果。light は体の座標での光の向き
-function weTris(tmds,parts,slot,light){
+// 組んだ部品（wePose の返り値）から三角形の列を作る。tmds は 位置→tmdRead の結果。light は体の座標での光の向き。
+// look は選手の見た目（look.js の weLookPrim で面ごとに UV・色の表の位置を書き換える。null なら書き換えない）
+function weTris(tmds,parts,slot,light,look){
   const out=[], used=new Set();
-  for(const pt of parts){ const t=tmds.get(pt.off); if(!t) continue;
-    for(const o of t.objs) for(const p of o.prims){ if(!p.uv) continue;
+  for(const pt of parts){ const t=tmds.get(pt.off); if(!t) continue; let pk=0;
+    for(const o of t.objs) for(const p0 of o.prims){ pk++; if(!p0.uv) continue;
+      const L=weLookPrim(p0,pt.part,pk,look), p={...p0,uv:L.uv,cba:L.cba,tsb:L.tsb};
       const k=p.tsb+","+p.cba; used.add(k); const n=slot?slot.get(k):undefined; if(slot&&n===undefined) continue;
       const P=p.v.map(i=>weXform(pt.m,pt.t,o.verts[i]||[0,0,0]));
       const e1=P[1].map((x,i)=>x-P[0][i]), e2=P[2].map((x,i)=>x-P[0][i]);

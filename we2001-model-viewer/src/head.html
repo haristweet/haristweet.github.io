@@ -37,12 +37,13 @@ h1{font-size:20px;margin:0 0 4px}
 #info{color:var(--mut);font-size:13px;margin:6px 0 0}
 .ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
 details{margin:16px 0 0;color:var(--mut);font-size:13px}
+details.more{margin:0 0 6px;color:var(--fg);font-size:14px}details.more[hidden]{display:none}
 </style>
 </head>
 <body>
 <main>
 <h1>ウイニングイレブン2001 モデルビューア <span id="ver-h" class="ver"></span></h1>
-<p class="sub">PS1『Jリーグ実況ウイニングイレブン2001』のディスクのイメージから、選手を組んで見ます。ユニフォーム・髪型・動きを選べます。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
+<p class="sub">PS1『Jリーグ実況ウイニングイレブン2001』のディスクのイメージから、選手を組んで見ます。チーム・選手・動きを選べます。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
 <div class="step" id="step-disc"><b>ディスクのイメージ</b><small>.chd・.bin（2352、1 つ目のトラック）・.iso。ページにドロップしても読み込めます</small>
   <label class="btn">選ぶ<input type="file" id="f-disc" accept=".chd,.bin,.iso,.img"></label><span class="name" id="n-disc">まだ</span></div>
 <div id="status"></div>
@@ -50,13 +51,21 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
   <div class="empty" id="empty">ディスクのイメージを選ぶと、ここに選手が出ます</div>
   <div class="hint" id="hint" hidden>ドラッグで回す・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
 <div class="ctrl" id="pick" hidden>
-  <label>ユニフォーム <select id="s-kit" aria-label="ユニフォーム"></select></label>
+  <label>チーム <select id="s-team" aria-label="チーム"></select></label>
+  <label>選手 <select id="s-player" aria-label="選手"></select></label>
   <label>着 <select id="s-alt" aria-label="何着目"><option value="0">1 着目</option><option value="1">2 着目</option></select></label>
   <label>体 <select id="s-set" aria-label="体の組"></select></label>
-  <label>髪型 <select id="s-hair" aria-label="髪型"></select></label>
-  <label><input type="checkbox" id="c-beard"> ひげ</label>
   <button id="b-rand">🎲 おまかせ</button>
 </div>
+<details class="more" id="detail" hidden><summary>見た目を手で変える</summary><div class="ctrl">
+  <label>髪型 <select id="s-hair" aria-label="髪型"></select></label>
+  <label title="顔の模様。5 以上はひげのある頭になる（ゲームと同じ）">顔 <select id="s-face" aria-label="顔"></select></label>
+  <label>肌 <select id="s-skin" aria-label="肌"></select></label>
+  <label>髪の色 <select id="s-hcol" aria-label="髪の色"></select></label>
+  <label title="色の表の 9 番目より後ろを選ぶ値。ひげや眉の色かもしれない（確かめていない）">色 2 <select id="s-s112" aria-label="色 2"></select></label>
+  <label>スパイク <select id="s-boots" aria-label="スパイク"></select></label>
+  <label>背番号 <input id="n-num" type="number" min="0" max="99" style="width:4.5em" aria-label="背番号"></label>
+</div></details>
 <div class="ctrl" id="motion" hidden>
   <span class="grp">動き <button id="m-prev" aria-label="前の動き">◀</button> <input id="m-num" type="number" min="0" max="203" value="0" style="width:5em" aria-label="動きの番号"> <button id="m-next" aria-label="次の動き">▶</button></span>
   <span class="grp">コマ <input id="m-frame" type="range" min="0" max="0" value="0" style="width:12em;vertical-align:middle" aria-label="コマ"> <span id="m-fn">-</span></span>
@@ -67,7 +76,8 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
 <div id="info"></div>
 <details><summary>しくみ</summary>
 <p>モデルは MODEL.BIN（PS1 標準の TMD が 104 個）、動きは ANIME.BIN、顔・肌・髪の絵は DAT2D.BIN、ユニフォームの絵は TEX_00〜45.BIN から読みます。どれも読み方は、ゲームのプログラム（SLPM_868.35）で選手を描く処理・動きを読む処理・絵の圧縮をほどく処理を読んで、そのとおりにしています。</p>
-<p>まだのこと: どのユニフォームがどのチームか・背番号（背中の四角は番号を貼る場所と思われます）・選手ごとの肌や髪の色・光の当たり方（ここでは仮の値）・動きの速さ（ここでは 1 秒 30 コマとしています。確かめていません）。</p>
+<p>選手は、チーム名・選手名・背番号の表（SELECT.BIN と本体）と、選手ごとの見た目の値（髪型・顔・肌・髪の色・スパイク）から、ゲームが描くときと同じように色の表の位置と顔・背番号の UV を書き換えて描きます。背番号の絵も、ゲームと同じく小さな数字の絵をシャツの空いた所に組み立てます。</p>
+<p>まだのこと: チームとユニフォームの対応は、チームの並び順と TEX の番号が同じとしています（色を見比べた範囲では合います。ゲームの対応表は見つけていません）。名前はゲーム独自の文字があるので、崩れて出るものがあります。キーパーかどうかは選手の値の 1 つから推測しています。光の当たり方は仮の値、動きの速さは 1 秒 30 コマとしています（確かめていません）。</p>
 <p id="ver"></p></details>
 </main>
 <script>

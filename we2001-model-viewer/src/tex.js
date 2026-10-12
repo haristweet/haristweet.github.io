@@ -55,3 +55,18 @@ function weTexel(vram,tsb,cba,u,v){
   if(!c) return null;
   return [(c&31)<<3,(c>>5&31)<<3,(c>>10&31)<<3];
 }
+// 背番号を VRAM に組み立てる（本体の 0x8001f204。1P 側）。cell＝欄（0〜9。並びの 2〜11 番目の選手。10＝並びの 1 番目＝キーパーの欄 (626,360)）、num＝背番号
+//  欄は (576＋(cell%5)×10, 336＋⌊cell/5⌋×24) の 10×24（16 ビット単位。8 ビットの絵で 20×24 点）。まずシャツの無地 (598,262)（キーパーの欄は (630,262)）を写し、
+//  数字の絵 (608＋3×数字, 324) の 3×12 を、1 桁なら欄の (+3,+7)、2 桁なら (+1,+7) と (+5,+7) へ、1 点右にずらして色 0 を抜いて重ねる
+function weComposeNumber(vram,cell,num){
+  if(num===100) num=0; else if(num>100) num=14;
+  const cx=cell===10?626:576+(cell%5)*10, cy=cell===10?360:336+Math.floor(cell/5)*24;
+  const bx=cell===10?630:598;
+  for(let y=0;y<24;y++) for(let x=0;x<10;x++) vram[(cy+y)*1024+cx+x]=vram[(262+y)*1024+bx+x];
+  const glyph=(d,dx)=>{ const sx=608+3*d, tx=cx+dx, ty=cy+7;
+    for(let y=0;y<12;y++){ const row=[]; for(let x=0;x<3;x++){ const w=vram[(324+y)*1024+sx+x]; row.push(w&255,w>>8) }
+      const dst=[]; for(let x=0;x<4;x++){ const w=vram[(ty+y)*1024+tx+x]; dst.push(w&255,w>>8) }
+      for(let i=0;i<6;i++) if(row[i]) dst[i+1]=row[i];
+      for(let x=0;x<4;x++) vram[(ty+y)*1024+tx+x]=dst[x*2]|dst[x*2+1]<<8 } };
+  if(num<10) glyph(num,3); else { glyph(Math.floor(num/10),1); glyph(num%10,5) }
+}
