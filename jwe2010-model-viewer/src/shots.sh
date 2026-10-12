@@ -5,6 +5,7 @@ set -e
 cd "$(dirname "$0")"
 mkdir -p out/shots out/prev
 [ -n "$(ls out/shots 2>/dev/null)" ] && cp out/shots/*.png out/prev/
-# 選手の表（ステートセーブ）から出した顔＋髪を、前・横・後ろ・上で（顔＝値＋922、髪＝値＋6615）。中島・富田・千葉・渡辺
+# 選手の表（data/sekiguchi.p2s）の先頭 30 人の顔＋髪を、前・横・後ろ・上で（顔＝値＋922、髪＝値＋6615）。行の数字は顔のファイルの番号
 # この台本は髪を半透明にしないので、前髪が目にかかって見える（ページの WebGL では半透明）
-C=160 node shot.mjs out/shots/sendai.png data/03377.bin+data/07188.bin data/03381.bin+data/07192.bin data/03376.bin+data/07187.bin data/03380.bin+data/07191.bin
+C=120 node shot.mjs out/shots/players1.png $(node players.mjs 0 15)
+C=120 node shot.mjs out/shots/players2.png $(node players.mjs 15 15)

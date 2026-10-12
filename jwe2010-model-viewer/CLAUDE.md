@@ -10,7 +10,9 @@ PS2『Jリーグウイニングイレブン2010 クラブチャンピオンシ�
 - v0.1.0（2026-10-12）: ディスク＋ステートセーブ（.p2s）を開く → 選手を名前で選ぶ → 顔と髪。偽のディスク（見本 60 個）と本物のセーブで、PC とスマホの幅でたどった
 - v0.1.1（2026-10-12）: 顔と髪の足す数を 922・6615 に直す（v0.1.0 は 1 つずれて、関口に中島の顔と髪が出ていた。ユーザーの指摘）。
   関口はメモリにあった #3378＋#7189 を描いて、ゲームの画面の茶色の長い髪に近いのを確認（髪の色の問題も、ずれのせいだった）
-- 次の候補: 新しい番号の見本をもらって全員を描く、チームごとの分け方（名簿の表）、ディスクの中の選手の表（混ぜてあるらしい）、目が閉じて見える（WE2012 と同じ）
+- v0.1.1 のあと: 先頭 30 人の顔と髪を全部描いて、30 組とも髪が頭に合う（絵で確認。本人に似ているかは関口だけ）。
+  ディスクの #3378 の形はメモリの 0x1C5C620 の形と同じバイト（関口の顔が画面に出ていたときに読み込まれていたもの）。梁（#4215＋#8030）の髪は灰色に出る（ゲームでの色は未確認）
+- 次の候補: チームごとの分け方（名簿の表）、ディスクの中の選手の表（混ぜてあるらしい）、目が閉じて見える（WE2012 と同じ）
 
 ## ページ（`index.html`、版は `src/app.js` の VERSION、履歴は CHANGELOG.md）
 
@@ -19,13 +21,13 @@ cd jwe2010-model-viewer/src
 sh check.sh          # 組み立て（assemble.py が head.html と fzstd.js・we12.js・p2s.js・wgl.js・app.js を連結）→ 単体試験 → ../index.html
 node mkfake.mjs      # data/ の見本から偽のディスク out/fake_0_TEXT.AFS・out/fake.iso
 node browser.mjs     # Playwright。何も無し → セーブ（data/sekiguchi.p2s）→ ディスク → 名前で探す → 次 → 番号 → PNG
-sh shots.sh          # 絵で確かめる一覧 out/shots/sendai.png・others.png（前回は out/prev/）
+sh shots.sh          # 絵で確かめる一覧 out/shots/players1.png・players2.png（表の先頭 30 人。前回は out/prev/）。組は players.mjs がセーブから出す
 ```
 - `fzstd.js` は fzstd 0.1.1（MIT、ライセンスは中に）。.p2s の中身が zstd（zip の方式 93）なので。古い PCSX2 の deflate（方式 8）も読む
 
 ## データ（リポジトリに入れない。`src/.gitignore` で data/・*.bin・*.p2s などを外す）
 
-- `src/data/`: 0_TEXT.AFS からほどいた見本 60 個（v0.1.0 の 1 つずれた番号で取ったので、新しい番号でそろうのは中島・富田・千葉・渡辺・田村・細川・三澤だけ）と `sekiguchi.p2s`（関口の選手選択の画面で取ったセーブ）
+- `src/data/`: 0_TEXT.AFS からほどいた見本 106 個（表の先頭 30 人の顔と髪が、v0.1.0 の番号と v0.1.1 の番号の両方そろう）と `sekiguchi.p2s`（関口の選手選択の画面で取ったセーブ）
 - ディスク: SYSTEM.CNF・SLPM_552.62・ROMLIST.DIR・0_TEXT.AFS（12,468 個）・J_TEXT.AFS（1,503）・OVER.AFS（43、*.ovl）・0_/J_SOUND.AFS・IOP・PSS。
   J_SOUND.AFS はユーザーの Mac で読むと Input/output error が出た
 
