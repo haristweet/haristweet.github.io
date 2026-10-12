@@ -36,7 +36,7 @@ function draw(parts,OX,OY,yawDeg,zoomHead){
     const sh=.35+.65*Math.abs((n[0]*L[0]+n[1]*L[1]+n[2]*L[2])/l), col=(PCOL[p.part]||[200,200,200]).map(c=>Math.round(c*sh));
     const Q=q.map(v=>[ox+C/2+(v[0]-cx)*s, oy+C/2+(v[1]-cy)*s, v[2]]);
     if(texName!=="none"&&p.pr.uv){ const T=p.pr.uv, pr=p.pr, smp=(u,v)=>ctx.weTexel(vram,pr.tsb,pr.cba,Math.floor(u),Math.floor(v));
-      for(let i=1;i+1<Q.length;i++) ctx.rasterTriTex(D,Q[0],Q[i],Q[i+1],T[0],T[i],T[i+1],smp,.55+.45*sh) }
+      for(let i=1;i+1<Q.length;i++) ctx.rasterTriTex(D,Q[0],Q[i],Q[i+1],T[0],T[i],T[i+1],smp,127/128) }   // ゲームは光を当てない（0x8001235c）
     else for(let i=1;i+1<Q.length;i++) ctx.rasterTri(D,Q[0],Q[i],Q[i+1],col);
   }
   for(let y=0;y<C;y++) R.px.set(D.px.subarray(y*C*3,(y+1)*C*3),((OY+y)*R.W+OX)*3);

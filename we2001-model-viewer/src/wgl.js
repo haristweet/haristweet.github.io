@@ -8,7 +8,7 @@ function weAtlas(vram,combos){
     for(let v=0;v<256;v++) for(let u=0;u<256;u++){ const c=weTexel(vram,tsb,cba,u,v), i=((oy+v)*WE_ATLAS+ox+u)*4; if(c){ px[i]=c[0]; px[i+1]=c[1]; px[i+2]=c[2]; px[i+3]=255 } } });
   return {px,slot};
 }
-// 組んだ部品（wePose の返り値）から三角形の列を作る。tmds は 位置→tmdRead の結果。light は体の座標での光の向き。
+// 組んだ部品（wePose の返り値）から三角形の列を作る。tmds は 位置→tmdRead の結果。light は使わない（ゲームが光を当てないので。呼び出しの形だけ残す）。
 // look は選手の見た目（look.js の weLookPrim で面ごとに UV・色の表の位置を書き換える。null なら書き換えない）
 function weTris(tmds,parts,slot,light,look){
   const out=[], used=new Set();
@@ -17,10 +17,8 @@ function weTris(tmds,parts,slot,light,look){
       const L=weLookPrim(p0,pt.part,pk,look), p={...p0,uv:L.uv,cba:L.cba,tsb:L.tsb};
       const k=p.tsb+","+p.cba; used.add(k); const n=slot?slot.get(k):undefined; if(slot&&n===undefined) continue;
       const P=p.v.map(i=>weXform(pt.m,pt.t,o.verts[i]||[0,0,0]));
-      const e1=P[1].map((x,i)=>x-P[0][i]), e2=P[2].map((x,i)=>x-P[0][i]);
-      const nn=[e1[1]*e2[2]-e1[2]*e2[1],e1[2]*e2[0]-e1[0]*e2[2],e1[0]*e2[1]-e1[1]*e2[0]], l=Math.hypot(...nn)||1;
-      // 光を当てない面（フラグ 1）は明るさそのまま。当てる面は向きで明るさを変える（ゲームの光の値はまだ見ていない。推測）
-      const sh=p.flag&1?1:0.62+0.5*Math.abs((nn[0]*light[0]+nn[1]*light[1]+nn[2]*light[2])/l);
+      // 明るさ: ゲームは選手に光を当てず、どの面も色 127,127,127 でテクスチャを描く（本体 0x8001235c。光の計算の命令が無い）＝ほぼそのまま
+      const sh=127/128;
       const ox=((n??0)&3)*WE_TILE, oy=((n??0)>>2)*WE_TILE;
       const V=P.map((q,j)=>[q[0],q[1],q[2],(ox+p.uv[j][0]+.5)/WE_ATLAS,(oy+p.uv[j][1]+.5)/WE_ATLAS,sh]);
       for(let i=1;i+1<V.length;i++) out.push(...V[0],...V[i],...V[i+1]);
