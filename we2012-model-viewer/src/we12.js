@@ -87,7 +87,11 @@ function weModel(u,b){
       for(let i=0;i<idx.length;i++){
         const w=idx[i], v=((w&0x7fff)>>2)-1;
         if(!(w&0x8000)&&a>=0&&c>=0&&v>=0&&v<V.length&&a<V.length&&c<V.length){
-          const f=nt++&1?[c,a,v]:[a,c,v];
+          // 向き: 帯の交互の数え方は合っていない（法線と逆向きが 4 割）。頂点の法線（VIF の 5 番地）の和と同じ側を表にする
+          let f=[a,c,v]; nt++;
+          { const [p,q,r]=f.map(j=>V[j]), e1=[q[0]-p[0],q[1]-p[1],q[2]-p[2]], e2=[r[0]-p[0],r[1]-p[1],r[2]-p[2]];
+            const n=[e1[1]*e2[2]-e1[2]*e2[1],e1[2]*e2[0]-e1[0]*e2[2],e1[0]*e2[1]-e1[1]*e2[0]], s=[0,1,2].map(i=>NV[a][i]+NV[c][i]+NV[v][i]);
+            if(n[0]*s[0]+n[1]*s[1]+n[2]*s[2]<0) f=[c,a,v] }
           tris.push({p:f.map(j=>V[j]),uv:f.map(j=>UV[j]),n:f.map(j=>NV[j]),pk:k,texi}) }
         else if(w&0x8000) nt=0;
         a=c; c=v;

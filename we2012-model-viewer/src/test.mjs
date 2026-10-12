@@ -18,6 +18,8 @@ for(const [name,f] of [["AFS",fa],["ISO",fi]]){
   for(const i of [0,200,1600,1601,1602,3600,3601,3602,5200,6403]) sig[i]=g("weSig")(await g("weFile")(blob,d,i));
   t(`並び: 顔 MMT・髪 MTT（${JSON.stringify(sig)}）`,[1600,1601,1602].every(i=>sig[i]==="MMT")&&[3600,3601,3602].every(i=>sig[i]==="MTT")&&![0,200,5200,6403].some(i=>sig[i]==="MMT"||sig[i]==="MTT"));
   const u=await g("weFile")(blob,d,1600), m=g("weModel")(u,0x20), r=g("weMeshes")(u,false), r2=g("weMeshes")(u,true);
+  { let pos=0; for(const tr of m.tris){ const [a,b,c]=tr.p, e1=b.map((v,i)=>v-a[i]), e2=c.map((v,i)=>v-a[i]), n=[e1[1]*e2[2]-e1[2]*e2[1],e1[2]*e2[0]-e1[0]*e2[2],e1[0]*e2[1]-e1[1]*e2[0]], s=[0,1,2].map(i=>tr.n[0][i]+tr.n[1][i]+tr.n[2][i]); if(n[0]*s[0]+n[1]*s[1]+n[2]*s[2]>=0) pos++ }
+    t(`三角形の向きが頂点の法線と同じ側（${pos}/${m.tris.length}）`,pos===m.tris.length) }
   t(`#1600 の 1 つ目の形 三角形 ${m.tris.length}・包み ${m.packets.length}`,m.tris.length===337&&m.packets.length===7);
   t(`weMeshes: 1 つ目だけ ${r.meshes.length}・全部 ${r2.meshes.length}、絵 ${r.texs[0].W}×${r.texs[0].H}`,r.meshes.length===1&&r2.meshes.length===2&&r.texs[0].W===128&&r.meshes[0].f.length===337*15);
   // 向き: 画面では顔が手前（+Z）。鼻（いちばん手前）は左右の真ん中あたり

@@ -27,6 +27,8 @@ function weGL(canvas){
       gl.viewport(0,0,W,H); gl.clearColor(...(bg||[0,0,0,0])); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
       gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
       gl.useProgram(pr); gl.uniformMatrix4fv(uM,false,weViewMatrix(view,W/H));
+      // 裏向きの面は描かない（向きは頂点の法線から決めてある。we12.js の weModel）。顔は前だけの面なので、後ろから見ると髪の向こうは抜ける
+      gl.frontFace(gl.CW); gl.enable(gl.CULL_FACE);
       for(const it of items){
         gl.bindBuffer(gl.ARRAY_BUFFER,it.buf);
         gl.enableVertexAttribArray(A.p); gl.vertexAttribPointer(A.p,3,gl.FLOAT,false,20,0);
