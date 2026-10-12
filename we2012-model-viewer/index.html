@@ -109,9 +109,10 @@ function weKind(u,o){
 
 // ── 絵: 頭 0x29857294。[4]=点の位置(下16)・色表の位置(上16)、[5]=幅・高さ、[6] の 2 バイト目＝形式（0x13=8bit、0x14=4bit） ──
 // 8bit の色表は PS2 の並べ替え（8 色ずつの 2・3 組目を入れ替え）。α は 0x80 が不透明
-function weTex(u,o){
+// 色表の位置が点の位置と同じ絵（[3]＝2。髪の 64×64）は色表を持たない。palFrom（同じファイルの前の絵）の色表を借りる【絵で確かめる】
+function weTex(u,o,palFrom){
   const dv=new DataView(u.buffer,u.byteOffset,u.byteLength);
-  const a=dv.getUint32(o+16,true), pix=o+(a&0xffff), pal=o+(a>>>16);
+  const a=dv.getUint32(o+16,true), pix=o+(a&0xffff), own=(a>>>16)!==(a&0xffff), pal=own||palFrom==null?o+(a>>>16):palFrom;
   const wh=dv.getUint32(o+20,true), W=wh&0xffff, H=wh>>>16, psm=(dv.getUint32(o+24,true)>>8)&0xff;
   const rgba=new Uint8Array(W*H*4), col=i=>{ const p=pal+i*4; return [u[p],u[p+1],u[p+2],Math.min(255,u[p+3]*2)] };
   if(psm===0x13){
@@ -121,7 +122,7 @@ function weTex(u,o){
     const cl=[]; for(let i=0;i<16;i++) cl.push(col(i));
     for(let i=0;i<W*H;i++) rgba.set(cl[(u[pix+(i>>1)]>>((i&1)*4))&15],i*4);
   } else return {W,H,psm,rgba:null};
-  return {W,H,psm,rgba};
+  return {W,H,psm,rgba,pal};
 }
 
 // ── 形: 頭 0xffff0003。[8]=包みの数、[9]=最初の包みの位置。包み＝[大きさ, 0, VIF の位置, …] のあとに VIF の命令列 ──
@@ -157,7 +158,7 @@ function weModel(u,b){
       for(let i=0;i<P.num;i++){ V.push([s16(P.at+i*6),s16(P.at+i*6+2),s16(P.at+i*6+4)]);
         NV.push(N?[s16(N.at+i*6)/32768,s16(N.at+i*6+2)/32768,s16(N.at+i*6+4)/32768]:[0,0,1]);
         UV.push(T?[s16(T.at+i*4)/4096,s16(T.at+i*4+2)/4096]:[0,0]) }
-      // 包みの頭の [16] の上 8 ビット（見本では 3600 の 1 つの包みだけ 1。絵の番号かと思ったが、2 枚目を貼ると色が崩れる。意味は未解決）
+      // 包みの頭の [16] の上 8 ビット＝使う絵の番号（見本では 3600 の 1 つの包みが 1＝64×64。1 枚目の色表を借りると三つ編みがつながる。絵で確認）
       const texi=dv.getUint32(po+64,true)>>>24, nIdx=dv.getUint32(po+12,true), idx=[];
       for(let i=0;i<I.num*4;i++) idx.push(dv.getUint16(I.at+i*2,true));
       let a=-1,c=-1,nt=0;
@@ -228,12 +229,15 @@ function weSig(u){
 // 座標はゲーム（Y 下・顔が +X）→ 画面（Y 上・顔が手前 +Z）: (x,y,z)→(z,−y,x)。鏡写しにはしない
 function weMeshes(u,all){
   const parts=weParts(u), texs=[], models=[];
-  for(const p of parts){ const k=weKind(u,p.off); if(k==="tex") texs.push(weTex(u,p.off)); if(k==="model") models.push(p.off) }
-  const tex=texs.find(t=>t.rgba)||null, meshes=[];
+  for(const p of parts){ const k=weKind(u,p.off); if(k==="tex") texs.push(weTex(u,p.off,texs.at(-1)?.pal)); if(k==="model") models.push(p.off) }
+  // 包みの頭の [16] の上 8 ビット＝絵の番号（髪の 64×64 は 1。絵で確認）。絵ごとに形を分ける
+  const meshes=[];
   for(const off of all?models:models.slice(0,1)){
-    const m=weModel(u,off), f=new Float32Array(m.tris.length*15); let k=0;
-    for(const t of m.tris) for(let j=0;j<3;j++){ const p=t.p[j]; f[k++]=p[2]; f[k++]=-p[1]; f[k++]=p[0]; f[k++]=t.uv[j][0]; f[k++]=t.uv[j][1] }
-    meshes.push({f,ntri:m.tris.length,tex});
+    const m=weModel(u,off), by=new Map();
+    for(const t of m.tris){ const k=texs[t.texi]?.rgba?t.texi:0; if(!by.has(k)) by.set(k,[]); by.get(k).push(t) }
+    for(const [k,ts] of by){ const f=new Float32Array(ts.length*15); let n=0;
+      for(const t of ts) for(let j=0;j<3;j++){ const p=t.p[j]; f[n++]=p[2]; f[n++]=-p[1]; f[n++]=p[0]; f[n++]=t.uv[j][0]; f[n++]=t.uv[j][1] }
+      meshes.push({f,ntri:ts.length,tex:texs[k]?.rgba?texs[k]:null}) }
   }
   return {meshes,texs};
 }
@@ -242,7 +246,7 @@ function weFindTex(u){
   const out=[], dv=new DataView(u.buffer,u.byteOffset,u.byteLength), p2=x=>x>=8&&x<=1024&&!(x&(x-1));
   for(let o=0;o+32<=u.length;o+=16){ if(dv.getUint32(o,true)!==0x29857294) continue;
     const wh=dv.getUint32(o+20,true); if(!p2(wh&0xffff)||!p2(wh>>>16)) continue;
-    try{ out.push({...weTex(u,o),at:o}) }catch(e){} }
+    try{ out.push({...weTex(u,o,out.at(-1)?.pal),at:o}) }catch(e){} }
   return out;
 }
 // ページの描画（WebGL1）。形ごとに [x,y,z,u,v] の列と、その形の絵（RGBA）を持つ。光は当てない（絵の色をそのまま）。
@@ -304,7 +308,7 @@ function weLongestRun(list){
   return s.slice(best[0],best[1]);
 }
 // ページの操作。開く → 全ファイルをほどいて顔・髪の一覧を作る（順に増える）→ 選んで描く
-const VERSION="0.1.1";
+const VERSION="0.1.2";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,faces:[],hairs:[],mmt:[],mtt:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,seq:0,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }

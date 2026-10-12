@@ -19,10 +19,10 @@ inps.forEach((inp,row)=>{
     for(const p of ctx.weParts(u)){ const k=ctx.weKind(u,p.off);
       // 顔のファイルには同じ大きさの形が 2 つある（三角形 337 と 241。細かさ違いと推測）。重ねると縞になるので 1 つ目だけ。ALL=1 で全部
       if(k==="model"&&(process.env.ALL||!nm++)) mine.push(...ctx.weModel(u,p.off).tris);
-      if(k==="tex") texs.push(ctx.weTex(u,p.off)) }
+      if(k==="tex") texs.push(ctx.weTex(u,p.off,texs.at(-1)?.pal)) }
     const tx=texs.find(t=>t.rgba), sms=texs.map(t=>t.rgba?sampler(t):null); firsts.push(tx);
-    // 絵はふだん全部 1 枚目。TEXI=1 で包みの頭の番号（texi）の絵を使う（3600 の 1 つの包みが 1。2 枚目を貼ると色が崩れる＝まだ分からない）
-    for(const t of mine){ t.sample=(process.env.TEXI?sms[t.texi]:null)||sampler(tx); tris.push(t) }
+    // 絵は包みの頭の番号（texi）で選ぶ。TEX0=1 で全部 1 枚目（比べる用）
+    for(const t of mine){ t.sample=(process.env.TEX0?null:sms[t.texi])||sampler(tx); tris.push(t) }
     console.log(f,"三角形",mine.length,"絵",texs.map(t=>`${t.W}x${t.H}/${t.psm.toString(16)}`).join(" "));
   }
   const all=tris.flatMap(t=>t.p), mn=[0,1,2].map(i=>Math.min(...all.map(v=>v[i]))), mx=[0,1,2].map(i=>Math.max(...all.map(v=>v[i])));
