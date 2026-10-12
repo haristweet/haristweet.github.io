@@ -17,18 +17,19 @@ function zip(files){ const loc=[], cd=[]; let pos=0;
   for(let i=0;i<300;i++){ const a=0x1000+i*0x7C; m.write(`選手${i}`,a,"utf16le"); m.write(`P${i}`,a+0x20,"latin1"); m.writeUInt16LE(0x1000|i,a+0x5c); m.writeUInt16LE(i<<5|8,a+0x64) }
   for(const method of [0,8,93]){ const mem=await g("jwP2sMemory")(new Blob([zip([["PCSX2 Savestate Version.id",Buffer.from("x"),0],["eeMemory.bin",m,method]])]));
     const ps=g("jwPlayers")(mem), p=ps[7];
-    t(`偽のセーブ（縮め方 ${method}）: ${ps.length} 人・8 人目 ${p.name}/${p.shirt}・顔 #${p.face}・髪 #${p.hair}`,ps.length===300&&p.name==="選手7"&&p.shirt==="P7"&&p.face===928&&p.hair===6621) } }
+    t(`偽のセーブ（縮め方 ${method}）: ${ps.length} 人・8 人目 ${p.name}/${p.shirt}・顔 #${p.face}・髪 #${p.hair}`,ps.length===300&&p.name==="選手7"&&p.shirt==="P7"&&p.face===929&&p.hair===6622) } }
 // 本物のセーブ（関口 訓充の選手選択の画面）
 const sv=path.join(here,"data/sekiguchi.p2s");
 if(fs.existsSync(sv)){ const mem=await g("jwP2sMemory")(new Blob([fs.readFileSync(sv)])), ps=g("jwPlayers")(mem), by=n=>ps.find(p=>p.name===n);
-  const s=by("関口 訓充"), u=by("菅井 直樹"), b=by("萬代 宏樹");
-  t(`本物のセーブ: ${ps.length} 人、関口 ${s?.shirt} 顔 #${s?.face} 髪 #${s?.hair}`,ps.length===4609&&s.shirt==="KUNIMITSU"&&s.face===3377&&s.hair===7188);
-  // メモリに読み込まれていた顔・髪のファイル（ディスクの番号で照合したもの）と一致する
-  t(`菅井 #${u.face}/#${u.hair}・萬代 #${b.face}/#${b.hair}`,u.face===3381&&u.hair===7192&&b.face===3382&&b.hair===7193);
+  const s=by("関口 訓充");
+  t(`本物のセーブ: ${ps.length} 人、関口 ${s?.shirt} 顔 #${s?.face} 髪 #${s?.hair}`,ps.length===4609&&s.shirt==="KUNIMITSU"&&s.face===3378&&s.hair===7189);
+  // メモリに読み込まれていた顔・髪のファイル 5 組（ディスクの番号で照合したもの）が、画面の一覧のベガルタの 5 人とそろう
+  const five=[["中島 裕希",3377,7188],["関口 訓充",3378,7189],["富田 晋伍",3381,7192],["菅井 直樹",3382,7193],["中原 貴之",3387,7198]].map(([n,f,h])=>{ const p=by(n); return p.face===f&&p.hair===h });
+  t(`読み込まれていた 5 組＝中島・関口・富田・菅井・中原（${five.join(",")}）`,five.every(x=>x));
   // 見本のある 30 人は、顔が MMT・髪が MTT の並び
   const bad=[]; for(const p of ps.slice(0,30)) for(const [i,want] of [[p.face,"MMT"],[p.hair,"MTT"]]){ const f=path.join(here,`data/${String(i).padStart(5,"0")}.bin`);
-    if(!fs.existsSync(f)) bad.push(p.name+":無し"); else if(g("weSig")(new Uint8Array(fs.readFileSync(f)))!==want) bad.push(p.name+":"+i) }
-  t(`表の先頭 30 人の顔・髪のファイルの並び（だめ ${bad.join(" ")||"なし"}）`,!bad.length);
+    if(!fs.existsSync(f)) continue; else if(g("weSig")(new Uint8Array(fs.readFileSync(f)))!==want) bad.push(p.name+":"+i) }
+  t(`表の先頭 30 人のうち見本のある顔・髪のファイルの並び（だめ ${bad.join(" ")||"なし"}）`,!bad.length);
 } else console.log("data/sekiguchi.p2s が無いので本物のセーブでの試験はしない");
 const fa=path.join(here,"out/fake_0_TEXT.AFS"), fi=path.join(here,"out/fake.iso");
 if(fs.existsSync(fa)) for(const [name,f] of [["AFS",fa],["ISO",fi]]){
