@@ -1,0 +1,9 @@
+# ゲームのデータ（著作物なので入れない）
+data/
+*.bin
+*.afs
+*.AFS
+*.iso
+*.png
+out/
+__pycache__/
