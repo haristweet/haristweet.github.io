@@ -82,6 +82,8 @@ function weModel(u,b){
         UV.push(T?[s16(T.at+i*4)/4096,s16(T.at+i*4+2)/4096]:[0,0]) }
       // 包みの頭の [16] の上 8 ビット＝使う絵の番号（見本では 3600 の 1 つの包みが 1＝64×64。1 枚目の色表を借りると三つ編みがつながる。絵で確認）
       const texi=dv.getUint32(po+64,true)>>>24, nIdx=dv.getUint32(po+12,true), idx=[];
+      // 包みの頭の [13]（sel、+0x34）。部位の番号（骨？）。JWE2010 の顔で 0＝顔、1＝目、2＝あごの重ね、3＝耳、4＝口の中、髪で 0＝生え際の帯、1＝前髪、2＝後ろ（SELCOLOR=1 の絵で見た）
+      const sel=dv.getUint32(po+0x34,true);
       for(let i=0;i<I.num*4;i++) idx.push(dv.getUint16(I.at+i*2,true));
       let a=-1,c=-1,nt=0;
       for(let i=0;i<idx.length;i++){
@@ -92,11 +94,11 @@ function weModel(u,b){
           { const [p,q,r]=f.map(j=>V[j]), e1=[q[0]-p[0],q[1]-p[1],q[2]-p[2]], e2=[r[0]-p[0],r[1]-p[1],r[2]-p[2]];
             const n=[e1[1]*e2[2]-e1[2]*e2[1],e1[2]*e2[0]-e1[0]*e2[2],e1[0]*e2[1]-e1[1]*e2[0]], s=[0,1,2].map(i=>NV[a][i]+NV[c][i]+NV[v][i]);
             if(n[0]*s[0]+n[1]*s[1]+n[2]*s[2]<0) f=[c,a,v] }
-          tris.push({p:f.map(j=>V[j]),uv:f.map(j=>UV[j]),n:f.map(j=>NV[j]),pk:k,texi}) }
+          tris.push({p:f.map(j=>V[j]),uv:f.map(j=>UV[j]),n:f.map(j=>NV[j]),pk:k,texi,sel}) }
         else if(w&0x8000) nt=0;
         a=c; c=v;
       }
-      packets.push({at:po,nv:P.num,nIdx,idx,texi});
+      packets.push({at:po,nv:P.num,nIdx,idx,texi,sel});
     }
     po+=size;
   }

@@ -33,7 +33,9 @@ inps.forEach((inp,row)=>{
     const rot=v=>{ const x=v[0]-ctr[0], y=-(v[1]-ctr[1]), z=v[2]-ctr[2], x1=x*cy-z*sy, z1=x*sy+z*cy, y1=y*cp-z1*sp, z2=y*sp+z1*cp; return [x1,y1,z2] };
     const scr=v=>{ const r=rot(v); return [col*C+C/2+r[0]*s, row*C+C/2-r[1]*s, r[2]] };
     for(const t of tris){ const q=t.p.map(scr);
-      if(t.sample) ctx.rasterTriTex(R,q[0],q[1],q[2],t.uv[0],t.uv[1],t.uv[2],t.sample,1);
+      // SELCOLOR=1: 包みの sel ごとに色を塗る（0 灰・1 赤・2 緑・3 青・4 黄）
+      if(process.env.SELCOLOR) ctx.rasterTri(R,q[0],q[1],q[2],[[150,150,150],[230,60,60],[60,200,60],[70,110,240],[230,210,60]][t.sel]||[255,0,255]);
+      else if(t.sample) ctx.rasterTriTex(R,q[0],q[1],q[2],t.uv[0],t.uv[1],t.uv[2],t.sample,1);
       else ctx.rasterTri(R,q[0],q[1],q[2],[200,190,170]) }
   });
   const tx=firsts[0];
