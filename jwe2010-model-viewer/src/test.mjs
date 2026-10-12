@@ -17,20 +17,29 @@ function zip(files){ const loc=[], cd=[]; let pos=0;
   for(let i=0;i<300;i++){ const a=0x1000+i*0x7C; m.write(`選手${i}`,a,"utf16le"); m.write(`P${i}`,a+0x20,"latin1"); m.writeUInt16LE(0x1000|i,a+0x5c); m.writeUInt16LE(i<<5|8,a+0x64) }
   for(const method of [0,8,93]){ const mem=await g("jwP2sMemory")(new Blob([zip([["PCSX2 Savestate Version.id",Buffer.from("x"),0],["eeMemory.bin",m,method]])]));
     const ps=g("jwPlayers")(mem), p=ps[7];
-    t(`偽のセーブ（縮め方 ${method}）: ${ps.length} 人・8 人目 ${p.name}/${p.shirt}・顔 #${p.face}・髪 #${p.hair}`,ps.length===300&&p.name==="選手7"&&p.shirt==="P7"&&p.face===929&&p.hair===6622) } }
-// 本物のセーブ（関口 訓充の選手選択の画面）
-const sv=path.join(here,"data/sekiguchi.p2s");
-if(fs.existsSync(sv)){ const mem=await g("jwP2sMemory")(new Blob([fs.readFileSync(sv)])), ps=g("jwPlayers")(mem), by=n=>ps.find(p=>p.name===n);
-  const s=by("関口 訓充");
-  t(`本物のセーブ: ${ps.length} 人、関口 ${s?.shirt} 顔 #${s?.face} 髪 #${s?.hair}`,ps.length===4609&&s.shirt==="KUNIMITSU"&&s.face===3378&&s.hair===7189);
-  // メモリに読み込まれていた顔・髪のファイル 5 組（ディスクの番号で照合したもの）が、画面の一覧のベガルタの 5 人とそろう
-  const five=[["中島 裕希",3377,7188],["関口 訓充",3378,7189],["富田 晋伍",3381,7192],["菅井 直樹",3382,7193],["中原 貴之",3387,7198]].map(([n,f,h])=>{ const p=by(n); return p.face===f&&p.hair===h });
-  t(`読み込まれていた 5 組＝中島・関口・富田・菅井・中原（${five.join(",")}）`,five.every(x=>x));
-  // 見本のある 30 人は、顔が MMT・髪が MTT の並び
-  const bad=[]; for(const p of ps.slice(0,30)) for(const [i,want] of [[p.face,"MMT"],[p.hair,"MTT"]]){ const f=path.join(here,`data/${String(i).padStart(5,"0")}.bin`);
-    if(!fs.existsSync(f)) continue; else if(g("weSig")(new Uint8Array(fs.readFileSync(f)))!==want) bad.push(p.name+":"+i) }
-  t(`表の先頭 30 人のうち見本のある顔・髪のファイルの並び（だめ ${bad.join(" ")||"なし"}）`,!bad.length);
-} else console.log("data/sekiguchi.p2s が無いので本物のセーブでの試験はしない");
+    t(`偽のセーブ（縮め方 ${method}）: ${ps.length} 人・8 人目 ${p.name}/${p.shirt}・顔 #${p.face}・髪 #${p.hair}`,ps.length===300&&p.name==="選手7"&&p.shirt==="P7"&&p.face===2114&&p.hair===4740) } }
+// 本物のセーブ（選手選択の画面。関口・梁にカーソル）。ゲームがメモリに持つ「読み込み済みの顔・髪」の表と、表から出した番号を突き合わせる
+//   顔: 0x556AA0 から 0x40 ごと [2,2,印,枠, …, +0x14 にファイル番号]（印 1＝画面に出ている選手）。髪: 0x5572C4 から 0x18 ごと [大きさ, 2,印,枠,0, …, +0x14 にファイル番号]
+function cache(mem){ const dv=new DataView(mem.buffer,mem.byteOffset), face=[], hair=[];
+  for(let s=0x556aa0;mem[s]===2&&mem[s+1]===2;s+=0x40) face.push({file:dv.getUint16(s+0x14,true),on:mem[s+2]});
+  let s=0x5572c4; while(mem[s-0x18+4]===2&&mem[s-0x18+7]===0) s-=0x18;
+  for(;mem[s+4]===2&&mem[s+7]===0;s+=0x18) hair.push(dv.getUint16(s+0x14,true));
+  return {face,hair} }
+// ryang の顔 #2488（相手の横浜 FC の枠）はだれの番号にもならない（分からないまま。表に無い選手？）
+for(const [f,who,face,hair,unknown] of [["sekiguchi.p2s","関口 訓充",3378,7189,[]],["ryang.p2s","梁 勇基",4219,8026,[2488]]]){
+  const sv=path.join(here,"data",f); if(!fs.existsSync(sv)){ console.log(`data/${f} が無いので本物のセーブでの試験はしない`); continue }
+  const mem=await g("jwP2sMemory")(new Blob([fs.readFileSync(sv)])), ps=g("jwPlayers")(mem), p=ps.find(x=>x.name===who), c=cache(mem);
+  const on=c.face.find(x=>x.on===1)?.file, fs_=new Set(ps.map(x=>x.face)), hs=new Set(ps.map(x=>x.hair));
+  t(`${f}: ${ps.length} 人、${who} 顔 #${p.face}・髪 #${p.hair}、画面の顔 #${on}`,ps.length===4609&&p.face===face&&p.hair===hair&&on===face);
+  const nf=c.face.filter(x=>!fs_.has(x.file)&&!unknown.includes(x.file)).map(x=>x.file), nh=c.hair.filter(x=>!hs.has(x));
+  t(`${f}: 読み込まれていた顔 ${c.face.length}・髪 ${c.hair.length} がだれかの番号（分からないまま ${unknown.join(",")||"なし"}・だめ 顔 ${nf.join(",")||"なし"}・髪 ${nh.join(",")||"なし"}）`,c.face.length>=6&&!nf.length&&!nh.length);
+}
+// 見本のある顔・髪のファイルの並び（顔は MMT・髪は MTT）
+{ const sv=path.join(here,"data/sekiguchi.p2s");
+  if(fs.existsSync(sv)){ const ps=g("jwPlayers")(await g("jwP2sMemory")(new Blob([fs.readFileSync(sv)]))), bad=[]; let n=0;
+    for(const p of ps.slice(0,30)) for(const [i,want] of [[p.face,"MMT"],[p.hair,"MTT"]]){ const f=path.join(here,`data/${String(i).padStart(5,"0")}.bin`);
+      if(!fs.existsSync(f)) continue; n++; if(g("weSig")(new Uint8Array(fs.readFileSync(f)))!==want) bad.push(p.name+":"+i) }
+    t(`表の先頭 30 人のうち見本のある ${n} 個の並び（だめ ${bad.join(" ")||"なし"}）`,!bad.length) } }
 const fa=path.join(here,"out/fake_0_TEXT.AFS"), fi=path.join(here,"out/fake.iso");
 if(fs.existsSync(fa)) for(const [name,f] of [["AFS",fa],["ISO",fi]]){
   const blob=new Blob([fs.readFileSync(f)]), d=await g("weOpen")(blob), u=await g("weFile")(blob,d,3377);
