@@ -1,7 +1,14 @@
+// 番号の並びのうち、続き番号のいちばん長い一続き。本物では MMT が #1521〜#3120 の 1600 個、MTT が #3588〜#5187 の 1600 個と
+// #6233〜#6243 の 11 個（髪ではない形。肩まである大きな形と白い布の絵）に分かれたので、長い方を顔・髪とする
+function weLongestRun(list){
+  const s=[...list].sort((a,b)=>a-b); let best=[0,0], st=0;
+  for(let i=1;i<=s.length;i++) if(i===s.length||s[i]!==s[i-1]+1){ if(i-st>best[1]-best[0]) best=[st,i]; st=i }
+  return s.slice(best[0],best[1]);
+}
 // ページの操作。開く → 全ファイルをほどいて顔・髪の一覧を作る（順に増える）→ 選んで描く
-const VERSION="0.1.0";
+const VERSION="0.1.1";
 const $=id=>document.getElementById(id);
-const APP={drawSeq:0,file:null,disc:null,faces:[],hairs:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,seq:0,gl:null,cur:null};
+const APP={drawSeq:0,file:null,disc:null,faces:[],hairs:[],mmt:[],mtt:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,seq:0,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
 async function getFile(i){
   if(APP.cache.has(i)) return APP.cache.get(i);
@@ -14,7 +21,7 @@ async function openDisc(file){
   status("開いています…"); $("n-disc").textContent=file.name;
   try{
     const disc=await weOpen(file);
-    Object.assign(APP,{file,disc,faces:[],hairs:[],cache:new Map(),base:null,hairPicked:false,cur:null});
+    Object.assign(APP,{file,disc,faces:[],hairs:[],mmt:[],mtt:[],cache:new Map(),base:null,hairPicked:false,cur:null});
     $("step-disc").classList.add("done"); $("empty").textContent="中身を調べています…";
     $("anyfile").hidden=false; $("n-file").max=disc.ents.length-1;
     status(`${disc.from==="ISO"?"ISO の中の ":""}0_TEXT.AFS: ${disc.ents.length} 個のファイル`);
@@ -31,12 +38,13 @@ async function scan(seq){
     if(!APP.hairPicked&&$("c-link").checked&&$("s-hair").value===""&&APP.cur?.kind==="pair"){ const k=APP.faces.indexOf(APP.cur.face); if(APP.hairs[k]!==undefined){ $("s-hair").value=APP.hairs[k]; show() } } };
   const work=async()=>{ while(next<n&&seq===APP.seq){ const i=next++;
       let sig=""; try{ const e=APP.disc.ents[i]; if(e.size) sig=weSig(await weFile(APP.file,APP.disc,i)) }catch(e){}
-      if(sig==="MMT") APP.faces.push(i); else if(sig==="MTT") APP.hairs.push(i);
-      if(++done%200===0||done===n){ APP.faces.sort((a,b)=>a-b); APP.hairs.sort((a,b)=>a-b); $("p-scan").value=done; $("t-scan").textContent=`${done}/${n}・顔 ${APP.faces.length}・髪 ${APP.hairs.length}`; refreshLists() } } };
+      if(sig==="MMT") APP.mmt.push(i); else if(sig==="MTT") APP.mtt.push(i);
+      if(++done%200===0||done===n){ APP.faces=weLongestRun(APP.mmt); APP.hairs=weLongestRun(APP.mtt); $("p-scan").value=done; $("t-scan").textContent=`${done}/${n}・顔 ${APP.faces.length}・髪 ${APP.hairs.length}`; refreshLists() } } };
   await Promise.all(Array.from({length:6},work));
   if(seq!==APP.seq) return;
   $("scan").hidden=true;
-  status(`0_TEXT.AFS: ${n} 個のファイル・顔 ${APP.faces.length}・髪 ${APP.hairs.length}`);
+  const other=[...APP.mmt.filter(i=>!APP.faces.includes(i)),...APP.mtt.filter(i=>!APP.hairs.includes(i))].sort((a,b)=>a-b);
+  status(`0_TEXT.AFS: ${n} 個のファイル・顔 ${APP.faces.length}・髪 ${APP.hairs.length}`+(other.length?`（同じ並びで一覧から外したもの ${other.length} 個: #${other.join("・#")}。番号で見られます）`:""));
   if(!APP.faces.length){ $("empty").textContent="顔が見つかりませんでした（「番号で見る」で中身を見られます）"; }
 }
 function fillSelect(sel,list,word,none){
