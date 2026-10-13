@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.4.0";
+const VERSION="0.4.1";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -94,7 +94,7 @@ async function show(what){
       const body=$("c-body").checked?await getBody():null;
       if(body){ const kit=APP.kits?.kits[+$("s-kit").value]||null, boots=APP.kits?.boots||null;
         jwPlaceHead(r.meshes,body.cur[16]);
-        const bm=jwBodyMeshes(body.B,body.cur,{0:common?.ring||null,1:kit,5:boots}); r.meshes.unshift(...bm);
+        const bm=jwBodyMeshes(body.B,body.cur,{0:common?.ring||null,1:kit,5:boots},$("c-long").checked?JW_BODY_OPTS_LONG:JW_BODY_OPTS_SHORT); r.meshes.unshift(...bm);
         if(kit) r.texs.push({...kit,from:`セーブのユニフォーム ${+$("s-kit").value+1}`}); else warn.push("ユニフォームの絵がセーブに無いので、体は灰色");
         if(boots) r.texs.push({...boots,from:"セーブのスパイク"}) }
       else if($("c-body").checked) warn.push(`体のファイル #${JW_BODY} が読めません`);
@@ -152,6 +152,7 @@ function init(){
   // 体の有り無しで大きさが変わるので、見る位置を作り直す
   $("c-body").onchange=()=>{ APP.base=null; if(APP.cur?.kind==="player") show(APP.cur) };
   $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  $("c-long").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   $("b-png").onclick=savePng; $("c-clear").onchange=draw;
   // 回す・寄る
   const cv=$("cv"), pts=new Map(); let pinch=0;

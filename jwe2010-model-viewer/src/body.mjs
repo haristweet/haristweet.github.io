@@ -1,6 +1,6 @@
 // 体の絵で確かめる台本（教訓1）。セーブのチーム（ふだんはベガルタ仙台）の選手を、ページと同じ組み立て（jwbody.js）で前・横・後ろから描いて並べる。
 //   node body.mjs out/shots/body.png [data/sekiguchi.p2s] [人数]
-// 顔・髪・体のファイルは data/番号.bin（ほどいた見本）から。無い選手は飛ばす。ユニフォームはセーブの 1 着目（KIT=2 などで選ぶ）
+// 顔・髪・体のファイルは data/番号.bin（ほどいた見本）から。無い選手は飛ばす。ユニフォームはセーブの 1 着目（KIT=2 などで選ぶ）。袖は半袖（LONG=1 で長袖）
 import fs from "fs"; import vm from "vm"; import path from "path"; import {pngEncode} from "./png.mjs";
 const here=path.dirname(new URL(import.meta.url).pathname), ctx={TextDecoder,DecompressionStream,Response,Blob}; vm.createContext(ctx);
 for(const f of ["fzstd.js","we12.js","p2s.js","jw.js","jwbody.js","raster.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
@@ -18,7 +18,7 @@ const views=[[0,0,1],[90,0,1],[180,0,1],[0,0,3.2]], R=g("rasterNew")(views.lengt
 const smp=tx=>tx?(s,t)=>{ const x=((Math.floor(s*tx.W)%tx.W)+tx.W)%tx.W, y=((Math.floor(t*tx.H)%tx.H)+tx.H)%tx.H, i=(y*tx.W+x)*4; return tx.rgba[i+3]<64?null:[tx.rgba[i],tx.rgba[i+1],tx.rgba[i+2]] }:()=>[150,150,150];
 list.forEach((p,row)=>{
   const h=g("jwHeadMeshes")(rd(p.face),rd(p.hair),common,false), head=g("jwPlaceHead")(h.meshes,cur[16]);
-  const ms=[...g("jwBodyMeshes")(B,cur,{0:common.ring,1:kit,5:kits.boots}),...head];
+  const ms=[...g("jwBodyMeshes")(B,cur,{0:common.ring,1:kit,5:kits.boots},g(process.env.LONG?"JW_BODY_OPTS_LONG":"JW_BODY_OPTS_SHORT")),...head];
   const all=[]; for(const m of ms) for(let k=0;k<m.f.length;k+=5) all.push([m.f[k],m.f[k+1],m.f[k+2]]);
   const mn=[0,1,2].map(i=>Math.min(...all.map(v=>v[i]))), mx=[0,1,2].map(i=>Math.max(...all.map(v=>v[i]))), ctr=mn.map((v,i)=>(v+mx[i])/2);
   const hc=[0,1,2].map(i=>{ const hv=[]; for(const m of head) for(let k=0;k<m.f.length;k+=5) hv.push(m.f[k+i]); return (Math.min(...hv)+Math.max(...hv))/2 });

@@ -6,8 +6,11 @@
 //   頂点 1 つ＝4 qword: 位置（s16、1/16）、法線、重み（行列ごと、足して 4095）、uv（/4096）
 //   対 p＝(a,b) の行列＝Bind[a]·inv(Bind[b])·Cur[b]（ゲームの行列 28 個と 0.000 まで一致）。頂点は骨 a の向きで持ち、骨 b と一緒に動く
 const JW_BODY=1429;
-// 出し分けの番号のうち、永井の試合中のセーブで描かれていたもの（長袖・素手など。ほかの組み合わせ（半袖・手袋など）は未確認）
-const JW_BODY_OPTS=new Set([0,3,5,6,7,9,12,14,15,17,20,30,37]);
+// 出し分けの番号（包み +0x43）。ゲームが描いていた組をそのまま使う（v0.4.1。入場の場面のセーブ zenin で、仙台のホームとアウェイの 20 人を読んだ）
+//   半袖＝フィールドの選手（4＝半袖、22＝腕章なし（23＝キャプテンの腕章）、26・27＝腕の肌）。長袖＝永井の試合中・GK（3＝長袖、20＝袖口）。GK は 31（手袋？）も描くが、絵がまだ無いので描かない
+const JW_BODY_OPTS_SHORT=new Set([0,4,5,6,7,9,12,14,15,17,22,26,27,30,37]);
+const JW_BODY_OPTS_LONG=new Set([0,3,5,6,7,9,12,14,15,17,20,30,37]);
+const JW_BODY_OPTS=JW_BODY_OPTS_SHORT;
 // 部位: 0＝肌（#8231 の頭の肌と同じ絵）、1＝ユニフォーム 512×256、5＝スパイク 256×256。2・3・4・7・9・10＝背番号・名前・袖の印などの重ね（後回し、描かない）
 const JW_BODY_SELS=[0,1,5];
 function jwM4(A,C){ const R=new Array(16); for(let i=0;i<4;i++) for(let j=0;j<4;j++){ let s=0; for(let k=0;k<4;k++) s+=A[i*4+k]*C[k*4+j]; R[i*4+j]=s } return R }
@@ -79,9 +82,9 @@ function jwBodyTris(B,cur,show){
 }
 // 画面の座標: 世界の座標を Y 軸で 180° 回す（顔の向き＝世界の −Z を画面の手前に）。頭（顔・髪のファイル）の座標とそろえる
 function jwWorldToView(p){ return [-p[0],p[1],-p[2]] }
-// 体の形を、絵ごとの塊にする。tex: {0:肌,1:ユニフォーム,5:スパイク}
-function jwBodyMeshes(B,cur,tex){
-  const tris=jwBodyTris(B,cur,P=>JW_BODY_OPTS.has(P.opt)&&JW_BODY_SELS.includes(P.sel)), by=new Map();
+// 体の形を、絵ごとの塊にする。tex: {0:肌,1:ユニフォーム,5:スパイク}。opts＝出し分けの組（半袖か長袖）
+function jwBodyMeshes(B,cur,tex,opts=JW_BODY_OPTS){
+  const tris=jwBodyTris(B,cur,P=>opts.has(P.opt)&&JW_BODY_SELS.includes(P.sel)), by=new Map();
   for(const t of tris){ if(!by.has(t.sel)) by.set(t.sel,[]); by.get(t.sel).push(t) }
   const ms=[];
   for(const [sel,ts] of by){ const f=new Float32Array(ts.length*15); let n=0;
