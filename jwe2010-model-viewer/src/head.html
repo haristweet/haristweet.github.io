@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>JWE2010 モデルビューア</title>
-<meta name="description" content="PS2『Jリーグウイニングイレブン2010 クラブチャンピオンシップ』のディスクとステートセーブから、選手の顔と髪を見る">
+<meta name="description" content="PS2『Jリーグウイニングイレブン2010 クラブチャンピオンシップ』のディスクとステートセーブから、選手の顔・髪と体を見る">
 <style>
 :root{--bg:#f4f2ee;--card:#fff;--fg:#1f1e1b;--mut:#6b6860;--line:#dedad2;--acc:#2f7a4a;--bad:#b3392f;--stage:#2a2926}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1917;--card:#24231f;--fg:#ecebe6;--mut:#a09d94;--line:#3a3833;--acc:#6fcf93;--bad:#ec7a6f}}
@@ -49,7 +49,7 @@ progress{width:12em;vertical-align:middle}
 <body>
 <main>
 <h1>JWE2010 モデルビューア <span id="ver-h" class="ver"></span></h1>
-<p class="sub">PS2『Jリーグウイニングイレブン2010 クラブチャンピオンシップ』の選手を、正しい顔と髪で見ます（作りはじめ）。顔と髪の形はディスクのイメージから、どの選手がどの顔・髪かはエミュレータ（PCSX2）のステートセーブから読みます。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
+<p class="sub">PS2『Jリーグウイニングイレブン2010 クラブチャンピオンシップ』の選手を、正しい顔と髪で、ユニフォームを着た立ち姿で見ます（作りはじめ）。顔・髪・体の形はディスクのイメージから、どの選手がどの顔・髪かはエミュレータ（PCSX2）のステートセーブから読みます。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
 <div class="step" id="step-disc"><b>1. ディスクのイメージ</b><small>.iso か、その中の 0_TEXT.AFS</small>
   <label class="btn">選ぶ<input type="file" id="f-disc" accept=".iso,.afs,.AFS,.img"></label><span class="name" id="n-disc">まだ</span></div>
 <div class="step" id="step-save"><b>2. ステートセーブ</b><small>PCSX2 の .p2s（ゲームの画面が出ているときに取ったもの）。選手の表をここから読みます。どちらもページにドロップしても読み込めます</small>
@@ -63,6 +63,10 @@ progress{width:12em;vertical-align:middle}
   <input type="search" id="q" placeholder="名前で探す" aria-label="名前で探す">
   <span class="grp"><button id="p-prev" aria-label="前の選手">◀</button> <select id="s-player" aria-label="選手"></select> <button id="p-next" aria-label="次の選手">▶</button></span>
   <button id="b-rand">🎲 おまかせ</button>
+</div>
+<div class="ctrl" id="bodybar" hidden>
+  <label><input type="checkbox" id="c-body" checked> 体</label>
+  <label>ユニフォーム <select id="s-kit" aria-label="ユニフォーム"></select></label>
 </div>
 <div class="ctrl" id="anyfile" hidden>
   <span class="grp">番号で見る <input id="n-file" type="number" min="0" value="0" style="width:6em" aria-label="ファイルの番号"> <button id="b-file">見る</button></span>
@@ -78,7 +82,9 @@ progress{width:12em;vertical-align:middle}
 <p>形と絵の読み方は「ウイニングイレブン2012 モデルビューア」と同じです。光は当てず、絵の色をそのまま描きます。</p>
 <p>目・耳・口の中、後ろ髪の地、生え際は、ゲームが全員で共通に使う絵（0_TEXT.AFS の #8234・#8226・#8231 と色表 #8227）を貼ります。どの部品にどの絵かは、ステートセーブの描く命令と画面用メモリから読みました。肌・髪・目の色は 3 人のセーブに合わせたもので、選手ごとの違いはまだ反映していません。</p>
 <p>チームの一覧と名簿も、ステートセーブのメモリから読みます（チーム名の表と、1 チーム 32 枠の名簿）。名簿の並びが崩れている選抜チームなどは出しません。</p>
-<p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、体とユニフォーム。</p>
+<p>体はディスクの #1429 の形です（関口・梁・田村・永井のセーブで、どれもこのファイルが読み込まれていました）。19 本の骨と、2 本の骨にまたがる所のための「対」の行列で組み立てます。どの頂点をどの行列で動かすかは、試合中のセーブでゲームが使っていた行列と照らして決めました。形は T の字の姿でしまってあり、腕を下ろして立たせています（腕の角度は見た目で決めたもので、ゲームの立ち姿の動きではありません）。</p>
+<p>ユニフォームとスパイクの絵は、ステートセーブのメモリにあるものを使います（試合の前後のセーブなら、その試合の 2 チームの 4 着があります）。肌は頭の生え際と同じ絵です。背番号・名前・袖の印の重ねはまだ描きません。</p>
+<p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、背番号と名前、チームごとのユニフォーム（ディスクのどのファイルかまだ分からない）、半袖・手袋などの出し分け、背の高さ。</p>
 <p id="ver"></p></details>
 </main>
 <script>

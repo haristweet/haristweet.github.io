@@ -1,5 +1,5 @@
-// ページの操作。ディスク（形と絵）とステートセーブ（選手の表）を開く → 選手を選ぶ → その選手の顔と髪を描く
-const VERSION="0.3.0";
+// ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
+const VERSION="0.4.0";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -16,11 +16,18 @@ async function getCommon(){
   catch(e){ console.warn("共通の絵が読めません",e); APP.common=null }
   return APP.common;
 }
+// 体の形（#1429）。ディスクごとに 1 回だけ読む。読めなければ null
+async function getBody(){
+  if(APP.body!==undefined) return APP.body;
+  try{ const B=jwBodyParse(await getFile(JW_BODY)); APP.body={B,cur:jwBodyStand(B)} }
+  catch(e){ console.warn("体のファイルが読めません",e); APP.body=null }
+  return APP.body;
+}
 async function openDisc(file){
   status("ディスクを開いています…"); $("n-disc").textContent=file.name;
   try{
     const disc=await weOpen(file);
-    Object.assign(APP,{file,disc,cache:new Map(),base:null,common:undefined});
+    Object.assign(APP,{file,disc,cache:new Map(),base:null,common:undefined,body:undefined});
     $("step-disc").classList.add("done"); $("anyfile").hidden=false; $("n-file").max=disc.ents.length-1;
     status(`${disc.from==="ISO"?"ISO の中の ":""}0_TEXT.AFS: ${disc.ents.length} 個のファイル`+(APP.players.length?"":"。次にステートセーブを選んでください"));
     if(APP.players.length) show(); else $("empty").textContent="ステートセーブを選ぶと、選手の一覧が出ます（「番号で見る」でファイルの中身も見られます）";
@@ -30,10 +37,11 @@ async function openSave(file){
   status("ステートセーブを読んでいます…"); $("n-save").textContent=file.name;
   try{
     const mem=await jwP2sMemory(file), players=jwPlayers(mem);
-    APP.players=players; APP.teams=jwTeams(mem,players); $("step-save").classList.add("done");
+    APP.players=players; APP.teams=jwTeams(mem,players); APP.kits=jwSaveKits(mem); $("step-save").classList.add("done");
+    fillKits(); $("bodybar").hidden=false;
     fillTeams(); $("q").value=""; fillPlayers(); $("pick").hidden=false;
     status(`選手 ${players.length} 人・チーム ${APP.teams.length}`+(APP.disc?"":"。次にディスクのイメージを選んでください"));
-    show(); if(!APP.disc) $("empty").textContent="ディスクのイメージを選ぶと、顔と髪が出ます";
+    show(); if(!APP.disc) $("empty").textContent="ディスクのイメージを選ぶと、顔・髪と体が出ます";
   }catch(e){ status(e.message,true); console.error(e) }
 }
 function openAny(file){ if(/\.p2s$/i.test(file.name)) openSave(file); else openDisc(file) }
@@ -42,6 +50,12 @@ function fillTeams(){
   const esc=x=>x.replace(/[&<]/g,c=>c==="&"?"&amp;":"&lt;");
   $("s-team").innerHTML=['<option value="">全員</option>',...APP.teams.map(t=>`<option value="${t.i}">${esc(t.name)}（${t.members.length}）</option>`)].join("");
   $("s-team").hidden=!APP.teams.length; if(APP.teams.length) $("s-team").value=String(APP.teams[0].i);
+}
+// ユニフォームの一覧（セーブの中にあるもの）。最初は 1 着目（関口・田村のセーブでは仙台のホーム。ほかのセーブでは別のチームのこともある）
+function fillKits(){
+  const k=APP.kits?.kits||[];
+  $("s-kit").innerHTML=k.length?k.map((x,i)=>`<option value="${i}">${i+1} 着目</option>`).join(""):'<option value="">セーブに無い</option>';
+  if(k.length) $("s-kit").value="0";
 }
 // チームと名前で絞った一覧。チームは名簿の並び、全員は選手の表の順。表の順番（番号）も出す
 function fillPlayers(){
@@ -76,6 +90,14 @@ async function show(what){
         // 前の描き方（v0.1.3）: 顔の sel 2 を描かない。髪の sel 2 は α を使わずに塗る
         if(fu){ const f=weMeshes(fu,all,[2]); r.meshes.push(...f.meshes); r.texs.push(...f.texs.map(t=>({...t,from:c.p.face}))) }
         if(hu){ const back=weMeshes(hu,all,[0,1]), front=weMeshes(hu,all,[2]); back.meshes.forEach(m=>m.opaque=true); r.meshes.push(...back.meshes,...front.meshes); r.texs.push(...back.texs.map(t=>({...t,from:c.p.hair}))) } }
+      // 体: 頭は骨 16（頭）の行列で体に付ける。ユニフォームとスパイクの絵はセーブから、肌は頭の生え際と同じ絵
+      const body=$("c-body").checked?await getBody():null;
+      if(body){ const kit=APP.kits?.kits[+$("s-kit").value]||null, boots=APP.kits?.boots||null;
+        jwPlaceHead(r.meshes,body.cur[16]);
+        const bm=jwBodyMeshes(body.B,body.cur,{0:common?.ring||null,1:kit,5:boots}); r.meshes.unshift(...bm);
+        if(kit) r.texs.push({...kit,from:`セーブのユニフォーム ${+$("s-kit").value+1}`}); else warn.push("ユニフォームの絵がセーブに無いので、体は灰色");
+        if(boots) r.texs.push({...boots,from:"セーブのスパイク"}) }
+      else if($("c-body").checked) warn.push(`体のファイル #${JW_BODY} が読めません`);
       ms.push(...r.meshes); ntri+=r.meshes.reduce((a,m)=>a+m.ntri,0);
       texs.push(...r.texs);
       if(common) texs.push(...[["8234（目・耳・口）",common.parts],["8226（髪の地）",common.back],["8231（頭の肌）",common.ring]].map(([n,t])=>({...t,from:n})));
@@ -127,6 +149,9 @@ function init(){
   $("b-file").onclick=()=>{ if(APP.disc) show({kind:"file",n:Math.max(0,Math.min(APP.disc.ents.length-1,+$("n-file").value|0))}) };
   $("n-file").onkeydown=e=>{ if(e.key==="Enter") $("b-file").click() };
   $("c-all").onchange=()=>show(APP.cur);
+  // 体の有り無しで大きさが変わるので、見る位置を作り直す
+  $("c-body").onchange=()=>{ APP.base=null; if(APP.cur?.kind==="player") show(APP.cur) };
+  $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   $("b-png").onclick=savePng; $("c-clear").onchange=draw;
   // 回す・寄る
   const cv=$("cv"), pts=new Map(); let pinch=0;

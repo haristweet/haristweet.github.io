@@ -1,7 +1,7 @@
 // 単体試験。node test.mjs（data/ と out/fake.* があれば本物の見本で）
 import fs from "fs"; import vm from "vm"; import path from "path"; import zlib from "zlib";
 const here=path.dirname(new URL(import.meta.url).pathname), ctx={console,DecompressionStream,Blob,Response,TextDecoder}; vm.createContext(ctx);
-for(const f of ["fzstd.js","we12.js","p2s.js","jw.js","wgl.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
+for(const f of ["fzstd.js","we12.js","p2s.js","jw.js","jwbody.js","wgl.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
 const g=n=>vm.runInContext(n,ctx); let ok=0, ng=0;
 const t=(name,c)=>{ if(c){ ok++; console.log("  ok",name) } else { ng++; console.log("  NG",name) } };
 // zip を作る（.p2s の代わり）。method: 0＝そのまま、8＝deflate、93＝zstd（node の zlib で縮める）
@@ -55,6 +55,19 @@ for(const [f,who,face,hair,unknown] of [["sekiguchi.p2s","関口 訓充",3378,71
       const pix=g("jwTexHeads")(f.parts)[0].pix, un=g("jwUnswizzle8")(pix,256,128); let ok8=0,n=0;
       for(let y=84;y<128;y++) for(let x=160;x<256;x++){ n++; if(un[y*256+x]===vr[a8(15072,4,x,y)]) ok8++ }
       t(`#8234 を戻した点が画面用メモリの目・耳・口と一致（${ok8}/${n}）`,ok8===n) } } }
+// 体（#1429）: 骨 19 本・包み 56。立ち姿の高さと腕の幅、頭が首の上に来ること。対の行列の作り方は nagai2 のゲームの行列と一致したもの（数字はここでは試さない）
+{ const f=path.join(here,"data/01429.bin");
+  if(fs.existsSync(f)){ const B=g("jwBodyParse")(new Uint8Array(fs.readFileSync(f))), cur=g("jwBodyStand")(B), tris=g("jwBodyTris")(B,cur,P=>g("JW_BODY_OPTS").has(P.opt));
+    const ps=tris.flatMap(x=>x.p), mn=[0,1,2].map(i=>Math.min(...ps.map(v=>v[i]))), mx=[0,1,2].map(i=>Math.max(...ps.map(v=>v[i])));
+    t(`体 #1429: 骨 ${B.Bind.length}・包み ${B.packs.length}・三角形 ${tris.length}・高さ ${mn[1].toFixed(0)}〜${mx[1].toFixed(0)}・幅 ±${mx[0].toFixed(0)}`,B.Bind.length===19&&B.packs.length===56&&mn[1]<0&&mx[1]>600&&mx[1]<700&&mx[0]<200);
+    const T=g("jwBodyTris")(B,null,P=>g("JW_BODY_OPTS").has(P.opt)), tx=Math.max(...T.flatMap(x=>x.p.map(v=>v[0])));
+    t(`T の形では腕が横に伸びる（幅 ±${tx.toFixed(0)}）`,tx>300);
+    const h=cur[16]; t(`頭の骨（16）は首の上（高さ ${h[13].toFixed(0)}）`,h[13]>650&&Math.abs(h[12])<1) } }
+// セーブの中のユニフォームとスパイク（関口のセーブ: 中身のある 2 着（仙台のホーム・仙台の GK。絵で確認）とスパイク 1 つ）
+{ const f=path.join(here,"data/sekiguchi.p2s");
+  if(fs.existsSync(f)){ const b=fs.readFileSync(f), file={size:b.length,slice:(a,e)=>({arrayBuffer:async()=>b.buffer.slice(b.byteOffset+a,b.byteOffset+(e??b.length))})};
+    const k=g("jwSaveKits")(await g("jwP2sMemory")(file));
+    t(`セーブのユニフォーム ${k.kits.length} 着（${k.kits.map(x=>x.id.toString(16)).join("・")}）・スパイク ${k.boots?k.boots.W+"×"+k.boots.H:"無し"}`,k.kits.length===2&&k.kits[0].id===0xfa0&&k.boots&&k.boots.W===256) } }
 const fa=path.join(here,"out/fake_0_TEXT.AFS"), fi=path.join(here,"out/fake.iso");
 if(fs.existsSync(fa)) for(const [name,f] of [["AFS",fa],["ISO",fi]]){
   const blob=new Blob([fs.readFileSync(f)]), d=await g("weOpen")(blob), u=await g("weFile")(blob,d,3377);
