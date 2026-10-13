@@ -121,3 +121,15 @@ function jwSaveKits(m){
   }
   return {kits,boots:boots&&pals.length?{W:256,H:256,id:boots.id,rgba:jwRGBA(boots.pix,pals[pals.length-1])}:null};
 }
+// 手（v0.4.3）。体のファイルには手首までしか無く、手は別のファイル #8095（形 4 つ）。試合中・入場のセーブで、ゲームは体と頭のあとに
+//   1 つ目の形を骨 18（左手）、2 つ目を骨 17（右手）の行列で描いていた。絵は体の肌と同じ（#8231）。3・4 つ目は 1 回ずつしか描かれず、何かは未確認
+const JW_HANDS=8095;
+function jwHandMeshes(u,cur,skin){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength), n=dv.getUint32(0,true), ms=[];
+  if(n<2||n>16) throw new Error("手のファイルとして読めません");
+  for(const [k,bone] of [[0,18],[1,17]]){
+    const tris=weModel(u,dv.getUint32(8+k*4,true)).tris, f=new Float32Array(tris.length*15); let i=0;
+    for(const t of tris) for(let j=0;j<3;j++){ const p=t.p[j]; f[i++]=p[2]; f[i++]=-p[1]; f[i++]=p[0]; f[i++]=t.uv[j][0]; f[i++]=t.uv[j][1] }
+    ms.push(...jwPlaceHead([{f,ntri:tris.length,tex:skin||null}],cur[bone])) }
+  return ms;
+}

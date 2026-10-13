@@ -84,7 +84,7 @@ progress{width:12em;vertical-align:middle}
 <p>目・耳・口の中、後ろ髪の地、生え際は、ゲームが全員で共通に使う絵（0_TEXT.AFS の #8234・#8226・#8231 と色表 #8227）を貼ります。どの部品にどの絵かは、ステートセーブの描く命令と画面用メモリから読みました。肌・髪・目の色は 3 人のセーブに合わせたもので、選手ごとの違いはまだ反映していません。</p>
 <p>チームの一覧と名簿も、ステートセーブのメモリから読みます（チーム名の表と、1 チーム 32 枠の名簿）。名簿の並びが崩れている選抜チームなどは出しません。</p>
 <p>体はディスクの #1429 の形です（関口・梁・田村・永井のセーブで、どれもこのファイルが読み込まれていました）。19 本の骨と、2 本の骨にまたがる所のための「対」の行列で組み立てます。どの頂点をどの行列で動かすかは、試合中のセーブでゲームが使っていた行列と照らして決めました。袖は半袖（入場の場面でゲームが描いていた組）で、「長袖」で長袖の組に替えられます。形は T の字の姿でしまってあり、腕を下ろして立たせています（腕の角度は見た目で決めたもので、ゲームの立ち姿の動きではありません）。</p>
-<p>ユニフォームとスパイクの絵は、ステートセーブのメモリにあるものを使います（試合の前後のセーブなら、その試合の 2 チームの 4 着があります）。肌は頭の生え際と同じ絵です。背番号・名前・袖の印の重ねはまだ描きません。</p>
+<p>ユニフォームとスパイクの絵は、ステートセーブのメモリにあるものを使います（試合の前後のセーブなら、その試合の 2 チームの 4 着があります）。肌は頭の生え際と同じ絵です。手は別のファイル（#8095）の形を、手首の骨に付けます。背番号・名前・袖の印の重ねはまだ描きません。</p>
 <p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、背番号と名前、チームごとのユニフォーム（ディスクのどのファイルかまだ分からない）、選手ごとの長袖・半袖と GK の手袋、背の高さ。</p>
 <p id="ver"></p></details>
 </main>
@@ -576,6 +576,18 @@ function jwSaveKits(m){
   }
   return {kits,boots:boots&&pals.length?{W:256,H:256,id:boots.id,rgba:jwRGBA(boots.pix,pals[pals.length-1])}:null};
 }
+// 手（v0.4.3）。体のファイルには手首までしか無く、手は別のファイル #8095（形 4 つ）。試合中・入場のセーブで、ゲームは体と頭のあとに
+//   1 つ目の形を骨 18（左手）、2 つ目を骨 17（右手）の行列で描いていた。絵は体の肌と同じ（#8231）。3・4 つ目は 1 回ずつしか描かれず、何かは未確認
+const JW_HANDS=8095;
+function jwHandMeshes(u,cur,skin){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength), n=dv.getUint32(0,true), ms=[];
+  if(n<2||n>16) throw new Error("手のファイルとして読めません");
+  for(const [k,bone] of [[0,18],[1,17]]){
+    const tris=weModel(u,dv.getUint32(8+k*4,true)).tris, f=new Float32Array(tris.length*15); let i=0;
+    for(const t of tris) for(let j=0;j<3;j++){ const p=t.p[j]; f[i++]=p[2]; f[i++]=-p[1]; f[i++]=p[0]; f[i++]=t.uv[j][0]; f[i++]=t.uv[j][1] }
+    ms.push(...jwPlaceHead([{f,ntri:tris.length,tex:skin||null}],cur[bone])) }
+  return ms;
+}
 // ページの描画（WebGL1）。形ごとに [x,y,z,u,v] の列と、その形の絵（RGBA）を持つ。光は当てない（絵の色をそのまま）。
 // 髪の絵は α が段々（0〜0x80）なので半透明で重ねる。並べた順（顔→髪）に描く
 function weGL(canvas){
@@ -630,7 +642,7 @@ function weViewMatrix(v,aspect){
   return M;
 }
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.4.2";
+const VERSION="0.4.3";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -650,7 +662,9 @@ async function getCommon(){
 // 体の形（#1429）。ディスクごとに 1 回だけ読む。読めなければ null
 async function getBody(){
   if(APP.body!==undefined) return APP.body;
-  try{ const B=jwBodyParse(await getFile(JW_BODY)); APP.body={B,cur:jwBodyStand(B)} }
+  try{ const B=jwBodyParse(await getFile(JW_BODY)); APP.body={B,cur:jwBodyStand(B),hands:null};
+    // 手は別のファイル。読めなくても体は出す
+    try{ APP.body.hands=await getFile(JW_HANDS) }catch(e){ console.warn("手のファイルが読めません",e) } }
   catch(e){ console.warn("体のファイルが読めません",e); APP.body=null }
   return APP.body;
 }
@@ -726,6 +740,7 @@ async function show(what){
       if(body){ const kit=APP.kits?.kits[+$("s-kit").value]||null, boots=APP.kits?.boots||null;
         jwPlaceHead(r.meshes,body.cur[16]);
         const bm=jwBodyMeshes(body.B,body.cur,{0:common?.ring||null,1:kit,5:boots},$("c-long").checked?JW_BODY_OPTS_LONG:JW_BODY_OPTS_SHORT); r.meshes.unshift(...bm);
+        if(body.hands){ try{ r.meshes.unshift(...jwHandMeshes(body.hands,body.cur,common?.ring||null)) }catch(e){ warn.push(`手 #${JW_HANDS} が読めません`) } } else warn.push(`手のファイル #${JW_HANDS} が読めません`);
         if(kit) r.texs.push({...kit,from:`セーブのユニフォーム ${+$("s-kit").value+1}`}); else warn.push("ユニフォームの絵がセーブに無いので、体は灰色");
         if(boots) r.texs.push({...boots,from:"セーブのスパイク"}) }
       else if($("c-body").checked) warn.push(`体のファイル #${JW_BODY} が読めません`);

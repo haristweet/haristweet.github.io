@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.4.2";
+const VERSION="0.4.3";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -19,7 +19,9 @@ async function getCommon(){
 // 体の形（#1429）。ディスクごとに 1 回だけ読む。読めなければ null
 async function getBody(){
   if(APP.body!==undefined) return APP.body;
-  try{ const B=jwBodyParse(await getFile(JW_BODY)); APP.body={B,cur:jwBodyStand(B)} }
+  try{ const B=jwBodyParse(await getFile(JW_BODY)); APP.body={B,cur:jwBodyStand(B),hands:null};
+    // 手は別のファイル。読めなくても体は出す
+    try{ APP.body.hands=await getFile(JW_HANDS) }catch(e){ console.warn("手のファイルが読めません",e) } }
   catch(e){ console.warn("体のファイルが読めません",e); APP.body=null }
   return APP.body;
 }
@@ -95,6 +97,7 @@ async function show(what){
       if(body){ const kit=APP.kits?.kits[+$("s-kit").value]||null, boots=APP.kits?.boots||null;
         jwPlaceHead(r.meshes,body.cur[16]);
         const bm=jwBodyMeshes(body.B,body.cur,{0:common?.ring||null,1:kit,5:boots},$("c-long").checked?JW_BODY_OPTS_LONG:JW_BODY_OPTS_SHORT); r.meshes.unshift(...bm);
+        if(body.hands){ try{ r.meshes.unshift(...jwHandMeshes(body.hands,body.cur,common?.ring||null)) }catch(e){ warn.push(`手 #${JW_HANDS} が読めません`) } } else warn.push(`手のファイル #${JW_HANDS} が読めません`);
         if(kit) r.texs.push({...kit,from:`セーブのユニフォーム ${+$("s-kit").value+1}`}); else warn.push("ユニフォームの絵がセーブに無いので、体は灰色");
         if(boots) r.texs.push({...boots,from:"セーブのスパイク"}) }
       else if($("c-body").checked) warn.push(`体のファイル #${JW_BODY} が読めません`);

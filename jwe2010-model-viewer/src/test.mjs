@@ -62,7 +62,12 @@ for(const [f,who,face,hair,unknown] of [["sekiguchi.p2s","関口 訓充",3378,71
     t(`体 #1429: 骨 ${B.Bind.length}・包み ${B.packs.length}・三角形 ${tris.length}・高さ ${mn[1].toFixed(0)}〜${mx[1].toFixed(0)}・幅 ±${mx[0].toFixed(0)}`,B.Bind.length===19&&B.packs.length===56&&mn[1]<0&&mx[1]>600&&mx[1]<700&&mx[0]<200);
     const T=g("jwBodyTris")(B,null,P=>g("JW_BODY_OPTS").has(P.opt)), tx=Math.max(...T.flatMap(x=>x.p.map(v=>v[0])));
     t(`T の形では腕が横に伸びる（幅 ±${tx.toFixed(0)}）`,tx>300);
-    const h=cur[16]; t(`頭の骨（16）は首の上（高さ ${h[13].toFixed(0)}）`,h[13]>650&&Math.abs(h[12])<1) } }
+    const h=cur[16]; t(`頭の骨（16）は首の上（高さ ${h[13].toFixed(0)}）`,h[13]>650&&Math.abs(h[12])<1);
+    // 手（#8095）: 左右 2 つ。手首（骨 17・18）のそばに来る
+    const hf=path.join(here,"data/08095.bin");
+    if(fs.existsSync(hf)){ const hm=g("jwHandMeshes")(new Uint8Array(fs.readFileSync(hf)),cur,null), d=[];
+      for(const [m,b] of [[hm[0],18],[hm[1],17]]){ const w=g("jwWorldToView")(cur[b].slice(12,15)); let s=[0,0,0],n=0; for(let k=0;k<m.f.length;k+=5){ for(let j=0;j<3;j++) s[j]+=m.f[k+j]; n++ } d.push(Math.hypot(...s.map((v,j)=>v/n-w[j]))) }
+      t(`手 #8095: 2 つ・三角形 ${hm.map(m=>m.ntri).join("+")}・手の真ん中から手首の骨まで ${d.map(x=>x.toFixed(0)).join("・")}`,hm.length===2&&hm.every(m=>m.ntri>50)&&d.every(x=>x<60)) } } }
 // セーブの中のユニフォームとスパイク（関口のセーブ: 中身のある 2 着（仙台のホーム・仙台の GK。絵で確認）とスパイク 1 つ）
 { const f=path.join(here,"data/sekiguchi.p2s");
   if(fs.existsSync(f)){ const b=fs.readFileSync(f), file={size:b.length,slice:(a,e)=>({arrayBuffer:async()=>b.buffer.slice(b.byteOffset+a,b.byteOffset+(e??b.length))})};
