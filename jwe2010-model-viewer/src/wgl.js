@@ -39,11 +39,11 @@ function weGL(canvas){
     }
   };
 }
-// 列優先の 4×4。view: {yaw,pitch,dist,target:[x,y,z],fov}。画面の座標（Y 上・手前 +Z）を回してカメラは −Z を向く
+// 列優先の 4×4。view: {yaw,pitch,dist,target:[x,y,z],fov,pan:[x,y]}。画面の座標（Y 上・手前 +Z）を回してカメラは −Z を向く。pan は画面に平行にずらす量（形の単位、無ければ 0）
 function weViewMatrix(v,aspect){
   const cy=Math.cos(v.yaw), sy=Math.sin(v.yaw), cp=Math.cos(v.pitch), sp=Math.sin(v.pitch), [tx,ty,tz]=v.target;
   const f=1/Math.tan((v.fov||30)*Math.PI/360), near=v.dist/50, far=v.dist*50;
-  const tr=p=>{ const x=p[0]-tx, y=p[1]-ty, z=p[2]-tz, x1=x*cy+z*sy, z1=-x*sy+z*cy, y2=y*cp-z1*sp, z2=y*sp+z1*cp; return [x1,y2,z2-v.dist] };
+  const tr=p=>{ const x=p[0]-tx, y=p[1]-ty, z=p[2]-tz, x1=x*cy+z*sy, z1=-x*sy+z*cy, y2=y*cp-z1*sp, z2=y*sp+z1*cp; return [x1+(v.pan?.[0]||0),y2+(v.pan?.[1]||0),z2-v.dist] };
   const o=tr([0,0,0]), ex=tr([1,0,0]).map((a,i)=>a-o[i]), ey=tr([0,1,0]).map((a,i)=>a-o[i]), ez=tr([0,0,1]).map((a,i)=>a-o[i]);
   const V=[ex[0],ex[1],ex[2],0, ey[0],ey[1],ey[2],0, ez[0],ez[1],ez[2],0, o[0],o[1],o[2],1];
   const P=[f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0];

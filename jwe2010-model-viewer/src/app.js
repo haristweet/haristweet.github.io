@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.4.1";
+const VERSION="0.4.2";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -126,7 +126,7 @@ function showTexs(texs){
     cv.style.width=Math.min(160,t.W*(t.W<=64?2:1))+"px";
     fig.append(cv,`#${t.from} ${t.W}×${t.H}${t.rgba?"":"（まだ読めない形式）"}`); box.append(fig) }
 }
-function resetCam(){ if(!APP.base) return; Object.assign(APP.view,{yaw:0,pitch:0.1,target:APP.base.target.slice(),dist:APP.base.h*2.6}); draw() }
+function resetCam(){ if(!APP.base) return; Object.assign(APP.view,{yaw:0,pitch:0.1,target:APP.base.target.slice(),dist:APP.base.h*2.6,pan:[0,0]}); draw() }
 function draw(){ if(APP.gl) APP.gl.draw(APP.view,$("c-clear").checked?[0,0,0,0]:null) }
 function step(sel,d){ const o=sel.options; if(!o.length) return; sel.selectedIndex=(sel.selectedIndex+d+o.length)%o.length; sel.onchange() }
 function savePng(){
@@ -154,16 +154,31 @@ function init(){
   $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   $("c-long").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   $("b-png").onclick=savePng; $("c-clear").onchange=draw;
-  // 回す・寄る
-  const cv=$("cv"), pts=new Map(); let pinch=0;
-  const zoom=k=>{ if(APP.base) APP.view.dist=Math.max(APP.base.h*0.3,Math.min(APP.base.h*20,APP.view.dist*k)); draw() };
-  cv.addEventListener("pointerdown",e=>{ cv.setPointerCapture(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]) });
-  cv.addEventListener("pointermove",e=>{ if(!pts.has(e.pointerId)) return; const [x,y]=pts.get(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]);
-    if(pts.size===2){ const [a,b]=[...pts.values()], d=Math.hypot(a[0]-b[0],a[1]-b[1]); if(pinch) zoom(pinch/d); pinch=d; return }
-    APP.view.yaw+=(e.clientX-x)*0.01; APP.view.pitch=Math.max(-1.5,Math.min(1.5,APP.view.pitch+(e.clientY-y)*0.01)); draw() });
-  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch=0 };
+  // 回す・動かす・寄る（tobal1・vf2・fv のビューアと同じ操作）: ドラッグで回す。Shift を押しながら（または右・中ボタンで）ドラッグすると平行に動かす。
+  // ホイールはカーソルの下の物が動かないように寄る。2本指はピンチで寄り、指の中ほどの移動で平行に動く。ダブルクリックで戻す
+  const cv=$("cv"), pts=new Map(); let pinch=0, last=null, mode=null;
+  // 画面の 1 ピクセルが、見ている所（target）の深さで形の何単位か
+  const unit=()=>{ const f=1/Math.tan((APP.view.fov||30)*Math.PI/360); return 2*APP.view.dist/(f*cv.clientHeight) };
+  const panBy=(dx,dy)=>{ const u=unit(), p=APP.view.pan||(APP.view.pan=[0,0]); p[0]+=dx*u; p[1]-=dy*u };
+  // 寄る。ox,oy＝画面の真ん中から見たカーソルの位置（ピクセル）。その下の物が動かないように平行にもずらす
+  const zoom=(k,ox=0,oy=0)=>{ if(!APP.base) return; const u0=unit();
+    APP.view.dist=Math.max(APP.base.h*0.3,Math.min(APP.base.h*20,APP.view.dist*k)); const du=unit()-u0, p=APP.view.pan||(APP.view.pan=[0,0]);
+    p[0]+=ox*du; p[1]-=oy*du; draw() };
+  const mid=(x,y)=>{ const r=cv.getBoundingClientRect(); return [x-(r.left+r.width/2),y-(r.top+r.height/2)] };
+  cv.addEventListener("contextmenu",e=>e.preventDefault());
+  cv.addEventListener("pointerdown",e=>{ cv.setPointerCapture(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]); last=[e.clientX,e.clientY];
+    mode=pts.size>=2?"pinch":(e.shiftKey||e.button===1||e.button===2)?"pan":"rotate" });
+  cv.addEventListener("pointermove",e=>{ if(!pts.has(e.pointerId)) return; const prev=pts.get(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]);
+    if(pts.size===2){ const [a,b]=[...pts.values()], d=Math.hypot(a[0]-b[0],a[1]-b[1]);
+      panBy((e.clientX-prev[0])/2,(e.clientY-prev[1])/2);
+      if(pinch) zoom(pinch/d,...mid((a[0]+b[0])/2,(a[1]+b[1])/2)); else draw(); pinch=d; return }
+    if(!last) return; const dx=e.clientX-last[0], dy=e.clientY-last[1]; last=[e.clientX,e.clientY];
+    if(mode==="pan"||e.shiftKey) panBy(dx,dy);
+    else { APP.view.yaw+=dx*0.01; APP.view.pitch=Math.max(-1.5,Math.min(1.5,APP.view.pitch+dy*0.01)) }
+    draw() });
+  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch=0; last=pts.size?[...pts.values()][0]:null; if(!pts.size) mode=null; else if(mode==="pinch") mode="pan" };
   cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
-  cv.addEventListener("wheel",e=>{ e.preventDefault(); zoom(Math.exp(e.deltaY*0.001)) },{passive:false});
+  cv.addEventListener("wheel",e=>{ e.preventDefault(); zoom(Math.exp(e.deltaY*0.001),...mid(e.clientX,e.clientY)) },{passive:false});
   cv.addEventListener("dblclick",resetCam);
   const vw=$("viewer");
   document.addEventListener("dragover",e=>{ e.preventDefault(); vw.classList.add("drop-over") });
