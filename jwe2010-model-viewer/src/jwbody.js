@@ -206,7 +206,7 @@ function jwMotionList(u){
 //   0〜1436 番は試合中のセーブのあいだで同じ中身、1437 番から後ろは場面ごとに入れ替わる枠。選手選択の画面のセーブでは一部しか読み込まれていない
 const JW_MOTION_TABLE=0x56A50C, JW_MOTION_FIXED=1437;
 // 名前（場面のセーブで、そのとき再生中の動きを骨の向きの一致で当てたもの。motmatch.mjs）
-const JW_MOTION_NAMES={725:"スライディング"};
+const JW_MOTION_NAMES={217:"PK のキック",725:"スライディング"};
 function jwSaveMotions(m){
   const dv=new DataView(m.buffer,m.byteOffset,m.byteLength), ptr=[];
   for(let a=JW_MOTION_TABLE;a+4<=m.length&&ptr.length<4096;a+=4){ const p=dv.getUint32(a,true); if(p<0x100000||p>=m.length) break; ptr.push(p) }
