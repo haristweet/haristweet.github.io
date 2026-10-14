@@ -96,7 +96,10 @@ function jwTeams(m,players){
     const mem=[]; let ok=true;
     for(let k=0;k<32;k++){ const w=m[r+i*64+k*2]|m[r+i*64+k*2+1]<<8; if(!w) continue; if(w>np||(mem.length&&w-1<=mem.at(-1))){ ok=false; break } mem.push(w-1) }
     // 名簿の並びが崩れているチーム（選抜・オールスターなど）は出さない
-    if(ok&&mem.length&&name) out.push({i,name,members:mem});
+    // 背番号: 名簿の 0x1710 バイト前から 1 チーム 32 バイト。名簿と同じ並びで「番号−1」（0xFF は無し）。
+    //   ベガルタの林 16・関口 11・梁 10・永井 8、鹿島の曽ヶ端 21 など実際の番号と合う（v0.5.0。4 つのセーブで同じ場所）
+    const na=r-0x1710+i*32, nums=mem.map((_,k)=>na>=0&&m[na+k]<99?m[na+k]+1:null);
+    if(ok&&mem.length&&name) out.push({i,name,members:mem,numbers:nums});
   }
   return out;
 }

@@ -72,6 +72,20 @@ for(const [f,who,face,hair,unknown] of [["sekiguchi.p2s","関口 訓充",3378,71
 { const f=path.join(here,"data/sekiguchi.p2s");
   if(fs.existsSync(f)){ const b=fs.readFileSync(f), file={size:b.length,slice:(a,e)=>({arrayBuffer:async()=>b.buffer.slice(b.byteOffset+a,b.byteOffset+(e??b.length))})};
     const k=g("jwSaveKits")(await g("jwP2sMemory")(file));
+    // 背番号（v0.5.0）: 名簿の 0x1710 前の番号表。ベガルタの林 16・関口 11・梁 10・永井 8、鹿島の曽ヶ端 21
+    { const mem=await g("jwP2sMemory")(file), ps=g("jwPlayers")(mem), tm=g("jwTeams")(mem,ps), num=(ti,re)=>{ const T=tm.find(x=>x.i===ti), k=T.members.findIndex(i=>re.test(ps[i].name)); return T.numbers[k] };
+      const got=[num(0,/林 卓人/),num(0,/関口/),num(0,/梁/),num(0,/永井 篤志/),num(2,/曽ヶ端/)];
+      t(`背番号 林・関口・梁・永井・曽ヶ端＝${got.join("・")}`,got.join()==="16,11,10,8,21");
+      const f=k.kits[0].fonts; t(`1 着目に背番号の字と色表がある`,!!(f&&f.digits&&f.letters&&f.back&&f.chest&&f.shorts&&f.name));
+      // 番号の絵: 2 桁は升を左右、1 桁は真ん中（16 は「1」を詰める）
+      const ink=T=>{ const xs=[]; for(let x=0;x<64;x++) for(let y=0;y<32;y++) if(T[y*64+x]){ xs.push(x); break } return [xs[0],xs.at(-1)] };
+      const i8=ink(g("jwNumberIdx")(f.digits,8)), i22=ink(g("jwNumberIdx")(f.digits,22));
+      t(`番号の絵 8 は真ん中（${i8}）・22 は左右いっぱい（${i22}）`,Math.abs((i8[0]+i8[1])/2-31.5)<3&&i22[0]<8&&i22[1]>55);
+      const nm=g("jwNameIdx")(f.letters,"NAGAI"); let xs=[]; for(let x=0;x<256;x++) for(let y=0;y<32;y++) if(nm[y*256+x]){ xs.push(x); break }
+      t(`名前の絵 NAGAI は真ん中あたり（${xs[0]}〜${xs.at(-1)}）`,xs.length&&Math.abs((xs[0]+xs.at(-1))/2-128)<6);
+      const bf=path.join(here,"data/01429.bin");
+      if(fs.existsSync(bf)){ const B=g("jwBodyParse")(new Uint8Array(fs.readFileSync(bf))), ms=g("jwOverlayMeshes")(B,g("jwBodyStand")(B),f,g("jwBodyOpts")(false,false),"SEKIGUCHI",11);
+        t(`重ねの形 ${ms.length} つ（背中・胸・パンツの番号と名前）・端を伸ばす`,ms.length===4&&ms.every(m=>m.clamp&&m.ntri>0)) } }
     t(`セーブのユニフォーム ${k.kits.length} 着（${k.kits.map(x=>x.id.toString(16)).join("・")}）・スパイク ${k.boots?k.boots.W+"×"+k.boots.H:"無し"}`,k.kits.length===2&&k.kits[0].id===0xfa0&&k.boots&&k.boots.W===256) } }
 const fa=path.join(here,"out/fake_0_TEXT.AFS"), fi=path.join(here,"out/fake.iso");
 if(fs.existsSync(fa)) for(const [name,f] of [["AFS",fa],["ISO",fi]]){

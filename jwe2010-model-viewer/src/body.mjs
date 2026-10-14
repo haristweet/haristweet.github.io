@@ -15,20 +15,22 @@ const team=teams[0], list=team.members.map(i=>players[i]).filter(p=>rd(p.face)&&
 console.log(team.name,"ユニフォーム",kit?kit.id.toString(16):"無し","描く",list.map(p=>p.name).join("・"));
 // 列: 前・横（右から）・後ろ・顔の寄り。行: 選手
 const views=[[0,0,1],[90,0,1],[180,0,1],[0,0,3.2]], R=g("rasterNew")(views.length*C,list.length*C,[40,38,34]);
-const smp=tx=>tx?(s,t)=>{ const x=((Math.floor(s*tx.W)%tx.W)+tx.W)%tx.W, y=((Math.floor(t*tx.H)%tx.H)+tx.H)%tx.H, i=(y*tx.W+x)*4; return tx.rgba[i+3]<64?null:[tx.rgba[i],tx.rgba[i+1],tx.rgba[i+2]] }:()=>[150,150,150];
+const smp=(tx,cl)=>tx?(s,t)=>{ const x=cl?Math.max(0,Math.min(tx.W-1,Math.floor(s*tx.W))):((Math.floor(s*tx.W)%tx.W)+tx.W)%tx.W, y=cl?Math.max(0,Math.min(tx.H-1,Math.floor(t*tx.H))):((Math.floor(t*tx.H)%tx.H)+tx.H)%tx.H, i=(y*tx.W+x)*4; return tx.rgba[i+3]<64?null:[tx.rgba[i],tx.rgba[i+1],tx.rgba[i+2]] }:()=>[150,150,150];
 list.forEach((p,row)=>{
   const h=g("jwHeadMeshes")(rd(p.face),rd(p.hair),common,false), head=g("jwPlaceHead")(h.meshes,cur[16]);
-  const ms=[...g("jwBodyMeshes")(B,cur,{0:common.ring,1:kit,5:kits.boots},g("jwBodyOpts")(!!process.env.LONG,!!process.env.STUDS)),...head,...(rd(g("JW_HANDS"))&&!process.env.NOHANDS?g("jwHandMeshes")(rd(g("JW_HANDS")),cur,common.ring):[])];
+  const opts=g("jwBodyOpts")(!!process.env.LONG,!!process.env.STUDS), num=team.numbers[team.members.indexOf(p.i)];
+  const ov=process.env.NONUM?[]:g("jwOverlayMeshes")(B,cur,kit?.fonts,opts,p.shirt,num);
+  const ms=[...g("jwBodyMeshes")(B,cur,{0:common.ring,1:kit,5:kits.boots},opts),...head,...(rd(g("JW_HANDS"))&&!process.env.NOHANDS?g("jwHandMeshes")(rd(g("JW_HANDS")),cur,common.ring):[]),...ov];
   const all=[]; for(const m of ms) for(let k=0;k<m.f.length;k+=5) all.push([m.f[k],m.f[k+1],m.f[k+2]]);
   const mn=[0,1,2].map(i=>Math.min(...all.map(v=>v[i]))), mx=[0,1,2].map(i=>Math.max(...all.map(v=>v[i]))), ctr=mn.map((v,i)=>(v+mx[i])/2);
   const hc=[0,1,2].map(i=>{ const hv=[]; for(const m of head) for(let k=0;k<m.f.length;k+=5) hv.push(m.f[k+i]); return (Math.min(...hv)+Math.max(...hv))/2 });
   views.forEach(([yaw,,zoom],col)=>{ const cy=Math.cos(yaw*Math.PI/180), sy=Math.sin(yaw*Math.PI/180), c0=zoom>1?hc:ctr, s=(C-16)/(mx[1]-mn[1])*zoom;
-    for(const m of ms){ const sm=smp(m.tex);
+    for(const m of ms){ const sm=smp(m.tex,m.clamp);
       for(let k=0;k<m.f.length;k+=15){ const q=[0,1,2].map(j=>{ const o=k+j*5, x=m.f[o]-c0[0], y=m.f[o+1]-c0[1], z=m.f[o+2]-c0[2], X=x*cy+z*sy, Z=-x*sy+z*cy;
-          return [col*C+C/2+X*s,row*C+C/2-y*s,-Z] });
+          return [col*C+C/2+X*s,row*C+C/2-y*s,-Z-(m.overlay?0.3:0)] });
         // 寄りの列は枠からはみ出す三角形を描かない（隣の行に重ならないように）
         if(q.some(v=>v[0]<col*C||v[0]>=(col+1)*C||v[1]<row*C||v[1]>=(row+1)*C)) continue;
         g("rasterTriTex")(R,q[0],q[1],q[2],[m.f[k+3],m.f[k+4]],[m.f[k+8],m.f[k+9]],[m.f[k+13],m.f[k+14]],sm,1) } } });
-  g("rasterText")(R,4,row*C+4,String(p.i+1),[255,255,255],2);
+  g("rasterText")(R,4,row*C+4,String(num??""),[255,255,255],2);
 });
 fs.mkdirSync(path.dirname(outp),{recursive:true}); fs.writeFileSync(outp,pngEncode(R.W,R.H,R.px)); console.log(outp,R.W+"×"+R.H);

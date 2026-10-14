@@ -11,16 +11,18 @@ function weGL(canvas){
   const A={p:gl.getAttribLocation(pr,"p"),t:gl.getAttribLocation(pr,"t")}, uM=gl.getUniformLocation(pr,"M"), uT=gl.getUniformLocation(pr,"useT"), uO=gl.getUniformLocation(pr,"opq");
   let items=[];
   return {
-    // ms: [{f:Float32Array, tex:{W,H,rgba}|null, opaque?}]。opaque は絵の α を使わずに塗る（JWE2010 の後ろ髪）
+    // ms: [{f:Float32Array, tex:{W,H,rgba}|null, opaque?, clamp?, overlay?}]。opaque は絵の α を使わずに塗る（JWE2010 の後ろ髪）。clamp は絵をくり返さない、overlay は服に重ねる絵（JWE2010 の背番号・名前）
     set(ms){
       for(const it of items){ gl.deleteBuffer(it.buf); if(it.tex) gl.deleteTexture(it.tex) }
       items=ms.map(m=>{ const buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf); gl.bufferData(gl.ARRAY_BUFFER,m.f,gl.STATIC_DRAW);
         let tex=null;
         if(m.tex&&m.tex.rgba){ tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex);
           // 絵は 2 のべき乗の大きさなので、くり返し（REPEAT）が使える
-          for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.REPEAT],[gl.TEXTURE_WRAP_T,gl.REPEAT]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
+          // clamp の形（JWE2010 の背番号・名前）は端を伸ばす
+          const wr=m.clamp?gl.CLAMP_TO_EDGE:gl.REPEAT;
+          for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,wr],[gl.TEXTURE_WRAP_T,wr]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
           gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,m.tex.W,m.tex.H,0,gl.RGBA,gl.UNSIGNED_BYTE,m.tex.rgba) }
-        return {buf,tex,n:m.f.length/5,opaque:!!m.opaque} });
+        return {buf,tex,n:m.f.length/5,opaque:!!m.opaque,overlay:!!m.overlay} });
     },
     draw(view,bg){
       const W=canvas.width=Math.round(canvas.clientWidth*devicePixelRatio), H=canvas.height=Math.round(canvas.clientHeight*devicePixelRatio);
@@ -34,6 +36,8 @@ function weGL(canvas){
         gl.enableVertexAttribArray(A.p); gl.vertexAttribPointer(A.p,3,gl.FLOAT,false,20,0);
         gl.enableVertexAttribArray(A.t); gl.vertexAttribPointer(A.t,2,gl.FLOAT,false,20,12);
         gl.uniform1f(uT,it.tex?1:0); gl.uniform1f(uO,it.opaque?1:0); if(it.tex) gl.bindTexture(gl.TEXTURE_2D,it.tex);
+        // overlay の形（服の面と同じ所に重ねる絵）は、少し手前にずらして同じ深さでも描く
+        if(it.overlay){ gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(-1,-4); gl.depthFunc(gl.LEQUAL) } else { gl.disable(gl.POLYGON_OFFSET_FILL); gl.depthFunc(gl.LESS) }
         gl.drawArrays(gl.TRIANGLES,0,it.n);
       }
     }

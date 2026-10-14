@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.4.4";
+const VERSION="0.5.0";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -96,7 +96,11 @@ async function show(what){
       const body=$("c-body").checked?await getBody():null;
       if(body){ const kit=APP.kits?.kits[+$("s-kit").value]||null, boots=APP.kits?.boots||null;
         jwPlaceHead(r.meshes,body.cur[16]);
-        const bm=jwBodyMeshes(body.B,body.cur,{0:common?.ring||null,1:kit,5:boots},jwBodyOpts($("c-long").checked,$("c-studs").checked)); r.meshes.unshift(...bm);
+        const opts=jwBodyOpts($("c-long").checked,$("c-studs").checked), bm=jwBodyMeshes(body.B,body.cur,{0:common?.ring||null,1:kit,5:boots},opts); r.meshes.unshift(...bm);
+        // 背番号と名前（服の上に重ねるので最後に描く）。番号は選んでいるチーム、無ければその選手がいる最初のチームの番号表から
+        if($("c-num").checked){ const tm=[APP.teams.find(t=>String(t.i)===$("s-team").value),...APP.teams].find(t=>t&&t.members.includes(c.p.i)), num=tm?tm.numbers[tm.members.indexOf(c.p.i)]:null;
+          if(kit&&kit.fonts){ r.meshes.push(...jwOverlayMeshes(body.B,body.cur,kit.fonts,opts,c.p.shirt,num)); if(num==null) warn.push("背番号が分からない") }
+          else if(kit) warn.push("このユニフォームの背番号の字がセーブに無い") }
         if(body.hands){ try{ r.meshes.unshift(...jwHandMeshes(body.hands,body.cur,common?.ring||null)) }catch(e){ warn.push(`手 #${JW_HANDS} が読めません`) } } else warn.push(`手のファイル #${JW_HANDS} が読めません`);
         if(kit) r.texs.push({...kit,from:`セーブのユニフォーム ${+$("s-kit").value+1}`}); else warn.push("ユニフォームの絵がセーブに無いので、体は灰色");
         if(boots) r.texs.push({...boots,from:"セーブのスパイク"}) }
@@ -155,7 +159,7 @@ function init(){
   // 体の有り無しで大きさが変わるので、見る位置を作り直す
   $("c-body").onchange=()=>{ APP.base=null; if(APP.cur?.kind==="player") show(APP.cur) };
   $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
-  $("c-long").onchange=$("c-studs").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  $("c-long").onchange=$("c-studs").onchange=$("c-num").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   $("b-png").onclick=savePng; $("c-clear").onchange=draw;
   // 回す・動かす・寄る（tobal1・vf2・fv のビューアと同じ操作）: ドラッグで回す。Shift を押しながら（または右・中ボタンで）ドラッグすると平行に動かす。
   // ホイールはカーソルの下の物が動かないように寄る。2本指はピンチで寄り、指の中ほどの移動で平行に動く。ダブルクリックで戻す

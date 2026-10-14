@@ -110,7 +110,7 @@ function jwPlaceHead(ms,M){
 //   どの枠が何かはセーブによって違う（ディスクのどのファイルかが分かるまでのつなぎ）
 //   スパイクの色表は後ろに 23 個並ぶ色違いの 2 つ目（永井の画面と同じ）
 function jwSaveKits(m){
-  const dv=new DataView(m.buffer,m.byteOffset,m.byteLength), kits=[]; let boots=null; const pals=[];
+  const dv=new DataView(m.buffer,m.byteOffset,m.byteLength), kits=[], fonts=[{},{},{},{}]; let boots=null; const pals=[];
   for(let o=0;o+64<=m.length;o+=16){
     if(dv.getUint32(o,true)!==0x29857294) continue;
     const a=dv.getUint32(o+16,true), wh=dv.getUint32(o+20,true), W=wh&0xffff, H=wh>>>16, po=a&0xffff, pa=a>>>16, id=dv.getUint32(o+12,true);
@@ -118,10 +118,18 @@ function jwSaveKits(m){
       // 選手選択の画面のセーブでは、頭だけ残って中身が 0 の所がある。中身の無いもの・同じ絵は外す
       // 0 番の色もふつうに使われるので、点の値の種類で見る（中身の無いものは 1 種類）
       const pix=m.subarray(o+po,o+po+W*H), seen=new Set(); let sum=0; for(let i=0;i<pix.length;i+=97){ seen.add(pix[i]); sum=(sum*31+pix[i])>>>0 } for(let i=0;i<1024;i++) sum=(sum*31+m[o+pa+i])>>>0;
-      if(seen.size>8&&!kits.some(k=>k.sum===sum)) kits.push({id,at:o,W,H,sum,rgba:jwRGBA(pix,m.subarray(o+pa,o+pa+1024))}) }
+      if(seen.size>8&&!kits.some(k=>k.sum===sum)) kits.push({id,at:o,W,H,sum,rgba:jwRGBA(pix,m.subarray(o+pa,o+pa+1024)),slot:id>=0xfa0&&id<=0xfa3?id-0xfa0:-1}) }
+    // 背番号・名前の字（4 ビット）と色表。ユニフォームの枠ごと（k＝0〜3）: 数字 0xFAA+k（256×64、32×32 の升に 0〜4・5〜9）、字 0xFB4+k（256×32、A〜N・O〜Z.）、
+    //   色表 0x2512+k（背中の番号）・0x251C+k（パンツの番号）・0x2580+k（胸の番号）・0x247C+k（名前）。どれもゲームが描くときに使っていたもの（永井のセーブの命令で確認）
+    else if(id>=0xfaa&&id<=0xfad&&W===256&&H===64&&po) fonts[id-0xfaa]={...fonts[id-0xfaa],digits:m.subarray(o+po,o+po+W*H/2)};
+    else if(id>=0xfb4&&id<=0xfb7&&W===256&&H===32&&po) fonts[id-0xfb4]={...fonts[id-0xfb4],letters:m.subarray(o+po,o+po+W*H/2)};
+    else if(!W&&!H&&pa&&[0x2512,0x251c,0x2580,0x247c].some(b=>id>=b&&id<b+4)){ const b=[0x2512,0x251c,0x2580,0x247c].find(b=>id>=b&&id<b+4), k=id-b;
+      fonts[k]={...fonts[k],[{0x2512:"back",0x251c:"shorts",0x2580:"chest",0x247c:"name"}[b]]:m.subarray(o+pa,o+pa+64)} }
     else if(W===256&&H===256&&po&&!pa&&!boots&&o+po+W*H<=m.length) boots={id,at:o,pix:m.subarray(o+po,o+po+W*H)};
     else if(boots&&!W&&!H&&pa&&o-boots.at<0x20000&&pals.length<2) pals.push(m.subarray(o+pa,o+pa+1024));
   }
+  // 字と色表がそろっている枠だけ、ユニフォームに付ける（中身が 0 の枠は外す）
+  for(const k of kits){ const f=fonts[k.slot]; if(f&&f.digits&&f.letters&&f.back&&f.chest&&f.shorts&&f.name&&f.digits.some(x=>x)&&f.name.some(x=>x)) k.fonts=f }
   return {kits,boots:boots&&pals.length?{W:256,H:256,id:boots.id,rgba:jwRGBA(boots.pix,pals[pals.length-1])}:null};
 }
 // 手（v0.4.3）。体のファイルには手首までしか無く、手は別のファイル #8095（形 4 つ）。試合中・入場のセーブで、ゲームは体と頭のあとに
@@ -134,5 +142,50 @@ function jwHandMeshes(u,cur,skin){
     const tris=weModel(u,dv.getUint32(8+k*4,true)).tris, f=new Float32Array(tris.length*15); let i=0;
     for(const t of tris) for(let j=0;j<3;j++){ const p=t.p[j]; f[i++]=p[2]; f[i++]=-p[1]; f[i++]=p[0]; f[i++]=t.uv[j][0]; f[i++]=t.uv[j][1] }
     ms.push(...jwPlaceHead([{f,ntri:tris.length,tex:skin||null}],cur[bone])) }
+  return ms;
+}
+
+// 背番号・名前（v0.5.0）。ゲームは選手ごとに、字から 64×32 の番号の絵と 256×32 の名前の絵を組み立て、体の重ねの包みの uv を書き換えて貼る
+//   uv の書き換え（試合中と入場のセーブで同じ。誤差 0.0003 以内）: 新しい uv＝a×ファイルの uv＋b。番号の絵 1 枚を 3 つの色表で背中・胸・パンツに使う
+const JW_OVERLAY={6:{a:10/23,bu:-0.1521,bv:-0.6893,tex:"num",pal:"back"},15:{a:1/3,bu:-0.3811,bv:-0.0715,tex:"num",pal:"chest"},
+  14:{a:2/5,bu:-1.0970,bv:-1.7798,tex:"num",pal:"shorts"},17:{a:14/23,bu:-0.4130,bv:-2.9868,tex:"name",pal:"name"}};
+function jwNib(src,W,x,y){ const b=src[(y*W+x)>>1]; return x&1?b>>4:b&15 }
+// 番号の絵（4 ビットの値、64×32）。数字は 32×32 の升をそのまま写す。1 桁は真ん中、2 桁は左右。「1」は幅 22（升の 1〜22）で詰める
+//   （ベガルタの字で 11 個の番号がこの決まりで点まで一致。「1」を含む番号は 1 点ずれることがある【推測】）
+function jwNumberIdx(digits,n){
+  const T=new Uint8Array(64*32), s=String(n).slice(0,2), w=c=>c==="1"?22:32, sx=c=>c==="1"?1:0;
+  let x=Math.floor((64-[...s].reduce((a,c)=>a+w(c),0))/2);
+  for(const c of s){ const d=+c, cx=(d%5)*32+sx(c), cy=Math.floor(d/5)*32;
+    for(let y=0;y<32;y++) for(let i=0;i<w(c);i++){ const X=x+i; if(X<0||X>=64) continue; const v=jwNib(digits,256,cx+i,cy+y); if(v) T[y*64+X]=v }
+    x+=w(c) }
+  return T;
+}
+// 名前の絵（256×32）。字の絵の行ごとに、字の切れ目（空いた列）で A〜N・O〜Z. を切り出す。字は y 11 の高さにそろえ、真ん中に並べる。
+//   字の間はおよそ 90 点の幅に広げ、5〜23 点（ゲームの名前の絵 22 個の並びに合わせた近似【推測】）
+function jwNameIdx(letters,name){
+  const glyphs={}, order=["ABCDEFGHIJKLMN","OPQRSTUVWXYZ."];
+  order.forEach((chars,row)=>{ const y0=row*16, ink=[]; let top=99;
+    for(let x=0;x<256;x++){ let on=false; for(let y=y0;y<y0+16;y++) if(jwNib(letters,256,x,y)){ on=true; top=Math.min(top,y-y0) } ink.push(on) }
+    const runs=[]; let s=-1; for(let x=0;x<=256;x++){ const on=x<256&&ink[x]; if(on&&s<0) s=x; if(!on&&s>=0){ runs.push([s,x-1]); s=-1 } }
+    if(runs.length===chars.length) [...chars].forEach((c,k)=>glyphs[c]={x0:runs[k][0],w:runs[k][1]-runs[k][0]+1,y0,top}) });
+  const T=new Uint8Array(256*32), cs=[...String(name||"").toUpperCase()].filter(c=>glyphs[c]||c===" ");
+  if(!cs.length) return T;
+  const ws=cs.map(c=>c===" "?6:glyphs[c].w), sum=ws.reduce((a,b)=>a+b,0), gap=cs.length>1?Math.round(Math.min(23,Math.max(5,(90-sum)/(cs.length-1)))):0;
+  let x=Math.round(128-(sum+gap*(cs.length-1))/2);
+  cs.forEach((c,k)=>{ const g=glyphs[c];
+    if(g) for(let y=0;y<16;y++){ const ty=11-g.top+y; if(ty<0||ty>=32) continue; for(let i=0;i<g.w;i++){ const X=x+i; if(X<0||X>=256) continue; const v=jwNib(letters,256,g.x0+i,g.y0+y); if(v) T[ty*256+X]=v } }
+    x+=ws[k]+gap });
+  return T;
+}
+function jwIdxRGBA(idx,pal){ const out=new Uint8Array(idx.length*4); for(let i=0;i<idx.length;i++){ const j=idx[i]*4; out[i*4]=pal[j]; out[i*4+1]=pal[j+1]; out[i*4+2]=pal[j+2]; out[i*4+3]=Math.min(255,pal[j+3]*2) } return out }
+// 重ねの形（背中の番号・胸の番号・パンツの番号・名前）。uv を書き換え、絵は端を伸ばす（くり返さない）
+function jwOverlayMeshes(B,cur,fonts,opts,name,number){
+  if(!fonts) return [];
+  const numIdx=number!=null?jwNumberIdx(fonts.digits,number):null, nameIdx=name?jwNameIdx(fonts.letters,name):null, ms=[];
+  for(const [opt,o] of Object.entries(JW_OVERLAY)){
+    if(!opts.has(+opt)) continue; const idx=o.tex==="num"?numIdx:nameIdx; if(!idx) continue;
+    const tex={W:o.tex==="num"?64:256,H:32,rgba:jwIdxRGBA(idx,fonts[o.pal])}, tris=jwBodyTris(B,cur,P=>P.opt===+opt), f=new Float32Array(tris.length*15); let n=0;
+    for(const t of tris) for(let j=0;j<3;j++){ const q=jwWorldToView(t.p[j]); f[n++]=q[0]; f[n++]=q[1]; f[n++]=q[2]; f[n++]=o.a*t.uv[j][0]+o.bu; f[n++]=o.a*t.uv[j][1]+o.bv }
+    ms.push({f,ntri:tris.length,tex,clamp:true,overlay:o.pal}) }
   return ms;
 }
