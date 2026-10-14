@@ -100,6 +100,10 @@ for(const [f,who,face,hair,unknown] of [["sekiguchi.p2s","関口 訓充",3378,71
     const sl=g("jwMotionFrames")(S.u,S.list[725]), x=g("jwMotionFrames")(S.u,S.list[1140]), y=g("jwMotionFrames")(U,L[239]);
     const sk=g("jwSaveMotions")(await g("jwP2sMemory")((b2=>({size:b2.length,slice:(a,e)=>({arrayBuffer:async()=>b2.buffer.slice(b2.byteOffset+a,b2.byteOffset+(e??b2.length))})}))(fs.readFileSync(path.join(here,"data/sekiguchi.p2s")))));
     t(`セーブの動きの表 ${S.list.length} 個・725 番 ${sl.frames.length} こま・1140 番＝#1360 の 239 番・選択の画面のセーブでは使わない`,S.list.length===1466&&sl.frames.length===39&&JSON.stringify(x)===JSON.stringify(y)&&sk===null) } }
+// ユニフォームの下絵（v0.8.0）: 服の包みは出し分け 9 つ、uv はどれも 0〜1 の中
+{ const bf=path.join(here,"data/01429.bin");
+  if(fs.existsSync(bf)){ const B=g("jwBodyParse")(new Uint8Array(fs.readFileSync(bf))), P=g("jwKitLayout")(B,g("jwBodyStand")(B)), us=P.flatMap(p=>p.tris.flat());
+    t(`ユニフォームの下絵 ${P.length} 部分・三角形 ${P.reduce((a,p)=>a+p.tris.length,0)}・uv は 0〜1`,P.length===9&&us.every(u=>u[0]>=0&&u[0]<=1&&u[1]>=0&&u[1]<=1)) } }
 const fa=path.join(here,"out/fake_0_TEXT.AFS"), fi=path.join(here,"out/fake.iso");
 if(fs.existsSync(fa)) for(const [name,f] of [["AFS",fa],["ISO",fi]]){
   const blob=new Blob([fs.readFileSync(f)]), d=await g("weOpen")(blob), u=await g("weFile")(blob,d,3377);

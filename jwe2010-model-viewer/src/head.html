@@ -32,7 +32,8 @@ h1{font-size:20px;margin:0 0 4px}
 .ctrl[hidden]{display:none}
 .ctrl label{white-space:nowrap}
 .ctrl select,.ctrl button,.ctrl input[type=number]{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
-.ctrl button{cursor:pointer}
+.ctrl button,.ctrl label.btn{cursor:pointer}
+.ctrl label.btn{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
 .ctrl .grp{white-space:nowrap}
 #info{color:var(--mut);font-size:13px;margin:6px 0 0}
 .ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
@@ -72,6 +73,11 @@ progress{width:12em;vertical-align:middle}
   <label>ユニフォーム <select id="s-kit" aria-label="ユニフォーム"></select></label>
   <label>動き <select id="s-mot" aria-label="動き"><option value="">立ち姿</option></select></label>
 </div>
+<div class="ctrl" id="kitbar" hidden>
+  <span class="grp" title="下絵（服の割り付けの線と名前）に重ねて描いた絵を読み込むと、選手がそのユニフォームを着る">自分のユニフォーム:</span>
+  <button id="b-kittpl">下絵を保存</button> <button id="b-kitcur">いまの絵を保存</button>
+  <label class="btn">絵を読み込む <input type="file" id="f-kit" accept="image/*" hidden></label>
+</div>
 <div class="ctrl" id="motbar" hidden>
   <button id="b-mot">▶ 再生</button> <input type="range" id="r-mot" min="0" max="0" value="0" style="width:min(18em,50vw)" aria-label="こま"> <span id="t-mot"></span>
   <span class="grp" style="color:var(--mut);font-size:13px">← → でこま送り・スペースで再生</span>
@@ -92,6 +98,7 @@ progress{width:12em;vertical-align:middle}
 <p>チームの一覧と名簿も、ステートセーブのメモリから読みます（チーム名の表と、1 チーム 32 枠の名簿）。名簿の並びが崩れている選抜チームなどは出しません。</p>
 <p>体はディスクの #1429 の形です（関口・梁・田村・永井のセーブで、どれもこのファイルが読み込まれていました）。19 本の骨と、2 本の骨にまたがる所のための「対」の行列で組み立てます。どの頂点をどの行列で動かすかは、試合中のセーブでゲームが使っていた行列と照らして決めました。袖は半袖（入場の場面でゲームが描いていた組）で、「長袖」で長袖の組に替えられます。形は T の字の姿でしまってあり、腕を下ろして立たせています（腕の角度は見た目で決めたもので、ゲームの立ち姿の動きではありません）。</p>
 <p>ユニフォームとスパイクの絵は、ステートセーブのメモリにあるものを使います（試合の前後のセーブなら、その試合の 2 チームの 4 着があります）。肌は頭の生え際と同じ絵です。手は別のファイル（#8095）の形を、手首の骨に付けます。背番号と背中の名前は、セーブにあるそのユニフォーム用の字から、ゲームと同じように選手ごとに組み立てて重ねます（番号はチームの番号表から）。袖の印はまだです。</p>
+<p>ユニフォームは、自分で描いた絵に替えられます。「下絵を保存」で服の割り付け（どこがシャツの前・背中・袖・パンツ・ストッキングか）の線を書き出し、それに重ねて描いた絵を「絵を読み込む」で開くと、選手がそのユニフォームを着ます。「いまの絵を保存」でゲームのユニフォームの絵も書き出せるので、それを元に描きかえることもできます。読み込んだ絵はブラウザの中だけで使い、どこにも送りません。</p>
 <p>動きは、試合中のステートセーブなら、そのメモリにあるゲームの動きの表（1,466 個）から選びます。ディスクの #1360（485 個）はその一部で、選手選択の画面などのセーブのときは #1360 を使います。どの動きも、こまごとに骨の向き（親から見た向き）が並んでいて、そのまま読みます。こまの間は向きを補います。名前が分かっている動きは、場面のセーブでそのときゲームが再生していた動きを骨の向きの一致で当てたものです（いまは PK のキックの 217 番とスライディングの 725 番）。表の 1437 番から後ろは場面ごとに入れ替わる枠です。ほかの一覧は、腰・足・手の高さと足の入れかわりで「歩く・走る・蹴る・跳ぶ・倒れる・起きる…」に分けてあります（見た目からの区分で、ゲームの中の名前ではありません）。ゲームの姿は、腕などが動きのままではないことがあり、動きを混ぜたり手を加えたりしているようです。</p>
 <p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、チームごとのユニフォーム（ディスクのどのファイルかまだ分からない）、選手ごとの長袖・半袖と GK の手袋、背の高さ。</p>
 <p id="ver"></p></details>

@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.7.1";
+const VERSION="0.8.0";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -42,12 +42,34 @@ async function openSave(file){
     const mem=await jwP2sMemory(file), players=jwPlayers(mem);
     APP.players=players; APP.teams=jwTeams(mem,players); APP.kits=jwSaveKits(mem); APP.saveMot=jwSaveMotions(mem); APP.motions=undefined; APP.motT=0; $("step-save").classList.add("done");
     if(APP.body) fillMotions();
-    fillKits(); $("bodybar").hidden=false;
+    fillKits(); $("bodybar").hidden=false; $("kitbar").hidden=false;
     fillTeams(); $("q").value=""; fillPlayers(); $("pick").hidden=false;
     status(`選手 ${players.length} 人・チーム ${APP.teams.length}`+(APP.disc?"":"。次にディスクのイメージを選んでください"));
     show(); if(!APP.disc) $("empty").textContent="ディスクのイメージを選ぶと、顔・髪と体が出ます";
   }catch(e){ status(e.message,true); console.error(e) }
 }
+// 自分で描いたユニフォームの絵（v0.8.0）。下絵＝体の服の割り付けの線と部分の名前（透明の背景、1024×512）
+function saveCanvas(cv,name){ cv.toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000) },"image/png") }
+async function kitTemplate(){ const body=await getBody(); if(!body){ status("下絵には体のファイル（ディスク）が要ります",true); return }
+  const W=1024, H=512, cv=document.createElement("canvas"); cv.width=W; cv.height=H; const x=cv.getContext("2d"), parts=jwKitLayout(body.B,body.cur);
+  const cols=["#e53935","#43a047","#1e88e5","#fdd835","#d81b60","#00acc1","#fb8c00","#8e24aa","#7cb342","#5e35b1"];
+  parts.forEach((p,k)=>{ x.strokeStyle=cols[k%cols.length]; x.lineWidth=1; x.beginPath();
+    for(const t of p.tris){ x.moveTo(t[0][0]*W,t[0][1]*H); x.lineTo(t[1][0]*W,t[1][1]*H); x.lineTo(t[2][0]*W,t[2][1]*H); x.closePath() } x.stroke() });
+  x.font="bold 18px sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.lineJoin="round";
+  const label=(u,v,t)=>{ x.lineWidth=4; x.strokeStyle="#000"; x.strokeText(t,u*W,v*H); x.fillStyle="#fff"; x.fillText(t,u*W,v*H) };
+  for(const p of parts){ if(!p.name) continue; const us=p.tris.flat(); label(us.reduce((a,u)=>a+u[0],0)/us.length,us.reduce((a,u)=>a+u[1],0)/us.length,p.name) }
+  for(const [u,v,t] of JW_KIT_LABELS) label(u,v,t);
+  saveCanvas(cv,"jwe2010_kit_template.png") }
+function kitCurrent(){ const k=curKit(); if(!k){ status("ユニフォームの絵がありません",true); return }
+  const cv=document.createElement("canvas"); cv.width=k.W; cv.height=k.H; cv.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(k.rgba),k.W,k.H),0,0);
+  saveCanvas(cv,`jwe2010_kit_${k===APP.customKit?"custom":String($("s-kit").value*1+1)}.png`) }
+// 読み込んだ絵は 1024×512（幅 1024 以上のとき）か 512×256 に合わせる（2 のべき乗でないと繰り返しが使えない）。背番号の字は選んでいたセーブのユニフォームのもの
+async function openKit(file){
+  try{ const im=await createImageBitmap(file), big=im.width>=1024, W=big?1024:512, H=big?512:256, cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+    const x=cv.getContext("2d"); x.drawImage(im,0,0,W,H); const base=curKit()!==APP.customKit?curKit():APP.customKit?.base||null;
+    APP.customKit={id:"custom",name:file.name,W,H,rgba:new Uint8Array(x.getImageData(0,0,W,H).data.buffer),fonts:base?.fonts||null,base};
+    fillKits(); $("s-kit").value="c"; status(`ユニフォームの絵 ${file.name}（${im.width}×${im.height} → ${W}×${H}）`); if(APP.cur?.kind==="player") show(APP.cur) }
+  catch(e){ status("絵が読めません: "+e.message,true); console.error(e) } }
 function openAny(file){ if(/\.p2s$/i.test(file.name)) openSave(file); else openDisc(file) }
 // チームの一覧。最初は 0 番（ベガルタ仙台）。「全員」で選手の表の全部
 function fillTeams(){
@@ -56,9 +78,11 @@ function fillTeams(){
   $("s-team").hidden=!APP.teams.length; if(APP.teams.length) $("s-team").value=String(APP.teams[0].i);
 }
 // ユニフォームの一覧（セーブの中にあるもの）。最初は 1 着目（関口・田村のセーブでは仙台のホーム。ほかのセーブでは別のチームのこともある）
+function curKit(){ const v=$("s-kit").value; return v==="c"?APP.customKit||null:APP.kits?.kits[+v]||null }
 function fillKits(){
-  const k=APP.kits?.kits||[];
-  $("s-kit").innerHTML=k.length?k.map((x,i)=>`<option value="${i}">${i+1} 着目</option>`).join(""):'<option value="">セーブに無い</option>';
+  const k=APP.kits?.kits||[], esc=s=>s.replace(/[&<]/g,c=>c==="&"?"&amp;":"&lt;");
+  $("s-kit").innerHTML=(k.length?k.map((x,i)=>`<option value="${i}">${i+1} 着目</option>`).join(""):'<option value="">セーブに無い</option>')
+    +(APP.customKit?`<option value="c">読み込んだ絵（${esc(APP.customKit.name)}）</option>`:"");
   if(k.length) $("s-kit").value="0";
 }
 // チームと名前で絞った一覧。チームは名簿の並び、全員は選手の表の順。表の順番（番号）も出す
@@ -97,7 +121,7 @@ async function show(what){
       // 体: 頭は骨 16（頭）の行列で体に付ける。ユニフォームとスパイクの絵はセーブから、肌は頭の生え際と同じ絵
       const body=$("c-body").checked?await getBody():null;
       APP.rig=null;
-      if(body){ const kit=APP.kits?.kits[+$("s-kit").value]||null, boots=APP.kits?.boots||null;
+      if(body){ const kit=curKit(), boots=APP.kits?.boots||null;
         const opts=jwBodyOpts($("c-long").checked,$("c-studs").checked);
         // 背番号と名前。番号は選んでいるチーム、無ければその選手がいる最初のチームの番号表から
         let num=null, wantNum=$("c-num").checked&&kit&&kit.fonts;
@@ -115,7 +139,7 @@ async function show(what){
           return out };
         APP.rig={build,B:body.B};
         r.meshes=build(motPose()||body.cur);
-        if(kit) r.texs.push({...kit,from:`セーブのユニフォーム ${+$("s-kit").value+1}`}); else warn.push("ユニフォームの絵がセーブに無いので、体は灰色");
+        if(kit) r.texs.push({...kit,from:kit===APP.customKit?`読み込んだ絵 ${kit.name}`:`セーブのユニフォーム ${+$("s-kit").value+1}`}); else warn.push("ユニフォームの絵がセーブに無いので、体は灰色");
         if(boots) r.texs.push({...boots,from:"セーブのスパイク"}) }
       else if($("c-body").checked) warn.push(`体のファイル #${JW_BODY} が読めません`);
       ms.push(...r.meshes); ntri+=r.meshes.reduce((a,m)=>a+m.ntri,0);
@@ -209,6 +233,7 @@ function init(){
   // 体の有り無しで大きさが変わるので、見る位置を作り直す
   $("c-body").onchange=()=>{ APP.base=null; if(APP.cur?.kind==="player") show(APP.cur) };
   $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  $("b-kittpl").onclick=kitTemplate; $("b-kitcur").onclick=kitCurrent; $("f-kit").onchange=e=>{ const f=e.target.files[0]; if(f) openKit(f); e.target.value="" };
   $("c-long").onchange=$("c-studs").onchange=$("c-num").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   // 動き: 選ぶ・再生・こま送り（← →・スペース。ほかのビューアと同じ）
   $("s-mot").onchange=()=>{ APP.motT=0; motPlay(false); const d=motData(); $("motbar").hidden=!d; if(APP.rig) motUpdate() };
