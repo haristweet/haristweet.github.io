@@ -115,6 +115,12 @@ for(const [f,who,face,hair,unknown] of [["sekiguchi.p2s","関口 訓充",3378,71
     const fp=open(pk), B=g("jwSaveBall")(await g("jwP2sMemory")(fp),await g("jwP2sVram")(fp)), fs2=open(sk), N=g("jwSaveBall")(await g("jwP2sMemory")(fs2),await g("jwP2sVram")(fs2));
     const n=B?g("jwBodyTris")(B.B,B.B.Bind,()=>true).length:0;
     t(`ボール: 三角形 ${n}・絵 ${B?.tex?B.tex.W+"×"+B.tex.H:"無し"}・選択の画面のセーブ ${N?"有り":"無し"}`,n===156&&B.tex&&B.tex.W===256&&B.tex.H===256&&!N) } }
+// 蹴る判定（v0.11.0）: 表の 217 番（PK のキック）は骨 13 の足で 0.16 秒ごろに当たる。725 番（スライディング）は蹴る動きではない
+{ const sv=path.join(here,"data/slide.p2s"), bf=path.join(here,"data/01429.bin");
+  if(fs.existsSync(sv)&&fs.existsSync(bf)){ const b=fs.readFileSync(sv), file={size:b.length,slice:(a,e)=>({arrayBuffer:async()=>b.buffer.slice(b.byteOffset+a,b.byteOffset+(e??b.length))})};
+    const S=g("jwSaveMotions")(await g("jwP2sMemory")(file)), B=g("jwBodyParse")(new Uint8Array(fs.readFileSync(bf)));
+    const k=g("jwKickInfo")(B,g("jwMotionFrames")(S.u,S.list[217])), n=g("jwKickInfo")(B,g("jwMotionFrames")(S.u,S.list[725])), p=k?g("jwBallAt")(k,0.5):null;
+    t(`蹴る判定: 217 番 足 ${k?.foot}・${k?.tk.toFixed(3)} 秒・0.5 秒後に前へ ${p?(k.rest[2]-p[2]).toFixed(0):"-"}・725 番 ${n?"蹴る":"蹴らない"}`,k&&k.foot===13&&Math.abs(k.tk-0.163)<0.02&&p[2]<k.rest[2]-1000&&!n) } }
 const fa=path.join(here,"out/fake_0_TEXT.AFS"), fi=path.join(here,"out/fake.iso");
 if(fs.existsSync(fa)) for(const [name,f] of [["AFS",fa],["ISO",fi]]){
   const blob=new Blob([fs.readFileSync(f)]), d=await g("weOpen")(blob), u=await g("weFile")(blob,d,3377);

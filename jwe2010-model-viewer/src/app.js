@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.10.0";
+const VERSION="0.11.0";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -43,7 +43,7 @@ async function openSave(file){
     APP.players=players; APP.teams=jwTeams(mem,players); APP.kits=jwSaveKits(mem); APP.saveMot=jwSaveMotions(mem);
     // ボール（試合中のセーブだけ。形はメモリ、絵は画面用メモリから）
     try{ APP.ball=jwSaveBall(mem,await jwP2sVram(file)) }catch(e){ console.warn("ボールが読めません",e); APP.ball=null }
-    $("l-ball").hidden=!APP.ball; APP.motions=undefined; APP.motT=0; $("step-save").classList.add("done");
+    $("l-ball").hidden=$("l-traj").hidden=!APP.ball; APP.motions=undefined; APP.motT=0; $("step-save").classList.add("done");
     if(APP.body) fillMotions();
     fillKits(); $("bodybar").hidden=false; $("kitbar").hidden=false;
     fillTeams(); $("q").value=""; fillPlayers(); $("pick").hidden=false;
@@ -152,7 +152,7 @@ async function show(what){
           out.push(...jwBodyMeshes(body.B,cur,{0:common?.ring||null,1:kit,5:boots},opts));
           out.push(...jwPlaceHead(headBase.map(m=>({...m,f:m.f.slice()})),cur[16]));
           // ボール: 両足の前（つま先の少し先）の地面の上。立ち姿の足の裏は高さ 0、つま先は −z の向き。動きの再生中も同じ所
-          if(APP.ball&&$("c-ball").checked) out.push(...jwBallMeshes(APP.ball,[0,5.6*JW_BALL_SCALE,-140]));
+          if(APP.ball&&$("c-ball").checked){ const bs=ballNow(); out.push(...jwBallMeshes(APP.ball,bs.c)); if(bs.k&&$("c-traj").checked) out.push(...jwTrajMeshes(bs.k.path)) }
           // 背番号と名前は服の上に重ねるので最後に描く
           // 胸の番号（出し分け 15）はチェックで消せる（2026 年のユニフォームなど、胸に番号の無いもの）
           if(wantNum) out.push(...jwOverlayMeshes(body.B,cur,fonts,$("c-chest").checked?opts:new Set([...opts].filter(o=>o!==15)),shirtName,num));
@@ -170,7 +170,7 @@ async function show(what){
       const u=us[0];
       if(u){ const r=weMeshes(u,all); ms.push(...r.meshes); ntri+=r.meshes.reduce((a,m)=>a+m.ntri,0); texs.push(...weFindTex(u).map(t=>({...t,from:ids[0]}))) } }
     if(seq!==APP.drawSeq) return;
-    APP.gl.set(ms);
+    APP.gl.set(ms); APP.glCount=ms.length;
     // 見る位置: 形の箱の真ん中。大きさで距離を決める。選手を変えたときは同じ向きのまま
     const f0=ms.find(m=>m.f.length);
     if(f0&&(!APP.base||c.kind==="file")){ const mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
@@ -199,9 +199,16 @@ function motPose(){ const d=motData(), B=APP.rig?.B||APP.body?.B; if(!d||!B) ret
   const step=d.dur>0?d.dur/(n-1):1/30, x=Math.max(0,Math.min(n-1,(APP.motT||0)/step)), f=Math.min(n-2,Math.floor(x));
   return jwMotionPose(B,d.frames[f],d.frames[f+1],x-f) }
 function motUpdate(){ const d=motData(); if(!APP.rig) return;
-  const cur=motPose()||APP.body.cur; APP.gl.geom(APP.rig.build(cur));
-  if(d){ const n=d.frames.length, step=d.dur>0?d.dur/(n-1):1/30; $("r-mot").max=String(n-1); $("r-mot").value=String(Math.round((APP.motT||0)/step)); $("t-mot").textContent=`こま ${Math.round((APP.motT||0)/step)}／${n-1}・${(APP.motT||0).toFixed(2)}／${d.dur.toFixed(2)} 秒` }
+  const cur=motPose()||APP.body.cur, out=APP.rig.build(cur);
+  // 部品の数が変わったとき（蹴る動きを選んで軌道が加わったなど）は形だけの差し替え（geom）では足りないので、組み直す
+  if(out.length!==APP.glCount){ show(APP.cur); return }
+  APP.gl.geom(out);
+  if(d){ const n=d.frames.length, step=d.dur>0?d.dur/(n-1):1/30; $("r-mot").max=String(n-1); $("r-mot").value=String(Math.round((APP.motT||0)/step)); $("t-mot").textContent=`こま ${Math.round((APP.motT||0)/step)}／${n-1}・${(APP.motT||0).toFixed(2)}／${d.dur.toFixed(2)} 秒`+(APP.ball&&$("c-ball").checked&&d.kick?`・ボールに当たる ${(d.kick.tk/step).toFixed(1)} こま目`:"") }
   draw() }
+// ボールのいまの場所。蹴る動き（jwKickInfo）なら、当たるまでは足の前、当たったあとは飛ぶ軌道の上（v0.11.0）
+function ballNow(){ const d=motData(), B=APP.rig?.B||APP.body?.B, def=[0,JW_BALL_R,-140];
+  if(!d||!B) return {c:def,k:null}; if(d.kick===undefined) d.kick=jwKickInfo(B,d);
+  const k=d.kick, t=APP.motT||0; return k?{c:t<k.tk?k.rest:jwBallAt(k,t-k.tk),k}:{c:def,k:null} }
 function motPlay(on){ APP.motPlaying=on??!APP.motPlaying; $("b-mot").textContent=APP.motPlaying?"⏸ 止める":"▶ 再生";
   if(!APP.motPlaying) return; let last=performance.now();
   const tick=now=>{ if(!APP.motPlaying) return; const d=motData(); if(!d){ motPlay(false); return }
@@ -266,7 +273,7 @@ function init(){
   // 体の有り無しで大きさが変わるので、見る位置を作り直す
   $("c-body").onchange=()=>{ APP.base=null; if(APP.cur?.kind==="player") show(APP.cur) };
   $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
-  $("c-ball").onchange=$("n-num").oninput=$("t-name").oninput=$("c-chest").onchange=$("c-font").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  $("c-traj").onchange=$("c-ball").onchange=$("n-num").oninput=$("t-name").oninput=$("c-chest").onchange=$("c-font").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   $("b-fonttpl").onclick=fontTemplate; $("f-font").onchange=e=>{ const f=e.target.files[0]; if(f) openFont(f); e.target.value="" };
   $("b-kittpl").onclick=kitTemplate; $("b-kitcur").onclick=kitCurrent; $("f-kit").onchange=e=>{ const f=e.target.files[0]; if(f) openKit(f); e.target.value="" };
   $("c-long").onchange=$("c-studs").onchange=$("c-num").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };

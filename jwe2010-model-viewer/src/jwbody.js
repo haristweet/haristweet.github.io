@@ -147,6 +147,41 @@ function jwBallMeshes(ball,c){
   for(const t of tris) for(let j=0;j<3;j++){ const q=jwWorldToView(t.p[j].map((v,i)=>v*JW_BALL_SCALE+c[i])); f[n++]=q[0]; f[n++]=q[1]; f[n++]=q[2]; f[n++]=t.uv[j][0]; f[n++]=t.uv[j][1] }
   return [{f,ntri:tris.length,tex:ball.tex,clamp:true}];
 }
+// 蹴る動きとボールの飛び方（v0.11.0）。動きのこまから足首（骨 12・13）の位置を細かく（1/8 こま）計算し、いちばん速い足が蹴り足。
+//   その速さが 7000 単位/秒（1/8 こまで測った速さ。動き 1,466 個のうち 41 個）を超え、前後 2 こまで足首が 140 より低くなるとき、いちばん低い瞬間を「当たった瞬間」とする（ここまではゲームの動きのデータ）。
+//   ボールは当たった瞬間の足首の前（足の動く向き、ボールの半径ぶん）の地面に置く。飛ぶ速さ＝足の速さ×0.75（217 番の PK で約 26 m/s）、向き＝足の動く向き（上向きも足のまま）、
+//   重力 3500 単位/秒²（体の高さ約 620 を 1.75 m とした 9.8 m/s²）、地面で 0.55 倍に弾み、横の速さは 0.8 倍に。ここは作った物理で、ゲームの値ではない【推測】
+const JW_BALL_R=5.6*8, JW_G=3500;
+function jwKickInfo(B,M){
+  const F=M.frames, n=F.length; if(n<4||!(M.dur>0)) return null;
+  const dt=M.dur/(n-1), S=8, ank=[];
+  for(let i=0;i<=(n-1)*S;i++){ const f=Math.min(n-2,Math.floor(i/S)), t=i/S-f, W=jwMotionPose(B,F[f],F[f+1],t); ank.push([W[12].slice(12,15),W[13].slice(12,15)]) }
+  let best=null;
+  for(const j of [0,1]) for(let i=1;i<ank.length-1;i++){ const v=[0,1,2].map(c=>(ank[i+1][j][c]-ank[i-1][j][c])/(2*dt/S)), sp=Math.hypot(...v); if(!best||sp>best.sp) best={j,i,sp} }
+  if(!best||best.sp<7000) return null;
+  let lo=null; for(let i=Math.max(1,best.i-2*S);i<=Math.min(ank.length-2,best.i+2*S);i++){ const y=ank[i][best.j][1]; if(!lo||y<lo.y) lo={i,y} }
+  if(!lo||lo.y>140) return null;
+  const i=lo.i, a=ank[i][best.j], v=[0,1,2].map(c=>(ank[i+1][best.j][c]-ank[i-1][best.j][c])/(2*dt/S)), hv=Math.hypot(v[0],v[2])||1;
+  const rest=[a[0]+v[0]/hv*JW_BALL_R,JW_BALL_R,a[2]+v[2]/hv*JW_BALL_R], v0=v.map(c=>c*0.75); v0[1]=Math.max(v0[1],0);
+  const info={tk:i/S*dt,rest,v0,foot:12+best.j,speed:best.sp};
+  info.path=[]; for(let t=0;t<=2.5;t+=1/30) info.path.push(jwBallAt(info,t));
+  return info;
+}
+// 当たってから t 秒後のボールの真ん中（地面で弾む）
+function jwBallAt(info,t){
+  let p=info.rest.slice(), v=info.v0.slice(), left=t;
+  for(let k=0;k<40&&left>0;k++){ const tf=v[1]>0||p[1]>JW_BALL_R?(v[1]+Math.sqrt(v[1]*v[1]+2*JW_G*Math.max(0,p[1]-JW_BALL_R)))/JW_G:0;
+    if(tf>=left||tf<=1e-4&&Math.abs(v[1])<30){ const d=Math.min(left,tf>1e-4?left:left); p=[p[0]+v[0]*d,Math.max(JW_BALL_R,p[1]+v[1]*d-JW_G*d*d/2),p[2]+v[2]*d]; if(tf<=1e-4){ v[0]*=0.98; v[2]*=0.98 } left=0; break }
+    p=[p[0]+v[0]*tf,JW_BALL_R,p[2]+v[2]*tf]; v=[v[0]*0.8,-(v[1]-JW_G*tf)*0.55,v[2]*0.8]; left-=tf; if(v[1]<30) v[1]=0 }
+  return p;
+}
+// 軌道の点（小さな八面体を並べる）
+function jwTrajMeshes(path,color=[255,220,0,255]){
+  const tex={W:1,H:1,rgba:new Uint8Array(color)}, r=10, Q=[[r,0,0],[-r,0,0],[0,r,0],[0,-r,0],[0,0,r],[0,0,-r]], T=[[0,2,4],[2,1,4],[1,3,4],[3,0,4],[2,0,5],[1,2,5],[3,1,5],[0,3,5]];
+  const pts=path.filter((_,i)=>i%2===0), f=new Float32Array(pts.length*T.length*15); let n=0;
+  for(const c of pts) for(const t of T) for(const k of t){ const q=jwWorldToView([c[0]+Q[k][0],c[1]+Q[k][1],c[2]+Q[k][2]]); f[n++]=q[0]; f[n++]=q[1]; f[n++]=q[2]; f[n++]=0.5; f[n++]=0.5 }
+  return [{f,ntri:pts.length*T.length,tex}];
+}
 // ユニフォームの絵の割り付け（v0.8.0。自分で描いた絵に差し替えるための下絵）。体 #1429 の服（sel 1）の包みを、出し分けの番号ごとに uv で並べる。
 //   名前は形の位置と絵を見て決めた（左半分の上＝シャツの前（胸のスポンサー・エンブレム）、右半分の上＝背中、下＝パンツ。前後は形の向きで確認）。脇の 2 つは推測
 const JW_KIT_PARTS={3:"長袖",4:"半袖",7:"シャツの裾",9:"ストッキング",12:"ストッキングの足首",20:"脇（長袖のとき）",22:"脇（半袖のとき）"};
