@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.8.0";
+const VERSION="0.8.1";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -135,7 +135,8 @@ async function show(what){
           out.push(...jwBodyMeshes(body.B,cur,{0:common?.ring||null,1:kit,5:boots},opts));
           out.push(...jwPlaceHead(headBase.map(m=>({...m,f:m.f.slice()})),cur[16]));
           // 背番号と名前は服の上に重ねるので最後に描く
-          if(wantNum) out.push(...jwOverlayMeshes(body.B,cur,kit.fonts,opts,c.p.shirt,num));
+          // 胸の番号（出し分け 15）はチェックで消せる（2026 年のユニフォームなど、胸に番号の無いもの）
+          if(wantNum) out.push(...jwOverlayMeshes(body.B,cur,kit.fonts,$("c-chest").checked?opts:new Set([...opts].filter(o=>o!==15)),c.p.shirt,num));
           return out };
         APP.rig={build,B:body.B};
         r.meshes=build(motPose()||body.cur);
@@ -233,6 +234,7 @@ function init(){
   // 体の有り無しで大きさが変わるので、見る位置を作り直す
   $("c-body").onchange=()=>{ APP.base=null; if(APP.cur?.kind==="player") show(APP.cur) };
   $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  $("c-chest").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   $("b-kittpl").onclick=kitTemplate; $("b-kitcur").onclick=kitCurrent; $("f-kit").onchange=e=>{ const f=e.target.files[0]; if(f) openKit(f); e.target.value="" };
   $("c-long").onchange=$("c-studs").onchange=$("c-num").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   // 動き: 選ぶ・再生・こま送り（← →・スペース。ほかのビューアと同じ）
