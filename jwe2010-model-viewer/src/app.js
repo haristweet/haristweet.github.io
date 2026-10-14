@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.6.0";
+const VERSION="0.6.1";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -163,7 +163,11 @@ function motPlay(on){ APP.motPlaying=on??!APP.motPlaying; $("b-mot").textContent
 function motStep(k){ const d=motData(); if(!d) return; motPlay(false); const n=d.frames.length, step=d.dur>0?d.dur/(n-1):1/30;
   const f=(Math.round((APP.motT||0)/step)+k+n)%n; APP.motT=f*step; motUpdate() }
 async function fillMotions(){ const M=await getMotions(); if(!M){ $("s-mot").innerHTML='<option value="">立ち姿（動きのファイルが読めない）</option>'; return }
-  $("s-mot").innerHTML='<option value="">立ち姿</option>'+M.list.map(e=>`<option value="${e.i}">動き ${e.i}</option>`).join("") }
+  // 見た目の区分ごとにまとめる（区分は推測）。区分を出すのに全部のこまを組むので、最初の 1 回だけ少し待つ
+  if(!M.kinds){ const B=(await getBody())?.B; M.kinds=M.list.map(e=>{ const d=jwMotionFrames(M.u,e); M.cache.set(String(e.i),d); return {n:d.frames.length,kind:B?jwMotionKind(B,d):"その場の動き"} }) }
+  const esc=s=>s.replace(/[&<]/g,c=>c==="&"?"&amp;":"&lt;");
+  $("s-mot").innerHTML='<option value="">立ち姿</option>'+JW_MOTION_KINDS.map(k=>{ const es=M.list.filter(e=>M.kinds[e.i].kind===k&&M.kinds[e.i].n);
+    return es.length?`<optgroup label="${esc(k)}（${es.length}）">`+es.map(e=>`<option value="${e.i}">動き ${e.i}（${M.kinds[e.i].n} こま）</option>`).join("")+"</optgroup>":"" }).join("") }
 function showTexs(texs){
   const box=$("texs"); box.innerHTML="";
   for(const t of texs){ const fig=document.createElement("figure"), cv=document.createElement("canvas"); cv.width=t.W; cv.height=t.H;

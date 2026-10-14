@@ -92,7 +92,7 @@ progress{width:12em;vertical-align:middle}
 <p>チームの一覧と名簿も、ステートセーブのメモリから読みます（チーム名の表と、1 チーム 32 枠の名簿）。名簿の並びが崩れている選抜チームなどは出しません。</p>
 <p>体はディスクの #1429 の形です（関口・梁・田村・永井のセーブで、どれもこのファイルが読み込まれていました）。19 本の骨と、2 本の骨にまたがる所のための「対」の行列で組み立てます。どの頂点をどの行列で動かすかは、試合中のセーブでゲームが使っていた行列と照らして決めました。袖は半袖（入場の場面でゲームが描いていた組）で、「長袖」で長袖の組に替えられます。形は T の字の姿でしまってあり、腕を下ろして立たせています（腕の角度は見た目で決めたもので、ゲームの立ち姿の動きではありません）。</p>
 <p>ユニフォームとスパイクの絵は、ステートセーブのメモリにあるものを使います（試合の前後のセーブなら、その試合の 2 チームの 4 着があります）。肌は頭の生え際と同じ絵です。手は別のファイル（#8095）の形を、手首の骨に付けます。背番号と背中の名前は、セーブにあるそのユニフォーム用の字から、ゲームと同じように選手ごとに組み立てて重ねます（番号はチームの番号表から）。袖の印はまだです。</p>
-<p>動きは #1360（485 個）から番号で選びます。どの動きも、こまごとに骨の向き（親から見た向き）が並んでいて、そのまま読みます（0 番は T の立ち姿とぴったり同じ）。こまの間は向きを補います。試合中の永井の姿は動き 394 の 8〜9 こま目と、脚はほぼ同じ（数度以内）でしたが、腕はずれていて、ゲームは動きを混ぜたり手を加えたりしているようです。どの番号が何の動きかはまだ調べていません。</p>
+<p>動きは #1360（485 個）から番号で選びます。どの動きも、こまごとに骨の向き（親から見た向き）が並んでいて、そのまま読みます（0 番は T の立ち姿とぴったり同じ）。こまの間は向きを補います。試合中の永井の姿は動き 394 の 8〜9 こま目と、脚はほぼ同じ（数度以内）でしたが、腕はずれていて、ゲームは動きを混ぜたり手を加えたりしているようです。一覧は、腰・足・手の高さと足の入れかわりで「歩く・走る・蹴る・跳ぶ・倒れる・起きる…」に分けてあります（見た目からの区分で、ゲームの中の名前ではありません）。</p>
 <p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、チームごとのユニフォーム（ディスクのどのファイルかまだ分からない）、選手ごとの長袖・半袖と GK の手袋、背の高さ。</p>
 <p id="ver"></p></details>
 </main>
@@ -695,6 +695,20 @@ function jwMotionPose(B,fa,fb,t){
     L[12]=Lb[12]; L[13]=Lb[13]; L[14]=Lb[14]; W[k]=jwM4(L,W[p]) }
   return W;
 }
+// 動きの見た目の区分（v0.6.1。棒人間の一覧を見て決めたしきい値で分ける【推測】。ゲームの中の名前ではない）
+//   腰がいちばん低い所 250 未満＝倒れる・起きる、腰が 540 より上＝跳ぶ、足が 330 より上＝蹴る、手が 900 より上＝手を高く上げる、
+//   前後の足が 3 回以上入れかわる＝足が 190 より上なら走る・下なら歩く、ほか＝その場の動き、1 こま＝止まった姿
+const JW_MOTION_KINDS=["止まった姿","歩く","走る","蹴る","跳ぶ","倒れる・起きる","手を高く上げる","その場の動き"];
+function jwMotionKind(B,M){
+  const n=M.frames.length; if(n<=1) return "止まった姿";
+  let hipMin=1e9,hipMax=-1e9,footMax=-1e9,handMax=-1e9,cross=0,prev=null;
+  for(const fr of M.frames){ const W=jwMotionPose(B,fr), y=k=>W[k][13];
+    hipMin=Math.min(hipMin,y(0)); hipMax=Math.max(hipMax,y(0)); footMax=Math.max(footMax,y(12),y(13)); handMax=Math.max(handMax,y(17),y(18));
+    const sw=W[12][14]-W[13][14]; if(prev!==null&&Math.sign(sw)!==Math.sign(prev)&&Math.abs(sw-prev)>5) cross++; prev=sw }
+  if(hipMin<250) return "倒れる・起きる"; if(hipMax>540) return "跳ぶ"; if(footMax>330) return "蹴る"; if(handMax>900) return "手を高く上げる";
+  if(cross>=3) return footMax>190?"走る":"歩く";
+  return "その場の動き";
+}
 // ページの描画（WebGL1）。形ごとに [x,y,z,u,v] の列と、その形の絵（RGBA）を持つ。光は当てない（絵の色をそのまま）。
 // 髪の絵は α が段々（0〜0x80）なので半透明で重ねる。並べた順（顔→髪）に描く
 function weGL(canvas){
@@ -755,7 +769,7 @@ function weViewMatrix(v,aspect){
   return M;
 }
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.6.0";
+const VERSION="0.6.1";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -919,7 +933,11 @@ function motPlay(on){ APP.motPlaying=on??!APP.motPlaying; $("b-mot").textContent
 function motStep(k){ const d=motData(); if(!d) return; motPlay(false); const n=d.frames.length, step=d.dur>0?d.dur/(n-1):1/30;
   const f=(Math.round((APP.motT||0)/step)+k+n)%n; APP.motT=f*step; motUpdate() }
 async function fillMotions(){ const M=await getMotions(); if(!M){ $("s-mot").innerHTML='<option value="">立ち姿（動きのファイルが読めない）</option>'; return }
-  $("s-mot").innerHTML='<option value="">立ち姿</option>'+M.list.map(e=>`<option value="${e.i}">動き ${e.i}</option>`).join("") }
+  // 見た目の区分ごとにまとめる（区分は推測）。区分を出すのに全部のこまを組むので、最初の 1 回だけ少し待つ
+  if(!M.kinds){ const B=(await getBody())?.B; M.kinds=M.list.map(e=>{ const d=jwMotionFrames(M.u,e); M.cache.set(String(e.i),d); return {n:d.frames.length,kind:B?jwMotionKind(B,d):"その場の動き"} }) }
+  const esc=s=>s.replace(/[&<]/g,c=>c==="&"?"&amp;":"&lt;");
+  $("s-mot").innerHTML='<option value="">立ち姿</option>'+JW_MOTION_KINDS.map(k=>{ const es=M.list.filter(e=>M.kinds[e.i].kind===k&&M.kinds[e.i].n);
+    return es.length?`<optgroup label="${esc(k)}（${es.length}）">`+es.map(e=>`<option value="${e.i}">動き ${e.i}（${M.kinds[e.i].n} こま）</option>`).join("")+"</optgroup>":"" }).join("") }
 function showTexs(texs){
   const box=$("texs"); box.innerHTML="";
   for(const t of texs){ const fig=document.createElement("figure"), cv=document.createElement("canvas"); cv.width=t.W; cv.height=t.H;

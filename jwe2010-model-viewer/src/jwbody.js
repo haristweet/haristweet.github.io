@@ -229,3 +229,17 @@ function jwMotionPose(B,fa,fb,t){
     L[12]=Lb[12]; L[13]=Lb[13]; L[14]=Lb[14]; W[k]=jwM4(L,W[p]) }
   return W;
 }
+// 動きの見た目の区分（v0.6.1。棒人間の一覧を見て決めたしきい値で分ける【推測】。ゲームの中の名前ではない）
+//   腰がいちばん低い所 250 未満＝倒れる・起きる、腰が 540 より上＝跳ぶ、足が 330 より上＝蹴る、手が 900 より上＝手を高く上げる、
+//   前後の足が 3 回以上入れかわる＝足が 190 より上なら走る・下なら歩く、ほか＝その場の動き、1 こま＝止まった姿
+const JW_MOTION_KINDS=["止まった姿","歩く","走る","蹴る","跳ぶ","倒れる・起きる","手を高く上げる","その場の動き"];
+function jwMotionKind(B,M){
+  const n=M.frames.length; if(n<=1) return "止まった姿";
+  let hipMin=1e9,hipMax=-1e9,footMax=-1e9,handMax=-1e9,cross=0,prev=null;
+  for(const fr of M.frames){ const W=jwMotionPose(B,fr), y=k=>W[k][13];
+    hipMin=Math.min(hipMin,y(0)); hipMax=Math.max(hipMax,y(0)); footMax=Math.max(footMax,y(12),y(13)); handMax=Math.max(handMax,y(17),y(18));
+    const sw=W[12][14]-W[13][14]; if(prev!==null&&Math.sign(sw)!==Math.sign(prev)&&Math.abs(sw-prev)>5) cross++; prev=sw }
+  if(hipMin<250) return "倒れる・起きる"; if(hipMax>540) return "跳ぶ"; if(footMax>330) return "蹴る"; if(handMax>900) return "手を高く上げる";
+  if(cross>=3) return footMax>190?"走る":"歩く";
+  return "その場の動き";
+}
