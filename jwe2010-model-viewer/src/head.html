@@ -21,7 +21,7 @@ h1{font-size:20px;margin:0 0 4px}
 .step input[type=file]{display:none}
 .step .name{margin-left:8px;font-size:13px;color:var(--mut);overflow-wrap:anywhere}
 #status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
-.viewer{position:relative;background:radial-gradient(circle at 50% 35%,#3a3833,var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:4/3;max-height:70vh;margin:0 auto;touch-action:none;user-select:none}
+.viewer{position:relative;background:radial-gradient(circle at 50% 35%,var(--stage2,#3a3833),var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:4/3;max-height:70vh;margin:0 auto;touch-action:none;user-select:none}
 .viewer canvas{position:absolute;inset:0;width:100%;height:100%}
 .viewer [hidden]{display:none!important}
 .viewer .hint{position:absolute;left:12px;bottom:10px;color:#cfccc4;font-size:12px;pointer-events:none}
@@ -35,6 +35,9 @@ h1{font-size:20px;margin:0 0 4px}
 .ctrl button,.ctrl label.btn{cursor:pointer}
 .ctrl label.btn{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
 .ctrl .grp{white-space:nowrap}
+.bgs{display:inline-flex;gap:6px;vertical-align:middle}
+.bgs button{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);padding:0!important;cursor:pointer}
+.bgs button[aria-pressed=true]{border-color:var(--acc)}
 #info{color:var(--mut);font-size:13px;margin:6px 0 0}
 .ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
 details{margin:16px 0 0;color:var(--mut);font-size:13px}
@@ -94,7 +97,8 @@ progress{width:12em;vertical-align:middle}
   <label title="顔のファイルには同じ大きさの形が 2 つある（細かさ違いと推測）。重ねると縞になる"><input type="checkbox" id="c-all"> 2 つ目からの形も</label>
 </div>
 <div class="ctrl" id="savebar" hidden><button id="b-png">PNG で保存</button>
-  <label title="PNG を透明な背景で"><input type="checkbox" id="c-clear"> 背景なし</label></div>
+  <label title="PNG を透明な背景で"><input type="checkbox" id="c-clear"> 背景なし</label>
+  <span class="bgs" id="bg-box" aria-label="背景の色"></span></div>
 <div id="info"></div>
 <div class="texs" id="texs"></div>
 <details><summary>しくみ</summary>

@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.9.0";
+const VERSION="0.9.1";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -225,9 +225,22 @@ function showTexs(texs){
 function resetCam(){ if(!APP.base) return; Object.assign(APP.view,{yaw:0,pitch:0.1,target:APP.base.target.slice(),dist:APP.base.h*2.6,pan:[0,0]}); draw() }
 function draw(){ if(APP.gl) APP.gl.draw(APP.view,$("c-clear").checked?[0,0,0,0]:null) }
 function step(sel,d){ const o=sel.options; if(!o.length) return; sel.selectedIndex=(sel.selectedIndex+d+o.length)%o.length; sel.onchange() }
+// 背景の色（tobal1・vf2・fv のビューアと同じ 8 種。選んだものは覚えておく。ルートの CLAUDE.md の決まり 8）。PNG にも同じ背景を塗る
+const BG_PRESETS=[{name:"ダーク",c:"#3a3834",e:"#2a2926"},{name:"黒",c:"#111111",e:"#000000"},{name:"グレー",c:"#8a8a8a",e:"#6a6a6a"},{name:"白",c:"#ffffff",e:"#e6e4df"},
+  {name:"空",c:"#bfe3ff",e:"#5a9fd6"},{name:"夕焼け",c:"#ffcf8a",e:"#c4533a"},{name:"夜",c:"#35407a",e:"#0d1030"},{name:"グリーンバック",c:"#00b140",e:"#00b140"}];
+function setBackground(i){ const p=BG_PRESETS[i]||BG_PRESETS[0], v=$("viewer").style; v.setProperty("--stage2",p.c); v.setProperty("--stage",p.e); APP.bg=p;
+  [...$("bg-box").children].forEach((b,k)=>b.setAttribute("aria-pressed",String(k===i))); try{ localStorage.setItem("jwebg",String(i)) }catch(_){} }
+function hookBackground(){
+  BG_PRESETS.forEach((p,i)=>{ const b=document.createElement("button"); b.title=p.name; b.setAttribute("aria-label","背景の色: "+p.name);
+    b.style.background=`radial-gradient(circle at 40% 35%,${p.c},${p.e})`; b.onclick=()=>setBackground(i); $("bg-box").append(b) });
+  let i=0; try{ i=+localStorage.getItem("jwebg")||0 }catch(_){} setBackground(i) }
+// PNG: 透明に描いてから、枠と同じ背景（50% 35% からいちばん遠い角まで）の上に重ねる（「背景なし」なら透明のまま）
 function savePng(){
-  APP.gl.draw(APP.view,$("c-clear").checked?[0,0,0,0]:[0.17,0.165,0.15,1]);
-  $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); const c=APP.cur;
+  APP.gl.draw(APP.view,[0,0,0,0]);
+  const cv0=$("cv"), W=cv0.width, H=cv0.height, out=document.createElement("canvas"); out.width=W; out.height=H; const g=out.getContext("2d");
+  if(!$("c-clear").checked){ const p=APP.bg||BG_PRESETS[0], grd=g.createRadialGradient(W/2,H*.35,0,W/2,H*.35,Math.hypot(W/2,H*.65)); grd.addColorStop(0,p.c); grd.addColorStop(1,p.e); g.fillStyle=grd; g.fillRect(0,0,W,H) }
+  g.drawImage(cv0,0,0);
+  out.toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); const c=APP.cur;
     a.download=c.kind==="player"?`jwe2010_${c.p.shirt||c.p.i}_face${c.p.face}_hair${c.p.hair}.png`:`jwe2010_${c.n}.png`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); draw() },"image/png");
 }
 function init(){
@@ -257,7 +270,7 @@ function init(){
   $("b-mot").onclick=()=>motPlay(); $("r-mot").oninput=()=>{ const d=motData(); if(!d) return; motPlay(false); const n=d.frames.length; APP.motT=+$("r-mot").value*(d.dur>0?d.dur/(n-1):1/30); motUpdate() };
   document.addEventListener("keydown",e=>{ if(!motData()||e.target.closest("input:not([type=range]),select,textarea")) return;
     if(e.key==="ArrowLeft"){ e.preventDefault(); motStep(-1) } else if(e.key==="ArrowRight"){ e.preventDefault(); motStep(1) } else if(e.key===" "){ e.preventDefault(); motPlay() } });
-  $("b-png").onclick=savePng; $("c-clear").onchange=draw;
+  $("b-png").onclick=savePng; $("c-clear").onchange=draw; hookBackground();
   // 回す・動かす・寄る（tobal1・vf2・fv のビューアと同じ操作）: ドラッグで回す。Shift を押しながら（または右・中ボタンで）ドラッグすると平行に動かす。
   // ホイールはカーソルの下の物が動かないように寄る。2本指はピンチで寄り、指の中ほどの移動で平行に動く。ダブルクリックで戻す
   const cv=$("cv"), pts=new Map(); let pinch=0, last=null, mode=null;
