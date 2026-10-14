@@ -201,6 +201,25 @@ function jwMotionList(u){
   const sorted=[...new Set([...offs,u.length-b])].sort((a,c)=>a-c), end=o=>sorted[sorted.indexOf(o)+1];
   return offs.map((o,i)=>({i,start:b+o,end:b+end(o)}));
 }
+// セーブのメモリの動きの表（v0.7.0）。0x56A50C から動きへの指し（u32）が並ぶ（試合中のセーブで 1,466 個）。1 つ分の中身は #1360 の 1 つ分と同じ形。
+//   #1360 の 485 個はこの一部（417 個が中身ごと一致。並びは別。#1360 の 239＝表の 1140）。残りは別のファイルから来るらしい（どれかは未確認）。
+//   0〜1436 番は試合中のセーブのあいだで同じ中身、1437 番から後ろは場面ごとに入れ替わる枠。選手選択の画面のセーブでは一部しか読み込まれていない
+const JW_MOTION_TABLE=0x56A50C, JW_MOTION_FIXED=1437;
+// 名前（場面のセーブで、そのとき再生中の動きを骨の向きの一致で当てたもの。motmatch.mjs）
+const JW_MOTION_NAMES={725:"スライディング"};
+function jwSaveMotions(m){
+  const dv=new DataView(m.buffer,m.byteOffset,m.byteLength), ptr=[];
+  for(let a=JW_MOTION_TABLE;a+4<=m.length&&ptr.length<4096;a+=4){ const p=dv.getUint32(a,true); if(p<0x100000||p>=m.length) break; ptr.push(p) }
+  if(ptr.length<100) return null;
+  // 指し先は 24MB ほどに散らばるので、1 つ分ずつ（次の指し先まで、長くても 256KB）を詰めて写す
+  const srt=[...new Set(ptr)].sort((a,c)=>a-c), seg=new Map(); let tot=0;
+  srt.forEach((p,k)=>{ const e=Math.min(srt[k+1]??m.length,p+0x40000,m.length); seg.set(p,{at:tot,n:e-p}); tot+=e-p });
+  // 選手選択の画面のセーブなどは一部しか読み込まれていない。読める動き（中身の違うもの）が 700 に届かなければ使わない（ディスクの #1360 にまかせる。試合中で 922、選択の画面で 483）
+  let ok=0; for(const p of srt) for(let a=p;a<p+64&&a+4<=m.length;a+=4) if(dv.getUint32(a,true)===0x20011119){ ok++; break }
+  if(ok<700) return null;
+  const u=new Uint8Array(tot); for(const [p,{at,n}] of seg) u.set(m.subarray(p,p+n),at);
+  return {u,list:ptr.map((p,i)=>{ const {at,n}=seg.get(p); return {i,start:at,end:at+n} })};
+}
 function jwMotionFrames(u,ent){
   const dv=new DataView(u.buffer,u.byteOffset,u.byteLength), out=[];
   let p=-1; for(let a=ent.start;a+4<=ent.end;a+=4) if(dv.getUint32(a,true)===0x20011119){ p=a; break }

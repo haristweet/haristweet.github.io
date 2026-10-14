@@ -93,6 +93,13 @@ for(const [f,who,face,hair,unknown] of [["sekiguchi.p2s","関口 訓充",3378,71
     const W=g("jwMotionPose")(B,g("jwMotionFrames")(U,L[0]).frames[0]); let mx=0; W.forEach((m,k)=>m.forEach((v,i)=>mx=Math.max(mx,Math.abs(v-B.Bind[k][i]))));
     const m394=g("jwMotionFrames")(U,L[394]);
     t(`動き ${L.length} 個・0 番の姿と T の姿のずれ ${mx.toFixed(3)}・394 番 ${m394.frames.length} こま ${m394.dur.toFixed(3)} 秒`,L.length===485&&mx<0.1&&m394.frames.length===26&&Math.abs(m394.dur-1.667)<0.01) } }
+// 動きの表（v0.7.0）: スライディングの場面のセーブ（data/slide.p2s）のメモリに 1,466 個。725 番＝スライディング 39 こま。表の 1140 番は #1360 の 239 番と同じ中身
+{ const sv=path.join(here,"data/slide.p2s"), mf=path.join(here,"data/01360.bin");
+  if(fs.existsSync(sv)&&fs.existsSync(mf)){ const b=fs.readFileSync(sv), file={size:b.length,slice:(a,e)=>({arrayBuffer:async()=>b.buffer.slice(b.byteOffset+a,b.byteOffset+(e??b.length))})};
+    const S=g("jwSaveMotions")(await g("jwP2sMemory")(file)), U=new Uint8Array(fs.readFileSync(mf)), L=g("jwMotionList")(U);
+    const sl=g("jwMotionFrames")(S.u,S.list[725]), x=g("jwMotionFrames")(S.u,S.list[1140]), y=g("jwMotionFrames")(U,L[239]);
+    const sk=g("jwSaveMotions")(await g("jwP2sMemory")((b2=>({size:b2.length,slice:(a,e)=>({arrayBuffer:async()=>b2.buffer.slice(b2.byteOffset+a,b2.byteOffset+(e??b2.length))})}))(fs.readFileSync(path.join(here,"data/sekiguchi.p2s")))));
+    t(`セーブの動きの表 ${S.list.length} 個・725 番 ${sl.frames.length} こま・1140 番＝#1360 の 239 番・選択の画面のセーブでは使わない`,S.list.length===1466&&sl.frames.length===39&&JSON.stringify(x)===JSON.stringify(y)&&sk===null) } }
 const fa=path.join(here,"out/fake_0_TEXT.AFS"), fi=path.join(here,"out/fake.iso");
 if(fs.existsSync(fa)) for(const [name,f] of [["AFS",fa],["ISO",fi]]){
   const blob=new Blob([fs.readFileSync(f)]), d=await g("weOpen")(blob), u=await g("weFile")(blob,d,3377);

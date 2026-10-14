@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.6.1";
+const VERSION="0.7.0";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -40,7 +40,8 @@ async function openSave(file){
   status("ステートセーブを読んでいます…"); $("n-save").textContent=file.name;
   try{
     const mem=await jwP2sMemory(file), players=jwPlayers(mem);
-    APP.players=players; APP.teams=jwTeams(mem,players); APP.kits=jwSaveKits(mem); $("step-save").classList.add("done");
+    APP.players=players; APP.teams=jwTeams(mem,players); APP.kits=jwSaveKits(mem); APP.saveMot=jwSaveMotions(mem); APP.motions=undefined; APP.motT=0; $("step-save").classList.add("done");
+    if(APP.body) fillMotions();
     fillKits(); $("bodybar").hidden=false;
     fillTeams(); $("q").value=""; fillPlayers(); $("pick").hidden=false;
     status(`選手 ${players.length} 人・チーム ${APP.teams.length}`+(APP.disc?"":"。次にディスクのイメージを選んでください"));
@@ -141,7 +142,9 @@ async function show(what){
 // 動き（v0.6.0）。#1360 の動きを番号で選んで再生する。こまの間は向きを球面で補う。動きの選び方・こまの送り方はゲームと同じとは限らない
 async function getMotions(){
   if(APP.motions!==undefined) return APP.motions;
-  try{ const u=await getFile(JW_MOTIONS); APP.motions={u,list:jwMotionList(u),cache:new Map()} }catch(e){ console.warn("動きのファイルが読めません",e); APP.motions=null }
+  // セーブのメモリに動きの表があればそれ（試合中のセーブで 1,466 個）、無ければディスクの #1360（485 個）
+  if(APP.saveMot){ APP.motions={...APP.saveMot,cache:new Map(),from:"save"}; return APP.motions }
+  try{ const u=await getFile(JW_MOTIONS); APP.motions={u,list:jwMotionList(u),cache:new Map(),from:"disc"} }catch(e){ console.warn("動きのファイルが読めません",e); APP.motions=null }
   return APP.motions;
 }
 function motData(){ const M=APP.motions, i=$("s-mot").value; if(!M||i==="") return null;
@@ -166,8 +169,13 @@ async function fillMotions(){ const M=await getMotions(); if(!M){ $("s-mot").inn
   // 見た目の区分ごとにまとめる（区分は推測）。区分を出すのに全部のこまを組むので、最初の 1 回だけ少し待つ
   if(!M.kinds){ const B=(await getBody())?.B; M.kinds=M.list.map(e=>{ const d=jwMotionFrames(M.u,e); M.cache.set(String(e.i),d); return {n:d.frames.length,kind:B?jwMotionKind(B,d):"その場の動き"} }) }
   const esc=s=>s.replace(/[&<]/g,c=>c==="&"?"&amp;":"&lt;");
-  $("s-mot").innerHTML='<option value="">立ち姿</option>'+JW_MOTION_KINDS.map(k=>{ const es=M.list.filter(e=>M.kinds[e.i].kind===k&&M.kinds[e.i].n);
-    return es.length?`<optgroup label="${esc(k)}（${es.length}）">`+es.map(e=>`<option value="${e.i}">動き ${e.i}（${M.kinds[e.i].n} こま）</option>`).join("")+"</optgroup>":"" }).join("") }
+  const sv=M.from==="save", lab=e=>`動き ${e.i}${sv&&JW_MOTION_NAMES[e.i]?"・"+JW_MOTION_NAMES[e.i]:""}（${M.kinds[e.i].n} こま${sv&&e.i>=JW_MOTION_FIXED?"・場面ごとの枠":""}）`;
+  const named=sv?M.list.filter(e=>JW_MOTION_NAMES[e.i]&&M.kinds[e.i].n):[];
+  $("s-mot").innerHTML=`<option value="">立ち姿（動き: ${sv?"セーブのメモリの表":"ディスクの #1360"}）</option>`
+    +(named.length?`<optgroup label="名前の分かった動き（${named.length}）">`+named.map(e=>`<option value="${e.i}">${esc(lab(e))}</option>`).join("")+"</optgroup>":"")
+    +JW_MOTION_KINDS.map(k=>{ const es=M.list.filter(e=>M.kinds[e.i].kind===k&&M.kinds[e.i].n&&!JW_MOTION_NAMES[sv?e.i:-1]);
+    return es.length?`<optgroup label="${esc(k)}（${es.length}）">`+es.map(e=>`<option value="${e.i}">${esc(lab(e))}</option>`).join("")+"</optgroup>":"" }).join("");
+  $("motbar").hidden=!motData() }
 function showTexs(texs){
   const box=$("texs"); box.innerHTML="";
   for(const t of texs){ const fig=document.createElement("figure"), cv=document.createElement("canvas"); cv.width=t.W; cv.height=t.H;
