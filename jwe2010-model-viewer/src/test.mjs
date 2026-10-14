@@ -104,6 +104,11 @@ for(const [f,who,face,hair,unknown] of [["sekiguchi.p2s","関口 訓充",3378,71
 { const bf=path.join(here,"data/01429.bin");
   if(fs.existsSync(bf)){ const B=g("jwBodyParse")(new Uint8Array(fs.readFileSync(bf))), P=g("jwKitLayout")(B,g("jwBodyStand")(B)), us=P.flatMap(p=>p.tris.flat());
     t(`ユニフォームの下絵 ${P.length} 部分・三角形 ${P.reduce((a,p)=>a+p.tris.length,0)}・uv は 0〜1`,P.length===9&&us.every(u=>u[0]>=0&&u[0]<=1&&u[1]>=0&&u[1]<=1)) } }
+// 自分の字（v0.9.0）: ゲームの字を字の下絵（256×96）にして読み直すと、数字・英字の 4 ビットの値がまったく同じ
+{ const f=path.join(here,"data/sekiguchi.p2s");
+  if(fs.existsSync(f)){ const b=fs.readFileSync(f), file={size:b.length,slice:(a,e)=>({arrayBuffer:async()=>b.buffer.slice(b.byteOffset+a,b.byteOffset+(e??b.length))})};
+    const F=g("jwSaveKits")(await g("jwP2sMemory")(file)).kits[0].fonts, R=g("jwFontFromRGBA")(g("jwFontToRGBA")(F),256,96);
+    t(`字の下絵を読み直すと数字・英字が同じ・数字の幅 ${R.numW.length} 個`,Buffer.from(R.digits).equals(Buffer.from(F.digits))&&Buffer.from(R.letters).equals(Buffer.from(F.letters))&&R.numW.length===10) } }
 const fa=path.join(here,"out/fake_0_TEXT.AFS"), fi=path.join(here,"out/fake.iso");
 if(fs.existsSync(fa)) for(const [name,f] of [["AFS",fa],["ISO",fi]]){
   const blob=new Blob([fs.readFileSync(f)]), d=await g("weOpen")(blob), u=await g("weFile")(blob,d,3377);

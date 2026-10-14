@@ -31,7 +31,7 @@ h1{font-size:20px;margin:0 0 4px}
 .ctrl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:10px 0}
 .ctrl[hidden]{display:none}
 .ctrl label{white-space:nowrap}
-.ctrl select,.ctrl button,.ctrl input[type=number]{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
+.ctrl select,.ctrl button,.ctrl input[type=number],.ctrl input[type=text]{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
 .ctrl button,.ctrl label.btn{cursor:pointer}
 .ctrl label.btn{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
 .ctrl .grp{white-space:nowrap}
@@ -70,6 +70,8 @@ progress{width:12em;vertical-align:middle}
   <label title="ふだんは半袖（入場の場面のフィールドの選手と同じ）。GK や冬の試合は長袖"><input type="checkbox" id="c-long"> 長袖</label>
   <label title="背中・胸・パンツの番号と、背中の名前"><input type="checkbox" id="c-num" checked> 背番号・名前</label>
   <label title="胸の番号（胸に番号の無いユニフォームでは外す）"><input type="checkbox" id="c-chest" checked> 胸の番号</label>
+  <label title="空ならゲームの番号">番号 <input type="number" id="n-num" min="0" max="99" style="width:4em" aria-label="背番号"></label>
+  <label title="空ならゲームの背中の名前。英字（A〜Z）と . と空白">名前 <input type="text" id="t-name" maxlength="16" style="width:8em" aria-label="背中の名前" autocapitalize="characters"></label>
   <label title="靴底の歯（ゲームでは芝に埋まる）。ふだんは描かない"><input type="checkbox" id="c-studs"> スパイクの歯</label>
   <label>ユニフォーム <select id="s-kit" aria-label="ユニフォーム"></select></label>
   <label>動き <select id="s-mot" aria-label="動き"><option value="">立ち姿</option></select></label>
@@ -78,6 +80,10 @@ progress{width:12em;vertical-align:middle}
   <span class="grp" title="下絵（服の割り付けの線と名前）に重ねて描いた絵を読み込むと、選手がそのユニフォームを着る">自分のユニフォーム:</span>
   <button id="b-kittpl">下絵を保存</button> <button id="b-kitcur">いまの絵を保存</button>
   <label class="btn">絵を読み込む <input type="file" id="f-kit" accept="image/*" hidden></label>
+  <span class="grp" title="背番号と名前の字。字の下絵（256×96）と同じ並びで描いた絵を読み込むと、その字体になる">字:</span>
+  <button id="b-fonttpl">字の下絵を保存</button>
+  <label class="btn">字を読み込む <input type="file" id="f-font" accept="image/*" hidden></label>
+  <label id="l-font" hidden><input type="checkbox" id="c-font"> 読み込んだ字</label>
 </div>
 <div class="ctrl" id="motbar" hidden>
   <button id="b-mot">▶ 再生</button> <input type="range" id="r-mot" min="0" max="0" value="0" style="width:min(18em,50vw)" aria-label="こま"> <span id="t-mot"></span>
@@ -99,7 +105,7 @@ progress{width:12em;vertical-align:middle}
 <p>チームの一覧と名簿も、ステートセーブのメモリから読みます（チーム名の表と、1 チーム 32 枠の名簿）。名簿の並びが崩れている選抜チームなどは出しません。</p>
 <p>体はディスクの #1429 の形です（関口・梁・田村・永井のセーブで、どれもこのファイルが読み込まれていました）。19 本の骨と、2 本の骨にまたがる所のための「対」の行列で組み立てます。どの頂点をどの行列で動かすかは、試合中のセーブでゲームが使っていた行列と照らして決めました。袖は半袖（入場の場面でゲームが描いていた組）で、「長袖」で長袖の組に替えられます。形は T の字の姿でしまってあり、腕を下ろして立たせています（腕の角度は見た目で決めたもので、ゲームの立ち姿の動きではありません）。</p>
 <p>ユニフォームとスパイクの絵は、ステートセーブのメモリにあるものを使います（試合の前後のセーブなら、その試合の 2 チームの 4 着があります）。肌は頭の生え際と同じ絵です。手は別のファイル（#8095）の形を、手首の骨に付けます。背番号と背中の名前は、セーブにあるそのユニフォーム用の字から、ゲームと同じように選手ごとに組み立てて重ねます（番号はチームの番号表から）。袖の印はまだです。</p>
-<p>ユニフォームは、自分で描いた絵に替えられます。「下絵を保存」で服の割り付け（どこがシャツの前・背中・袖・パンツ・ストッキングか）の線を書き出し、それに重ねて描いた絵を「絵を読み込む」で開くと、選手がそのユニフォームを着ます。「いまの絵を保存」でゲームのユニフォームの絵も書き出せるので、それを元に描きかえることもできます。読み込んだ絵はブラウザの中だけで使い、どこにも送りません。</p>
+<p>ユニフォームは、自分で描いた絵に替えられます。「下絵を保存」で服の割り付け（どこがシャツの前・背中・袖・パンツ・ストッキングか）の線を書き出し、それに重ねて描いた絵を「絵を読み込む」で開くと、選手がそのユニフォームを着ます。「いまの絵を保存」でゲームのユニフォームの絵も書き出せるので、それを元に描きかえることもできます。読み込んだ絵はブラウザの中だけで使い、どこにも送りません。背番号と名前の字も、「字の下絵を保存」の並び（256×96）で描いた絵を「字を読み込む」で開くと替えられます。番号と名前は、欄に入れるとそれが出ます（空ならゲームの番号と名前）。</p>
 <p>動きは、試合中のステートセーブなら、そのメモリにあるゲームの動きの表（1,466 個）から選びます。ディスクの #1360（485 個）はその一部で、選手選択の画面などのセーブのときは #1360 を使います。どの動きも、こまごとに骨の向き（親から見た向き）が並んでいて、そのまま読みます。こまの間は向きを補います。名前が分かっている動きは、場面のセーブでそのときゲームが再生していた動きを骨の向きの一致で当てたものです（いまは PK のキックの 217 番とスライディングの 725 番）。表の 1437 番から後ろは場面ごとに入れ替わる枠です。ほかの一覧は、腰・足・手の高さと足の入れかわりで「歩く・走る・蹴る・跳ぶ・倒れる・起きる…」に分けてあります（見た目からの区分で、ゲームの中の名前ではありません）。ゲームの姿は、腕などが動きのままではないことがあり、動きを混ぜたり手を加えたりしているようです。</p>
 <p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、チームごとのユニフォーム（ディスクのどのファイルかまだ分からない）、選手ごとの長袖・半袖と GK の手袋、背の高さ。</p>
 <p id="ver"></p></details>
@@ -634,8 +640,9 @@ const JW_OVERLAY={6:{a:10/23,bu:-0.1521,bv:-0.6893,tex:"num",pal:"back"},15:{a:1
 function jwNib(src,W,x,y){ const b=src[(y*W+x)>>1]; return x&1?b>>4:b&15 }
 // 番号の絵（4 ビットの値、64×32）。数字は 32×32 の升をそのまま写す。1 桁は真ん中、2 桁は左右。「1」は幅 22（升の 1〜22）で詰める
 //   （ベガルタの字で 11 個の番号がこの決まりで点まで一致。「1」を含む番号は 1 点ずれることがある【推測】）
-function jwNumberIdx(digits,n){
-  const T=new Uint8Array(64*32), s=String(n).slice(0,2), w=c=>c==="1"?22:32, sx=c=>c==="1"?1:0;
+//   読み込んだ字（jwFontFromRGBA）は升ごとに測った幅 ws（[左, 幅]）を使う
+function jwNumberIdx(digits,n,ws){
+  const T=new Uint8Array(64*32), s=String(n).slice(0,2), w=c=>ws?ws[+c][1]:c==="1"?22:32, sx=c=>ws?ws[+c][0]:c==="1"?1:0;
   let x=Math.floor((64-[...s].reduce((a,c)=>a+w(c),0))/2);
   for(const c of s){ const d=+c, cx=(d%5)*32+sx(c), cy=Math.floor(d/5)*32;
     for(let y=0;y<32;y++) for(let i=0;i<w(c);i++){ const X=x+i; if(X<0||X>=64) continue; const v=jwNib(digits,256,cx+i,cy+y); if(v) T[y*64+X]=v }
@@ -644,7 +651,8 @@ function jwNumberIdx(digits,n){
 }
 // 名前の絵（256×32）。字の絵の行ごとに、字の切れ目（空いた列）で A〜N・O〜Z. を切り出す。字は y 11 の高さにそろえ、真ん中に並べる。
 //   字の間はおよそ 90 点の幅に広げ、5〜23 点（ゲームの名前の絵 22 個の並びに合わせた近似【推測】）
-function jwNameIdx(letters,name){
+//   読み込んだ字は字の間を決めて渡す（gap。2026 年のベガルタの名前は字が詰まっている）
+function jwNameIdx(letters,name,fixGap){
   const glyphs={}, order=["ABCDEFGHIJKLMN","OPQRSTUVWXYZ."];
   order.forEach((chars,row)=>{ const y0=row*16, ink=[]; let top=99;
     for(let x=0;x<256;x++){ let on=false; for(let y=y0;y<y0+16;y++) if(jwNib(letters,256,x,y)){ on=true; top=Math.min(top,y-y0) } ink.push(on) }
@@ -652,18 +660,42 @@ function jwNameIdx(letters,name){
     if(runs.length===chars.length) [...chars].forEach((c,k)=>glyphs[c]={x0:runs[k][0],w:runs[k][1]-runs[k][0]+1,y0,top}) });
   const T=new Uint8Array(256*32), cs=[...String(name||"").toUpperCase()].filter(c=>glyphs[c]||c===" ");
   if(!cs.length) return T;
-  const ws=cs.map(c=>c===" "?6:glyphs[c].w), sum=ws.reduce((a,b)=>a+b,0), gap=cs.length>1?Math.round(Math.min(23,Math.max(5,(90-sum)/(cs.length-1)))):0;
+  const ws=cs.map(c=>c===" "?6:glyphs[c].w), sum=ws.reduce((a,b)=>a+b,0), gap=cs.length>1?(fixGap??Math.round(Math.min(23,Math.max(5,(90-sum)/(cs.length-1))))):0;
   let x=Math.round(128-(sum+gap*(cs.length-1))/2);
   cs.forEach((c,k)=>{ const g=glyphs[c];
     if(g) for(let y=0;y<16;y++){ const ty=11-g.top+y; if(ty<0||ty>=32) continue; for(let i=0;i<g.w;i++){ const X=x+i; if(X<0||X>=256) continue; const v=jwNib(letters,256,g.x0+i,g.y0+y); if(v) T[ty*256+X]=v } }
     x+=ws[k]+gap });
   return T;
 }
+// 自分の字（v0.9.0）: 256×96 の絵（上の 64 行＝数字 0〜4・5〜9 を 32×32 の升に、下の 32 行＝英字 A〜N・O〜Z. を高さ 16 の 2 行に、字の間は空ける）。
+//   塗りの濃さ（透明度。透明度の無い絵は暗さ）を、ゲームの字と同じ 16 段階の番号に直す（番号ごとの濃さは背中の番号の色表の α。0＝塗らない、15＝いちばん濃い）
+const JW_FONT_LEVELS=[[0,0],[1,7],[2,15],[8,25],[9,36],[10,45],[11,56],[12,67],[13,76],[3,83],[4,94],[14,103],[5,111],[6,117],[7,123],[15,128]];
+function jwFontFromRGBA(rgba,W,H){
+  if(W!==256||H!==96) throw new Error(`字の絵は 256×96 にしてください（いまは ${W}×${H}）`);
+  let opaque=true; for(let i=3;i<rgba.length;i+=4) if(rgba[i]<250){ opaque=false; break }
+  const cov=i=>opaque?(255-(rgba[i]*0.3+rgba[i+1]*0.59+rgba[i+2]*0.11))/255:rgba[i+3]/255;
+  const pack=(y0,h)=>{ const out=new Uint8Array(256*h/2);
+    for(let y=0;y<h;y++) for(let x=0;x<256;x++){ const a=cov(((y0+y)*256+x)*4)*128; let v=0, bd=1e9; for(const [k,l] of JW_FONT_LEVELS) if(Math.abs(l-a)<bd){ bd=Math.abs(l-a); v=k }
+      const o=(y*256+x)>>1; out[o]|=x&1?v<<4:v }
+    return out };
+  const digits=pack(0,64), letters=pack(64,32), numW=[];
+  for(let d=0;d<10;d++){ const cx=(d%5)*32, cy=Math.floor(d/5)*32; let l=32,r=-1;
+    for(let y=0;y<32;y++) for(let x=0;x<32;x++) if(jwNib(digits,256,cx+x,cy+y)){ l=Math.min(l,x); r=Math.max(r,x) }
+    numW.push(r<0?[0,16]:[Math.max(0,l-1),Math.min(32,r+2)-Math.max(0,l-1)]) }
+  return {digits,letters,numW,nameGap:2};
+}
+// ゲームの字を同じ並びの絵にする（字の下絵）。黒で、濃さを透明度に
+function jwFontToRGBA(fonts){
+  const al=new Array(16).fill(0); for(const [k,v] of JW_FONT_LEVELS) al[k]=Math.min(255,v*2);
+  const out=new Uint8Array(256*96*4);
+  for(let y=0;y<96;y++) for(let x=0;x<256;x++){ const v=y<64?jwNib(fonts.digits,256,x,y):jwNib(fonts.letters,256,x,y-64); out[(y*256+x)*4+3]=al[v] }
+  return out;
+}
 function jwIdxRGBA(idx,pal){ const out=new Uint8Array(idx.length*4); for(let i=0;i<idx.length;i++){ const j=idx[i]*4; out[i*4]=pal[j]; out[i*4+1]=pal[j+1]; out[i*4+2]=pal[j+2]; out[i*4+3]=Math.min(255,pal[j+3]*2) } return out }
 // 重ねの形（背中の番号・胸の番号・パンツの番号・名前）。uv を書き換え、絵は端を伸ばす（くり返さない）
 function jwOverlayMeshes(B,cur,fonts,opts,name,number){
   if(!fonts) return [];
-  const numIdx=number!=null?jwNumberIdx(fonts.digits,number):null, nameIdx=name?jwNameIdx(fonts.letters,name):null, ms=[];
+  const numIdx=number!=null?jwNumberIdx(fonts.digits,number,fonts.numW):null, nameIdx=name?jwNameIdx(fonts.letters,name,fonts.nameGap):null, ms=[];
   for(const [opt,o] of Object.entries(JW_OVERLAY)){
     if(!opts.has(+opt)) continue; const idx=o.tex==="num"?numIdx:nameIdx; if(!idx) continue;
     const tex={W:o.tex==="num"?64:256,H:32,rgba:jwIdxRGBA(idx,fonts[o.pal])}, tris=jwBodyTris(B,cur,P=>P.opt===+opt), f=new Float32Array(tris.length*15); let n=0;
@@ -804,7 +836,7 @@ function weViewMatrix(v,aspect){
   return M;
 }
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.8.1";
+const VERSION="0.9.0";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -875,6 +907,15 @@ async function openKit(file){
     APP.customKit={id:"custom",name:file.name,W,H,rgba:new Uint8Array(x.getImageData(0,0,W,H).data.buffer),fonts:base?.fonts||null,base};
     fillKits(); $("s-kit").value="c"; status(`ユニフォームの絵 ${file.name}（${im.width}×${im.height} → ${W}×${H}）`); if(APP.cur?.kind==="player") show(APP.cur) }
   catch(e){ status("絵が読めません: "+e.message,true); console.error(e) } }
+// 自分の字（v0.9.0）。字の下絵＝いまのユニフォームの字を同じ並び（256×96）で。読み込んだ字は、どのユニフォームでも使う
+function fontTemplate(){ const k=curKit(); if(!k?.fonts){ status("このユニフォームの字がセーブにありません",true); return }
+  const cv=document.createElement("canvas"); cv.width=256; cv.height=96; cv.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(jwFontToRGBA(k.fonts)),256,96),0,0);
+  saveCanvas(cv,"jwe2010_font_template.png") }
+async function openFont(file){
+  try{ const im=await createImageBitmap(file), cv=document.createElement("canvas"); cv.width=im.width; cv.height=im.height;
+    const x=cv.getContext("2d"); x.drawImage(im,0,0); APP.customFont=jwFontFromRGBA(x.getImageData(0,0,im.width,im.height).data,im.width,im.height);
+    $("l-font").hidden=false; $("c-font").checked=true; status(`字の絵 ${file.name}`); if(APP.cur?.kind==="player") show(APP.cur) }
+  catch(e){ status("字の絵が読めません: "+e.message,true); console.error(e) } }
 function openAny(file){ if(/\.p2s$/i.test(file.name)) openSave(file); else openDisc(file) }
 // チームの一覧。最初は 0 番（ベガルタ仙台）。「全員」で選手の表の全部
 function fillTeams(){
@@ -929,9 +970,14 @@ async function show(what){
       if(body){ const kit=curKit(), boots=APP.kits?.boots||null;
         const opts=jwBodyOpts($("c-long").checked,$("c-studs").checked);
         // 背番号と名前。番号は選んでいるチーム、無ければその選手がいる最初のチームの番号表から
-        let num=null, wantNum=$("c-num").checked&&kit&&kit.fonts;
+        // 字は読み込んだ字（チェックが入っていれば）、無ければユニフォームの字。色はユニフォームの色表のまま
+        const fonts=kit&&kit.fonts?(APP.customFont&&$("c-font").checked?{...kit.fonts,...APP.customFont}:kit.fonts):null;
+        let num=null, wantNum=$("c-num").checked&&fonts;
         if($("c-num").checked){ const tm=[APP.teams.find(t=>String(t.i)===$("s-team").value),...APP.teams].find(t=>t&&t.members.includes(c.p.i)); num=tm?tm.numbers[tm.members.indexOf(c.p.i)]:null;
+          // 手で入れた番号・名前（v0.9.0）があればそちら
+          const nIn=$("n-num").value.trim(); if(nIn!==""&&+nIn>=0&&+nIn<=99) num=+nIn;
           if(kit&&kit.fonts){ if(num==null) warn.push("背番号が分からない") } else if(kit) warn.push("このユニフォームの背番号の字がセーブに無い") }
+        const shirtName=$("t-name").value.trim()||c.p.shirt;
         let hands=body.hands; if(!hands) warn.push(`手のファイル #${JW_HANDS} が読めません`);
         // 姿（骨ごとの行列）から形を作る。動きの再生ではこれをこまごとに呼ぶ（頭の形は元を写してから付ける）
         const headBase=r.meshes.map(m=>({...m,f:m.f.slice()}));
@@ -941,7 +987,7 @@ async function show(what){
           out.push(...jwPlaceHead(headBase.map(m=>({...m,f:m.f.slice()})),cur[16]));
           // 背番号と名前は服の上に重ねるので最後に描く
           // 胸の番号（出し分け 15）はチェックで消せる（2026 年のユニフォームなど、胸に番号の無いもの）
-          if(wantNum) out.push(...jwOverlayMeshes(body.B,cur,kit.fonts,$("c-chest").checked?opts:new Set([...opts].filter(o=>o!==15)),c.p.shirt,num));
+          if(wantNum) out.push(...jwOverlayMeshes(body.B,cur,fonts,$("c-chest").checked?opts:new Set([...opts].filter(o=>o!==15)),shirtName,num));
           return out };
         APP.rig={build,B:body.B};
         r.meshes=build(motPose()||body.cur);
@@ -1039,7 +1085,8 @@ function init(){
   // 体の有り無しで大きさが変わるので、見る位置を作り直す
   $("c-body").onchange=()=>{ APP.base=null; if(APP.cur?.kind==="player") show(APP.cur) };
   $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
-  $("c-chest").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  $("n-num").oninput=$("t-name").oninput=$("c-chest").onchange=$("c-font").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  $("b-fonttpl").onclick=fontTemplate; $("f-font").onchange=e=>{ const f=e.target.files[0]; if(f) openFont(f); e.target.value="" };
   $("b-kittpl").onclick=kitTemplate; $("b-kitcur").onclick=kitCurrent; $("f-kit").onchange=e=>{ const f=e.target.files[0]; if(f) openKit(f); e.target.value="" };
   $("c-long").onchange=$("c-studs").onchange=$("c-num").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   // 動き: 選ぶ・再生・こま送り（← →・スペース。ほかのビューアと同じ）

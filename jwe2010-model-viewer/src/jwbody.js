@@ -160,8 +160,9 @@ const JW_OVERLAY={6:{a:10/23,bu:-0.1521,bv:-0.6893,tex:"num",pal:"back"},15:{a:1
 function jwNib(src,W,x,y){ const b=src[(y*W+x)>>1]; return x&1?b>>4:b&15 }
 // 番号の絵（4 ビットの値、64×32）。数字は 32×32 の升をそのまま写す。1 桁は真ん中、2 桁は左右。「1」は幅 22（升の 1〜22）で詰める
 //   （ベガルタの字で 11 個の番号がこの決まりで点まで一致。「1」を含む番号は 1 点ずれることがある【推測】）
-function jwNumberIdx(digits,n){
-  const T=new Uint8Array(64*32), s=String(n).slice(0,2), w=c=>c==="1"?22:32, sx=c=>c==="1"?1:0;
+//   読み込んだ字（jwFontFromRGBA）は升ごとに測った幅 ws（[左, 幅]）を使う
+function jwNumberIdx(digits,n,ws){
+  const T=new Uint8Array(64*32), s=String(n).slice(0,2), w=c=>ws?ws[+c][1]:c==="1"?22:32, sx=c=>ws?ws[+c][0]:c==="1"?1:0;
   let x=Math.floor((64-[...s].reduce((a,c)=>a+w(c),0))/2);
   for(const c of s){ const d=+c, cx=(d%5)*32+sx(c), cy=Math.floor(d/5)*32;
     for(let y=0;y<32;y++) for(let i=0;i<w(c);i++){ const X=x+i; if(X<0||X>=64) continue; const v=jwNib(digits,256,cx+i,cy+y); if(v) T[y*64+X]=v }
@@ -170,7 +171,8 @@ function jwNumberIdx(digits,n){
 }
 // 名前の絵（256×32）。字の絵の行ごとに、字の切れ目（空いた列）で A〜N・O〜Z. を切り出す。字は y 11 の高さにそろえ、真ん中に並べる。
 //   字の間はおよそ 90 点の幅に広げ、5〜23 点（ゲームの名前の絵 22 個の並びに合わせた近似【推測】）
-function jwNameIdx(letters,name){
+//   読み込んだ字は字の間を決めて渡す（gap。2026 年のベガルタの名前は字が詰まっている）
+function jwNameIdx(letters,name,fixGap){
   const glyphs={}, order=["ABCDEFGHIJKLMN","OPQRSTUVWXYZ."];
   order.forEach((chars,row)=>{ const y0=row*16, ink=[]; let top=99;
     for(let x=0;x<256;x++){ let on=false; for(let y=y0;y<y0+16;y++) if(jwNib(letters,256,x,y)){ on=true; top=Math.min(top,y-y0) } ink.push(on) }
@@ -178,18 +180,42 @@ function jwNameIdx(letters,name){
     if(runs.length===chars.length) [...chars].forEach((c,k)=>glyphs[c]={x0:runs[k][0],w:runs[k][1]-runs[k][0]+1,y0,top}) });
   const T=new Uint8Array(256*32), cs=[...String(name||"").toUpperCase()].filter(c=>glyphs[c]||c===" ");
   if(!cs.length) return T;
-  const ws=cs.map(c=>c===" "?6:glyphs[c].w), sum=ws.reduce((a,b)=>a+b,0), gap=cs.length>1?Math.round(Math.min(23,Math.max(5,(90-sum)/(cs.length-1)))):0;
+  const ws=cs.map(c=>c===" "?6:glyphs[c].w), sum=ws.reduce((a,b)=>a+b,0), gap=cs.length>1?(fixGap??Math.round(Math.min(23,Math.max(5,(90-sum)/(cs.length-1))))):0;
   let x=Math.round(128-(sum+gap*(cs.length-1))/2);
   cs.forEach((c,k)=>{ const g=glyphs[c];
     if(g) for(let y=0;y<16;y++){ const ty=11-g.top+y; if(ty<0||ty>=32) continue; for(let i=0;i<g.w;i++){ const X=x+i; if(X<0||X>=256) continue; const v=jwNib(letters,256,g.x0+i,g.y0+y); if(v) T[ty*256+X]=v } }
     x+=ws[k]+gap });
   return T;
 }
+// 自分の字（v0.9.0）: 256×96 の絵（上の 64 行＝数字 0〜4・5〜9 を 32×32 の升に、下の 32 行＝英字 A〜N・O〜Z. を高さ 16 の 2 行に、字の間は空ける）。
+//   塗りの濃さ（透明度。透明度の無い絵は暗さ）を、ゲームの字と同じ 16 段階の番号に直す（番号ごとの濃さは背中の番号の色表の α。0＝塗らない、15＝いちばん濃い）
+const JW_FONT_LEVELS=[[0,0],[1,7],[2,15],[8,25],[9,36],[10,45],[11,56],[12,67],[13,76],[3,83],[4,94],[14,103],[5,111],[6,117],[7,123],[15,128]];
+function jwFontFromRGBA(rgba,W,H){
+  if(W!==256||H!==96) throw new Error(`字の絵は 256×96 にしてください（いまは ${W}×${H}）`);
+  let opaque=true; for(let i=3;i<rgba.length;i+=4) if(rgba[i]<250){ opaque=false; break }
+  const cov=i=>opaque?(255-(rgba[i]*0.3+rgba[i+1]*0.59+rgba[i+2]*0.11))/255:rgba[i+3]/255;
+  const pack=(y0,h)=>{ const out=new Uint8Array(256*h/2);
+    for(let y=0;y<h;y++) for(let x=0;x<256;x++){ const a=cov(((y0+y)*256+x)*4)*128; let v=0, bd=1e9; for(const [k,l] of JW_FONT_LEVELS) if(Math.abs(l-a)<bd){ bd=Math.abs(l-a); v=k }
+      const o=(y*256+x)>>1; out[o]|=x&1?v<<4:v }
+    return out };
+  const digits=pack(0,64), letters=pack(64,32), numW=[];
+  for(let d=0;d<10;d++){ const cx=(d%5)*32, cy=Math.floor(d/5)*32; let l=32,r=-1;
+    for(let y=0;y<32;y++) for(let x=0;x<32;x++) if(jwNib(digits,256,cx+x,cy+y)){ l=Math.min(l,x); r=Math.max(r,x) }
+    numW.push(r<0?[0,16]:[Math.max(0,l-1),Math.min(32,r+2)-Math.max(0,l-1)]) }
+  return {digits,letters,numW,nameGap:2};
+}
+// ゲームの字を同じ並びの絵にする（字の下絵）。黒で、濃さを透明度に
+function jwFontToRGBA(fonts){
+  const al=new Array(16).fill(0); for(const [k,v] of JW_FONT_LEVELS) al[k]=Math.min(255,v*2);
+  const out=new Uint8Array(256*96*4);
+  for(let y=0;y<96;y++) for(let x=0;x<256;x++){ const v=y<64?jwNib(fonts.digits,256,x,y):jwNib(fonts.letters,256,x,y-64); out[(y*256+x)*4+3]=al[v] }
+  return out;
+}
 function jwIdxRGBA(idx,pal){ const out=new Uint8Array(idx.length*4); for(let i=0;i<idx.length;i++){ const j=idx[i]*4; out[i*4]=pal[j]; out[i*4+1]=pal[j+1]; out[i*4+2]=pal[j+2]; out[i*4+3]=Math.min(255,pal[j+3]*2) } return out }
 // 重ねの形（背中の番号・胸の番号・パンツの番号・名前）。uv を書き換え、絵は端を伸ばす（くり返さない）
 function jwOverlayMeshes(B,cur,fonts,opts,name,number){
   if(!fonts) return [];
-  const numIdx=number!=null?jwNumberIdx(fonts.digits,number):null, nameIdx=name?jwNameIdx(fonts.letters,name):null, ms=[];
+  const numIdx=number!=null?jwNumberIdx(fonts.digits,number,fonts.numW):null, nameIdx=name?jwNameIdx(fonts.letters,name,fonts.nameGap):null, ms=[];
   for(const [opt,o] of Object.entries(JW_OVERLAY)){
     if(!opts.has(+opt)) continue; const idx=o.tex==="num"?numIdx:nameIdx; if(!idx) continue;
     const tex={W:o.tex==="num"?64:256,H:32,rgba:jwIdxRGBA(idx,fonts[o.pal])}, tris=jwBodyTris(B,cur,P=>P.opt===+opt), f=new Float32Array(tris.length*15); let n=0;

@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.8.1";
+const VERSION="0.9.0";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -70,6 +70,15 @@ async function openKit(file){
     APP.customKit={id:"custom",name:file.name,W,H,rgba:new Uint8Array(x.getImageData(0,0,W,H).data.buffer),fonts:base?.fonts||null,base};
     fillKits(); $("s-kit").value="c"; status(`ユニフォームの絵 ${file.name}（${im.width}×${im.height} → ${W}×${H}）`); if(APP.cur?.kind==="player") show(APP.cur) }
   catch(e){ status("絵が読めません: "+e.message,true); console.error(e) } }
+// 自分の字（v0.9.0）。字の下絵＝いまのユニフォームの字を同じ並び（256×96）で。読み込んだ字は、どのユニフォームでも使う
+function fontTemplate(){ const k=curKit(); if(!k?.fonts){ status("このユニフォームの字がセーブにありません",true); return }
+  const cv=document.createElement("canvas"); cv.width=256; cv.height=96; cv.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(jwFontToRGBA(k.fonts)),256,96),0,0);
+  saveCanvas(cv,"jwe2010_font_template.png") }
+async function openFont(file){
+  try{ const im=await createImageBitmap(file), cv=document.createElement("canvas"); cv.width=im.width; cv.height=im.height;
+    const x=cv.getContext("2d"); x.drawImage(im,0,0); APP.customFont=jwFontFromRGBA(x.getImageData(0,0,im.width,im.height).data,im.width,im.height);
+    $("l-font").hidden=false; $("c-font").checked=true; status(`字の絵 ${file.name}`); if(APP.cur?.kind==="player") show(APP.cur) }
+  catch(e){ status("字の絵が読めません: "+e.message,true); console.error(e) } }
 function openAny(file){ if(/\.p2s$/i.test(file.name)) openSave(file); else openDisc(file) }
 // チームの一覧。最初は 0 番（ベガルタ仙台）。「全員」で選手の表の全部
 function fillTeams(){
@@ -124,9 +133,14 @@ async function show(what){
       if(body){ const kit=curKit(), boots=APP.kits?.boots||null;
         const opts=jwBodyOpts($("c-long").checked,$("c-studs").checked);
         // 背番号と名前。番号は選んでいるチーム、無ければその選手がいる最初のチームの番号表から
-        let num=null, wantNum=$("c-num").checked&&kit&&kit.fonts;
+        // 字は読み込んだ字（チェックが入っていれば）、無ければユニフォームの字。色はユニフォームの色表のまま
+        const fonts=kit&&kit.fonts?(APP.customFont&&$("c-font").checked?{...kit.fonts,...APP.customFont}:kit.fonts):null;
+        let num=null, wantNum=$("c-num").checked&&fonts;
         if($("c-num").checked){ const tm=[APP.teams.find(t=>String(t.i)===$("s-team").value),...APP.teams].find(t=>t&&t.members.includes(c.p.i)); num=tm?tm.numbers[tm.members.indexOf(c.p.i)]:null;
+          // 手で入れた番号・名前（v0.9.0）があればそちら
+          const nIn=$("n-num").value.trim(); if(nIn!==""&&+nIn>=0&&+nIn<=99) num=+nIn;
           if(kit&&kit.fonts){ if(num==null) warn.push("背番号が分からない") } else if(kit) warn.push("このユニフォームの背番号の字がセーブに無い") }
+        const shirtName=$("t-name").value.trim()||c.p.shirt;
         let hands=body.hands; if(!hands) warn.push(`手のファイル #${JW_HANDS} が読めません`);
         // 姿（骨ごとの行列）から形を作る。動きの再生ではこれをこまごとに呼ぶ（頭の形は元を写してから付ける）
         const headBase=r.meshes.map(m=>({...m,f:m.f.slice()}));
@@ -136,7 +150,7 @@ async function show(what){
           out.push(...jwPlaceHead(headBase.map(m=>({...m,f:m.f.slice()})),cur[16]));
           // 背番号と名前は服の上に重ねるので最後に描く
           // 胸の番号（出し分け 15）はチェックで消せる（2026 年のユニフォームなど、胸に番号の無いもの）
-          if(wantNum) out.push(...jwOverlayMeshes(body.B,cur,kit.fonts,$("c-chest").checked?opts:new Set([...opts].filter(o=>o!==15)),c.p.shirt,num));
+          if(wantNum) out.push(...jwOverlayMeshes(body.B,cur,fonts,$("c-chest").checked?opts:new Set([...opts].filter(o=>o!==15)),shirtName,num));
           return out };
         APP.rig={build,B:body.B};
         r.meshes=build(motPose()||body.cur);
@@ -234,7 +248,8 @@ function init(){
   // 体の有り無しで大きさが変わるので、見る位置を作り直す
   $("c-body").onchange=()=>{ APP.base=null; if(APP.cur?.kind==="player") show(APP.cur) };
   $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
-  $("c-chest").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  $("n-num").oninput=$("t-name").oninput=$("c-chest").onchange=$("c-font").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  $("b-fonttpl").onclick=fontTemplate; $("f-font").onchange=e=>{ const f=e.target.files[0]; if(f) openFont(f); e.target.value="" };
   $("b-kittpl").onclick=kitTemplate; $("b-kitcur").onclick=kitCurrent; $("f-kit").onchange=e=>{ const f=e.target.files[0]; if(f) openKit(f); e.target.value="" };
   $("c-long").onchange=$("c-studs").onchange=$("c-num").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   // 動き: 選ぶ・再生・こま送り（← →・スペース。ほかのビューアと同じ）
