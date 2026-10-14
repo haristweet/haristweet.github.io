@@ -67,6 +67,7 @@ progress{width:12em;vertical-align:middle}
 <div class="ctrl" id="bodybar" hidden>
   <label><input type="checkbox" id="c-body" checked> 体</label>
   <label title="ふだんは半袖（入場の場面のフィールドの選手と同じ）。GK や冬の試合は長袖"><input type="checkbox" id="c-long"> 長袖</label>
+  <label title="靴底の歯（ゲームでは芝に埋まる）。ふだんは描かない"><input type="checkbox" id="c-studs"> スパイクの歯</label>
   <label>ユニフォーム <select id="s-kit" aria-label="ユニフォーム"></select></label>
 </div>
 <div class="ctrl" id="anyfile" hidden>
@@ -463,9 +464,12 @@ function jwHeadMeshes(faceU,hairU,common,all){
 const JW_BODY=1429;
 // 出し分けの番号（包み +0x43）。ゲームが描いていた組をそのまま使う（v0.4.1。入場の場面のセーブ zenin で、仙台のホームとアウェイの 20 人を読んだ）
 //   半袖＝フィールドの選手（4＝半袖、22＝腕章なし（23＝キャプテンの腕章）、26・27＝腕の肌）。長袖＝永井の試合中・GK（3＝長袖、20＝袖口）。GK は 31（手袋？）も描くが、絵がまだ無いので描かない
-const JW_BODY_OPTS_SHORT=new Set([0,4,5,6,7,9,12,14,15,17,22,26,27,30,37]);
-const JW_BODY_OPTS_LONG=new Set([0,3,5,6,7,9,12,14,15,17,20,30,37]);
+//   37＝スパイクの歯（靴底から 4cm ほど下にとがって出る。ゲームでは芝に埋まる）。ふだんは描かない（v0.4.4。ユーザーの「スパイクの下に筋」）。jwBodyOpts(長袖, 歯) で組を作る
+const JW_BODY_OPTS_SHORT=new Set([0,4,5,6,7,9,12,14,15,17,22,26,27,30]);
+const JW_BODY_OPTS_LONG=new Set([0,3,5,6,7,9,12,14,15,17,20,30]);
+const JW_BODY_STUDS=37;
 const JW_BODY_OPTS=JW_BODY_OPTS_SHORT;
+function jwBodyOpts(long,studs){ const s=new Set(long?JW_BODY_OPTS_LONG:JW_BODY_OPTS_SHORT); if(studs) s.add(JW_BODY_STUDS); return s }
 // 部位: 0＝肌（#8231 の頭の肌と同じ絵）、1＝ユニフォーム 512×256、5＝スパイク 256×256。2・3・4・7・9・10＝背番号・名前・袖の印などの重ね（後回し、描かない）
 const JW_BODY_SELS=[0,1,5];
 function jwM4(A,C){ const R=new Array(16); for(let i=0;i<4;i++) for(let j=0;j<4;j++){ let s=0; for(let k=0;k<4;k++) s+=A[i*4+k]*C[k*4+j]; R[i*4+j]=s } return R }
@@ -642,7 +646,7 @@ function weViewMatrix(v,aspect){
   return M;
 }
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.4.3";
+const VERSION="0.4.4";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -739,7 +743,7 @@ async function show(what){
       const body=$("c-body").checked?await getBody():null;
       if(body){ const kit=APP.kits?.kits[+$("s-kit").value]||null, boots=APP.kits?.boots||null;
         jwPlaceHead(r.meshes,body.cur[16]);
-        const bm=jwBodyMeshes(body.B,body.cur,{0:common?.ring||null,1:kit,5:boots},$("c-long").checked?JW_BODY_OPTS_LONG:JW_BODY_OPTS_SHORT); r.meshes.unshift(...bm);
+        const bm=jwBodyMeshes(body.B,body.cur,{0:common?.ring||null,1:kit,5:boots},jwBodyOpts($("c-long").checked,$("c-studs").checked)); r.meshes.unshift(...bm);
         if(body.hands){ try{ r.meshes.unshift(...jwHandMeshes(body.hands,body.cur,common?.ring||null)) }catch(e){ warn.push(`手 #${JW_HANDS} が読めません`) } } else warn.push(`手のファイル #${JW_HANDS} が読めません`);
         if(kit) r.texs.push({...kit,from:`セーブのユニフォーム ${+$("s-kit").value+1}`}); else warn.push("ユニフォームの絵がセーブに無いので、体は灰色");
         if(boots) r.texs.push({...boots,from:"セーブのスパイク"}) }
@@ -798,7 +802,7 @@ function init(){
   // 体の有り無しで大きさが変わるので、見る位置を作り直す
   $("c-body").onchange=()=>{ APP.base=null; if(APP.cur?.kind==="player") show(APP.cur) };
   $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
-  $("c-long").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  $("c-long").onchange=$("c-studs").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   $("b-png").onclick=savePng; $("c-clear").onchange=draw;
   // 回す・動かす・寄る（tobal1・vf2・fv のビューアと同じ操作）: ドラッグで回す。Shift を押しながら（または右・中ボタンで）ドラッグすると平行に動かす。
   // ホイールはカーソルの下の物が動かないように寄る。2本指はピンチで寄り、指の中ほどの移動で平行に動く。ダブルクリックで戻す

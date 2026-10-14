@@ -8,9 +8,12 @@
 const JW_BODY=1429;
 // 出し分けの番号（包み +0x43）。ゲームが描いていた組をそのまま使う（v0.4.1。入場の場面のセーブ zenin で、仙台のホームとアウェイの 20 人を読んだ）
 //   半袖＝フィールドの選手（4＝半袖、22＝腕章なし（23＝キャプテンの腕章）、26・27＝腕の肌）。長袖＝永井の試合中・GK（3＝長袖、20＝袖口）。GK は 31（手袋？）も描くが、絵がまだ無いので描かない
-const JW_BODY_OPTS_SHORT=new Set([0,4,5,6,7,9,12,14,15,17,22,26,27,30,37]);
-const JW_BODY_OPTS_LONG=new Set([0,3,5,6,7,9,12,14,15,17,20,30,37]);
+//   37＝スパイクの歯（靴底から 4cm ほど下にとがって出る。ゲームでは芝に埋まる）。ふだんは描かない（v0.4.4。ユーザーの「スパイクの下に筋」）。jwBodyOpts(長袖, 歯) で組を作る
+const JW_BODY_OPTS_SHORT=new Set([0,4,5,6,7,9,12,14,15,17,22,26,27,30]);
+const JW_BODY_OPTS_LONG=new Set([0,3,5,6,7,9,12,14,15,17,20,30]);
+const JW_BODY_STUDS=37;
 const JW_BODY_OPTS=JW_BODY_OPTS_SHORT;
+function jwBodyOpts(long,studs){ const s=new Set(long?JW_BODY_OPTS_LONG:JW_BODY_OPTS_SHORT); if(studs) s.add(JW_BODY_STUDS); return s }
 // 部位: 0＝肌（#8231 の頭の肌と同じ絵）、1＝ユニフォーム 512×256、5＝スパイク 256×256。2・3・4・7・9・10＝背番号・名前・袖の印などの重ね（後回し、描かない）
 const JW_BODY_SELS=[0,1,5];
 function jwM4(A,C){ const R=new Array(16); for(let i=0;i<4;i++) for(let j=0;j<4;j++){ let s=0; for(let k=0;k<4;k++) s+=A[i*4+k]*C[k*4+j]; R[i*4+j]=s } return R }
