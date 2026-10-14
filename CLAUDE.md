@@ -27,3 +27,7 @@ GitHub Pages のサイト。ビューアは `tobal1-model-viewer/`・`vf2-model-
    2本指＝ピンチで寄る＋指の中ほどの移動で平行に動かす、ダブルクリック＝向き・寄り・ずらしを全部戻す、右クリックのメニューは出さない。
    画面の下に「ドラッグで回す・Shift＋ドラッグ（右ボタン・2本指）で動かす・ホイールかピンチで寄る・ダブルクリックで戻す」と書く。
    作りの見本は `jwe2010-model-viewer/src/app.js`（init の中）と `fv-model-viewer/src/fapp.js`（hookInput）。操作をたどる台本は `jwe2010-model-viewer/src/ctrl.mjs`
+8. **見る所（モデルを描く枠）の背景は全ビューアで同じにする（ユーザーの指定、2026-10-14）。**
+   CSS で `background:radial-gradient(circle at 50% 35%,#3a3833,#2a2926)`（`--stage:#2a2926`。明るい画面・暗い画面とも同じ）。
+   canvas は透明に描き（`clearColor(0,0,0,0)`）、この背景を透かして見せる。PNG で保存するときの背景は `#2a2926` 相当の塗り（「背景なし」で透明）。
+   2026-10-14 の時点で jwe2010・we2012・we2001・fv・vf2 は同じ。tobal1 は ellipse で中心が #3a3834（ほぼ同じ）
