@@ -76,6 +76,7 @@ progress{width:12em;vertical-align:middle}
   <label title="空ならゲームの番号">番号 <input type="number" id="n-num" min="0" max="99" style="width:4em" aria-label="背番号"></label>
   <label title="空ならゲームの背中の名前。英字（A〜Z）と . と空白">名前 <input type="text" id="t-name" maxlength="16" style="width:8em" aria-label="背中の名前" autocapitalize="characters"></label>
   <label title="靴底の歯（ゲームでは芝に埋まる）。ふだんは描かない"><input type="checkbox" id="c-studs"> スパイクの歯</label>
+  <label id="l-ball" hidden title="試合中のセーブのボール（形と絵はセーブから）。足もとに置く"><input type="checkbox" id="c-ball" checked> ボール</label>
   <label>ユニフォーム <select id="s-kit" aria-label="ユニフォーム"></select></label>
   <label>動き <select id="s-mot" aria-label="動き"><option value="">立ち姿</option></select></label>
 </div>
@@ -109,6 +110,7 @@ progress{width:12em;vertical-align:middle}
 <p>チームの一覧と名簿も、ステートセーブのメモリから読みます（チーム名の表と、1 チーム 32 枠の名簿）。名簿の並びが崩れている選抜チームなどは出しません。</p>
 <p>体はディスクの #1429 の形です（関口・梁・田村・永井のセーブで、どれもこのファイルが読み込まれていました）。19 本の骨と、2 本の骨にまたがる所のための「対」の行列で組み立てます。どの頂点をどの行列で動かすかは、試合中のセーブでゲームが使っていた行列と照らして決めました。袖は半袖（入場の場面でゲームが描いていた組）で、「長袖」で長袖の組に替えられます。形は T の字の姿でしまってあり、腕を下ろして立たせています（腕の角度は見た目で決めたもので、ゲームの立ち姿の動きではありません）。</p>
 <p>ユニフォームとスパイクの絵は、ステートセーブのメモリにあるものを使います（試合の前後のセーブなら、その試合の 2 チームの 4 着があります）。肌は頭の生え際と同じ絵です。手は別のファイル（#8095）の形を、手首の骨に付けます。背番号と背中の名前は、セーブにあるそのユニフォーム用の字から、ゲームと同じように選手ごとに組み立てて重ねます（番号はチームの番号表から）。袖の印はまだです。</p>
+<p>試合中のステートセーブなら、ボールも出せます（「ボール」のチェック）。ボールの形はセーブのメモリから、絵は画面用メモリから、ゲームがボールを描いたときの指定をたどって読みます。大きさはゲームと同じ（選手の約 8 倍の行列で描いていた）で、選手の足の前の地面に置きます（置く場所はゲームの位置ではありません）。</p>
 <p>ユニフォームは、自分で描いた絵に替えられます。「下絵を保存」で服の割り付け（どこがシャツの前・背中・袖・パンツ・ストッキングか）の線を書き出し、それに重ねて描いた絵を「絵を読み込む」で開くと、選手がそのユニフォームを着ます。「いまの絵を保存」でゲームのユニフォームの絵も書き出せるので、それを元に描きかえることもできます。読み込んだ絵はブラウザの中だけで使い、どこにも送りません。背番号と名前の字も、「字の下絵を保存」の並び（256×96）で描いた絵を「字を読み込む」で開くと替えられます。番号と名前は、欄に入れるとそれが出ます（空ならゲームの番号と名前）。</p>
 <p>動きは、試合中のステートセーブなら、そのメモリにあるゲームの動きの表（1,466 個）から選びます。ディスクの #1360（485 個）はその一部で、選手選択の画面などのセーブのときは #1360 を使います。どの動きも、こまごとに骨の向き（親から見た向き）が並んでいて、そのまま読みます。こまの間は向きを補います。名前が分かっている動きは、場面のセーブでそのときゲームが再生していた動きを骨の向きの一致で当てたものです（いまは PK のキックの 217 番とスライディングの 725 番）。表の 1437 番から後ろは場面ごとに入れ替わる枠です。ほかの一覧は、腰・足・手の高さと足の入れかわりで「歩く・走る・蹴る・跳ぶ・倒れる・起きる…」に分けてあります（見た目からの区分で、ゲームの中の名前ではありません）。ゲームの姿は、腕などが動きのままではないことがあり、動きを混ぜたり手を加えたりしているようです。</p>
 <p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、チームごとのユニフォーム（ディスクのどのファイルかまだ分からない）、選手ごとの長袖・半袖と GK の手袋、背の高さ。</p>
@@ -322,7 +324,8 @@ function weFindTex(u){
 }
 // PCSX2 のステートセーブ（.p2s）から選手の表を読む。
 // .p2s は zip。中の eeMemory.bin（PS2 のメモリ 32MB）を取り出す。新しい PCSX2 は zstd（方式 93）、古いものは deflate（方式 8）
-async function jwP2sMemory(file){
+// 中の 1 つのファイル（name）を取り出す。無ければ null（eeMemory.bin のときはエラー）
+async function jwP2sFile(file,want){
   const tail=new Uint8Array(await file.slice(Math.max(0,file.size-65558)).arrayBuffer()), td=new DataView(tail.buffer);
   let e=tail.length-22; while(e>=0&&td.getUint32(e,true)!==0x06054b50) e--;
   if(e<0) throw new Error("ステートセーブ（.p2s）として読めません（zip ではない）");
@@ -331,16 +334,20 @@ async function jwP2sMemory(file){
   for(let i=0,p=0;i<n;i++){
     const method=cv.getUint16(p+10,true), csize=cv.getUint32(p+20,true), nl=cv.getUint16(p+28,true), xl=cv.getUint16(p+30,true), cl=cv.getUint16(p+32,true), lo=cv.getUint32(p+42,true);
     const name=new TextDecoder().decode(cd.subarray(p+46,p+46+nl)); names.push(name); p+=46+nl+xl+cl;
-    if(name!=="eeMemory.bin") continue;
+    if(name!==want) continue;
     const lh=new DataView(await file.slice(lo,lo+30).arrayBuffer()), d=lo+30+lh.getUint16(26,true)+lh.getUint16(28,true);
     const z=new Uint8Array(await file.slice(d,d+csize).arrayBuffer());
     if(method===0) return z;
     if(method===93) return fzstd.decompress(z);
     if(method===8) return new Uint8Array(await new Response(new Blob([z]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
-    throw new Error(`eeMemory.bin の縮め方（${method}）に対応していません`);
+    throw new Error(`${want} の縮め方（${method}）に対応していません`);
   }
+  if(want!=="eeMemory.bin") return null;
   throw new Error(`ステートセーブの中に eeMemory.bin がありません（${names.slice(0,6).join("・")}）`);
 }
+async function jwP2sMemory(file){ return jwP2sFile(file,"eeMemory.bin") }
+// 画面用メモリ（GS.bin の 425 バイト目から 4MB。田村・永井・PK のセーブで確かめた）。無ければ null
+async function jwP2sVram(file){ const g=await jwP2sFile(file,"GS.bin"); return g&&g.length>=425+4194304?g.subarray(425,425+4194304):null }
 // 選手の記録は 1 人 0x7C バイト。0 から名前（UTF-16、16 字）、0x20 から背中の名前（ASCII、16 字）。
 // 名前と背中の名前として読める記録がいちばん長く続く所を表とする（関口のセーブでは 0x194B43C から 4,609 人）
 const JW_REC=0x7C;
@@ -587,6 +594,49 @@ function jwPlaceHead(ms,M){
     // 行列が裏返し（行列式が負）なら、三角形の向きを戻す
     if(det<0) for(let k=0;k<f.length;k+=15) for(let j=0;j<5;j++){ const t=f[k+5+j]; f[k+5+j]=f[k+10+j]; f[k+10+j]=t } }
   return ms;
+}
+// ボール（v0.10.0）。試合中のセーブのメモリにある球の形（骨 1 本・包み 2 つ・三角形 156、半径 5.6）と、画面用メモリの絵（256×256・8 ビット）。
+//   形は形の頭（ffff0003 8 80）から骨 1 本・包み 2 つで、どの点も中心から同じ距離のものを探す。絵はゲームの描く命令から:
+//   形の包みを指す DMA の ref のうちいちばん後ろの包みのもの、その手前（0x400 バイト以内）の GS の TEX0 で、画面用メモリの点と色表を読む（PK のセーブで確認）。
+//   ゲームはボールを選手の約 8 倍の大きさで描いていた（行列の大きさ 1.0 と 0.12〜0.128）＝JW_BALL_SCALE
+const JW_BALL_SCALE=8;
+function jwGsA32(bp,bw,x,y){ return bp*256+((x>>6)+(y>>5)*bw)*8192+JW_BT[(y&31)>>3][(x&63)>>3]*256+JW_CT32[y&7][x&7]*4 }
+function jwGsA8(bp,bw,x,y){ return bp*256+((x>>7)+(y>>6)*(bw>>1))*8192+JW_BT[(y&63)>>4][(x&127)>>4]*256+JW_CT8[y&15][x&15] }
+// 画面用メモリの 8 ビットの絵（PSMT8）と、PSMCT32 の色表（CBP、16×16）から RGBA
+function jwGsTex8(vr,tbp,tbw,w,h,cbp){
+  const pal=[]; for(let i=0;i<256;i++){ const j=(i&0xe7)|((i&0x10)>>1)|((i&0x08)<<1), a=jwGsA32(cbp,1,j&15,j>>4); pal.push([vr[a],vr[a+1],vr[a+2],Math.min(255,vr[a+3]*2)]) }
+  const out=new Uint8Array(w*h*4);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){ const c=pal[vr[jwGsA8(tbp,tbw,x,y)]], i=(y*w+x)*4; out[i]=c[0]; out[i+1]=c[1]; out[i+2]=c[2]; out[i+3]=c[3] }
+  return out;
+}
+function jwSaveBall(m,vr){
+  const dv=new DataView(m.buffer,m.byteOffset,m.byteLength);
+  for(let a=0;a+48<=m.length;a+=16){
+    if(dv.getUint32(a,true)!==0xffff0003||dv.getUint32(a+4,true)!==8||dv.getUint32(a+8,true)!==0x80||dv.getUint32(a+12,true)!==1||dv.getUint32(a+32,true)!==2) continue;
+    const size=dv.getUint32(a+44,true); if(size<0x100||size>0x10000||a+size>m.length) continue;
+    const u=new Uint8Array(16+size), h=new DataView(u.buffer); h.setUint32(0,2,true); h.setUint32(4,8,true); h.setUint32(8,16,true); u.set(m.subarray(a,a+size),16);
+    let B,tris; try{ B=jwBodyParse(u); tris=jwBodyTris(B,B.Bind,()=>true) }catch(e){ continue }
+    if(tris.length<60) continue;
+    const r=tris.flatMap(t=>t.p).map(p=>Math.hypot(p[0],p[1],p[2])); if(Math.min(...r)<0.95*Math.max(...r)) continue;
+    let tex=null;
+    if(vr){ // いちばん後ろの包みを指す ref（何組もあることがある）ごとに、その手前の TEX0。いちばん多い指定を使う
+      const refs=[]; let top=-1;
+      for(let o=0;o+16<=m.length;o+=16){ const lo=dv.getUint32(o,true), hi=dv.getUint32(o+4,true); if(((lo>>>28)&7)===3&&hi>=a&&hi<a+size){ refs.push({o,hi}); top=Math.max(top,hi) } }
+      const cnt=new Map();
+      for(const r of refs.filter(r=>r.hi===top)) for(let o=r.o-16;o>=Math.max(0,r.o-0x400);o-=16){ if(dv.getUint32(o+8,true)!==6||dv.getUint32(o+12,true)!==0) continue;
+        const k=dv.getUint32(o,true)+":"+dv.getUint32(o+4,true); cnt.set(k,(cnt.get(k)||0)+1); break }
+      const k=[...cnt].sort((x,y)=>y[1]-x[1])[0]?.[0];
+      if(k){ const [lo,hi]=k.split(":").map(Number), tbp=lo&0x3fff, tbw=(lo>>>14)&0x3f, psm=(lo>>>20)&0x3f, tw=1<<((lo>>>26)&15), th=1<<(((lo>>>30)|(hi<<2))&15), cbp=(hi>>>5)&0x3fff;
+        if(psm===0x13&&tw<=512&&th<=512) tex={W:tw,H:th,rgba:jwGsTex8(vr,tbp,tbw,tw,th,cbp),tbp,cbp} } }
+    return {B,tex,at:a};
+  }
+  return null;
+}
+// ボールの形を、真ん中 c（体の座標）に置いて描く。大きさはゲームと同じ（JW_BALL_SCALE 倍）
+function jwBallMeshes(ball,c){
+  const tris=jwBodyTris(ball.B,ball.B.Bind,()=>true), f=new Float32Array(tris.length*15); let n=0;
+  for(const t of tris) for(let j=0;j<3;j++){ const q=jwWorldToView(t.p[j].map((v,i)=>v*JW_BALL_SCALE+c[i])); f[n++]=q[0]; f[n++]=q[1]; f[n++]=q[2]; f[n++]=t.uv[j][0]; f[n++]=t.uv[j][1] }
+  return [{f,ntri:tris.length,tex:ball.tex,clamp:true}];
 }
 // ユニフォームの絵の割り付け（v0.8.0。自分で描いた絵に差し替えるための下絵）。体 #1429 の服（sel 1）の包みを、出し分けの番号ごとに uv で並べる。
 //   名前は形の位置と絵を見て決めた（左半分の上＝シャツの前（胸のスポンサー・エンブレム）、右半分の上＝背中、下＝パンツ。前後は形の向きで確認）。脇の 2 つは推測
@@ -840,7 +890,7 @@ function weViewMatrix(v,aspect){
   return M;
 }
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.9.1";
+const VERSION="0.10.0";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -881,7 +931,10 @@ async function openSave(file){
   status("ステートセーブを読んでいます…"); $("n-save").textContent=file.name;
   try{
     const mem=await jwP2sMemory(file), players=jwPlayers(mem);
-    APP.players=players; APP.teams=jwTeams(mem,players); APP.kits=jwSaveKits(mem); APP.saveMot=jwSaveMotions(mem); APP.motions=undefined; APP.motT=0; $("step-save").classList.add("done");
+    APP.players=players; APP.teams=jwTeams(mem,players); APP.kits=jwSaveKits(mem); APP.saveMot=jwSaveMotions(mem);
+    // ボール（試合中のセーブだけ。形はメモリ、絵は画面用メモリから）
+    try{ APP.ball=jwSaveBall(mem,await jwP2sVram(file)) }catch(e){ console.warn("ボールが読めません",e); APP.ball=null }
+    $("l-ball").hidden=!APP.ball; APP.motions=undefined; APP.motT=0; $("step-save").classList.add("done");
     if(APP.body) fillMotions();
     fillKits(); $("bodybar").hidden=false; $("kitbar").hidden=false;
     fillTeams(); $("q").value=""; fillPlayers(); $("pick").hidden=false;
@@ -989,6 +1042,8 @@ async function show(what){
           if(hands){ try{ out.push(...jwHandMeshes(hands,cur,common?.ring||null)) }catch(e){ hands=null; warn.push(`手 #${JW_HANDS} が読めません`) } }
           out.push(...jwBodyMeshes(body.B,cur,{0:common?.ring||null,1:kit,5:boots},opts));
           out.push(...jwPlaceHead(headBase.map(m=>({...m,f:m.f.slice()})),cur[16]));
+          // ボール: 両足の前（つま先の少し先）の地面の上。立ち姿の足の裏は高さ 0、つま先は −z の向き。動きの再生中も同じ所
+          if(APP.ball&&$("c-ball").checked) out.push(...jwBallMeshes(APP.ball,[0,5.6*JW_BALL_SCALE,-140]));
           // 背番号と名前は服の上に重ねるので最後に描く
           // 胸の番号（出し分け 15）はチェックで消せる（2026 年のユニフォームなど、胸に番号の無いもの）
           if(wantNum) out.push(...jwOverlayMeshes(body.B,cur,fonts,$("c-chest").checked?opts:new Set([...opts].filter(o=>o!==15)),shirtName,num));
@@ -1102,7 +1157,7 @@ function init(){
   // 体の有り無しで大きさが変わるので、見る位置を作り直す
   $("c-body").onchange=()=>{ APP.base=null; if(APP.cur?.kind==="player") show(APP.cur) };
   $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
-  $("n-num").oninput=$("t-name").oninput=$("c-chest").onchange=$("c-font").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  $("c-ball").onchange=$("n-num").oninput=$("t-name").oninput=$("c-chest").onchange=$("c-font").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   $("b-fonttpl").onclick=fontTemplate; $("f-font").onchange=e=>{ const f=e.target.files[0]; if(f) openFont(f); e.target.value="" };
   $("b-kittpl").onclick=kitTemplate; $("b-kitcur").onclick=kitCurrent; $("f-kit").onchange=e=>{ const f=e.target.files[0]; if(f) openKit(f); e.target.value="" };
   $("c-long").onchange=$("c-studs").onchange=$("c-num").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };

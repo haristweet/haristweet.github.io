@@ -104,6 +104,49 @@ function jwPlaceHead(ms,M){
     if(det<0) for(let k=0;k<f.length;k+=15) for(let j=0;j<5;j++){ const t=f[k+5+j]; f[k+5+j]=f[k+10+j]; f[k+10+j]=t } }
   return ms;
 }
+// ボール（v0.10.0）。試合中のセーブのメモリにある球の形（骨 1 本・包み 2 つ・三角形 156、半径 5.6）と、画面用メモリの絵（256×256・8 ビット）。
+//   形は形の頭（ffff0003 8 80）から骨 1 本・包み 2 つで、どの点も中心から同じ距離のものを探す。絵はゲームの描く命令から:
+//   形の包みを指す DMA の ref のうちいちばん後ろの包みのもの、その手前（0x400 バイト以内）の GS の TEX0 で、画面用メモリの点と色表を読む（PK のセーブで確認）。
+//   ゲームはボールを選手の約 8 倍の大きさで描いていた（行列の大きさ 1.0 と 0.12〜0.128）＝JW_BALL_SCALE
+const JW_BALL_SCALE=8;
+function jwGsA32(bp,bw,x,y){ return bp*256+((x>>6)+(y>>5)*bw)*8192+JW_BT[(y&31)>>3][(x&63)>>3]*256+JW_CT32[y&7][x&7]*4 }
+function jwGsA8(bp,bw,x,y){ return bp*256+((x>>7)+(y>>6)*(bw>>1))*8192+JW_BT[(y&63)>>4][(x&127)>>4]*256+JW_CT8[y&15][x&15] }
+// 画面用メモリの 8 ビットの絵（PSMT8）と、PSMCT32 の色表（CBP、16×16）から RGBA
+function jwGsTex8(vr,tbp,tbw,w,h,cbp){
+  const pal=[]; for(let i=0;i<256;i++){ const j=(i&0xe7)|((i&0x10)>>1)|((i&0x08)<<1), a=jwGsA32(cbp,1,j&15,j>>4); pal.push([vr[a],vr[a+1],vr[a+2],Math.min(255,vr[a+3]*2)]) }
+  const out=new Uint8Array(w*h*4);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){ const c=pal[vr[jwGsA8(tbp,tbw,x,y)]], i=(y*w+x)*4; out[i]=c[0]; out[i+1]=c[1]; out[i+2]=c[2]; out[i+3]=c[3] }
+  return out;
+}
+function jwSaveBall(m,vr){
+  const dv=new DataView(m.buffer,m.byteOffset,m.byteLength);
+  for(let a=0;a+48<=m.length;a+=16){
+    if(dv.getUint32(a,true)!==0xffff0003||dv.getUint32(a+4,true)!==8||dv.getUint32(a+8,true)!==0x80||dv.getUint32(a+12,true)!==1||dv.getUint32(a+32,true)!==2) continue;
+    const size=dv.getUint32(a+44,true); if(size<0x100||size>0x10000||a+size>m.length) continue;
+    const u=new Uint8Array(16+size), h=new DataView(u.buffer); h.setUint32(0,2,true); h.setUint32(4,8,true); h.setUint32(8,16,true); u.set(m.subarray(a,a+size),16);
+    let B,tris; try{ B=jwBodyParse(u); tris=jwBodyTris(B,B.Bind,()=>true) }catch(e){ continue }
+    if(tris.length<60) continue;
+    const r=tris.flatMap(t=>t.p).map(p=>Math.hypot(p[0],p[1],p[2])); if(Math.min(...r)<0.95*Math.max(...r)) continue;
+    let tex=null;
+    if(vr){ // いちばん後ろの包みを指す ref（何組もあることがある）ごとに、その手前の TEX0。いちばん多い指定を使う
+      const refs=[]; let top=-1;
+      for(let o=0;o+16<=m.length;o+=16){ const lo=dv.getUint32(o,true), hi=dv.getUint32(o+4,true); if(((lo>>>28)&7)===3&&hi>=a&&hi<a+size){ refs.push({o,hi}); top=Math.max(top,hi) } }
+      const cnt=new Map();
+      for(const r of refs.filter(r=>r.hi===top)) for(let o=r.o-16;o>=Math.max(0,r.o-0x400);o-=16){ if(dv.getUint32(o+8,true)!==6||dv.getUint32(o+12,true)!==0) continue;
+        const k=dv.getUint32(o,true)+":"+dv.getUint32(o+4,true); cnt.set(k,(cnt.get(k)||0)+1); break }
+      const k=[...cnt].sort((x,y)=>y[1]-x[1])[0]?.[0];
+      if(k){ const [lo,hi]=k.split(":").map(Number), tbp=lo&0x3fff, tbw=(lo>>>14)&0x3f, psm=(lo>>>20)&0x3f, tw=1<<((lo>>>26)&15), th=1<<(((lo>>>30)|(hi<<2))&15), cbp=(hi>>>5)&0x3fff;
+        if(psm===0x13&&tw<=512&&th<=512) tex={W:tw,H:th,rgba:jwGsTex8(vr,tbp,tbw,tw,th,cbp),tbp,cbp} } }
+    return {B,tex,at:a};
+  }
+  return null;
+}
+// ボールの形を、真ん中 c（体の座標）に置いて描く。大きさはゲームと同じ（JW_BALL_SCALE 倍）
+function jwBallMeshes(ball,c){
+  const tris=jwBodyTris(ball.B,ball.B.Bind,()=>true), f=new Float32Array(tris.length*15); let n=0;
+  for(const t of tris) for(let j=0;j<3;j++){ const q=jwWorldToView(t.p[j].map((v,i)=>v*JW_BALL_SCALE+c[i])); f[n++]=q[0]; f[n++]=q[1]; f[n++]=q[2]; f[n++]=t.uv[j][0]; f[n++]=t.uv[j][1] }
+  return [{f,ntri:tris.length,tex:ball.tex,clamp:true}];
+}
 // ユニフォームの絵の割り付け（v0.8.0。自分で描いた絵に差し替えるための下絵）。体 #1429 の服（sel 1）の包みを、出し分けの番号ごとに uv で並べる。
 //   名前は形の位置と絵を見て決めた（左半分の上＝シャツの前（胸のスポンサー・エンブレム）、右半分の上＝背中、下＝パンツ。前後は形の向きで確認）。脇の 2 つは推測
 const JW_KIT_PARTS={3:"長袖",4:"半袖",7:"シャツの裾",9:"ストッキング",12:"ストッキングの足首",20:"脇（長袖のとき）",22:"脇（半袖のとき）"};

@@ -109,6 +109,12 @@ for(const [f,who,face,hair,unknown] of [["sekiguchi.p2s","関口 訓充",3378,71
   if(fs.existsSync(f)){ const b=fs.readFileSync(f), file={size:b.length,slice:(a,e)=>({arrayBuffer:async()=>b.buffer.slice(b.byteOffset+a,b.byteOffset+(e??b.length))})};
     const F=g("jwSaveKits")(await g("jwP2sMemory")(file)).kits[0].fonts, R=g("jwFontFromRGBA")(g("jwFontToRGBA")(F),256,96);
     t(`字の下絵を読み直すと数字・英字が同じ・数字の幅 ${R.numW.length} 個`,Buffer.from(R.digits).equals(Buffer.from(F.digits))&&Buffer.from(R.letters).equals(Buffer.from(F.letters))&&R.numW.length===10) } }
+// ボール（v0.10.0）: PK のセーブで、メモリに球（三角形 156）、画面用メモリに 256×256 の絵。選手選択の画面のセーブには無い
+{ const pk=path.join(here,"data/pk.p2s"), sk=path.join(here,"data/sekiguchi.p2s");
+  if(fs.existsSync(pk)&&fs.existsSync(sk)){ const open=f=>{ const b=fs.readFileSync(f); return {size:b.length,slice:(a,e)=>({arrayBuffer:async()=>b.buffer.slice(b.byteOffset+a,b.byteOffset+(e??b.length))})} };
+    const fp=open(pk), B=g("jwSaveBall")(await g("jwP2sMemory")(fp),await g("jwP2sVram")(fp)), fs2=open(sk), N=g("jwSaveBall")(await g("jwP2sMemory")(fs2),await g("jwP2sVram")(fs2));
+    const n=B?g("jwBodyTris")(B.B,B.B.Bind,()=>true).length:0;
+    t(`ボール: 三角形 ${n}・絵 ${B?.tex?B.tex.W+"×"+B.tex.H:"無し"}・選択の画面のセーブ ${N?"有り":"無し"}`,n===156&&B.tex&&B.tex.W===256&&B.tex.H===256&&!N) } }
 const fa=path.join(here,"out/fake_0_TEXT.AFS"), fi=path.join(here,"out/fake.iso");
 if(fs.existsSync(fa)) for(const [name,f] of [["AFS",fa],["ISO",fi]]){
   const blob=new Blob([fs.readFileSync(f)]), d=await g("weOpen")(blob), u=await g("weFile")(blob,d,3377);

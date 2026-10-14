@@ -1,6 +1,7 @@
 // PCSX2 のステートセーブ（.p2s）から選手の表を読む。
 // .p2s は zip。中の eeMemory.bin（PS2 のメモリ 32MB）を取り出す。新しい PCSX2 は zstd（方式 93）、古いものは deflate（方式 8）
-async function jwP2sMemory(file){
+// 中の 1 つのファイル（name）を取り出す。無ければ null（eeMemory.bin のときはエラー）
+async function jwP2sFile(file,want){
   const tail=new Uint8Array(await file.slice(Math.max(0,file.size-65558)).arrayBuffer()), td=new DataView(tail.buffer);
   let e=tail.length-22; while(e>=0&&td.getUint32(e,true)!==0x06054b50) e--;
   if(e<0) throw new Error("ステートセーブ（.p2s）として読めません（zip ではない）");
@@ -9,16 +10,20 @@ async function jwP2sMemory(file){
   for(let i=0,p=0;i<n;i++){
     const method=cv.getUint16(p+10,true), csize=cv.getUint32(p+20,true), nl=cv.getUint16(p+28,true), xl=cv.getUint16(p+30,true), cl=cv.getUint16(p+32,true), lo=cv.getUint32(p+42,true);
     const name=new TextDecoder().decode(cd.subarray(p+46,p+46+nl)); names.push(name); p+=46+nl+xl+cl;
-    if(name!=="eeMemory.bin") continue;
+    if(name!==want) continue;
     const lh=new DataView(await file.slice(lo,lo+30).arrayBuffer()), d=lo+30+lh.getUint16(26,true)+lh.getUint16(28,true);
     const z=new Uint8Array(await file.slice(d,d+csize).arrayBuffer());
     if(method===0) return z;
     if(method===93) return fzstd.decompress(z);
     if(method===8) return new Uint8Array(await new Response(new Blob([z]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
-    throw new Error(`eeMemory.bin の縮め方（${method}）に対応していません`);
+    throw new Error(`${want} の縮め方（${method}）に対応していません`);
   }
+  if(want!=="eeMemory.bin") return null;
   throw new Error(`ステートセーブの中に eeMemory.bin がありません（${names.slice(0,6).join("・")}）`);
 }
+async function jwP2sMemory(file){ return jwP2sFile(file,"eeMemory.bin") }
+// 画面用メモリ（GS.bin の 425 バイト目から 4MB。田村・永井・PK のセーブで確かめた）。無ければ null
+async function jwP2sVram(file){ const g=await jwP2sFile(file,"GS.bin"); return g&&g.length>=425+4194304?g.subarray(425,425+4194304):null }
 // 選手の記録は 1 人 0x7C バイト。0 から名前（UTF-16、16 字）、0x20 から背中の名前（ASCII、16 字）。
 // 名前と背中の名前として読める記録がいちばん長く続く所を表とする（関口のセーブでは 0x194B43C から 4,609 人）
 const JW_REC=0x7C;
