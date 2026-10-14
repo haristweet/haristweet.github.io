@@ -189,3 +189,43 @@ function jwOverlayMeshes(B,cur,fonts,opts,name,number){
     ms.push({f,ntri:tris.length,tex,clamp:true,overlay:o.pal}) }
   return ms;
 }
+// 動き（v0.6.0 の準備）。#1360＝動きの入れもの（中に 485 個。[数, 8, 位置…] が +0x50 から）。どの動きにもしるし 0x20011119 の後ろに、
+//   こまが 164 バイトずつ並ぶ: 根の向き（s16×4、x,y,z,w、32767＝1）・根の位置（f32×3）・骨 1〜18 の向き（親から見た向き、s16×4）。
+//   しるしの +8 が長さ（秒）。こまの数は大きさから（中身が単位の向きでなくなるところまで）。1 つ目（0 番）は T の立ち姿そのもの（骨の行列と 0.08 以内で一致）。
+//   動きの世界は体のファイルの世界を x のまわりに 180° 回したもの（根の行列の後ろに diag(1,−1,−1) を掛けると合う）
+const JW_MOTIONS=1360;
+function jwMotionList(u){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength), b=0x50, n=dv.getUint32(b,true), offs=[];
+  if(n<1||n>4096) throw new Error("動きのファイルとして読めません");
+  for(let i=0;i<n;i++) offs.push(dv.getUint32(b+8+i*4,true));
+  const sorted=[...new Set([...offs,u.length-b])].sort((a,c)=>a-c), end=o=>sorted[sorted.indexOf(o)+1];
+  return offs.map((o,i)=>({i,start:b+o,end:b+end(o)}));
+}
+function jwMotionFrames(u,ent){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength), out=[];
+  let p=-1; for(let a=ent.start;a+4<=ent.end;a+=4) if(dv.getUint32(a,true)===0x20011119){ p=a; break }
+  if(p<0) return {frames:out,dur:0};
+  const dur=dv.getFloat32(p+8,true), q4=a=>[0,1,2,3].map(j=>dv.getInt16(a+j*2,true)/32767);
+  for(let s=p+0x1c;s+164<=ent.end;s+=164){
+    const q=[]; let ok=true;
+    for(let k=0;k<18;k++){ const v=q4(s+20+8*k), l=Math.hypot(...v); if(Math.abs(l-1)>0.02){ ok=false; break } q.push(v) }
+    if(!ok) break;
+    out.push({rq:q4(s),rp:[0,1,2].map(j=>dv.getFloat32(s+8+j*4,true)),q});
+  }
+  return {frames:out,dur};
+}
+// 向き（x,y,z,w）→ 行ベクトルの 4×4 の回転
+function jwQuatRow(q){ const [x,y,z,w]=q;
+  return [1-2*(y*y+z*z),2*(x*y+z*w),2*(x*z-y*w),0, 2*(x*y-z*w),1-2*(x*x+z*z),2*(y*z+x*w),0, 2*(x*z+y*w),2*(y*z-x*w),1-2*(x*x+y*y),0, 0,0,0,1] }
+function jwSlerp(a,b,t){ let d=a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3]; if(d<0){ b=b.map(x=>-x); d=-d }
+  if(d>0.9995){ const r=a.map((x,i)=>x+(b[i]-x)*t), l=Math.hypot(...r); return r.map(x=>x/l) }
+  const th=Math.acos(d), s=Math.sin(th), ka=Math.sin((1-t)*th)/s, kb=Math.sin(t*th)/s; return a.map((x,i)=>ka*x+kb*b[i]) }
+// こま（とこまの間 t）から骨ごとの行列。親の行列に「向き＋T の姿の親からの位置」を掛けていく
+function jwMotionPose(B,fa,fb,t){
+  const lerp=(x,y)=>x+(y-x)*t, rq=fb?jwSlerp(fa.rq,fb.rq,t):fa.rq, rp=fb?fa.rp.map((x,i)=>lerp(x,fb.rp[i])):fa.rp;
+  const W=new Array(B.Bind.length), root=jwQuatRow(rq); root[12]=rp[0]; root[13]=rp[1]; root[14]=rp[2];
+  W[0]=jwM4(root,[1,0,0,0,0,-1,0,0,0,0,-1,0,0,0,0,1]);
+  for(let k=1;k<B.Bind.length;k++){ const p=B.par[k], Lb=jwM4(B.Bind[k],jwInv(B.Bind[p])), q=fb?jwSlerp(fa.q[k-1],fb.q[k-1],t):fa.q[k-1], L=jwQuatRow(q);
+    L[12]=Lb[12]; L[13]=Lb[13]; L[14]=Lb[14]; W[k]=jwM4(L,W[p]) }
+  return W;
+}

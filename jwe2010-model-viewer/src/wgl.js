@@ -24,6 +24,8 @@ function weGL(canvas){
           gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,m.tex.W,m.tex.H,0,gl.RGBA,gl.UNSIGNED_BYTE,m.tex.rgba) }
         return {buf,tex,n:m.f.length/5,opaque:!!m.opaque,overlay:!!m.overlay} });
     },
+    // 形の位置だけ差し替える（絵はそのまま）。ms は set と同じ並び・同じ数（JWE2010 の動きの再生）
+    geom(ms){ ms.forEach((m,i)=>{ const it=items[i]; if(!it) return; gl.bindBuffer(gl.ARRAY_BUFFER,it.buf); gl.bufferData(gl.ARRAY_BUFFER,m.f,gl.DYNAMIC_DRAW); it.n=m.f.length/5 }) },
     draw(view,bg){
       const W=canvas.width=Math.round(canvas.clientWidth*devicePixelRatio), H=canvas.height=Math.round(canvas.clientHeight*devicePixelRatio);
       gl.viewport(0,0,W,H); gl.clearColor(...(bg||[0,0,0,0])); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);

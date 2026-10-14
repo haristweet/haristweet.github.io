@@ -1,5 +1,5 @@
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.5.0";
+const VERSION="0.6.0";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -20,6 +20,7 @@ async function getCommon(){
 async function getBody(){
   if(APP.body!==undefined) return APP.body;
   try{ const B=jwBodyParse(await getFile(JW_BODY)); APP.body={B,cur:jwBodyStand(B),hands:null};
+    fillMotions();
     // 手は別のファイル。読めなくても体は出す
     try{ APP.body.hands=await getFile(JW_HANDS) }catch(e){ console.warn("手のファイルが読めません",e) } }
   catch(e){ console.warn("体のファイルが読めません",e); APP.body=null }
@@ -29,7 +30,7 @@ async function openDisc(file){
   status("ディスクを開いています…"); $("n-disc").textContent=file.name;
   try{
     const disc=await weOpen(file);
-    Object.assign(APP,{file,disc,cache:new Map(),base:null,common:undefined,body:undefined});
+    Object.assign(APP,{file,disc,cache:new Map(),base:null,common:undefined,body:undefined,motions:undefined,motT:0});
     $("step-disc").classList.add("done"); $("anyfile").hidden=false; $("n-file").max=disc.ents.length-1;
     status(`${disc.from==="ISO"?"ISO の中の ":""}0_TEXT.AFS: ${disc.ents.length} 個のファイル`+(APP.players.length?"":"。次にステートセーブを選んでください"));
     if(APP.players.length) show(); else $("empty").textContent="ステートセーブを選ぶと、選手の一覧が出ます（「番号で見る」でファイルの中身も見られます）";
@@ -94,14 +95,25 @@ async function show(what){
         if(hu){ const back=weMeshes(hu,all,[0,1]), front=weMeshes(hu,all,[2]); back.meshes.forEach(m=>m.opaque=true); r.meshes.push(...back.meshes,...front.meshes); r.texs.push(...back.texs.map(t=>({...t,from:c.p.hair}))) } }
       // 体: 頭は骨 16（頭）の行列で体に付ける。ユニフォームとスパイクの絵はセーブから、肌は頭の生え際と同じ絵
       const body=$("c-body").checked?await getBody():null;
+      APP.rig=null;
       if(body){ const kit=APP.kits?.kits[+$("s-kit").value]||null, boots=APP.kits?.boots||null;
-        jwPlaceHead(r.meshes,body.cur[16]);
-        const opts=jwBodyOpts($("c-long").checked,$("c-studs").checked), bm=jwBodyMeshes(body.B,body.cur,{0:common?.ring||null,1:kit,5:boots},opts); r.meshes.unshift(...bm);
-        // 背番号と名前（服の上に重ねるので最後に描く）。番号は選んでいるチーム、無ければその選手がいる最初のチームの番号表から
-        if($("c-num").checked){ const tm=[APP.teams.find(t=>String(t.i)===$("s-team").value),...APP.teams].find(t=>t&&t.members.includes(c.p.i)), num=tm?tm.numbers[tm.members.indexOf(c.p.i)]:null;
-          if(kit&&kit.fonts){ r.meshes.push(...jwOverlayMeshes(body.B,body.cur,kit.fonts,opts,c.p.shirt,num)); if(num==null) warn.push("背番号が分からない") }
-          else if(kit) warn.push("このユニフォームの背番号の字がセーブに無い") }
-        if(body.hands){ try{ r.meshes.unshift(...jwHandMeshes(body.hands,body.cur,common?.ring||null)) }catch(e){ warn.push(`手 #${JW_HANDS} が読めません`) } } else warn.push(`手のファイル #${JW_HANDS} が読めません`);
+        const opts=jwBodyOpts($("c-long").checked,$("c-studs").checked);
+        // 背番号と名前。番号は選んでいるチーム、無ければその選手がいる最初のチームの番号表から
+        let num=null, wantNum=$("c-num").checked&&kit&&kit.fonts;
+        if($("c-num").checked){ const tm=[APP.teams.find(t=>String(t.i)===$("s-team").value),...APP.teams].find(t=>t&&t.members.includes(c.p.i)); num=tm?tm.numbers[tm.members.indexOf(c.p.i)]:null;
+          if(kit&&kit.fonts){ if(num==null) warn.push("背番号が分からない") } else if(kit) warn.push("このユニフォームの背番号の字がセーブに無い") }
+        let hands=body.hands; if(!hands) warn.push(`手のファイル #${JW_HANDS} が読めません`);
+        // 姿（骨ごとの行列）から形を作る。動きの再生ではこれをこまごとに呼ぶ（頭の形は元を写してから付ける）
+        const headBase=r.meshes.map(m=>({...m,f:m.f.slice()}));
+        const build=cur=>{ const out=[];
+          if(hands){ try{ out.push(...jwHandMeshes(hands,cur,common?.ring||null)) }catch(e){ hands=null; warn.push(`手 #${JW_HANDS} が読めません`) } }
+          out.push(...jwBodyMeshes(body.B,cur,{0:common?.ring||null,1:kit,5:boots},opts));
+          out.push(...jwPlaceHead(headBase.map(m=>({...m,f:m.f.slice()})),cur[16]));
+          // 背番号と名前は服の上に重ねるので最後に描く
+          if(wantNum) out.push(...jwOverlayMeshes(body.B,cur,kit.fonts,opts,c.p.shirt,num));
+          return out };
+        APP.rig={build,B:body.B};
+        r.meshes=build(motPose()||body.cur);
         if(kit) r.texs.push({...kit,from:`セーブのユニフォーム ${+$("s-kit").value+1}`}); else warn.push("ユニフォームの絵がセーブに無いので、体は灰色");
         if(boots) r.texs.push({...boots,from:"セーブのスパイク"}) }
       else if($("c-body").checked) warn.push(`体のファイル #${JW_BODY} が読めません`);
@@ -126,6 +138,32 @@ async function show(what){
     showTexs(texs); draw();
   }catch(e){ status(e.message,true); console.error(e) }
 }
+// 動き（v0.6.0）。#1360 の動きを番号で選んで再生する。こまの間は向きを球面で補う。動きの選び方・こまの送り方はゲームと同じとは限らない
+async function getMotions(){
+  if(APP.motions!==undefined) return APP.motions;
+  try{ const u=await getFile(JW_MOTIONS); APP.motions={u,list:jwMotionList(u),cache:new Map()} }catch(e){ console.warn("動きのファイルが読めません",e); APP.motions=null }
+  return APP.motions;
+}
+function motData(){ const M=APP.motions, i=$("s-mot").value; if(!M||i==="") return null;
+  if(!M.cache.has(i)) M.cache.set(i,jwMotionFrames(M.u,M.list[+i])); const d=M.cache.get(i); return d.frames.length?d:null }
+// いまの姿。時刻 APP.motT（秒）から、こま（長さを こま数−1 で割った間隔）と間の t
+function motPose(){ const d=motData(), B=APP.rig?.B||APP.body?.B; if(!d||!B) return null;
+  const n=d.frames.length; if(n===1) return jwMotionPose(B,d.frames[0]);
+  const step=d.dur>0?d.dur/(n-1):1/30, x=Math.max(0,Math.min(n-1,(APP.motT||0)/step)), f=Math.min(n-2,Math.floor(x));
+  return jwMotionPose(B,d.frames[f],d.frames[f+1],x-f) }
+function motUpdate(){ const d=motData(); if(!APP.rig) return;
+  const cur=motPose()||APP.body.cur; APP.gl.geom(APP.rig.build(cur));
+  if(d){ const n=d.frames.length, step=d.dur>0?d.dur/(n-1):1/30; $("r-mot").max=String(n-1); $("r-mot").value=String(Math.round((APP.motT||0)/step)); $("t-mot").textContent=`こま ${Math.round((APP.motT||0)/step)}／${n-1}・${(APP.motT||0).toFixed(2)}／${d.dur.toFixed(2)} 秒` }
+  draw() }
+function motPlay(on){ APP.motPlaying=on??!APP.motPlaying; $("b-mot").textContent=APP.motPlaying?"⏸ 止める":"▶ 再生";
+  if(!APP.motPlaying) return; let last=performance.now();
+  const tick=now=>{ if(!APP.motPlaying) return; const d=motData(); if(!d){ motPlay(false); return }
+    APP.motT=((APP.motT||0)+(now-last)/1000)%Math.max(d.dur,1/30); last=now; motUpdate(); requestAnimationFrame(tick) };
+  requestAnimationFrame(tick) }
+function motStep(k){ const d=motData(); if(!d) return; motPlay(false); const n=d.frames.length, step=d.dur>0?d.dur/(n-1):1/30;
+  const f=(Math.round((APP.motT||0)/step)+k+n)%n; APP.motT=f*step; motUpdate() }
+async function fillMotions(){ const M=await getMotions(); if(!M){ $("s-mot").innerHTML='<option value="">立ち姿（動きのファイルが読めない）</option>'; return }
+  $("s-mot").innerHTML='<option value="">立ち姿</option>'+M.list.map(e=>`<option value="${e.i}">動き ${e.i}</option>`).join("") }
 function showTexs(texs){
   const box=$("texs"); box.innerHTML="";
   for(const t of texs){ const fig=document.createElement("figure"), cv=document.createElement("canvas"); cv.width=t.W; cv.height=t.H;
@@ -160,6 +198,11 @@ function init(){
   $("c-body").onchange=()=>{ APP.base=null; if(APP.cur?.kind==="player") show(APP.cur) };
   $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   $("c-long").onchange=$("c-studs").onchange=$("c-num").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  // 動き: 選ぶ・再生・こま送り（← →・スペース。ほかのビューアと同じ）
+  $("s-mot").onchange=()=>{ APP.motT=0; motPlay(false); const d=motData(); $("motbar").hidden=!d; if(APP.rig) motUpdate() };
+  $("b-mot").onclick=()=>motPlay(); $("r-mot").oninput=()=>{ const d=motData(); if(!d) return; motPlay(false); const n=d.frames.length; APP.motT=+$("r-mot").value*(d.dur>0?d.dur/(n-1):1/30); motUpdate() };
+  document.addEventListener("keydown",e=>{ if(!motData()||e.target.closest("input:not([type=range]),select,textarea")) return;
+    if(e.key==="ArrowLeft"){ e.preventDefault(); motStep(-1) } else if(e.key==="ArrowRight"){ e.preventDefault(); motStep(1) } else if(e.key===" "){ e.preventDefault(); motPlay() } });
   $("b-png").onclick=savePng; $("c-clear").onchange=draw;
   // 回す・動かす・寄る（tobal1・vf2・fv のビューアと同じ操作）: ドラッグで回す。Shift を押しながら（または右・中ボタンで）ドラッグすると平行に動かす。
   // ホイールはカーソルの下の物が動かないように寄る。2本指はピンチで寄り、指の中ほどの移動で平行に動く。ダブルクリックで戻す

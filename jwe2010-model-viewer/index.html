@@ -70,6 +70,11 @@ progress{width:12em;vertical-align:middle}
   <label title="背中・胸・パンツの番号と、背中の名前"><input type="checkbox" id="c-num" checked> 背番号・名前</label>
   <label title="靴底の歯（ゲームでは芝に埋まる）。ふだんは描かない"><input type="checkbox" id="c-studs"> スパイクの歯</label>
   <label>ユニフォーム <select id="s-kit" aria-label="ユニフォーム"></select></label>
+  <label>動き <select id="s-mot" aria-label="動き"><option value="">立ち姿</option></select></label>
+</div>
+<div class="ctrl" id="motbar" hidden>
+  <button id="b-mot">▶ 再生</button> <input type="range" id="r-mot" min="0" max="0" value="0" style="width:min(18em,50vw)" aria-label="こま"> <span id="t-mot"></span>
+  <span class="grp" style="color:var(--mut);font-size:13px">← → でこま送り・スペースで再生</span>
 </div>
 <div class="ctrl" id="anyfile" hidden>
   <span class="grp">番号で見る <input id="n-file" type="number" min="0" value="0" style="width:6em" aria-label="ファイルの番号"> <button id="b-file">見る</button></span>
@@ -87,6 +92,7 @@ progress{width:12em;vertical-align:middle}
 <p>チームの一覧と名簿も、ステートセーブのメモリから読みます（チーム名の表と、1 チーム 32 枠の名簿）。名簿の並びが崩れている選抜チームなどは出しません。</p>
 <p>体はディスクの #1429 の形です（関口・梁・田村・永井のセーブで、どれもこのファイルが読み込まれていました）。19 本の骨と、2 本の骨にまたがる所のための「対」の行列で組み立てます。どの頂点をどの行列で動かすかは、試合中のセーブでゲームが使っていた行列と照らして決めました。袖は半袖（入場の場面でゲームが描いていた組）で、「長袖」で長袖の組に替えられます。形は T の字の姿でしまってあり、腕を下ろして立たせています（腕の角度は見た目で決めたもので、ゲームの立ち姿の動きではありません）。</p>
 <p>ユニフォームとスパイクの絵は、ステートセーブのメモリにあるものを使います（試合の前後のセーブなら、その試合の 2 チームの 4 着があります）。肌は頭の生え際と同じ絵です。手は別のファイル（#8095）の形を、手首の骨に付けます。背番号と背中の名前は、セーブにあるそのユニフォーム用の字から、ゲームと同じように選手ごとに組み立てて重ねます（番号はチームの番号表から）。袖の印はまだです。</p>
+<p>動きは #1360（485 個）から番号で選びます。どの動きも、こまごとに骨の向き（親から見た向き）が並んでいて、そのまま読みます（0 番は T の立ち姿とぴったり同じ）。こまの間は向きを補います。試合中の永井の姿は動き 394 の 8〜9 こま目と、脚はほぼ同じ（数度以内）でしたが、腕はずれていて、ゲームは動きを混ぜたり手を加えたりしているようです。どの番号が何の動きかはまだ調べていません。</p>
 <p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、チームごとのユニフォーム（ディスクのどのファイルかまだ分からない）、選手ごとの長袖・半袖と GK の手袋、背の高さ。</p>
 <p id="ver"></p></details>
 </main>
@@ -649,6 +655,46 @@ function jwOverlayMeshes(B,cur,fonts,opts,name,number){
     ms.push({f,ntri:tris.length,tex,clamp:true,overlay:o.pal}) }
   return ms;
 }
+// 動き（v0.6.0 の準備）。#1360＝動きの入れもの（中に 485 個。[数, 8, 位置…] が +0x50 から）。どの動きにもしるし 0x20011119 の後ろに、
+//   こまが 164 バイトずつ並ぶ: 根の向き（s16×4、x,y,z,w、32767＝1）・根の位置（f32×3）・骨 1〜18 の向き（親から見た向き、s16×4）。
+//   しるしの +8 が長さ（秒）。こまの数は大きさから（中身が単位の向きでなくなるところまで）。1 つ目（0 番）は T の立ち姿そのもの（骨の行列と 0.08 以内で一致）。
+//   動きの世界は体のファイルの世界を x のまわりに 180° 回したもの（根の行列の後ろに diag(1,−1,−1) を掛けると合う）
+const JW_MOTIONS=1360;
+function jwMotionList(u){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength), b=0x50, n=dv.getUint32(b,true), offs=[];
+  if(n<1||n>4096) throw new Error("動きのファイルとして読めません");
+  for(let i=0;i<n;i++) offs.push(dv.getUint32(b+8+i*4,true));
+  const sorted=[...new Set([...offs,u.length-b])].sort((a,c)=>a-c), end=o=>sorted[sorted.indexOf(o)+1];
+  return offs.map((o,i)=>({i,start:b+o,end:b+end(o)}));
+}
+function jwMotionFrames(u,ent){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength), out=[];
+  let p=-1; for(let a=ent.start;a+4<=ent.end;a+=4) if(dv.getUint32(a,true)===0x20011119){ p=a; break }
+  if(p<0) return {frames:out,dur:0};
+  const dur=dv.getFloat32(p+8,true), q4=a=>[0,1,2,3].map(j=>dv.getInt16(a+j*2,true)/32767);
+  for(let s=p+0x1c;s+164<=ent.end;s+=164){
+    const q=[]; let ok=true;
+    for(let k=0;k<18;k++){ const v=q4(s+20+8*k), l=Math.hypot(...v); if(Math.abs(l-1)>0.02){ ok=false; break } q.push(v) }
+    if(!ok) break;
+    out.push({rq:q4(s),rp:[0,1,2].map(j=>dv.getFloat32(s+8+j*4,true)),q});
+  }
+  return {frames:out,dur};
+}
+// 向き（x,y,z,w）→ 行ベクトルの 4×4 の回転
+function jwQuatRow(q){ const [x,y,z,w]=q;
+  return [1-2*(y*y+z*z),2*(x*y+z*w),2*(x*z-y*w),0, 2*(x*y-z*w),1-2*(x*x+z*z),2*(y*z+x*w),0, 2*(x*z+y*w),2*(y*z-x*w),1-2*(x*x+y*y),0, 0,0,0,1] }
+function jwSlerp(a,b,t){ let d=a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3]; if(d<0){ b=b.map(x=>-x); d=-d }
+  if(d>0.9995){ const r=a.map((x,i)=>x+(b[i]-x)*t), l=Math.hypot(...r); return r.map(x=>x/l) }
+  const th=Math.acos(d), s=Math.sin(th), ka=Math.sin((1-t)*th)/s, kb=Math.sin(t*th)/s; return a.map((x,i)=>ka*x+kb*b[i]) }
+// こま（とこまの間 t）から骨ごとの行列。親の行列に「向き＋T の姿の親からの位置」を掛けていく
+function jwMotionPose(B,fa,fb,t){
+  const lerp=(x,y)=>x+(y-x)*t, rq=fb?jwSlerp(fa.rq,fb.rq,t):fa.rq, rp=fb?fa.rp.map((x,i)=>lerp(x,fb.rp[i])):fa.rp;
+  const W=new Array(B.Bind.length), root=jwQuatRow(rq); root[12]=rp[0]; root[13]=rp[1]; root[14]=rp[2];
+  W[0]=jwM4(root,[1,0,0,0,0,-1,0,0,0,0,-1,0,0,0,0,1]);
+  for(let k=1;k<B.Bind.length;k++){ const p=B.par[k], Lb=jwM4(B.Bind[k],jwInv(B.Bind[p])), q=fb?jwSlerp(fa.q[k-1],fb.q[k-1],t):fa.q[k-1], L=jwQuatRow(q);
+    L[12]=Lb[12]; L[13]=Lb[13]; L[14]=Lb[14]; W[k]=jwM4(L,W[p]) }
+  return W;
+}
 // ページの描画（WebGL1）。形ごとに [x,y,z,u,v] の列と、その形の絵（RGBA）を持つ。光は当てない（絵の色をそのまま）。
 // 髪の絵は α が段々（0〜0x80）なので半透明で重ねる。並べた順（顔→髪）に描く
 function weGL(canvas){
@@ -675,6 +721,8 @@ function weGL(canvas){
           gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,m.tex.W,m.tex.H,0,gl.RGBA,gl.UNSIGNED_BYTE,m.tex.rgba) }
         return {buf,tex,n:m.f.length/5,opaque:!!m.opaque,overlay:!!m.overlay} });
     },
+    // 形の位置だけ差し替える（絵はそのまま）。ms は set と同じ並び・同じ数（JWE2010 の動きの再生）
+    geom(ms){ ms.forEach((m,i)=>{ const it=items[i]; if(!it) return; gl.bindBuffer(gl.ARRAY_BUFFER,it.buf); gl.bufferData(gl.ARRAY_BUFFER,m.f,gl.DYNAMIC_DRAW); it.n=m.f.length/5 }) },
     draw(view,bg){
       const W=canvas.width=Math.round(canvas.clientWidth*devicePixelRatio), H=canvas.height=Math.round(canvas.clientHeight*devicePixelRatio);
       gl.viewport(0,0,W,H); gl.clearColor(...(bg||[0,0,0,0])); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
@@ -707,7 +755,7 @@ function weViewMatrix(v,aspect){
   return M;
 }
 // ページの操作。ディスク（形と絵）とステートセーブ（選手の表・ユニフォームの絵）を開く → 選手を選ぶ → その選手の顔と髪と体を描く
-const VERSION="0.5.0";
+const VERSION="0.6.0";
 const $=id=>document.getElementById(id);
 const APP={drawSeq:0,file:null,disc:null,players:[],teams:[],shown:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,gl:null,cur:null};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -728,6 +776,7 @@ async function getCommon(){
 async function getBody(){
   if(APP.body!==undefined) return APP.body;
   try{ const B=jwBodyParse(await getFile(JW_BODY)); APP.body={B,cur:jwBodyStand(B),hands:null};
+    fillMotions();
     // 手は別のファイル。読めなくても体は出す
     try{ APP.body.hands=await getFile(JW_HANDS) }catch(e){ console.warn("手のファイルが読めません",e) } }
   catch(e){ console.warn("体のファイルが読めません",e); APP.body=null }
@@ -737,7 +786,7 @@ async function openDisc(file){
   status("ディスクを開いています…"); $("n-disc").textContent=file.name;
   try{
     const disc=await weOpen(file);
-    Object.assign(APP,{file,disc,cache:new Map(),base:null,common:undefined,body:undefined});
+    Object.assign(APP,{file,disc,cache:new Map(),base:null,common:undefined,body:undefined,motions:undefined,motT:0});
     $("step-disc").classList.add("done"); $("anyfile").hidden=false; $("n-file").max=disc.ents.length-1;
     status(`${disc.from==="ISO"?"ISO の中の ":""}0_TEXT.AFS: ${disc.ents.length} 個のファイル`+(APP.players.length?"":"。次にステートセーブを選んでください"));
     if(APP.players.length) show(); else $("empty").textContent="ステートセーブを選ぶと、選手の一覧が出ます（「番号で見る」でファイルの中身も見られます）";
@@ -802,14 +851,25 @@ async function show(what){
         if(hu){ const back=weMeshes(hu,all,[0,1]), front=weMeshes(hu,all,[2]); back.meshes.forEach(m=>m.opaque=true); r.meshes.push(...back.meshes,...front.meshes); r.texs.push(...back.texs.map(t=>({...t,from:c.p.hair}))) } }
       // 体: 頭は骨 16（頭）の行列で体に付ける。ユニフォームとスパイクの絵はセーブから、肌は頭の生え際と同じ絵
       const body=$("c-body").checked?await getBody():null;
+      APP.rig=null;
       if(body){ const kit=APP.kits?.kits[+$("s-kit").value]||null, boots=APP.kits?.boots||null;
-        jwPlaceHead(r.meshes,body.cur[16]);
-        const opts=jwBodyOpts($("c-long").checked,$("c-studs").checked), bm=jwBodyMeshes(body.B,body.cur,{0:common?.ring||null,1:kit,5:boots},opts); r.meshes.unshift(...bm);
-        // 背番号と名前（服の上に重ねるので最後に描く）。番号は選んでいるチーム、無ければその選手がいる最初のチームの番号表から
-        if($("c-num").checked){ const tm=[APP.teams.find(t=>String(t.i)===$("s-team").value),...APP.teams].find(t=>t&&t.members.includes(c.p.i)), num=tm?tm.numbers[tm.members.indexOf(c.p.i)]:null;
-          if(kit&&kit.fonts){ r.meshes.push(...jwOverlayMeshes(body.B,body.cur,kit.fonts,opts,c.p.shirt,num)); if(num==null) warn.push("背番号が分からない") }
-          else if(kit) warn.push("このユニフォームの背番号の字がセーブに無い") }
-        if(body.hands){ try{ r.meshes.unshift(...jwHandMeshes(body.hands,body.cur,common?.ring||null)) }catch(e){ warn.push(`手 #${JW_HANDS} が読めません`) } } else warn.push(`手のファイル #${JW_HANDS} が読めません`);
+        const opts=jwBodyOpts($("c-long").checked,$("c-studs").checked);
+        // 背番号と名前。番号は選んでいるチーム、無ければその選手がいる最初のチームの番号表から
+        let num=null, wantNum=$("c-num").checked&&kit&&kit.fonts;
+        if($("c-num").checked){ const tm=[APP.teams.find(t=>String(t.i)===$("s-team").value),...APP.teams].find(t=>t&&t.members.includes(c.p.i)); num=tm?tm.numbers[tm.members.indexOf(c.p.i)]:null;
+          if(kit&&kit.fonts){ if(num==null) warn.push("背番号が分からない") } else if(kit) warn.push("このユニフォームの背番号の字がセーブに無い") }
+        let hands=body.hands; if(!hands) warn.push(`手のファイル #${JW_HANDS} が読めません`);
+        // 姿（骨ごとの行列）から形を作る。動きの再生ではこれをこまごとに呼ぶ（頭の形は元を写してから付ける）
+        const headBase=r.meshes.map(m=>({...m,f:m.f.slice()}));
+        const build=cur=>{ const out=[];
+          if(hands){ try{ out.push(...jwHandMeshes(hands,cur,common?.ring||null)) }catch(e){ hands=null; warn.push(`手 #${JW_HANDS} が読めません`) } }
+          out.push(...jwBodyMeshes(body.B,cur,{0:common?.ring||null,1:kit,5:boots},opts));
+          out.push(...jwPlaceHead(headBase.map(m=>({...m,f:m.f.slice()})),cur[16]));
+          // 背番号と名前は服の上に重ねるので最後に描く
+          if(wantNum) out.push(...jwOverlayMeshes(body.B,cur,kit.fonts,opts,c.p.shirt,num));
+          return out };
+        APP.rig={build,B:body.B};
+        r.meshes=build(motPose()||body.cur);
         if(kit) r.texs.push({...kit,from:`セーブのユニフォーム ${+$("s-kit").value+1}`}); else warn.push("ユニフォームの絵がセーブに無いので、体は灰色");
         if(boots) r.texs.push({...boots,from:"セーブのスパイク"}) }
       else if($("c-body").checked) warn.push(`体のファイル #${JW_BODY} が読めません`);
@@ -834,6 +894,32 @@ async function show(what){
     showTexs(texs); draw();
   }catch(e){ status(e.message,true); console.error(e) }
 }
+// 動き（v0.6.0）。#1360 の動きを番号で選んで再生する。こまの間は向きを球面で補う。動きの選び方・こまの送り方はゲームと同じとは限らない
+async function getMotions(){
+  if(APP.motions!==undefined) return APP.motions;
+  try{ const u=await getFile(JW_MOTIONS); APP.motions={u,list:jwMotionList(u),cache:new Map()} }catch(e){ console.warn("動きのファイルが読めません",e); APP.motions=null }
+  return APP.motions;
+}
+function motData(){ const M=APP.motions, i=$("s-mot").value; if(!M||i==="") return null;
+  if(!M.cache.has(i)) M.cache.set(i,jwMotionFrames(M.u,M.list[+i])); const d=M.cache.get(i); return d.frames.length?d:null }
+// いまの姿。時刻 APP.motT（秒）から、こま（長さを こま数−1 で割った間隔）と間の t
+function motPose(){ const d=motData(), B=APP.rig?.B||APP.body?.B; if(!d||!B) return null;
+  const n=d.frames.length; if(n===1) return jwMotionPose(B,d.frames[0]);
+  const step=d.dur>0?d.dur/(n-1):1/30, x=Math.max(0,Math.min(n-1,(APP.motT||0)/step)), f=Math.min(n-2,Math.floor(x));
+  return jwMotionPose(B,d.frames[f],d.frames[f+1],x-f) }
+function motUpdate(){ const d=motData(); if(!APP.rig) return;
+  const cur=motPose()||APP.body.cur; APP.gl.geom(APP.rig.build(cur));
+  if(d){ const n=d.frames.length, step=d.dur>0?d.dur/(n-1):1/30; $("r-mot").max=String(n-1); $("r-mot").value=String(Math.round((APP.motT||0)/step)); $("t-mot").textContent=`こま ${Math.round((APP.motT||0)/step)}／${n-1}・${(APP.motT||0).toFixed(2)}／${d.dur.toFixed(2)} 秒` }
+  draw() }
+function motPlay(on){ APP.motPlaying=on??!APP.motPlaying; $("b-mot").textContent=APP.motPlaying?"⏸ 止める":"▶ 再生";
+  if(!APP.motPlaying) return; let last=performance.now();
+  const tick=now=>{ if(!APP.motPlaying) return; const d=motData(); if(!d){ motPlay(false); return }
+    APP.motT=((APP.motT||0)+(now-last)/1000)%Math.max(d.dur,1/30); last=now; motUpdate(); requestAnimationFrame(tick) };
+  requestAnimationFrame(tick) }
+function motStep(k){ const d=motData(); if(!d) return; motPlay(false); const n=d.frames.length, step=d.dur>0?d.dur/(n-1):1/30;
+  const f=(Math.round((APP.motT||0)/step)+k+n)%n; APP.motT=f*step; motUpdate() }
+async function fillMotions(){ const M=await getMotions(); if(!M){ $("s-mot").innerHTML='<option value="">立ち姿（動きのファイルが読めない）</option>'; return }
+  $("s-mot").innerHTML='<option value="">立ち姿</option>'+M.list.map(e=>`<option value="${e.i}">動き ${e.i}</option>`).join("") }
 function showTexs(texs){
   const box=$("texs"); box.innerHTML="";
   for(const t of texs){ const fig=document.createElement("figure"), cv=document.createElement("canvas"); cv.width=t.W; cv.height=t.H;
@@ -868,6 +954,11 @@ function init(){
   $("c-body").onchange=()=>{ APP.base=null; if(APP.cur?.kind==="player") show(APP.cur) };
   $("s-kit").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
   $("c-long").onchange=$("c-studs").onchange=$("c-num").onchange=()=>{ if(APP.cur?.kind==="player") show(APP.cur) };
+  // 動き: 選ぶ・再生・こま送り（← →・スペース。ほかのビューアと同じ）
+  $("s-mot").onchange=()=>{ APP.motT=0; motPlay(false); const d=motData(); $("motbar").hidden=!d; if(APP.rig) motUpdate() };
+  $("b-mot").onclick=()=>motPlay(); $("r-mot").oninput=()=>{ const d=motData(); if(!d) return; motPlay(false); const n=d.frames.length; APP.motT=+$("r-mot").value*(d.dur>0?d.dur/(n-1):1/30); motUpdate() };
+  document.addEventListener("keydown",e=>{ if(!motData()||e.target.closest("input:not([type=range]),select,textarea")) return;
+    if(e.key==="ArrowLeft"){ e.preventDefault(); motStep(-1) } else if(e.key==="ArrowRight"){ e.preventDefault(); motStep(1) } else if(e.key===" "){ e.preventDefault(); motPlay() } });
   $("b-png").onclick=savePng; $("c-clear").onchange=draw;
   // 回す・動かす・寄る（tobal1・vf2・fv のビューアと同じ操作）: ドラッグで回す。Shift を押しながら（または右・中ボタンで）ドラッグすると平行に動かす。
   // ホイールはカーソルの下の物が動かないように寄る。2本指はピンチで寄り、指の中ほどの移動で平行に動く。ダブルクリックで戻す

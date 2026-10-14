@@ -70,6 +70,11 @@ progress{width:12em;vertical-align:middle}
   <label title="背中・胸・パンツの番号と、背中の名前"><input type="checkbox" id="c-num" checked> 背番号・名前</label>
   <label title="靴底の歯（ゲームでは芝に埋まる）。ふだんは描かない"><input type="checkbox" id="c-studs"> スパイクの歯</label>
   <label>ユニフォーム <select id="s-kit" aria-label="ユニフォーム"></select></label>
+  <label>動き <select id="s-mot" aria-label="動き"><option value="">立ち姿</option></select></label>
+</div>
+<div class="ctrl" id="motbar" hidden>
+  <button id="b-mot">▶ 再生</button> <input type="range" id="r-mot" min="0" max="0" value="0" style="width:min(18em,50vw)" aria-label="こま"> <span id="t-mot"></span>
+  <span class="grp" style="color:var(--mut);font-size:13px">← → でこま送り・スペースで再生</span>
 </div>
 <div class="ctrl" id="anyfile" hidden>
   <span class="grp">番号で見る <input id="n-file" type="number" min="0" value="0" style="width:6em" aria-label="ファイルの番号"> <button id="b-file">見る</button></span>
@@ -87,6 +92,7 @@ progress{width:12em;vertical-align:middle}
 <p>チームの一覧と名簿も、ステートセーブのメモリから読みます（チーム名の表と、1 チーム 32 枠の名簿）。名簿の並びが崩れている選抜チームなどは出しません。</p>
 <p>体はディスクの #1429 の形です（関口・梁・田村・永井のセーブで、どれもこのファイルが読み込まれていました）。19 本の骨と、2 本の骨にまたがる所のための「対」の行列で組み立てます。どの頂点をどの行列で動かすかは、試合中のセーブでゲームが使っていた行列と照らして決めました。袖は半袖（入場の場面でゲームが描いていた組）で、「長袖」で長袖の組に替えられます。形は T の字の姿でしまってあり、腕を下ろして立たせています（腕の角度は見た目で決めたもので、ゲームの立ち姿の動きではありません）。</p>
 <p>ユニフォームとスパイクの絵は、ステートセーブのメモリにあるものを使います（試合の前後のセーブなら、その試合の 2 チームの 4 着があります）。肌は頭の生え際と同じ絵です。手は別のファイル（#8095）の形を、手首の骨に付けます。背番号と背中の名前は、セーブにあるそのユニフォーム用の字から、ゲームと同じように選手ごとに組み立てて重ねます（番号はチームの番号表から）。袖の印はまだです。</p>
+<p>動きは #1360（485 個）から番号で選びます。どの動きも、こまごとに骨の向き（親から見た向き）が並んでいて、そのまま読みます（0 番は T の立ち姿とぴったり同じ）。こまの間は向きを補います。試合中の永井の姿は動き 394 の 8〜9 こま目と、脚はほぼ同じ（数度以内）でしたが、腕はずれていて、ゲームは動きを混ぜたり手を加えたりしているようです。どの番号が何の動きかはまだ調べていません。</p>
 <p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、チームごとのユニフォーム（ディスクのどのファイルかまだ分からない）、選手ごとの長袖・半袖と GK の手袋、背の高さ。</p>
 <p id="ver"></p></details>
 </main>

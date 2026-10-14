@@ -87,6 +87,12 @@ for(const [f,who,face,hair,unknown] of [["sekiguchi.p2s","関口 訓充",3378,71
       if(fs.existsSync(bf)){ const B=g("jwBodyParse")(new Uint8Array(fs.readFileSync(bf))), ms=g("jwOverlayMeshes")(B,g("jwBodyStand")(B),f,g("jwBodyOpts")(false,false),"SEKIGUCHI",11);
         t(`重ねの形 ${ms.length} つ（背中・胸・パンツの番号と名前）・端を伸ばす`,ms.length===4&&ms.every(m=>m.clamp&&m.ntri>0)) } }
     t(`セーブのユニフォーム ${k.kits.length} 着（${k.kits.map(x=>x.id.toString(16)).join("・")}）・スパイク ${k.boots?k.boots.W+"×"+k.boots.H:"無し"}`,k.kits.length===2&&k.kits[0].id===0xfa0&&k.boots&&k.boots.W===256) } }
+// 動き（v0.6.0）: #1360 の 485 個。0 番の 1 こま目で組んだ骨の行列は T の立ち姿（体のファイルの骨の行列）と 0.1 以内。394 番は 26 こま・1.667 秒
+{ const mf=path.join(here,"data/01360.bin"), bf=path.join(here,"data/01429.bin");
+  if(fs.existsSync(mf)&&fs.existsSync(bf)){ const U=new Uint8Array(fs.readFileSync(mf)), B=g("jwBodyParse")(new Uint8Array(fs.readFileSync(bf))), L=g("jwMotionList")(U);
+    const W=g("jwMotionPose")(B,g("jwMotionFrames")(U,L[0]).frames[0]); let mx=0; W.forEach((m,k)=>m.forEach((v,i)=>mx=Math.max(mx,Math.abs(v-B.Bind[k][i]))));
+    const m394=g("jwMotionFrames")(U,L[394]);
+    t(`動き ${L.length} 個・0 番の姿と T の姿のずれ ${mx.toFixed(3)}・394 番 ${m394.frames.length} こま ${m394.dur.toFixed(3)} 秒`,L.length===485&&mx<0.1&&m394.frames.length===26&&Math.abs(m394.dur-1.667)<0.01) } }
 const fa=path.join(here,"out/fake_0_TEXT.AFS"), fi=path.join(here,"out/fake.iso");
 if(fs.existsSync(fa)) for(const [name,f] of [["AFS",fa],["ISO",fi]]){
   const blob=new Blob([fs.readFileSync(f)]), d=await g("weOpen")(blob), u=await g("weFile")(blob,d,3377);
