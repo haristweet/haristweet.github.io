@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ウイニングイレブン2012 モデルビューア</title>
+<meta name="description" content="PS2『ワールドサッカー ウイニングイレブン2012』のディスクから、選手の顔と髪を見る">
+<style>
+:root{--bg:#f4f2ee;--card:#fff;--fg:#1f1e1b;--mut:#6b6860;--line:#dedad2;--acc:#2f7a4a;--bad:#b3392f;--stage:#2a2926}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1917;--card:#24231f;--fg:#ecebe6;--mut:#a09d94;--line:#3a3833;--acc:#6fcf93;--bad:#ec7a6f}}
+*{box-sizing:border-box}
+html{touch-action:manipulation}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Hiragino Sans",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 14px}
+.step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 12px}
+.step b{display:block;margin:0 0 2px}.step small{color:var(--mut);display:block;margin:0 0 8px}
+.step.done{border-color:var(--acc)}
+.step label.btn{display:inline-block;background:var(--acc);color:#fff;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600}
+.step input[type=file]{display:none}
+.step .name{margin-left:8px;font-size:13px;color:var(--mut);overflow-wrap:anywhere}
+#status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
+.viewer{position:relative;background:radial-gradient(circle at 50% 35%,#3a3833,var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:4/3;max-height:70vh;margin:0 auto;touch-action:none;user-select:none}
+.viewer canvas{position:absolute;inset:0;width:100%;height:100%}
+.viewer [hidden]{display:none!important}
+.viewer .hint{position:absolute;left:12px;bottom:10px;color:#cfccc4;font-size:12px;pointer-events:none}
+@media (max-width:640px){.viewer .hint{display:none}}
+.viewer .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a8a49a;text-align:center;padding:20px}
+.viewer.drop-over{outline:3px dashed var(--acc);outline-offset:-3px}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:10px 0}
+.ctrl[hidden]{display:none}
+.ctrl label{white-space:nowrap}
+.ctrl select,.ctrl button,.ctrl input[type=number]{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
+.ctrl button{cursor:pointer}
+.ctrl .grp{white-space:nowrap}
+#info{color:var(--mut);font-size:13px;margin:6px 0 0}
+.ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
+details{margin:16px 0 0;color:var(--mut);font-size:13px}
+details.more{margin:0 0 6px;color:var(--fg);font-size:14px}details.more[hidden]{display:none}
+.texs{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0}.texs figure{margin:0;font-size:12px;color:var(--mut);text-align:center}
+.texs canvas{display:block;image-rendering:pixelated;background:repeating-conic-gradient(#8884 0 25%,#0000 0 50%) 0 0/12px 12px;border:1px solid var(--line);border-radius:4px;max-width:160px}
+progress{width:12em;vertical-align:middle}
+</style>
+</head>
+<body>
+<main>
+<h1>ウイニングイレブン2012 モデルビューア <span id="ver-h" class="ver"></span></h1>
+<p class="sub">PS2『ワールドサッカー ウイニングイレブン2012』のディスクのイメージから、選手の顔と髪を見ます（作りはじめ）。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
+<div class="step" id="step-disc"><b>ディスクのイメージ</b><small>.iso か、その中の 0_TEXT.AFS。ページにドロップしても読み込めます</small>
+  <label class="btn">選ぶ<input type="file" id="f-disc" accept=".iso,.afs,.AFS,.img"></label><span class="name" id="n-disc">まだ</span></div>
+<div id="status"></div>
+<div class="viewer" id="viewer"><canvas id="cv"></canvas>
+  <div class="empty" id="empty">ディスクのイメージを選ぶと、ここに顔が出ます</div>
+  <div class="hint" id="hint" hidden>ドラッグで回す・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
+<div class="ctrl" id="scan" hidden><span>中身を調べています <progress id="p-scan" max="1" value="0"></progress> <span id="t-scan"></span></span></div>
+<div class="ctrl" id="pick" hidden>
+  <span class="grp">顔 <button id="f-prev" aria-label="前の顔">◀</button> <select id="s-face" aria-label="顔"></select> <button id="f-next" aria-label="次の顔">▶</button></span>
+  <span class="grp" title="どの顔にどの髪かはまだ分かっていません。最初は顔と同じ順番の髪を出します（仮）">髪 <button id="h-prev" aria-label="前の髪">◀</button> <select id="s-hair" aria-label="髪"></select> <button id="h-next" aria-label="次の髪">▶</button></span>
+  <label title="顔を選んだとき、同じ順番の髪に合わせる"><input type="checkbox" id="c-link" checked> 髪も合わせる</label>
+  <button id="b-rand">🎲 おまかせ</button>
+</div>
+<div class="ctrl" id="anyfile" hidden>
+  <span class="grp">番号で見る <input id="n-file" type="number" min="0" value="0" style="width:6em" aria-label="ファイルの番号"> <button id="b-file">見る</button></span>
+  <label title="顔のファイルには同じ大きさの形が 2 つある（細かさ違いと推測）。重ねると縞になる"><input type="checkbox" id="c-all"> 2 つ目からの形も</label>
+</div>
+<div class="ctrl" id="savebar" hidden><button id="b-png">PNG で保存</button>
+  <label title="PNG を透明な背景で"><input type="checkbox" id="c-clear"> 背景なし</label></div>
+<div id="info"></div>
+<div class="texs" id="texs"></div>
+<details><summary>しくみ</summary>
+<p>0_TEXT.AFS は 10,232 個のファイルを束ねたもので、ファイルの名前はありません。1 つずつ zlib でほどき、中に入っている「形」と「絵」の並びから、形 2 つ＋絵 1 枚のものを顔、形 1 つ＋絵 2 枚のものを髪として、それぞれ続き番号のいちばん長い一続きを一覧にしています（顔 1600・髪 1600。髪と同じ並びの形が離れた所に 11 個あり、それは髪ではないので外しています）。n 番目の顔に n 番目の髪を合わせるのは仮です（数が同じで、見た範囲では頭に合います）。</p>
+<p>形は PS2 の描画用の命令の列（VIF）から、頂点の位置・UV と、頂点のつなぎ方（帯）を読みます。顔のファイルの 2 つ目の形は細かさ違いと見て、ふだんは描きません。光は当てず、絵の色をそのまま描きます。</p>
+<p>まだのこと: どの選手がどの顔・髪かの表（ゲームの本体にあるはず）、体とユニフォーム、目、髪の 2 枚目の絵の使いどころ、あごの下に出る細かい縞。</p>
+<p id="ver"></p></details>
+</main>
+<script>
+
+// WE2012（PS2）のデータを読む。ブラウザでも node（vm）でも動くように、最上位の関数だけで書く。
+// 数は全部リトルエンディアン。
+
+// ── AFS（0_TEXT.AFS など）: "AFS\0"・個数・(位置,大きさ)×個数。名前の表は無い ──
+function weAfsIndex(u){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength);
+  if(dv.getUint32(0,true)!==0x00534641) throw new Error("AFS ではない");
+  const n=dv.getUint32(4,true), ents=[];
+  for(let i=0;i<n;i++) ents.push({off:dv.getUint32(8+i*8,true),size:dv.getUint32(12+i*8,true)});
+  return ents;
+}
+// AFS の中の 1 ファイル: 頭 32 バイト（[0]=0x10600 なら圧縮、[1]=縮めた大きさ、[2]=ほどいた大きさ）のあとが zlib。
+// inflate は呼ぶ側が渡す（node は zlib.inflateSync、ブラウザは DecompressionStream）
+function weAfsHead(b){
+  const dv=new DataView(b.buffer,b.byteOffset,b.byteLength);
+  return {kind:dv.getUint32(0,true),csize:dv.getUint32(4,true),usize:dv.getUint32(8,true)};
+}
+
+// ── 入れもの: [個数, 8, 頭の大きさ, 位置1, 位置2, …]。1 つ目は頭の大きさの所から ──
+function weParts(u){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength), n=dv.getUint32(0,true);
+  if(n<1||n>64||dv.getUint32(4,true)!==8) return [{off:0,end:u.length}];
+  const offs=[dv.getUint32(8,true)];
+  for(let k=1;k<n;k++) offs.push(dv.getUint32(8+k*4,true));
+  return offs.map((o,k)=>({off:o,end:k+1<n?offs[k+1]:u.length}));
+}
+function weKind(u,o){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength), w=dv.getUint32(o,true);
+  return w===0x29857294?"tex":w===0xffff0003?"model":"?";
+}
+
+// ── 絵: 頭 0x29857294。[4]=点の位置(下16)・色表の位置(上16)、[5]=幅・高さ、[6] の 2 バイト目＝形式（0x13=8bit、0x14=4bit） ──
+// 8bit の色表は PS2 の並べ替え（8 色ずつの 2・3 組目を入れ替え）。α は 0x80 が不透明
+// 色表の位置が点の位置と同じ絵（[3]＝2。髪の 64×64）は色表を持たない。palFrom（同じファイルの前の絵）の色表を借りる【絵で確かめる】
+function weTex(u,o,palFrom){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength);
+  const a=dv.getUint32(o+16,true), pix=o+(a&0xffff), own=(a>>>16)!==(a&0xffff), pal=own||palFrom==null?o+(a>>>16):palFrom;
+  const wh=dv.getUint32(o+20,true), W=wh&0xffff, H=wh>>>16, psm=(dv.getUint32(o+24,true)>>8)&0xff;
+  const rgba=new Uint8Array(W*H*4), col=i=>{ const p=pal+i*4; return [u[p],u[p+1],u[p+2],Math.min(255,u[p+3]*2)] };
+  if(psm===0x13){
+    const cl=[]; for(let i=0;i<256;i++) cl.push(col((i&0xe7)|((i&0x10)>>1)|((i&0x08)<<1)));
+    for(let i=0;i<W*H;i++) rgba.set(cl[u[pix+i]],i*4);
+  } else if(psm===0x14){
+    const cl=[]; for(let i=0;i<16;i++) cl.push(col(i));
+    for(let i=0;i<W*H;i++) rgba.set(cl[(u[pix+(i>>1)]>>((i&1)*4))&15],i*4);
+  } else return {W,H,psm,rgba:null};
+  return {W,H,psm,rgba,pal};
+}
+
+// ── 形: 頭 0xffff0003。[8]=包みの数、[9]=最初の包みの位置。包み＝[大きさ, 0, VIF の位置, …] のあとに VIF の命令列 ──
+// VIF の UNPACK: 0x69（V3-16）を 4 番地に＝位置、5 番地＝法線、0x65（V2-16）を 7 番地＝UV（/4096）。
+// 0x6d（V4-16）を頂点の後ろ（8＋4×頂点数 番地）に＝頂点の並び（値/4−1 が頂点の番号、0x8000 の印は「三角形を閉じない」）。並びは帯（ストリップ）
+function weVifSize(cmd,num){ const vn=(cmd>>2)&3, vl=cmd&3, bits=vl===3?16:(vn+1)*(32>>vl); return Math.ceil(num*bits/32)*4 }
+function weVifWalk(u,p,end){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength), out=[];
+  while(p+4<=end){
+    const w=dv.getUint32(p,true), cmd=(w>>>24)&0x7f, num=(w>>>16)&0xff, imm=w&0xffff; let q=p+4;
+    if(cmd>=0x60){ const n=num||256; out.push({cmd,num:n,addr:imm&0x3ff,flg:imm>>15,at:q}); q+=weVifSize(cmd,n) }
+    else if(cmd===0x20) q+=4;
+    else if(cmd===0x30||cmd===0x31) q+=16;
+    else if(cmd===0x50||cmd===0x51) q+=(imm||65536)*16;
+    else if(cmd===0x4a) q+=(num||256)*8;
+    else if(!(cmd<=7||cmd===0x10||cmd===0x11||cmd===0x13||cmd===0x14||cmd===0x15||cmd===0x17)) break;
+    p=q;
+  }
+  return out;
+}
+// 形を三角形の並びにする。{tris:[{p:[[x,y,z]×3], uv:[[s,t]×3], n:[[…]×3], pk}], packets}
+function weModel(u,b){
+  const dv=new DataView(u.buffer,u.byteOffset,u.byteLength);
+  const npk=dv.getUint32(b+0x20,true); let po=b+dv.getUint32(b+0x24,true);
+  const tris=[], packets=[];
+  for(let k=0;k<npk;k++){
+    const size=dv.getUint32(po,true), vifAt=po+dv.getUint32(po+8,true);
+    const un=weVifWalk(u,vifAt,po+size);
+    const get=(cmd,addr)=>un.find(x=>x.cmd===cmd&&x.addr===addr);
+    const P=get(0x69,4), N=get(0x69,5), T=get(0x65,7), I=un.filter(x=>x.cmd===0x6d&&x.addr===8+4*(P?P.num:0)).pop();   // 並びは頂点の後ろ（8＋4×頂点数 番地。見本の全部の包みで合う）。小さい包みでは 0x40 より前になる
+    if(P&&I){
+      const s16=a=>dv.getInt16(a,true), V=[], NV=[], UV=[];
+      for(let i=0;i<P.num;i++){ V.push([s16(P.at+i*6),s16(P.at+i*6+2),s16(P.at+i*6+4)]);
+        NV.push(N?[s16(N.at+i*6)/32768,s16(N.at+i*6+2)/32768,s16(N.at+i*6+4)/32768]:[0,0,1]);
+        UV.push(T?[s16(T.at+i*4)/4096,s16(T.at+i*4+2)/4096]:[0,0]) }
+      // 包みの頭の [16] の上 8 ビット＝使う絵の番号（見本では 3600 の 1 つの包みが 1＝64×64。1 枚目の色表を借りると三つ編みがつながる。絵で確認）
+      const texi=dv.getUint32(po+64,true)>>>24, nIdx=dv.getUint32(po+12,true), idx=[];
+      // 包みの頭の [13]（sel、+0x34）。部位の番号（骨？）。JWE2010 の顔で 0＝顔、1＝目、2＝あごの重ね、3＝耳、4＝口の中、髪で 0＝生え際の帯、1＝前髪、2＝後ろ（SELCOLOR=1 の絵で見た）
+      const sel=dv.getUint32(po+0x34,true);
+      for(let i=0;i<I.num*4;i++) idx.push(dv.getUint16(I.at+i*2,true));
+      let a=-1,c=-1,nt=0;
+      for(let i=0;i<idx.length;i++){
+        const w=idx[i], v=((w&0x7fff)>>2)-1;
+        if(!(w&0x8000)&&a>=0&&c>=0&&v>=0&&v<V.length&&a<V.length&&c<V.length){
+          // 向き: 帯の交互の数え方は合っていない（法線と逆向きが 4 割）。頂点の法線（VIF の 5 番地）の和と同じ側を表にする
+          let f=[a,c,v]; nt++;
+          { const [p,q,r]=f.map(j=>V[j]), e1=[q[0]-p[0],q[1]-p[1],q[2]-p[2]], e2=[r[0]-p[0],r[1]-p[1],r[2]-p[2]];
+            const n=[e1[1]*e2[2]-e1[2]*e2[1],e1[2]*e2[0]-e1[0]*e2[2],e1[0]*e2[1]-e1[1]*e2[0]], s=[0,1,2].map(i=>NV[a][i]+NV[c][i]+NV[v][i]);
+            if(n[0]*s[0]+n[1]*s[1]+n[2]*s[2]<0) f=[c,a,v] }
+          tris.push({p:f.map(j=>V[j]),uv:f.map(j=>UV[j]),n:f.map(j=>NV[j]),pk:k,texi,sel}) }
+        else if(w&0x8000) nt=0;
+        a=c; c=v;
+      }
+      packets.push({at:po,nv:P.num,nIdx,idx,texi,sel});
+    }
+    po+=size;
+  }
+  return {tris,packets};
+}
+
+// ── ディスク: ISO（2048 バイトの区切り、ISO9660）か、0_TEXT.AFS そのもの。File.slice で要る所だけ読む ──
+async function weBytes(file,off,n){ return new Uint8Array(await file.slice(off,off+n).arrayBuffer()) }
+// ISO の根の一覧から name を探す（PS2 の DVD は根に直に並ぶ）。{off,size}
+async function weIsoFind(file,name){
+  const pvd=await weBytes(file,16*2048,2048);
+  if(String.fromCharCode(...pvd.subarray(1,6))!=="CD001") return null;
+  const dv=new DataView(pvd.buffer), lba=dv.getUint32(156+2,true), len=dv.getUint32(156+10,true);
+  const dir=await weBytes(file,lba*2048,len), dd=new DataView(dir.buffer);
+  for(let p=0;p<dir.length;){
+    const L=dir[p]; if(!L){ p=(Math.floor(p/2048)+1)*2048; continue }
+    const nl=dir[p+32], nm=String.fromCharCode(...dir.subarray(p+33,p+33+nl)).replace(/;1$/,"");
+    if(nm.toUpperCase()===name) return {off:dd.getUint32(p+2,true)*2048,size:dd.getUint32(p+10,true)};
+    p+=L;
+  }
+  return null;
+}
+// ISO でも AFS でも開く。{base, ents, from}
+async function weOpen(file){
+  let base=0, from="AFS";
+  const h=await weBytes(file,0,4);
+  if(!(h[0]===0x41&&h[1]===0x46&&h[2]===0x53&&h[3]===0)){
+    const f=await weIsoFind(file,"0_TEXT.AFS");
+    if(!f) throw new Error("ISO の中に 0_TEXT.AFS が無い（ウイニングイレブン2012 の PS2 のディスクではない？）か、ISO でも AFS でもないファイルです");
+    base=f.off; from="ISO";
+  }
+  const n=new DataView((await weBytes(file,base+4,4)).buffer).getUint32(0,true);
+  if(!(n>0&&n<100000)) throw new Error("AFS の個数が変です");
+  const ents=weAfsIndex(await weBytes(file,base,8+n*8));
+  return {base,ents,from};
+}
+// zlib をほどく（ブラウザも node 18 以降も DecompressionStream がある）
+async function weInflate(b){
+  const s=new Blob([b]).stream().pipeThrough(new DecompressionStream("deflate"));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+// AFS の i 番目をほどいて返す。頭が圧縮の印で zlib の頭（0x78）があればほどく。ほどけなければそのまま
+async function weFile(file,disc,i){
+  const e=disc.ents[i]; if(!e||!e.size) return new Uint8Array(0);
+  const b=await weBytes(file,disc.base+e.off,e.size);
+  if(b.length>34&&b[32]===0x78){ const h=weAfsHead(b);
+    try{ return await weInflate(b.subarray(32,32+h.csize)) }catch(err){} }
+  return b;
+}
+// ほどいた中身の並び（M＝形、T＝絵、?＝ほか）。「MMT」＝顔、「MTT」＝髪（見本 3 つずつで絵で確かめた形）
+function weSig(u){
+  if(u.length<16) return "";
+  try{ return weParts(u).map(p=>p.off+4<=u.length?{model:"M",tex:"T"}[weKind(u,p.off)]||"?":"?").join("") }catch(e){ return "?" }
+}
+// 形と絵を、ページで描ける形にする。1 つ目の形だけ（顔の 2 つ目は細かさ違いと推測）。all なら全部。
+// 座標はゲーム（Y 下・顔が +X）→ 画面（Y 上・顔が手前 +Z）: (x,y,z)→(z,−y,x)。鏡写しにはしない
+// skip: 描かない包みの sel の一覧（JWE2010 の顔は [2]。あごまわりの重ねで、あごの先に肌色の V と細かい縞が出る）
+function weMeshes(u,all,skip){
+  const parts=weParts(u), texs=[], models=[];
+  for(const p of parts){ const k=weKind(u,p.off); if(k==="tex") texs.push(weTex(u,p.off,texs.at(-1)?.pal)); if(k==="model") models.push(p.off) }
+  // 包みの頭の [16] の上 8 ビット＝絵の番号（髪の 64×64 は 1。絵で確認）。絵ごとに形を分ける
+  const meshes=[];
+  for(const off of all?models:models.slice(0,1)){
+    const m=weModel(u,off), by=new Map();
+    for(const t of m.tris){ if(skip&&skip.includes(t.sel)) continue; const k=texs[t.texi]?.rgba?t.texi:0; if(!by.has(k)) by.set(k,[]); by.get(k).push(t) }
+    for(const [k,ts] of by){ const f=new Float32Array(ts.length*15); let n=0;
+      for(const t of ts) for(let j=0;j<3;j++){ const p=t.p[j]; f[n++]=p[2]; f[n++]=-p[1]; f[n++]=p[0]; f[n++]=t.uv[j][0]; f[n++]=t.uv[j][1] }
+      meshes.push({f,ntri:ts.length,tex:texs[k]?.rgba?texs[k]:null}) }
+  }
+  return {meshes,texs};
+}
+// ファイルの中の絵を全部探す（入れものが入れ子のときも）。頭の印と、幅・高さが 2 のべき乗で 1024 以下のものだけ
+function weFindTex(u){
+  const out=[], dv=new DataView(u.buffer,u.byteOffset,u.byteLength), p2=x=>x>=8&&x<=1024&&!(x&(x-1));
+  for(let o=0;o+32<=u.length;o+=16){ if(dv.getUint32(o,true)!==0x29857294) continue;
+    const wh=dv.getUint32(o+20,true); if(!p2(wh&0xffff)||!p2(wh>>>16)) continue;
+    try{ out.push({...weTex(u,o,out.at(-1)?.pal),at:o}) }catch(e){} }
+  return out;
+}
+// ページの描画（WebGL1）。形ごとに [x,y,z,u,v] の列と、その形の絵（RGBA）を持つ。光は当てない（絵の色をそのまま）。
+// 髪の絵は α が段々（0〜0x80）なので半透明で重ねる。並べた順（顔→髪）に描く
+function weGL(canvas){
+  const gl=canvas.getContext("webgl",{preserveDrawingBuffer:true,alpha:true,antialias:true});
+  if(!gl) throw new Error("このブラウザでは WebGL が使えません");
+  const sh=(t,s)=>{ const o=gl.createShader(t); gl.shaderSource(o,s); gl.compileShader(o); if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o };
+  const pr=gl.createProgram();
+  gl.attachShader(pr,sh(gl.VERTEX_SHADER,"attribute vec3 p;attribute vec2 t;uniform mat4 M;varying vec2 vt;void main(){gl_Position=M*vec4(p,1.);vt=t;}"));
+  gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,"precision mediump float;uniform sampler2D T;uniform float useT;uniform float opq;varying vec2 vt;void main(){vec4 c=useT>.5?texture2D(T,vt):vec4(.78,.75,.68,1.);if(opq>.5)c.a=1.;if(c.a<.02)discard;gl_FragColor=c;}"));
+  gl.linkProgram(pr); gl.useProgram(pr);
+  const A={p:gl.getAttribLocation(pr,"p"),t:gl.getAttribLocation(pr,"t")}, uM=gl.getUniformLocation(pr,"M"), uT=gl.getUniformLocation(pr,"useT"), uO=gl.getUniformLocation(pr,"opq");
+  let items=[];
+  return {
+    // ms: [{f:Float32Array, tex:{W,H,rgba}|null, opaque?}]。opaque は絵の α を使わずに塗る（JWE2010 の後ろ髪）
+    set(ms){
+      for(const it of items){ gl.deleteBuffer(it.buf); if(it.tex) gl.deleteTexture(it.tex) }
+      items=ms.map(m=>{ const buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf); gl.bufferData(gl.ARRAY_BUFFER,m.f,gl.STATIC_DRAW);
+        let tex=null;
+        if(m.tex&&m.tex.rgba){ tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex);
+          // 絵は 2 のべき乗の大きさなので、くり返し（REPEAT）が使える
+          for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.REPEAT],[gl.TEXTURE_WRAP_T,gl.REPEAT]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
+          gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,m.tex.W,m.tex.H,0,gl.RGBA,gl.UNSIGNED_BYTE,m.tex.rgba) }
+        return {buf,tex,n:m.f.length/5,opaque:!!m.opaque} });
+    },
+    draw(view,bg){
+      const W=canvas.width=Math.round(canvas.clientWidth*devicePixelRatio), H=canvas.height=Math.round(canvas.clientHeight*devicePixelRatio);
+      gl.viewport(0,0,W,H); gl.clearColor(...(bg||[0,0,0,0])); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+      gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+      gl.useProgram(pr); gl.uniformMatrix4fv(uM,false,weViewMatrix(view,W/H));
+      // 裏向きの面は描かない（向きは頂点の法線から決めてある。we12.js の weModel）。顔は前だけの面なので、後ろから見ると髪の向こうは抜ける
+      gl.frontFace(gl.CW); gl.enable(gl.CULL_FACE);
+      for(const it of items){
+        gl.bindBuffer(gl.ARRAY_BUFFER,it.buf);
+        gl.enableVertexAttribArray(A.p); gl.vertexAttribPointer(A.p,3,gl.FLOAT,false,20,0);
+        gl.enableVertexAttribArray(A.t); gl.vertexAttribPointer(A.t,2,gl.FLOAT,false,20,12);
+        gl.uniform1f(uT,it.tex?1:0); gl.uniform1f(uO,it.opaque?1:0); if(it.tex) gl.bindTexture(gl.TEXTURE_2D,it.tex);
+        gl.drawArrays(gl.TRIANGLES,0,it.n);
+      }
+    }
+  };
+}
+// 列優先の 4×4。view: {yaw,pitch,dist,target:[x,y,z],fov,pan:[x,y]}。画面の座標（Y 上・手前 +Z）を回してカメラは −Z を向く。pan は画面に平行にずらす量（形の単位、無ければ 0）
+function weViewMatrix(v,aspect){
+  const cy=Math.cos(v.yaw), sy=Math.sin(v.yaw), cp=Math.cos(v.pitch), sp=Math.sin(v.pitch), [tx,ty,tz]=v.target;
+  const f=1/Math.tan((v.fov||30)*Math.PI/360), near=v.dist/50, far=v.dist*50;
+  const tr=p=>{ const x=p[0]-tx, y=p[1]-ty, z=p[2]-tz, x1=x*cy+z*sy, z1=-x*sy+z*cy, y2=y*cp-z1*sp, z2=y*sp+z1*cp; return [x1+(v.pan?.[0]||0),y2+(v.pan?.[1]||0),z2-v.dist] };
+  const o=tr([0,0,0]), ex=tr([1,0,0]).map((a,i)=>a-o[i]), ey=tr([0,1,0]).map((a,i)=>a-o[i]), ez=tr([0,0,1]).map((a,i)=>a-o[i]);
+  const V=[ex[0],ex[1],ex[2],0, ey[0],ey[1],ey[2],0, ez[0],ez[1],ez[2],0, o[0],o[1],o[2],1];
+  const P=[f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0];
+  const M=new Float32Array(16);
+  for(let c=0;c<4;c++) for(let r=0;r<4;r++){ let s=0; for(let k=0;k<4;k++) s+=P[k*4+r]*V[c*4+k]; M[c*4+r]=s }
+  return M;
+}
+// 番号の並びのうち、続き番号のいちばん長い一続き。本物では MMT が #1521〜#3120 の 1600 個、MTT が #3588〜#5187 の 1600 個と
+// #6233〜#6243 の 11 個（髪ではない形。肩まである大きな形と白い布の絵）に分かれたので、長い方を顔・髪とする
+function weLongestRun(list){
+  const s=[...list].sort((a,b)=>a-b); let best=[0,0], st=0;
+  for(let i=1;i<=s.length;i++) if(i===s.length||s[i]!==s[i-1]+1){ if(i-st>best[1]-best[0]) best=[st,i]; st=i }
+  return s.slice(best[0],best[1]);
+}
+// ページの操作。開く → 全ファイルをほどいて顔・髪の一覧を作る（順に増える）→ 選んで描く
+const VERSION="0.1.4";
+const $=id=>document.getElementById(id);
+const APP={drawSeq:0,file:null,disc:null,faces:[],hairs:[],mmt:[],mtt:[],cache:new Map(),view:{yaw:0,pitch:0.1,dist:3000,target:[0,0,0]},base:null,seq:0,gl:null,cur:null};
+function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
+async function getFile(i){
+  if(APP.cache.has(i)) return APP.cache.get(i);
+  const u=await weFile(APP.file,APP.disc,i);
+  if(APP.cache.size>40) APP.cache.delete(APP.cache.keys().next().value);
+  APP.cache.set(i,u); return u;
+}
+async function openDisc(file){
+  APP.seq++; const seq=APP.seq;
+  status("開いています…"); $("n-disc").textContent=file.name;
+  try{
+    const disc=await weOpen(file);
+    Object.assign(APP,{file,disc,faces:[],hairs:[],mmt:[],mtt:[],cache:new Map(),base:null,hairPicked:false,cur:null});
+    $("step-disc").classList.add("done"); $("empty").textContent="中身を調べています…";
+    $("anyfile").hidden=false; $("n-file").max=disc.ents.length-1;
+    status(`${disc.from==="ISO"?"ISO の中の ":""}0_TEXT.AFS: ${disc.ents.length} 個のファイル`);
+    await scan(seq);
+  }catch(e){ status(e.message,true); console.error(e) }
+}
+// 全ファイルをほどいて並び（weSig）を見る。6 つずつ同時に。一覧は 200 個ごとに作り直す
+async function scan(seq){
+  const n=APP.disc.ents.length; let next=0, done=0;
+  $("scan").hidden=false; $("p-scan").max=n;
+  const refreshLists=()=>{ fillSelect($("s-face"),APP.faces,"顔"); fillSelect($("s-hair"),APP.hairs,"髪",true);
+    if(APP.faces.length&&$("pick").hidden){ $("pick").hidden=false; $("s-face").value=APP.faces[0]; show() }
+    // 髪は顔より後ろの番号にあるので、見つかったら同じ順番の髪を付ける（まだ手で選んでいなければ）
+    if(!APP.hairPicked&&$("c-link").checked&&$("s-hair").value===""&&APP.cur?.kind==="pair"){ const k=APP.faces.indexOf(APP.cur.face); if(APP.hairs[k]!==undefined){ $("s-hair").value=APP.hairs[k]; show() } } };
+  const work=async()=>{ while(next<n&&seq===APP.seq){ const i=next++;
+      let sig=""; try{ const e=APP.disc.ents[i]; if(e.size) sig=weSig(await weFile(APP.file,APP.disc,i)) }catch(e){}
+      if(sig==="MMT") APP.mmt.push(i); else if(sig==="MTT") APP.mtt.push(i);
+      if(++done%200===0||done===n){ APP.faces=weLongestRun(APP.mmt); APP.hairs=weLongestRun(APP.mtt); $("p-scan").value=done; $("t-scan").textContent=`${done}/${n}・顔 ${APP.faces.length}・髪 ${APP.hairs.length}`; refreshLists() } } };
+  await Promise.all(Array.from({length:6},work));
+  if(seq!==APP.seq) return;
+  $("scan").hidden=true;
+  const other=[...APP.mmt.filter(i=>!APP.faces.includes(i)),...APP.mtt.filter(i=>!APP.hairs.includes(i))].sort((a,b)=>a-b);
+  status(`0_TEXT.AFS: ${n} 個のファイル・顔 ${APP.faces.length}・髪 ${APP.hairs.length}`+(other.length?`（同じ並びで一覧から外したもの ${other.length} 個: #${other.join("・#")}。番号で見られます）`:""));
+  if(!APP.faces.length){ $("empty").textContent="顔が見つかりませんでした（「番号で見る」で中身を見られます）"; }
+}
+function fillSelect(sel,list,word,none){
+  const keep=sel.value, html=(none?['<option value="">なし</option>']:[]).concat(list.map((i,k)=>`<option value="${i}">${word} ${k+1}（#${i}）</option>`));
+  if(sel.options.length!==html.length){ sel.innerHTML=html.join(""); if(keep!=="") sel.value=keep }
+}
+// 描くものを決める: {kind:"pair", face, hair} か {kind:"file", n}
+async function show(what){
+  if(what) APP.cur=what; else APP.cur={kind:"pair",face:+$("s-face").value,hair:$("s-hair").value===""?null:+$("s-hair").value};
+  const c=APP.cur, seq=++APP.drawSeq;
+  try{
+    const ids=c.kind==="pair"?[c.face,c.hair].filter(x=>x!==null&&!isNaN(x)):[c.n];
+    const all=$("c-all").checked, ms=[], texs=[]; let ntri=0;
+    for(const i of ids){ const u=await getFile(i), r=weMeshes(u,all); ms.push(...r.meshes); ntri+=r.meshes.reduce((a,m)=>a+m.ntri,0);
+      // 番号で見るときは入れ子の中の絵も全部出す
+      texs.push(...(c.kind==="file"?weFindTex(u):r.texs).map(t=>({...t,from:i}))) }
+    if(seq!==APP.drawSeq) return;
+    APP.gl.set(ms);
+    // 見る位置: 最初の形（顔）の箱の真ん中。大きさで距離を決める
+    const f0=ms.find(m=>m.f.length);
+    if(f0&&(!APP.base||c.kind==="file")){ const mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+      for(const m of ms) for(let k=0;k<m.f.length;k+=5) for(let j=0;j<3;j++){ mn[j]=Math.min(mn[j],m.f[k+j]); mx[j]=Math.max(mx[j],m.f[k+j]) }
+      APP.base={target:mn.map((v,j)=>(v+mx[j])/2),h:Math.max(mx[0]-mn[0],mx[1]-mn[1])}; resetCam() }
+    $("empty").hidden=!!f0; if(!f0) $("empty").textContent=`#${ids.join("・")} には形がありません（絵だけ、またはまだ読めない中身）`;
+    $("hint").hidden=!f0; $("savebar").hidden=!f0;
+    $("info").textContent=(c.kind==="pair"?`顔 #${c.face}${c.hair!==null?"・髪 #"+c.hair:""}`:`#${c.n}（並び ${weSig(await getFile(c.n))||"-"}）`)+`・三角形 ${ntri}・絵 ${texs.length} 枚`;
+    showTexs(texs); draw();
+  }catch(e){ status(e.message,true); console.error(e) }
+}
+function showTexs(texs){
+  const box=$("texs"); box.innerHTML="";
+  for(const t of texs){ const fig=document.createElement("figure"), cv=document.createElement("canvas"); cv.width=t.W; cv.height=t.H;
+    if(t.rgba){ const im=new ImageData(new Uint8ClampedArray(t.rgba),t.W,t.H); cv.getContext("2d").putImageData(im,0,0) }
+    cv.style.width=Math.min(160,t.W*(t.W<=64?2:1))+"px";
+    fig.append(cv,`#${t.from} ${t.W}×${t.H}${t.rgba?"":"（まだ読めない形式）"}`); box.append(fig) }
+}
+function resetCam(){ if(!APP.base) return; Object.assign(APP.view,{yaw:0,pitch:0.1,target:APP.base.target.slice(),dist:APP.base.h*2.6}); draw() }
+function draw(){ if(APP.gl) APP.gl.draw(APP.view,$("c-clear").checked?[0,0,0,0]:null) }
+function step(sel,d){ const o=sel.options; if(!o.length) return; sel.selectedIndex=(sel.selectedIndex+d+o.length)%o.length; sel.onchange() }
+function savePng(){
+  APP.gl.draw(APP.view,$("c-clear").checked?[0,0,0,0]:[0.17,0.165,0.15,1]);
+  $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); const c=APP.cur;
+    a.download=c.kind==="pair"?`we2012_face${c.face}${c.hair!==null?"_hair"+c.hair:""}.png`:`we2012_${c.n}.png`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); draw() },"image/png");
+}
+function init(){
+  $("ver-h").textContent="v"+VERSION; $("ver").textContent="版 "+VERSION;
+  try{ APP.gl=weGL($("cv")) }catch(e){ status(e.message,true) }
+  if(typeof DecompressionStream==="undefined") status("このブラウザはファイルの展開に必要な機能に対応していません。iPhone は iOS 16.4 以降にしてください",true);
+  $("f-disc").onchange=e=>{ const f=e.target.files[0]; if(f) openDisc(f) };
+  $("s-face").onchange=()=>{ if($("c-link").checked){ const k=APP.faces.indexOf(+$("s-face").value); if(APP.hairs[k]!==undefined) $("s-hair").value=APP.hairs[k] } show() };
+  $("s-hair").onchange=()=>{ APP.hairPicked=true; show() };
+  $("f-prev").onclick=()=>step($("s-face"),-1); $("f-next").onclick=()=>step($("s-face"),1);
+  $("h-prev").onclick=()=>step($("s-hair"),-1); $("h-next").onclick=()=>step($("s-hair"),1);
+  $("b-rand").onclick=()=>{ const r=n=>Math.floor(Math.random()*n); if(!APP.faces.length) return; $("s-face").value=APP.faces[r(APP.faces.length)]; $("s-face").onchange() };
+  $("b-file").onclick=()=>show({kind:"file",n:Math.max(0,Math.min(APP.disc.ents.length-1,+$("n-file").value|0))});
+  $("n-file").onkeydown=e=>{ if(e.key==="Enter") $("b-file").click() };
+  $("c-all").onchange=()=>show(APP.cur);
+  $("b-png").onclick=savePng; $("c-clear").onchange=draw;
+  // 回す・寄る
+  const cv=$("cv"), pts=new Map(); let pinch=0;
+  const zoom=k=>{ if(APP.base) APP.view.dist=Math.max(APP.base.h*0.3,Math.min(APP.base.h*20,APP.view.dist*k)); draw() };
+  cv.addEventListener("pointerdown",e=>{ cv.setPointerCapture(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]) });
+  cv.addEventListener("pointermove",e=>{ if(!pts.has(e.pointerId)) return; const [x,y]=pts.get(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]);
+    if(pts.size===2){ const [a,b]=[...pts.values()], d=Math.hypot(a[0]-b[0],a[1]-b[1]); if(pinch) zoom(pinch/d); pinch=d; return }
+    APP.view.yaw+=(e.clientX-x)*0.01; APP.view.pitch=Math.max(-1.5,Math.min(1.5,APP.view.pitch+(e.clientY-y)*0.01)); draw() });
+  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch=0 };
+  cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
+  cv.addEventListener("wheel",e=>{ e.preventDefault(); zoom(Math.exp(e.deltaY*0.001)) },{passive:false});
+  cv.addEventListener("dblclick",resetCam);
+  const vw=$("viewer");
+  document.addEventListener("dragover",e=>{ e.preventDefault(); vw.classList.add("drop-over") });
+  document.addEventListener("dragleave",e=>{ if(!e.relatedTarget) vw.classList.remove("drop-over") });
+  document.addEventListener("drop",e=>{ e.preventDefault(); vw.classList.remove("drop-over"); const f=e.dataTransfer.files[0]; if(f) openDisc(f) });
+  addEventListener("resize",draw);
+}
+init();
+</script>
+</body>
+</html>

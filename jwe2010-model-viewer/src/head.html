@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JWE2010 モデルビューア</title>
+<meta name="description" content="PS2『Jリーグウイニングイレブン2010 クラブチャンピオンシップ』のディスクとステートセーブから、選手の顔・髪と体を見る">
+<style>
+:root{--bg:#f4f2ee;--card:#fff;--fg:#1f1e1b;--mut:#6b6860;--line:#dedad2;--acc:#2f7a4a;--bad:#b3392f;--stage:#2a2926}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1917;--card:#24231f;--fg:#ecebe6;--mut:#a09d94;--line:#3a3833;--acc:#6fcf93;--bad:#ec7a6f}}
+*{box-sizing:border-box}
+html{touch-action:manipulation}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Hiragino Sans",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 14px}
+.step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 12px}
+.step b{display:block;margin:0 0 2px}.step small{color:var(--mut);display:block;margin:0 0 8px}
+.step.done{border-color:var(--acc)}
+.step label.btn{display:inline-block;background:var(--acc);color:#fff;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600}
+.step input[type=file]{display:none}
+.step .name{margin-left:8px;font-size:13px;color:var(--mut);overflow-wrap:anywhere}
+#status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
+.viewer{position:relative;background:radial-gradient(circle at 50% 35%,var(--stage2,#3a3833),var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:4/3;max-height:70vh;margin:0 auto;touch-action:none;user-select:none}
+.viewer canvas{position:absolute;inset:0;width:100%;height:100%}
+.viewer [hidden]{display:none!important}
+.viewer .hint{position:absolute;left:12px;bottom:10px;color:#cfccc4;font-size:12px;pointer-events:none}
+@media (max-width:640px){.viewer .hint{display:none}}
+.viewer .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a8a49a;text-align:center;padding:20px}
+.viewer.drop-over{outline:3px dashed var(--acc);outline-offset:-3px}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:10px 0}
+.ctrl[hidden]{display:none}
+.ctrl label{white-space:nowrap}
+.ctrl select,.ctrl button,.ctrl input[type=number],.ctrl input[type=text]{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
+.ctrl button,.ctrl label.btn{cursor:pointer}
+.ctrl label.btn{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
+.ctrl .grp{white-space:nowrap}
+.bgs{display:inline-flex;gap:6px;vertical-align:middle}
+.bgs button{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);padding:0!important;cursor:pointer}
+.bgs button[aria-pressed=true]{border-color:var(--acc)}
+#info{color:var(--mut);font-size:13px;margin:6px 0 0}
+.ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
+details{margin:16px 0 0;color:var(--mut);font-size:13px}
+details.more{margin:0 0 6px;color:var(--fg);font-size:14px}details.more[hidden]{display:none}
+.texs{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0}.texs figure{margin:0;font-size:12px;color:var(--mut);text-align:center}
+.texs canvas{display:block;image-rendering:pixelated;background:repeating-conic-gradient(#8884 0 25%,#0000 0 50%) 0 0/12px 12px;border:1px solid var(--line);border-radius:4px;max-width:160px}
+progress{width:12em;vertical-align:middle}
+.ctrl input[type=search]{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;width:10em}
+#s-player{max-width:min(22em,60vw)}
+#s-team{max-width:min(16em,60vw)}
+</style>
+</head>
+<body>
+<main>
+<h1>JWE2010 モデルビューア <span id="ver-h" class="ver"></span></h1>
+<p class="sub">PS2『Jリーグウイニングイレブン2010 クラブチャンピオンシップ』の選手を、正しい顔と髪で、ユニフォームを着た立ち姿で見ます（作りはじめ）。顔・髪・体の形はディスクのイメージから、どの選手がどの顔・髪かはエミュレータ（PCSX2）のステートセーブから読みます。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
+<div class="step" id="step-disc"><b>1. ディスクのイメージ</b><small>.iso か、その中の 0_TEXT.AFS</small>
+  <label class="btn">選ぶ<input type="file" id="f-disc" accept=".iso,.afs,.AFS,.img"></label><span class="name" id="n-disc">まだ</span></div>
+<div class="step" id="step-save"><b>2. ステートセーブ</b><small>PCSX2 の .p2s（ゲームの画面が出ているときに取ったもの）。選手の表をここから読みます。どちらもページにドロップしても読み込めます</small>
+  <label class="btn">選ぶ<input type="file" id="f-save" accept=".p2s"></label><span class="name" id="n-save">まだ</span></div>
+<div id="status"></div>
+<div class="viewer" id="viewer"><canvas id="cv"></canvas>
+  <div class="empty" id="empty">ディスクのイメージとステートセーブを選ぶと、ここに選手の顔が出ます</div>
+  <div class="hint" id="hint" hidden>ドラッグで回す・Shift＋ドラッグ（右ボタン・2本指）で動かす・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
+<div class="ctrl" id="pick" hidden>
+  <select id="s-team" aria-label="チーム"></select>
+  <input type="search" id="q" placeholder="名前で探す" aria-label="名前で探す">
+  <span class="grp"><button id="p-prev" aria-label="前の選手">◀</button> <select id="s-player" aria-label="選手"></select> <button id="p-next" aria-label="次の選手">▶</button></span>
+  <button id="b-rand">🎲 おまかせ</button>
+</div>
+<div class="ctrl" id="bodybar" hidden>
+  <label><input type="checkbox" id="c-body" checked> 体</label>
+  <label title="ふだんは半袖（入場の場面のフィールドの選手と同じ）。GK や冬の試合は長袖"><input type="checkbox" id="c-long"> 長袖</label>
+  <label title="背中・胸・パンツの番号と、背中の名前"><input type="checkbox" id="c-num" checked> 背番号・名前</label>
+  <label title="胸の番号（胸に番号の無いユニフォームでは外す）"><input type="checkbox" id="c-chest" checked> 胸の番号</label>
+  <label title="空ならゲームの番号">番号 <input type="number" id="n-num" min="0" max="99" style="width:4em" aria-label="背番号"></label>
+  <label title="空ならゲームの背中の名前。英字（A〜Z）と . と空白">名前 <input type="text" id="t-name" maxlength="16" style="width:8em" aria-label="背中の名前" autocapitalize="characters"></label>
+  <label title="靴底の歯（ゲームでは芝に埋まる）。ふだんは描かない"><input type="checkbox" id="c-studs"> スパイクの歯</label>
+  <label id="l-ball" hidden title="試合中のセーブのボール（形と絵はセーブから）。足もとに置く"><input type="checkbox" id="c-ball" checked> ボール</label>
+  <label id="l-traj" hidden title="蹴る動きのとき、ボールが飛ぶ軌道（足の速さと向きから計算。ゲームの値ではない）"><input type="checkbox" id="c-traj" checked> 軌道</label>
+  <label>ユニフォーム <select id="s-kit" aria-label="ユニフォーム"></select></label>
+  <label>動き <select id="s-mot" aria-label="動き"><option value="">立ち姿</option></select></label>
+</div>
+<div class="ctrl" id="kitbar" hidden>
+  <span class="grp" title="下絵（服の割り付けの線と名前）に重ねて描いた絵を読み込むと、選手がそのユニフォームを着る">自分のユニフォーム:</span>
+  <button id="b-kittpl">下絵を保存</button> <button id="b-kitcur">いまの絵を保存</button>
+  <label class="btn">絵を読み込む <input type="file" id="f-kit" accept="image/*" hidden></label>
+  <span class="grp" title="背番号と名前の字。字の下絵（256×96）と同じ並びで描いた絵を読み込むと、その字体になる">字:</span>
+  <button id="b-fonttpl">字の下絵を保存</button>
+  <label class="btn">字を読み込む <input type="file" id="f-font" accept="image/*" hidden></label>
+  <label id="l-font" hidden><input type="checkbox" id="c-font"> 読み込んだ字</label>
+</div>
+<div class="ctrl" id="motbar" hidden>
+  <button id="b-mot">▶ 再生</button> <input type="range" id="r-mot" min="0" max="0" value="0" style="width:min(18em,50vw)" aria-label="こま"> <span id="t-mot"></span>
+  <span class="grp" style="color:var(--mut);font-size:13px">← → でこま送り・スペースで再生</span>
+</div>
+<div class="ctrl" id="anyfile" hidden>
+  <span class="grp">番号で見る <input id="n-file" type="number" min="0" value="0" style="width:6em" aria-label="ファイルの番号"> <button id="b-file">見る</button></span>
+  <label title="顔のファイルには同じ大きさの形が 2 つある（細かさ違いと推測）。重ねると縞になる"><input type="checkbox" id="c-all"> 2 つ目からの形も</label>
+</div>
+<div class="ctrl" id="savebar" hidden><button id="b-png">PNG で保存</button>
+  <label title="PNG を透明な背景で"><input type="checkbox" id="c-clear"> 背景なし</label>
+  <span class="bgs" id="bg-box" aria-label="背景の色"></span></div>
+<div id="info"></div>
+<div class="texs" id="texs"></div>
+<details><summary>しくみ</summary>
+<p>選手の表は、ステートセーブの中の PS2 のメモリ（eeMemory.bin）から読みます。1 人 124 バイトの記録が並んでいて（関口 訓充のセーブでは 4,609 人）、名前・背中の名前・能力値と、顔と髪の番号が入っています。ディスクの中の表は混ぜてあるらしく、まだ読めていません。</p>
+<p>顔は記録の 0x64 の上 11 ビットに、0x73 の区分ごとの始まり（J リーグの選手などは 2804）を、髪は 0x5C の下 12 ビットに 4733 を足すと、0_TEXT.AFS のファイルの番号になります。ゲームがメモリに持っている「読み込み済みの顔・髪」の表（画面に出ている選手の印つき）と照らして決めました。</p>
+<p>形と絵の読み方は「ウイニングイレブン2012 モデルビューア」と同じです。光は当てず、絵の色をそのまま描きます。</p>
+<p>目・耳・口の中、後ろ髪の地、生え際は、ゲームが全員で共通に使う絵（0_TEXT.AFS の #8234・#8226・#8231 と色表 #8227）を貼ります。どの部品にどの絵かは、ステートセーブの描く命令と画面用メモリから読みました。肌・髪・目の色は 3 人のセーブに合わせたもので、選手ごとの違いはまだ反映していません。</p>
+<p>チームの一覧と名簿も、ステートセーブのメモリから読みます（チーム名の表と、1 チーム 32 枠の名簿）。名簿の並びが崩れている選抜チームなどは出しません。</p>
+<p>体はディスクの #1429 の形です（関口・梁・田村・永井のセーブで、どれもこのファイルが読み込まれていました）。19 本の骨と、2 本の骨にまたがる所のための「対」の行列で組み立てます。どの頂点をどの行列で動かすかは、試合中のセーブでゲームが使っていた行列と照らして決めました。袖は半袖（入場の場面でゲームが描いていた組）で、「長袖」で長袖の組に替えられます。形は T の字の姿でしまってあり、腕を下ろして立たせています（腕の角度は見た目で決めたもので、ゲームの立ち姿の動きではありません）。</p>
+<p>ユニフォームとスパイクの絵は、ステートセーブのメモリにあるものを使います（試合の前後のセーブなら、その試合の 2 チームの 4 着があります）。肌は頭の生え際と同じ絵です。手は別のファイル（#8095）の形を、手首の骨に付けます。背番号と背中の名前は、セーブにあるそのユニフォーム用の字から、ゲームと同じように選手ごとに組み立てて重ねます（番号はチームの番号表から）。袖の印はまだです。</p>
+<p>試合中のステートセーブなら、ボールも出せます（「ボール」のチェック）。ボールの形はセーブのメモリから、絵は画面用メモリから、ゲームがボールを描いたときの指定をたどって読みます。大きさはゲームと同じ（選手の約 8 倍の行列で描いていた）で、選手の足の前の地面に置きます（置く場所はゲームの位置ではありません）。蹴る動き（たとえば PK のキック、表の 217 番）を再生すると、足がボールにいちばん低く近づいたこまで当たったとみなし、ボールが飛びます。当たるこまは動きのデータから決めますが、飛ぶ速さ・向き・弾み方は足の動きから計算した作りもので、ゲームの軌道ではありません（「軌道」のチェックで線を出します）。</p>
+<p>ユニフォームは、自分で描いた絵に替えられます。「下絵を保存」で服の割り付け（どこがシャツの前・背中・袖・パンツ・ストッキングか）の線を書き出し、それに重ねて描いた絵を「絵を読み込む」で開くと、選手がそのユニフォームを着ます。「いまの絵を保存」でゲームのユニフォームの絵も書き出せるので、それを元に描きかえることもできます。読み込んだ絵はブラウザの中だけで使い、どこにも送りません。背番号と名前の字も、「字の下絵を保存」の並び（256×96）で描いた絵を「字を読み込む」で開くと替えられます。番号と名前は、欄に入れるとそれが出ます（空ならゲームの番号と名前）。</p>
+<p>動きは、試合中のステートセーブなら、そのメモリにあるゲームの動きの表（1,466 個）から選びます。ディスクの #1360（485 個）はその一部で、選手選択の画面などのセーブのときは #1360 を使います。どの動きも、こまごとに骨の向き（親から見た向き）が並んでいて、そのまま読みます。こまの間は向きを補います。名前が分かっている動きは、場面のセーブでそのときゲームが再生していた動きを骨の向きの一致で当てたものです（いまは PK のキックの 217 番とスライディングの 725 番）。表の 1437 番から後ろは場面ごとに入れ替わる枠です。ほかの一覧は、腰・足・手の高さと足の入れかわりで「歩く・走る・蹴る・跳ぶ・倒れる・起きる…」に分けてあります（見た目からの区分で、ゲームの中の名前ではありません）。ゲームの姿は、腕などが動きのままではないことがあり、動きを混ぜたり手を加えたりしているようです。</p>
+<p>まだのこと: 肌・髪・目の色の選手ごとの違い、顔のファイルを持たない選手（組み立ての顔らしい）と、髪の形だけの選手、チームごとのユニフォーム（ディスクのどのファイルかまだ分からない）、選手ごとの長袖・半袖と GK の手袋、背の高さ。</p>
+<p id="ver"></p></details>
+</main>
+<script>
