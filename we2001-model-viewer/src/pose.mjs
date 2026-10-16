@@ -5,7 +5,7 @@
 //   環境変数 GRID=n で、行を n 個ずつ横に並べる（一覧用）。C=欄の大きさ（既定 200）
 //   テクスチャ: 環境変数 TEX=TEX_00（DAT2D.BIN の 2 つの並びのあとに読む）。TEX=none で単色
 // 行＝動き、列＝向き（既定 0,90,180,270 と、最後の列は頭の寄り）。全部同じ縮尺。PS1 は Y が下向き
-import fs from "fs"; import vm from "vm"; import path from "path"; import {pngEncode} from "./png.mjs";
+import fs from "fs"; import vm from "vm"; import path from "path"; import {pngEncode,pngDecode} from "./png.mjs";
 const here=path.dirname(new URL(import.meta.url).pathname), ctx={}; vm.createContext(ctx);
 for(const f of ["tmd.js","anim.js","raster.js","tex.js","look.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
 const sel=new Uint8Array(fs.readFileSync(path.join(here,"disc/x/SELECT.BIN"))), exe=new Uint8Array(fs.readFileSync(path.join(here,"disc/x/SLPM_868.35"))), disc=path.join(here,"disc/x/BIN"), model=new Uint8Array(fs.readFileSync(disc+"/MODEL.BIN")), anime=new Uint8Array(fs.readFileSync(disc+"/ANIME.BIN"));
@@ -19,7 +19,10 @@ function loadTex(name){ texName=name; vram=ctx.weVramNew(); if(name==="none") re
 const C=+(process.env.C||200), per=yaws.length+1, G=+(process.env.GRID||1), cols=per*G, R=ctx.rasterNew(cols*C,Math.ceil(anims.length/G)*C,[40,38,34]);
 const L=(()=>{ const l=[-.4,-.6,-.7], n=Math.hypot(...l); return l.map(x=>x/n) })();
 const PCOL=[[230,200,170],[200,60,60],[230,190,160],[230,190,160],[230,190,160],[230,190,160],[60,60,200],[230,190,160],[50,50,50],[60,60,200],[230,190,160],[50,50,50]];
-let LOOK=null; const animX=process.env.ANIMFILE?new Uint8Array(fs.readFileSync(process.env.ANIMFILE)):null;
+let LOOK=null;
+// 環境変数 KIT＝自分のユニフォームの絵（256×256 の PNG）。選手の服（ページ 153・色の表 486）をそれに替える
+let KIT0=null, KITN=null; if(process.env.KIT){ const d=pngDecode(fs.readFileSync(process.env.KIT)); KIT0=new Uint8Array(256*256*4);
+  for(let i=0;i<256*256;i++){ KIT0[i*4]=d.px[i*3]; KIT0[i*4+1]=d.px[i*3+1]; KIT0[i*4+2]=d.px[i*3+2]; KIT0[i*4+3]=d.a?d.a[i]:255 } } const animX=process.env.ANIMFILE?new Uint8Array(fs.readFileSync(process.env.ANIMFILE)):null;
 function draw(parts,OX,OY,yawDeg,zoomHead){
   const D=ctx.rasterNew(C,C,[40,38,34]), ox=0, oy=0;   // 欄ごとに描いてから貼る（はみ出さない）
   const yaw=yawDeg*Math.PI/180, rot=p=>[p[0]*Math.cos(yaw)+p[2]*Math.sin(yaw), p[1], -p[0]*Math.sin(yaw)+p[2]*Math.cos(yaw)];
@@ -35,7 +38,7 @@ function draw(parts,OX,OY,yawDeg,zoomHead){
     const n=[e1[1]*e2[2]-e1[2]*e2[1],e1[2]*e2[0]-e1[0]*e2[2],e1[0]*e2[1]-e1[1]*e2[0]], l=Math.hypot(...n)||1;
     const sh=.35+.65*Math.abs((n[0]*L[0]+n[1]*L[1]+n[2]*L[2])/l), col=(PCOL[p.part]||[200,200,200]).map(c=>Math.round(c*sh));
     const Q=q.map(v=>[ox+C/2+(v[0]-cx)*s, oy+C/2+(v[1]-cy)*s, v[2]]);
-    if(texName!=="none"&&p.pr.uv){ const T=p.pr.uv, pr=p.pr, smp=(u,v)=>ctx.weTexel(vram,pr.tsb,pr.cba,Math.floor(u),Math.floor(v));
+    if(texName!=="none"&&p.pr.uv){ const T=p.pr.uv, pr=p.pr, smp=KITN&&pr.tsb===153&&(pr.cba>>6)===486?(u,v)=>ctx.weKitTexel(KITN,Math.floor(u),Math.floor(v)):(u,v)=>ctx.weTexel(vram,pr.tsb,pr.cba,Math.floor(u),Math.floor(v));
       for(let i=1;i+1<Q.length;i++) ctx.rasterTriTex(D,Q[0],Q[i],Q[i+1],T[0],T[i],T[i+1],smp,127/128) }   // ゲームは光を当てない（0x8001235c）
     else for(let i=1;i+1<Q.length;i++) ctx.rasterTri(D,Q[0],Q[i],Q[i+1],col);
   }
@@ -49,6 +52,7 @@ anims.forEach((row,r)=>{
     LOOK={...pl.look,cell:[4,5,10,11].includes(st)?null:0} }   // キーパーの体は欄 10（UV は書き換えない）
   if(tx!==texName||!vram) loadTex(tx);
   if(NUM) ctx.weComposeNumber(vram,LOOK.cell??10,NUM);
+  KITN=null; if(KIT0){ KITN=KIT0.slice(); if(NUM&&LOOK&&LOOK.cell!=null) ctx.weComposeNumberRGBA(KITN,LOOK.cell,NUM) }
   // 動きを x<16 進の位置> と書くと、環境変数 ANIMFILE（既定 ANIME.BIN）のその位置のコマを直接読む
   const parts=/^x/.test(row[0])?ctx.wePose(model,animX,st,hd,0,0,parseInt(row[0].slice(1),16)):ctx.wePose(model,anime,st,hd,a,f);
   const X=(r%G)*per*C, Y=Math.floor(r/G)*C;

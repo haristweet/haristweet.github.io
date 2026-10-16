@@ -2,10 +2,11 @@
 // 三角形は [x,y,z, u,v, 明るさ] を CPU で作って毎回送る（選手 1 人で 600 面ほどなので軽い）
 const WE_ATLAS=2048, WE_TILE=256;   // 8×8 欄（集合写真は 11 人で色の表の組が増える）
 // VRAM と (tsb,cba) の並びから、RGBA の大きな絵と「組→欄の番号」を作る。色 0 は透明
-function weAtlas(vram,combos){
+// kit に自分のユニフォームの絵（256×256 の RGBA、背番号は組み立て済み）を渡すと、選手の服（ページ 153・色の表 486）はそれで描く
+function weAtlas(vram,combos,kit){
   const px=new Uint8Array(WE_ATLAS*WE_ATLAS*4), slot=new Map();
-  combos.slice(0,64).forEach((k,n)=>{ const [tsb,cba]=k.split(",").map(Number), ox=(n&7)*WE_TILE, oy=(n>>3)*WE_TILE; slot.set(k,n);
-    for(let v=0;v<256;v++) for(let u=0;u<256;u++){ const c=weTexel(vram,tsb,cba,u,v), i=((oy+v)*WE_ATLAS+ox+u)*4; if(c){ px[i]=c[0]; px[i+1]=c[1]; px[i+2]=c[2]; px[i+3]=255 } } });
+  combos.slice(0,64).forEach((k,n)=>{ const [tsb,cba]=k.split(",").map(Number), ox=(n&7)*WE_TILE, oy=(n>>3)*WE_TILE; slot.set(k,n); const own=kit&&tsb===153&&(cba>>6)===486;
+    for(let v=0;v<256;v++) for(let u=0;u<256;u++){ const c=own?weKitTexel(kit,u,v):weTexel(vram,tsb,cba,u,v), i=((oy+v)*WE_ATLAS+ox+u)*4; if(c){ px[i]=c[0]; px[i+1]=c[1]; px[i+2]=c[2]; px[i+3]=255 } } });
   return {px,slot};
 }
 // 組んだ部品（wePose の返り値）から三角形の列を作る。tmds は 位置→tmdRead の結果。light は使わない（ゲームが光を当てないので。呼び出しの形だけ残す）。

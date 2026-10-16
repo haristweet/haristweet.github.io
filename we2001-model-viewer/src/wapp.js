@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.3.0";
+const VERSION="0.4.0";
 const $=id=>document.getElementById(id);
 // 体の組（MODEL.BIN の先頭の 18 個。0,1 は球）。名前は絵で見た印象（推測）。2・3・16・17 は服の色の表がディスクのどこから来るかまだ分からず、服が抜ける
 const WE_SETS=[[6,"フィールド・半袖"],[8,"フィールド・長袖"],[12,"フィールド・半袖 2"],[14,"フィールド・長袖 2"],[7,"フィールド 3"],[9,"フィールド 4"],[13,"フィールド 5"],[15,"フィールド 6"],
@@ -27,7 +27,7 @@ async function openDisc(file){
     $("s-set").innerHTML=WE_SETS.map(([k,n])=>`<option value="${k}">${n}</option>`).join("");
     const opts=(n,f)=>Array.from({length:n},(_,i)=>`<option value="${i}">${f?f(i):i}</option>`).join("");
     $("s-hair").innerHTML=opts(16); $("s-face").innerHTML=opts(16,i=>i>=5?i+"（ひげ）":i); $("s-skin").innerHTML=opts(4); $("s-hcol").innerHTML=opts(16); $("s-s112").innerHTML=opts(8); $("s-boots").innerHTML=opts(8);
-    $("step-disc").classList.add("done"); $("pick").hidden=false; $("detail").hidden=false; $("motion").hidden=false; $("savebar").hidden=false; $("empty").hidden=true; $("hint").hidden=false;
+    $("step-disc").classList.add("done"); $("pick").hidden=false; $("detail").hidden=false; $("motion").hidden=false; $("savebar").hidden=false; $("ownkit").hidden=false; $("empty").hidden=true; $("hint").hidden=false;
     $("s-team").value="1"; listPlayers(); $("s-player").value="8"; pickPlayer();
     APP.base=null; await refresh(true); status("");
   }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
@@ -52,13 +52,14 @@ function cur(){
     look, num:Math.max(0,Math.min(99,+$("n-num").value|0)), anim:Math.max(0,Math.min(203,+$("m-num").value|0)), frame:+$("m-frame").value};
 }
 async function loadAtlas(c,used){
-  const key=c.kit+"|"+c.alt+"|"+c.gkKit+"|"+c.num+"|"+c.look.cell+"|"+used.join(";"); if(key===APP.atlasKey) return;
+  const key=c.kit+"|"+c.alt+"|"+c.gkKit+"|"+(APP.userKitId||0)+"|"+c.num+"|"+c.look.cell+"|"+used.join(";"); if(key===APP.atlasKey) return;
   if(!APP.texFiles.has(c.kit)){ const f=await readFile(c.kit); APP.texFiles.set(c.kit,f) }
   if(cur().kit!==c.kit) return;   // 読む間に選び直された
   const vram=weVramNew(); weTexLoadRun(vram,APP.dat2d,WE_TEX_BASE,0); weTexLoadRun(vram,APP.dat2d,WE_TEX_BASE,1);
   weTexLoad(vram,APP.texFiles.get(c.kit),WE_TEX_BASE,new Set([...WE_KIT_REC[c.alt],4+c.gkKit]));
   if(c.num) weComposeNumber(vram,c.look.cell??10,c.num);   // 背番号（キーパーの体は欄 10）
-  const a=weAtlas(vram,used); APP.gl.setAtlas(a.px); APP.slot=a.slot; APP.atlasKey=key;
+  let kit=null; if(APP.userKit){ kit=APP.userKit.slice(); if(c.num&&c.look.cell!=null) weComposeNumberRGBA(kit,c.look.cell,c.num) }
+  const a=weAtlas(vram,used,kit); APP.gl.setAtlas(a.px); APP.slot=a.slot; APP.atlasKey=key;
 }
 // 動きの番号が変わったらコマの数を数え直す
 function setAnim(){
@@ -96,13 +97,14 @@ async function refreshPhoto(seq,resetView){
   for(const p of sc.players){ const parts=p.parts.map(pt=>({...pt,t:[pt.t[0]+p.pos[0],pt.t[1]+p.pos[1],pt.t[2]+p.pos[2]]}));
     all.push({p,parts,tm:new Map(parts.map(q=>[q.off,tmdAt(q.off)]))}) }
   const used=[...new Set(all.flatMap(a=>weTris(a.tm,a.parts,null,light,a.p.look).used))];
-  const key="photo|"+kit+"|"+alt+"|"+gkKit+"|"+sc.players.map(p=>p.num).join(",")+"|"+used.join(";");
+  const key="photo|"+kit+"|"+alt+"|"+gkKit+"|"+(APP.userKitId||0)+"|"+sc.players.map(p=>p.num).join(",")+"|"+used.join(";");
   if(key!==APP.atlasKey){
     if(!APP.texFiles.has(kit)){ const f=await readFile(kit); APP.texFiles.set(kit,f) } if(seq!==APP.seq) return;
     const vram=weVramNew(); weTexLoadRun(vram,APP.dat2d,WE_TEX_BASE,0); weTexLoadRun(vram,APP.dat2d,WE_TEX_BASE,1);
     weTexLoad(vram,APP.texFiles.get(kit),WE_TEX_BASE,new Set([...WE_KIT_REC[alt],4+gkKit]));
     for(const p of sc.players) if(p.num) weComposeNumber(vram,p.look.cell??10,p.num);
-    const a=weAtlas(vram,used); APP.gl.setAtlas(a.px); APP.slot=a.slot; APP.atlasKey=key;
+    let own=null; if(APP.userKit){ own=APP.userKit.slice(); for(const p of sc.players) if(p.num&&p.look.cell!=null) weComposeNumberRGBA(own,p.look.cell,p.num) }
+    const a=weAtlas(vram,used,own); APP.gl.setAtlas(a.px); APP.slot=a.slot; APP.atlasKey=key;
   }
   const parts=all.map(a=>weTris(a.tm,a.parts,APP.slot,light,a.p.look).tris), n=parts.reduce((s,t)=>s+t.length,0), tris=new Float32Array(n);
   let o=0; for(const t of parts){ tris.set(t,o); o+=t.length }
@@ -116,6 +118,22 @@ function photoCam(){
   const C=wePhotoCamera(+$("r-cam").value,+$("s-side").value), D=-3088-C.eye[2], dist=D/C.f[2], tgt=C.eye.map((v,i)=>v+C.f[i]*dist);
   const a=C.f[0], b=-C.f[1], c=-C.f[2], yaw=Math.atan2(-a,-c), z1=-Math.hypot(a,c), pitch=Math.atan2(-b,-z1);
   Object.assign(APP.view,{yaw,pitch,dist,target:tgt,fx:603/256,fy:603/120}); draw();
+}
+// ===== 自分のユニフォーム =====
+// 下絵: いまのチーム・着のユニフォームの絵（ページ 576,256 を色の表 486 で）を 256×256 の PNG に。色 0 は透明
+async function kitTemplate(){
+  const c=cur(); if(!APP.texFiles.has(c.kit)) APP.texFiles.set(c.kit,await readFile(c.kit));
+  const vram=weVramNew(); weTexLoad(vram,APP.texFiles.get(c.kit),WE_TEX_BASE,new Set([...WE_KIT_REC[c.alt],4+c.gkKit]));
+  const cv=document.createElement("canvas"); cv.width=cv.height=256; const g=cv.getContext("2d"), im=g.createImageData(256,256);
+  for(let v=0;v<256;v++) for(let u=0;u<256;u++){ const t=weTexel(vram,153,486<<6,u,v), i=(v*256+u)*4; if(t){ im.data[i]=t[0]; im.data[i+1]=t[1]; im.data[i+2]=t[2]; im.data[i+3]=255 } }
+  g.putImageData(im,0,0); cv.toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=`we2001_kit_${c.kit.slice(8,-4)}_${c.alt+1}.png`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000) },"image/png");
+}
+// 自分の絵を読む（256×256。大きさが違えば 256×256 に縮める）
+function openKit(file){
+  const img=new Image(); img.onload=()=>{ const cv=document.createElement("canvas"); cv.width=cv.height=256; const g=cv.getContext("2d"); g.imageSmoothingEnabled=false; g.drawImage(img,0,0,256,256);
+    APP.userKit=new Uint8Array(g.getImageData(0,0,256,256).data); APP.userKitId=(APP.userKitId||0)+1; URL.revokeObjectURL(img.src);
+    $("n-kit").textContent=file.name; $("b-kit0").hidden=false; status(""); refresh(false) };
+  img.onerror=()=>status("絵として読めなかった: "+file.name,true); img.src=URL.createObjectURL(file);
 }
 function setMode(){
   const ph=$("s-mode").value==="photo"; document.body.classList.toggle("photo",ph); play(false);
@@ -150,7 +168,9 @@ function init(){
   $("f-disc").onchange=e=>{ const f=e.target.files[0]; if(f) openDisc(f) };
   $("s-team").onchange=()=>{ const keep=$("s-player").value; listPlayers(); if(keep!==""&&[...$("s-player").options].some(o=>o.value===keep)) $("s-player").value=keep; pickPlayer(); refresh(false) };
   $("s-player").onchange=()=>{ pickPlayer(); refresh(false) };
-  $("s-mode").onchange=setMode; $("s-side").onchange=()=>refresh(true); $("r-cam").oninput=photoCam;
+  $("s-mode").onchange=setMode;
+  $("b-kittpl").onclick=kitTemplate; $("f-kit").onchange=e=>{ const f=e.target.files[0]; if(f) openKit(f); e.target.value="" };
+  $("b-kit0").onclick=()=>{ APP.userKit=null; APP.userKitId=(APP.userKitId||0)+1; $("n-kit").textContent="ゲームの絵"; $("b-kit0").hidden=true; refresh(false) }; $("s-side").onchange=()=>refresh(true); $("r-cam").oninput=photoCam;
   $("b-pose").onclick=()=>{ APP.photoPoses=Array.from({length:11},(_,i)=>wePhotoRandomPose(i,n=>Math.floor(Math.random()*n))); refresh(false) };
   $("b-pose0").onclick=()=>{ APP.photoPoses=null; refresh(false) };
   for(const id of ["s-alt","s-gk","s-set","s-hair","s-face","s-skin","s-hcol","s-s112","s-boots","n-num"]) $(id).onchange=()=>{ if(!["s-alt","s-gk","s-set"].includes(id)) $("s-player").value=""; refresh(false) };

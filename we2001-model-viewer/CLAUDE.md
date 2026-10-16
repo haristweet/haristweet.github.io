@@ -44,6 +44,16 @@ node browser.mjs     # Playwright。何も無し → ディスク（CHD）→ �
 - 【推測】スタメン＝選手の表の 0〜10 番目。体は GK＝組 4、ほか＝組 6。選手は回さず −Z（カメラ）を向く
 - `node photo.mjs out/x.png チーム 着 GK カメラ 側` でゲームと同じ投影の絵（shots.sh でも作る）
 
+## 自分のユニフォーム（v0.4.0）
+
+- ユニフォームの絵（ページ 576,256・色の表 486）の並び（`node uvzoom.mjs out/uvzoom.png TEX_16 6` で絵になる）:
+  胴の前 u 0〜44・v 8〜30（前の真ん中 u≈22、114・112 は脇）、えり v 0〜8、背中＝背番号の欄（元はシャツの無地 u 44〜64・v 6〜30）、
+  パンツ v 30〜48（右脚 u 55〜64＋0〜22・脇 u≈6、左脚 u 22〜55・脇 u≈40）、ソックス u 0〜32・v 48〜66、袖 v 66〜80（肩→袖口。右腕 u 0〜32・外側の真ん中 u≈10、左腕 u 32〜64・u≈50）、
+  数字の字 u 64＋6d・v 68（6×12）
+- 2026 年のホーム: ユーザーの 2010 年版の絵（jwe2010 の kit2026_v16、1024×512）から scratchpad の kit/make2001.py で組み立てる（ロゴ入り。公開しない）。
+  パンツは 2010 の絵と回る向きが反対（ロゴが前に来る向き。絵で確認）
+- `node kitexport.mjs out/kit.png TEX_16` で下絵、`KIT=絵.png node pose.mjs …`・`KIT=絵.png node photo.mjs …` で着せた絵
+
 ## データの置き場所（リポジトリに入れない。`src/.gitignore` で disc/・out/・*.chd・*.bin・*.png を外す）
 
 - イメージは Google ドライブの CHD（`src/disc/we2001.chd`）。`node chd2bin.mjs disc/we2001.chd disc/we2001.bin 104051` でデータのトラックだけ書き出す

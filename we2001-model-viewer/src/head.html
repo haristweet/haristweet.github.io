@@ -33,6 +33,7 @@ h1{font-size:20px;margin:0 0 4px}
 .ctrl label{white-space:nowrap}
 .ctrl select,.ctrl button,.ctrl input[type=number]{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
 .ctrl button{cursor:pointer}
+.btn2 .fake{display:inline-block;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:4px 8px;cursor:pointer}
 .ctrl .grp{white-space:nowrap}
 #info{color:var(--mut);font-size:13px;margin:6px 0 0}
 .ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
@@ -78,6 +79,12 @@ details.more{margin:0 0 6px;color:var(--fg);font-size:14px}details.more[hidden]{
   <span class="grp">コマ <input id="m-frame" type="range" min="0" max="0" value="0" style="width:12em;vertical-align:middle" aria-label="コマ"> <span id="m-fn">-</span></span>
   <button id="m-play">▶ 再生</button>
 </div>
+<details class="more" id="ownkit" hidden><summary>自分のユニフォーム</summary><div class="ctrl">
+  <button id="b-kittpl" title="いまのチーム・着のユニフォームの絵を 256×256 の PNG で保存。これに描いて読み込む">下絵を書き出す</button>
+  <label class="btn2"><input type="file" id="f-kit" accept="image/*" style="display:none"><span class="fake">絵を読み込む</span></label>
+  <span id="n-kit" style="color:var(--mut);font-size:13px">ゲームの絵</span> <button id="b-kit0" hidden>ゲームの絵に戻す</button>
+  <small style="flex-basis:100%;color:var(--mut)">フィールドの選手の服（キーパーの服は変わりません）。絵は下絵と同じ並びの 256×256 で、背番号も絵の中の小さな数字（左寄りの 0〜9 の並び）とシャツの無地の所から、ゲームと同じ決まりで組み立てます。絵はこのブラウザの中だけで使い、どこにも送りません</small>
+</div></details>
 <div class="ctrl" id="savebar" hidden><button id="b-png">PNG で保存</button>
   <label title="PNG を透明な背景で"><input type="checkbox" id="c-clear"> 背景なし</label></div>
 <div id="info"></div>

@@ -31,6 +31,13 @@ for(const [name,vp] of [["pc",{width:1100,height:900}],["phone",{width:390,heigh
   await p.waitForTimeout(200); await p.locator("#viewer").screenshot({path:`out/b_${name}_4.png`});
   await p.check("#c-clear"); const [dl]=await Promise.all([p.waitForEvent("download"),p.click("#b-png")]); const f=`out/b_${name}_save.png`; await dl.saveAs(f);
   const hd=fs.readFileSync(f); console.log(name,"保存:",dl.suggestedFilename(),hd.readUInt32BE(16)+"×"+hd.readUInt32BE(20),"透過",hd[25]===6);
+  // 自分のユニフォーム: 仙台の下絵を書き出す → 絵を読み込む（環境変数 KITFILE があればそれ、無ければ書き出した下絵）→ 背中から
+  await p.selectOption("#s-team","16"); await p.selectOption("#s-player","2"); await p.click("#ownkit summary");
+  { const [d]=await Promise.all([p.waitForEvent("download"),p.click("#b-kittpl")]); const f=`out/b_${name}_kittpl.png`; await d.saveAs(f); console.log(name,"下絵:",d.suggestedFilename(),fs.statSync(f).size,"B");
+    await p.setInputFiles("#f-kit",process.env.KITFILE||f); await p.waitForFunction(()=>!document.getElementById("b-kit0").hidden,null,{timeout:30000}); await p.waitForTimeout(300);
+    console.log(name,"自分の絵:",await p.textContent("#n-kit")); await p.locator("#viewer").screenshot({path:`out/b_${name}_kit1.png`});
+    const bb=await p.locator("#cv").boundingBox(); await p.mouse.move(bb.x+20,bb.y+bb.height/2); await p.mouse.down(); await p.mouse.move(bb.x+20+314,bb.y+bb.height/2,{steps:6}); await p.mouse.up(); await p.waitForTimeout(200);
+    await p.locator("#viewer").screenshot({path:`out/b_${name}_kit2.png`}); await p.dblclick("#cv") }
   // 集合写真: 仙台（1P・正面）→ 山形（2P・最初の斜め）→ 並べ直す → PNG
   await p.selectOption("#s-mode","photo"); await p.selectOption("#s-team","16"); await p.selectOption("#s-alt",{value:"0"}); await p.selectOption("#s-gk",{value:"0"});
   await p.waitForFunction(()=>/集合写真: ベガルタ/.test(document.getElementById("info").textContent),null,{timeout:60000}); await p.waitForTimeout(300);
@@ -40,6 +47,8 @@ for(const [name,vp] of [["pc",{width:1100,height:900}],["phone",{width:390,heigh
   await p.locator("#viewer").screenshot({path:`out/b_${name}_photo2.png`});
   await p.click("#b-pose"); await p.waitForTimeout(300); await p.locator("#viewer").screenshot({path:`out/b_${name}_photo3.png`});
   { const [d]=await Promise.all([p.waitForEvent("download"),p.click("#b-png")]); console.log(name,"写真の保存:",d.suggestedFilename()) }
+  await p.selectOption("#s-team","16"); await p.selectOption("#s-side",{value:"0"}); await p.locator("#r-cam").fill("100"); await p.waitForTimeout(400); await p.locator("#viewer").screenshot({path:`out/b_${name}_photo4.png`});
+  await p.click("#b-kit0"); await p.waitForTimeout(300); console.log(name,"ゲームの絵に戻す:",await p.textContent("#n-kit"));
   await p.selectOption("#s-mode","one"); await p.waitForTimeout(300); console.log(name,"1人に戻す:",JSON.stringify(await p.textContent("#info")).slice(0,80));
   console.log(name,"エラー",errs); await p.close();
 }

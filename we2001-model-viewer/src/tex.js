@@ -70,3 +70,15 @@ function weComposeNumber(vram,cell,num){
       for(let x=0;x<4;x++) vram[(ty+y)*1024+tx+x]=dst[x*2]|dst[x*2+1]<<8 } };
   if(num<10) glyph(num,3); else { glyph(Math.floor(num/10),1); glyph(num%10,5) }
 }
+// 自分のユニフォームの絵（256×256 の RGBA。ページ 576,256 を色の表 486 で絵にしたものと同じ並び）に、背番号を組み立てる。
+// weComposeNumber と同じ決まりを、16 ビット単位ではなく点の単位で行う（x は 2 倍。透明の点＝PS1 の色 0 は重ねない）
+function weComposeNumberRGBA(img,cell,num){
+  if(num===100) num=0; else if(num>100) num=14;
+  const cu=cell===10?100:(cell%5)*20, cv=cell===10?104:80+Math.floor(cell/5)*24, bu=cell===10?108:44;
+  const at=(u,v)=>(v*256+u)*4;
+  for(let y=0;y<24;y++) for(let x=0;x<20;x++) img.copyWithin(at(cu+x,cv+y),at(bu+x,6+y),at(bu+x,6+y)+4);
+  const glyph=(d,dx)=>{ for(let y=0;y<12;y++) for(let x=0;x<6;x++){ const s=at(64+6*d+x,68+y); if(img[s+3]) img.copyWithin(at(cu+dx*2+1+x,cv+7+y),s,s+4) } };
+  if(num<10) glyph(num,3); else { glyph(Math.floor(num/10),1); glyph(num%10,5) }
+}
+// 自分のユニフォームの絵から 1 点取る（色 0 の代わりに透明）
+function weKitTexel(img,u,v){ const i=((v&255)*256+(u&255))*4; return img[i+3]?[img[i],img[i+1],img[i+2]]:null }
