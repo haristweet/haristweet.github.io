@@ -25,6 +25,10 @@ for(const [w,h,tag] of [[1100,900,"pc"],[390,844,"phone"]]){
     // 技を出す: 写し 16（ジャッキー同士）の 1P で技 672 を選び、コマを動かす → 再生 → 写しに戻す
     await p.click("#states button:nth-child(16)"); await p.waitForFunction(()=>/JAC/.test(document.getElementById("info").textContent),null,{timeout:60000});
     console.log(tag,"技の欄:",await p.isVisible("#motview"),"写しの技",await p.inputValue("#m-num"));
+    // 技の名前（v0.17.0）: 写しのキャラ（ジャッキー）の見出しが先頭、名前で選ぶと番号が変わる
+    console.log(tag,"名前の一覧:",await p.isVisible("#m-name"),await p.evaluate(()=>[...document.querySelectorAll("#m-name optgroup")].map(g=>g.label+" "+g.children.length).join("・")));
+    { const v=await p.evaluate(()=>{ const o=[...document.querySelectorAll("#m-name optgroup")][0].querySelector("option"); return o.value });
+      await p.selectOption("#m-name",v); await p.waitForFunction(v=>document.getElementById("m-num").value===v,v,{timeout:60000}); console.log(tag,"名前で選ぶ:",v,await p.textContent("#m-fn")) }
     await p.fill("#m-num","672"); await p.dispatchEvent("#m-num","change"); await p.waitForFunction(()=>/\/ 68/.test(document.getElementById("m-fn").textContent),null,{timeout:60000});
     await p.locator("#m-frame").fill("34"); await p.waitForFunction(()=>/^34 /.test(document.getElementById("m-fn").textContent),null,{timeout:20000});
     await p.waitForTimeout(300); await p.locator("#viewer").screenshot({path:"out/b_pc_m1.png"}); await p.locator("#motview").screenshot({path:"out/b_pc_m0.png"});

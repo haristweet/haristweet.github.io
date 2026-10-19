@@ -1,5 +1,5 @@
 // 画面の組み立て
-const VERSION="0.16.0";
+const VERSION="0.17.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -165,7 +165,16 @@ function listStates(){
 }
 // 技を出す（motion.js）。エンジンは写しごとに最初に触ったときに作る（写しの主メモリを写して使う）
 function motG7Info(mem,pl){ const d=new DataView(mem.buffer,mem.byteOffset,mem.byteLength), W=MOT_WORK, g7=d.getUint32(W+(pl?0x500808:0x500804),true); return {motion:d.getUint16(W+g7+0x1a8,true),frame:d.getUint16(W+g7+0x1aa,true)} }
-function motShowUI(st){ $("motview").hidden=false; $("xview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
+// 技の名前（vf2moves.js。攻略本の技表の名前と、入力を与えてゲームの処理で出させた番号）: 写しのキャラの技を先頭に、ほかのキャラの技もキャラごとの見出しで並べる（FV と同じ）
+function motNames(st,pl){ const sel=$("m-name"); try{
+    const d=new DataView(st.mem.buffer,st.mem.byteOffset,st.mem.byteLength), g7=d.getUint32(MOT_WORK+(pl?0x500808:0x500804),true), cid=st.mem[MOT_WORK+g7+0x1b1];
+    const esc=t=>t.replace(/[&<>"]/g,c=>"&#"+c.charCodeAt(0)+";"), keys=[cid,...Object.keys(VF2_MOVES).map(Number).filter(k=>k!==cid)].filter(k=>VF2_MOVES[k]);
+    const own=VF2_MOVES[cid]||[], all=keys.reduce((a,k)=>a+VF2_MOVES[k].length,0);
+    sel.innerHTML=`<option value="">技の名前から選ぶ（${own.length}／全員 ${all}）</option>`+keys.map(k=>`<optgroup label="${esc(VF2_WHO[k]||String(k))}${k===cid?"（このキャラ）":""}">`+VF2_MOVES[k].map(([n,c,m])=>`<option value="${m}">${esc(n)}　${esc(c)}</option>`).join("")+"</optgroup>").join("");
+    sel.hidden=!all; motNameSync() }catch(e){ console.warn(e); sel.hidden=true } }
+// 番号の欄と名前の一覧をそろえる（一覧に無い番号なら先頭の「技の名前から選ぶ」。同じ番号がほかのキャラにもあれば、先に出てくる＝写しのキャラの方）
+function motNameSync(){ const sel=$("m-name"); if(sel.hidden) return; const v=String(+$("m-num").value); sel.value=[...sel.options].some(o=>o.value===v)?v:"" }
+function motShowUI(st){ $("motview").hidden=false; $("xview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; motNames(st,pl); $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
 async function motEnsure(){
   const st=APP.states[APP.cur]; if(!st||!APP.scene) return null;
   if(APP.mot&&APP.mot.st===st) return APP.mot;
@@ -185,7 +194,7 @@ async function motSet(m,f,smooth=false){
     if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.lenA=len; M.eng.start(pl,m,smooth); status("") }
     // 2P を FV のキャラにしているときは、長いほうの技に合わせる（先に終わったほうは最後のコマのまま）
     M.len=x?Math.max(M.lenA,XV.m?XV.len:0):M.lenA; $("m-frame").max=M.len;
-    M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len;
+    M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len; motNameSync();
     const S=APP.scene, U=M.eng.frame(pl,Math.min(M.f,M.lenA)); S.sc=motApply(S.sc0,M.att[pl],U,M.eng.parts(pl)); if(x) xCompose(M,U,M.f); rebuild();
   }catch(e){ console.error(e); motStop(); status("技を計算できなかった: "+e.message,true) }
 }
@@ -359,6 +368,7 @@ function init(){
   $("m-num").onchange=()=>{ motStop(); motSet(+$("m-num").value,1) };
   $("m-prev").onclick=()=>{ motStop(); motSet(Math.max(1,+$("m-num").value-1),1) }; $("m-next").onclick=()=>{ motStop(); motSet(Math.min(1359,+$("m-num").value+1),1) };
   $("m-frame").oninput=()=>{ motStop(); motSet(APP.mot&&APP.mot.m?APP.mot.m:+$("m-num").value,+$("m-frame").value) };
+  $("m-name").onchange=()=>{ const v=+$("m-name").value; if(!v) return; motStop(); motSet(v,1) };
   $("m-play").onclick=()=>motPlay(); $("m-rand").onclick=motRandom; $("m-back").onclick=motBack;
   $("m-pl").onchange=()=>{ motBack() };
   $("b-png").onclick=savePng; hookBackground();

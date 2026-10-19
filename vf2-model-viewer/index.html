@@ -91,6 +91,7 @@ details{margin:16px 0 0;color:var(--mut);font-size:13px}
 <div class="discview" id="motview" hidden><b>技を出す</b>
   <select id="m-pl" aria-label="どちらのキャラ"><option value="0">1P</option><option value="1">2P</option></select>
   <span class="parts">技 <button id="m-prev" aria-label="前の技">◀</button> <input id="m-num" type="number" min="1" max="1359" style="width:5.5em" aria-label="技の番号"> <button id="m-next" aria-label="次の技">▶</button></span>
+  <select id="m-name" aria-label="技の名前" hidden></select>
   <span class="parts">コマ <button id="m-fprev" aria-label="前のコマ" title="前のコマ（←）">◀</button> <input id="m-frame" type="range" min="1" max="1" value="1" style="width:12em;vertical-align:middle" aria-label="コマ"> <button id="m-fnext" aria-label="次のコマ" title="次のコマ（→）">▶</button> <span id="m-fn">-</span></span>
   <button id="m-play">▶ 再生</button> <button id="m-rand">🎲 ランダムに連続</button> <button id="m-rec" title="いまの技を1回分、動画で保存">🎬 動画</button><span id="rec-menu" hidden> <button data-fmt="video">MP4／WebM</button> <button data-fmt="apng">アニメーション PNG</button></span> <button id="m-back">写しに戻す</button>
   <small>アーケードのプログラムの「コマのデータを読む」「関節の行列を作る」処理をそのまま動かして、選んだ技のコマの姿勢を計算します。技には名前が無いので番号で選びます（写しのキャラの技でない番号だと崩れることがあります）。手の形は技の台本どおりに変わります（髪の揺れはその写しのまま）。影は体を光の向きで床へ投げたもので、ゲームの影そのものではありません。カメラは写しのまま。コマは ◀ ▶ か ← → キーで1つずつ、スペースで再生・止める。「🎬 動画」は、いまの技を頭から最後まで MP4／WebM（1秒60コマ）かアニメーション PNG（30コマ/秒。「背景なし」なら透過）で保存します。「ランダムに連続」は、技が終わるたびに番号をランダムに選び、ゲームの「前の技からのつなぎ」でつないで出し続けます（そのキャラの技でない番号も出るので、崩れたら止めてください）</small></div>
@@ -3156,6 +3157,20 @@ function vglNew(canvas){
 }
 return {discOpen,sceneColors,sceneLight,sceneAssignCommon,sceneMesh,motEngine,motAttach,motApply,motPickScene,FV_MOVES,cmdStrings,cmdPretty,fvArcPages,fvArcMips,vglNew};
 })();
+// 技の名前（『バーチャファイター2 マニアックス』の技表から。入力を与えてゲームの処理で出させた番号。vf2movesgen.mjs が作る）
+// キャラの番号（構造体の +0x1b1）→ [技名, 入力（1P の右向き）, 技の番号]。番号がただ 1 つに決まった技だけ（180 技。合っているかを絵で確かめたのは一部）
+const VF2_MOVES={
+0:[["冲捶","P",17],["崩捶","↓P",59],["昇腿","K",738],["易前腿","↓K",58],["裡門頂肘","→→P",577],["躍歩頂肘","→→→P",578],["猛虎硬爬山","↓長→P",580],["独歩頂膝","K＋G後G放す",41],["右端脚","→→K",11],["連環腿","→→KK",12],["鉄山靠","←→→P＋K",108],["八門開打","PP",20],["環捶腿","PK",753]],
+1:[["ストレート・リード","P",271],["スクアト・ストレート","↓P",59],["ヴァーティカル・フック・キック","K",277],["ローキック","↓長K",556],["サイドフック・ターン","←←P",534],["スピニングキック・ターン","←←K",535],["スピニングバックナックル","←P",758],["スピニング・スラントバックナックル","←P↙P",1074],["スピニングアームキック","←PK",768],["スピニング・ロースピンキック","←P↓K",564],["エルボースピンキック","→PK",688],["ニーキック","→K",139],["トーキック","↓K",349],["サイドフックキック","←K",1265],["ダッシュハンマーキック","→→K",351],["ダブルスピニングキック","KK",250],["ビートナックル","P＋K",549],["ライトニングキック","↓P＋K",521],["ライトニングキック(2発)","↓P＋KK",522],["ライトニングキック(3発)","↓P＋KKK",523],["パンチスピンキック","PK",502],["パンチハイキック","→長PK",753],["パンチ・ロースピンキック","P↓K",503],["ジャブ、ストレート","PP",275],["ダブルパンチスナップキック","PPK",706],["フラッシュピストンパンチ","PPP",276],["ジャブストレートバックナックル","PP←P",760]],
+2:[["ストレート・リード","P",505],["スクアト・ストレート","↓P",59],["ヴァーティカル・フック・キック","K",513],["ローキック","↓K",350],["バックナックル・ターン","←←P",355],["バックスピンキック・ターン","←←K",356],["ライジングエルボー","→P",724],["ダブルスピンキック","↓長←KK",529],["ジャックナイフキックサイド","↓KK",802],["ダブルステップニー","→K↘K",576],["ダッシュニー","→→K",733],["パンチハイキック","PK",752],["ハイキック・ストレート","KP",514],["パンチサイドキック","P↓K",754],["ジャブ、ストレート","PP",509],["ダブルパンチスナップキック","PPK",706],["フラッシュピストンパンチ(A)","PPP",510],["コンボ・サマーソルト","PPP↘K",575]],
+3:[["弾拳","P",330],["地擦り弾","↓P",59],["突き返し蹴り","K",738],["擦り蹴り","↓K",1188],["中蹴り","↘K",1100],["落刃返り","←←P",776],["裏旋蹴り","←←K",339],["肘打ち","→P",149],["浮身膝蹴り","↓長→K",337],["地走り","←↙↓K",344],["流影脚","→→K",685],["雷龍飛翔脚","→→P＋K＋G",315],["落閃刃","↓長→P＋K",329],["裏閃刃","←→P＋K",5],["裏閃刃返し","←→P＋KP＋K",6],["風閃刃","↓P＋K",38],["風閃刃返し","↓P＋KP＋K",39],["葉重ね","PK",753],["烈掌","PP",332],["烈掌脚","PPK",706],["散弾撃","PPP",333],["散弾裏蹴り","PPPK",707],["前転動作","←↙↓↘→",203],["後転動作","→↘↓↙←",103],["回転地擦り脚","←↙↓↘→K",205],["後転地擦り脚","→↘↓↙←K",113]],
+4:[["冲捶","P",693],["掃冲拳","↓P",59],["括面腿","K",738],["旋栽腿","↓K",58],["旋中腿","↘K",1099],["肘撃","→P",155],["斜上掌","↘長P",698],["側中脚","→K",136],["地掃腿","→↓K",801],["連掌","PP",696],["双拳旋風腿","PPK",692],["雷撃掌","PPP",701],["連環転身掃脚","PPP↓K",690],["連掌","↘PP",702],["連掌背転脚","↙PPP↗K",1103]],
+5:[["ストレートナックル","P",915],["ローナックル","↓P",59],["アッパーキック","K",925],["バーティカルキック","↓K",150],["エルボーバット","→P",158],["エルボーハンマー","→P←P",247],["ダッシュエルボー","→→P",282],["エルボーアッパー","→→PP",283],["エルボースタンプ","←→P",289],["トーキックハンマー","↓KP",986],["ニーアタック","→K",141],["ケンカキック","→→K",284],["ヒールアタック","→↓K",791],["ヘルスタッブ","↓P＋K",290],["ヘッドアタック","→P＋K",286],["ヒップアタック","P＋K＋G",561],["ナックルキック","PK",753],["ダブルナックル","PP",917]],
+6:[["冲拳","P",400],["掃冲拳","↓P",59],["高蹴腿","K",191],["旋栽腿","↓K",1068],["旋中腿","↘K",735],["裏圏捶","←←P",190],["側中脚","→K",993],["高端脚","→→K",542],["燕陣旋風脚","←K＋G",730],["連掌","PP",402],["双拳旋風腿","PPK",691],["雷撃掌","PPP",403],["連環転身脚","PPPK",405],["連環転身掃脚","PPP↓K",690]],
+7:[["ストレートハンマー","P",956],["ローハンマー","↓P",59],["ハイキック","K",967],["ロースマッシュ","↓K",1189],["レベルバックチョップ","←P",936],["アックスラリアート","→→P",436],["ショルダーアタック","←→P",686],["エルボーバット","←P＋K",938],["ニーブラスト","→K",734],["ロー・ドロップキック","→↓K",1228],["ネックカットキック","K＋G",729],["ハンマーキック","PK",753],["ジャブ、ストレート","PP",958],["エルボースマッシュ","PP→P",1210]],
+8:[["挑撃","P",655],["仰手挑撃","→長P",656],["伏挑撃","↓P",661],["後蹴腿","K",665],["仰穿腿","↓K",677],["挑撃背転","←←P",120],["阿仙廻脚","←←K",121],["横掃撃","←P",659],["連截顎手","→P",630],["仰身踏腿","←K",610],["宙舞双転脚","→→K",416],["転身双冲掌","P＋K",620],["撃転旋腿","PK",653],["連撃","PP",657],["叉手連環撃","PPP",658],["座盤跌","↓↓",589]],
+10:[["統捶","P",849],["下統捶","↓P",819],["穿心腿","K",840],["軋腿","↓K",885],["弾腿","↘K",841],["穿掌背転","←←P",861],["後蹴腿","←←K",862],["連掃勾手","↘長PP",880],["盤肘","→P",872],["泰山双狗手","←P",881],["箭疾歩","→→P",877],["狗首提膝","→K",873],["前掃腿","↓KK",886],["穿弓腿","↓↓K",874],["後掃腿","↓K＋G",900],["転身撩陰脚","→→K＋G",815],["磨盤手","G→P",891],["連捶腿","PK",817],["勾手連捶","PP",888]]};
+const VF2_WHO={0:"アキラ",1:"ジャッキー",2:"サラ",3:"影丸",4:"ラウ",5:"ジェフリー",6:"パイ",7:"ウルフ",8:"舜帝",10:"リオン"};
 // VF2 と FV を 1 つの場面に（crossshot.mjs と同じ置き方）: VF2 の写しの 2P の代わりに、FV の写しのキャラを置いて、2 人とも技を出す。
 // FV の処理は FVX（assemble.py が FV ビューアのソースを包んだもの）。姿勢はそれぞれのゲームのプログラムで計算し、色・テクスチャ・光の強さもそれぞれのゲームのもの。
 // 置き方: FV の世界を y 軸まわりに回して動かし、FV のキャラの腰を VF2 の 2P の腰の所へ、FV で相手を向いていた向きを VF2 の 2P が 1P を向く向きに合わせる
@@ -3269,7 +3284,7 @@ function xInit(){
   $("x-light").onchange=()=>rebuild();
 }
 // 画面の組み立て
-const VERSION="0.16.0";
+const VERSION="0.17.0";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
@@ -3435,7 +3450,16 @@ function listStates(){
 }
 // 技を出す（motion.js）。エンジンは写しごとに最初に触ったときに作る（写しの主メモリを写して使う）
 function motG7Info(mem,pl){ const d=new DataView(mem.buffer,mem.byteOffset,mem.byteLength), W=MOT_WORK, g7=d.getUint32(W+(pl?0x500808:0x500804),true); return {motion:d.getUint16(W+g7+0x1a8,true),frame:d.getUint16(W+g7+0x1aa,true)} }
-function motShowUI(st){ $("motview").hidden=false; $("xview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
+// 技の名前（vf2moves.js。攻略本の技表の名前と、入力を与えてゲームの処理で出させた番号）: 写しのキャラの技を先頭に、ほかのキャラの技もキャラごとの見出しで並べる（FV と同じ）
+function motNames(st,pl){ const sel=$("m-name"); try{
+    const d=new DataView(st.mem.buffer,st.mem.byteOffset,st.mem.byteLength), g7=d.getUint32(MOT_WORK+(pl?0x500808:0x500804),true), cid=st.mem[MOT_WORK+g7+0x1b1];
+    const esc=t=>t.replace(/[&<>"]/g,c=>"&#"+c.charCodeAt(0)+";"), keys=[cid,...Object.keys(VF2_MOVES).map(Number).filter(k=>k!==cid)].filter(k=>VF2_MOVES[k]);
+    const own=VF2_MOVES[cid]||[], all=keys.reduce((a,k)=>a+VF2_MOVES[k].length,0);
+    sel.innerHTML=`<option value="">技の名前から選ぶ（${own.length}／全員 ${all}）</option>`+keys.map(k=>`<optgroup label="${esc(VF2_WHO[k]||String(k))}${k===cid?"（このキャラ）":""}">`+VF2_MOVES[k].map(([n,c,m])=>`<option value="${m}">${esc(n)}　${esc(c)}</option>`).join("")+"</optgroup>").join("");
+    sel.hidden=!all; motNameSync() }catch(e){ console.warn(e); sel.hidden=true } }
+// 番号の欄と名前の一覧をそろえる（一覧に無い番号なら先頭の「技の名前から選ぶ」。同じ番号がほかのキャラにもあれば、先に出てくる＝写しのキャラの方）
+function motNameSync(){ const sel=$("m-name"); if(sel.hidden) return; const v=String(+$("m-num").value); sel.value=[...sel.options].some(o=>o.value===v)?v:"" }
+function motShowUI(st){ $("motview").hidden=false; $("xview").hidden=false; const pl=+$("m-pl").value; $("m-num").value=motG7Info(st.mem,pl).motion; motNames(st,pl); $("m-fn").textContent="写しのまま"; $("m-play").textContent="▶ 再生" }
 async function motEnsure(){
   const st=APP.states[APP.cur]; if(!st||!APP.scene) return null;
   if(APP.mot&&APP.mot.st===st) return APP.mot;
@@ -3455,7 +3479,7 @@ async function motSet(m,f,smooth=false){
     if(m!==M.m){ const len=M.eng.motionLength(m); if(!len){ status("技 "+m+" は表に無い",true); return } M.m=m; M.lenA=len; M.eng.start(pl,m,smooth); status("") }
     // 2P を FV のキャラにしているときは、長いほうの技に合わせる（先に終わったほうは最後のコマのまま）
     M.len=x?Math.max(M.lenA,XV.m?XV.len:0):M.lenA; $("m-frame").max=M.len;
-    M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len;
+    M.f=Math.max(1,Math.min(M.len,f)); $("m-frame").value=M.f; $("m-num").value=M.m; $("m-fn").textContent=M.f+" / "+M.len; motNameSync();
     const S=APP.scene, U=M.eng.frame(pl,Math.min(M.f,M.lenA)); S.sc=motApply(S.sc0,M.att[pl],U,M.eng.parts(pl)); if(x) xCompose(M,U,M.f); rebuild();
   }catch(e){ console.error(e); motStop(); status("技を計算できなかった: "+e.message,true) }
 }
@@ -3629,6 +3653,7 @@ function init(){
   $("m-num").onchange=()=>{ motStop(); motSet(+$("m-num").value,1) };
   $("m-prev").onclick=()=>{ motStop(); motSet(Math.max(1,+$("m-num").value-1),1) }; $("m-next").onclick=()=>{ motStop(); motSet(Math.min(1359,+$("m-num").value+1),1) };
   $("m-frame").oninput=()=>{ motStop(); motSet(APP.mot&&APP.mot.m?APP.mot.m:+$("m-num").value,+$("m-frame").value) };
+  $("m-name").onchange=()=>{ const v=+$("m-name").value; if(!v) return; motStop(); motSet(v,1) };
   $("m-play").onclick=()=>motPlay(); $("m-rand").onclick=motRandom; $("m-back").onclick=motBack;
   $("m-pl").onchange=()=>{ motBack() };
   $("b-png").onclick=savePng; hookBackground();

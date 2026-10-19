@@ -5,6 +5,11 @@ for(const f of ["zstd.js","p2s.js","cricmp.js","obj.js","tex.js","scene.js","bui
 const g=n=>vm.runInContext(n,ctx);
 let ok=0; const t=async(name,fn)=>{ await fn(); ok++; console.log("  ok",name) };
 // 偽のデータでの試験（データが無くても回る）
+await t("技の名前の表（vf2moves.js）: 10 人・150 技以上・番号は 1〜1359・キャラの中で番号が重ならない",()=>{
+  vm.runInContext(fs.readFileSync("vf2moves.js","utf8").replace(/^const /gm,"var "),ctx); const M=g("VF2_MOVES"), W=g("VF2_WHO");
+  assert.strictEqual(Object.keys(M).length,10); let n=0;
+  for(const [k,l] of Object.entries(M)){ assert.ok(W[k],k); const s=new Set(); for(const [name,cmd,m] of l){ assert.ok(name&&cmd); assert.ok(m>=1&&m<=1359,m); assert.ok(!s.has(m),k+" "+m); s.add(m); n++ } }
+  assert.ok(n>=150,n) });
 await t("CRICMP: 旗と写しと繰り返し",()=>{
   // 手で作った 1 組: 旗 0x0001 → 1項目目はそのまま 2バイト、2項目目は w=0x0000 → 直前を 3 回
   const body=[0x00,0x00,0x00,0x00, 0x00,0x01, 0x41,0x42, 0x00,0x00, 0x00,0x02];

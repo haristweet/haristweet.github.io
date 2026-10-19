@@ -1,5 +1,5 @@
 # ソースを決まった順に連結して ../index.html を作る（1枚のページ）
-order=['zstd.js','p2s.js','vdisc.js','cricmp.js','obj.js','tex.js','scene.js','m2scr.js','discview.js','build.js','arcade.js','ee.js','motion.js','vgl.js','FVX','cross.js','vapp.js']
+order=['zstd.js','p2s.js','vdisc.js','cricmp.js','obj.js','tex.js','scene.js','m2scr.js','discview.js','build.js','arcade.js','ee.js','motion.js','vgl.js','FVX','vf2moves.js','cross.js','vapp.js']
 # FVX: FV ビューア（../../fv-model-viewer/src）のソースを 1 つの関数の中に包んだもの（VF2 と同じ名前の関数がぶつからないように）。
 # 2P を FV のキャラに入れ替える cross.js が使う。arcade.js・cricmp.js・obj.js・p2s.js は VF2 と同じものなので包まずに共通で使う
 FV='../../fv-model-viewer/src/'
