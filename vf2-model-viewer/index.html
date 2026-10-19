@@ -1827,11 +1827,17 @@ function motEngine(prog, eeMem, mainData){
     r32(A){ A>>>=0; if(isF(A)) return copR(); if(isC(A)) return ee.r32(cr+A-0x900000); return (r8(A)|r8(A+1)<<8|r8(A+2)<<16|r8(A+3)<<24)>>>0 },
     w8(A,v){ A>>>=0; if(A>=0x500000&&A<0x600000) ram[A-0x500000]=v; else if(A>=0x200000&&A<0x240000) ram2[A-0x200000]=v },
     w16(A,v){ this.w8(A,v&255); this.w8(A+1,v>>>8&255) },
-    w32(A,v){ A>>>=0; if(isF(A)) return copW(v>>>0); if(isC(A)) return ee.w32(cr+A-0x900000,v); for(let k=0;k<4;k++) this.w8(A+k,(v>>>(8*k))&255) } };
+    w32(A,v){ A>>>=0; if(isF(A)) return copW(v>>>0); if(isC(A)) return ee.w32(cr+A-0x900000,v);
+      if(A===0x800050){ bandCur={addr:v>>>0,w:[]}; return } if(A>=0x804000&&A<0x804010){ if(bandCur) bandCur.w.push(v>>>0); return }
+      for(let k=0;k<4;k++) this.w8(A+k,(v>>>(8*k))&255) } };
+  // 腹の帯（毎コマ作る部品）: 関節の行列を作る処理（0x16504 の終わり、0x16fd0〜）が、帯の面（ファイルと同じ 40B の並び）を胸と腰に合わせて作り直し、
+  // ジオメトライザの 0x800050（置き場所＝人×0x100）・0x804000〜（データ）へ送る。PS2 ではここが g_pM2epiPolWork＋0x10e640 に入り、命令の列の「4つ目の引数 ffffffff」の部品になる。
+  // 送られた語の 3 つ目から（頭の 2 語＝置き場所と語数）が、その面の並び
+  let bandCur=null;
   const cpu=new I960({readUInt32LE:a=>(prog[a]|prog[a+1]<<8|prog[a+2]<<16|prog[a+3]<<24)>>>0}, mem);
   const g7=pl=>mem.r32(pl?0x500808:0x500804);
   // 途中で止まったら TGP への送りかけと答えの残りを捨てる（残すと次の呼び出しから引数と答えがずれ、何をしても崩れる）。1 回の上限は 2000 万命令（ふつうは 1 コマ数十万）
-  const run=(pl,addrs,m)=>{ try{ for(const a of addrs){ const R=cpu.r; R[1]=R[31]=0x5f8000; R[23]=g7(pl); R[27]=0x880000; R[28]=0x4000; R[16]=m||0; cpu.run(a,2e7) } }catch(e){ cop.cur=null; cop.out.length=0; throw e } };
+  const run=(pl,addrs,m)=>{ try{ for(const a of addrs){ const R=cpu.r; R[1]=R[31]=0x5f8000; R[23]=g7(pl); R[26]=0x800000; R[27]=0x880000; R[28]=0x4000; R[16]=m||0; cpu.run(a,2e7) } }catch(e){ cop.cur=null; cop.out.length=0; throw e } };
   // 関節の行列の置き場（cprMtxStUnitMat: [g7+4] の bit0 が 1 なら [gp−0x7db0]、それ以外は [gp−0x7dac]）。64B×16、12 個（行 x,y,z の像と位置）に直す
   const unitBase=pl=>ee.r32(MOT_GP-((mem.r8(g7(pl)+4)&1)?0x7db0:0x7dac));
   const units=pl=>{ const b=unitBase(pl), F=k=>{ const u=ee.r32(b+k); return new Float32Array(new Uint32Array([u]).buffer)[0] }; return [...Array(16)].map((_,j)=>[0,4,8,16,20,24,32,36,40,48,52,56].map(o=>F(j*64+o))) };
@@ -1849,7 +1855,9 @@ function motEngine(prog, eeMem, mainData){
     frame(pl,f){ const G=g7(pl), m=mem.r16(G+0x1a8);
       if(!cur[pl]||cur[pl].m!==m||f<=cur[pl].f&&cur[pl].f>0){ if(cur[pl]&&cur[pl].m===m) this.start(pl,m); else cur[pl]={m,f:0} }
       for(let k=cur[pl].f+1;k<=f;k++){ mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,k); if(k<mem.r16(G+0x800)) run(pl,[0x1ab74],m) }
-      mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,f); cur[pl].f=f; run(pl,[0x27ce0,0x16504],m); return units(pl) },
+      mem.w16(G+0x1a8,m); mem.w16(G+0x1aa,f); cur[pl].f=f; bandCur=null; run(pl,[0x27ce0,0x16504],m);
+      // 返す関節に、そのコマの腹の帯の面（バイト列）を付ける（motApply が帯の部品の形を差し替える）
+      const U=units(pl); if(bandCur&&bandCur.w.length>2){ const w=bandCur.w.slice(2), b=new Uint8Array(Math.max(0x400,w.length*4)); new DataView(b.buffer).setUint32(0,0,true); w.forEach((x,i)=>new DataView(b.buffer).setUint32(i*4,x,true)); U.band=b } return U },
     // キャラを描く処理（0x1de6c〜 と同じ: 0x19ebc 見える部品・0x18ef8 体・0x61b88・0x62fac）を動かし、描いた部品と行列を返す。
     // V＝カメラ（写しの背景の行列）を TGP の今の行列に入れてから呼ぶ。SetObj（0x7c60）に入った時の番号と、その中で送る行列を組にする
     draw(pl,V,addrs=[0x19ebc,0x18ef8,0x61b88,0x62fac]){
@@ -1920,7 +1928,10 @@ function motAttach1(sc, pl, U, ids, keep=null){
 // 新しい関節 U2 で、写しの命令の列（sc）の pl の部品の行列を置き直した列を返す。ids（engine.parts）があれば手などの部品の番号も差し替える（att.ids＝写しのときの番号）
 function motApply(sc, att, U2, ids){
   const draws=sc.draws.slice();
-  for(const p of att.parts){ const d=draws[p.i], id=ids&&p.body&&ids[p.k]!==undefined&&d.id>=0&&att.ids&&d.id===att.ids[p.k]?ids[p.k]:d.id; draws[p.i]={...d,id,m:motMul(p.mirror?motMul(U2[p.k],p.mirror):motMul(p.rel,U2[p.k]),att.V)} }
+  for(const p of att.parts){ const d=draws[p.i], id=ids&&p.body&&ids[p.k]!==undefined&&d.id>=0&&att.ids&&d.id===att.ids[p.k]?ids[p.k]:d.id;
+    // 腹の帯: そのコマに作り直した面に差し替える（無ければ写しのまま。写しのままだと技の途中で腹と背中に隙間が開いた）
+    const dyn=d.dyn&&U2.band?{...d.dyn,ch:[d.dyn.ch[0],d.dyn.ch[1],d.dyn.ch[2],U2.band]}:d.dyn;
+    draws[p.i]={...d,id,dyn,m:motMul(p.mirror?motMul(U2[p.k],p.mirror):motMul(p.rel,U2[p.k]),att.V)} }
   if(att.shadowP) for(const p of att.parts) if(p.body) draws.push({...draws[p.i],m:motMul(motMul(motMul(p.rel,U2[p.k]),att.shadowP),att.V)});
   const hide=new Set(att.shadowParts);
   return {...sc,draws:draws.filter((d,i)=>!hide.has(i))};
@@ -3284,7 +3295,7 @@ function xInit(){
   $("x-light").onchange=()=>rebuild();
 }
 // 画面の組み立て
-const VERSION="0.17.1";
+const VERSION="0.17.2";
 const $=id=>document.getElementById(id);
 const APP={disc:null, robs:null, objCache:new Map(), states:[], cur:-1, scene:null, gl:null, rot:[0,0], zoom:1, pan:[0,0]};
 function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
