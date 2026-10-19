@@ -86,4 +86,11 @@ if(has("disc/states/19_jacky_sarah/eeMemory.bin")&&has("disc/bin/IC12_15.dec")) 
   const d=g("motApply")(sc,att,U,E.parts(0)).draws.find(x=>x.dyn&&x.player===0); assert.strictEqual(d.dyn.ch[3],U.band,"帯の面が差し替わっていない");
   const a=new DataView(U.band.buffer), b0=sc.draws[dyn.i].dyn.ch[3], b=new DataView(b0.buffer,b0.byteOffset); let m=0; for(let i=0;i<20;i++) for(const o of [16,20,24,28,32,36]) m=Math.max(m,Math.abs(a.getFloat32(i*40+o,true)-b.getFloat32(i*40+o,true)));
   assert.ok(m>0.01,"技の途中なのに帯の形が写しと同じ（差 "+m+"）") });
+// 揺れもの（v0.17.3）: リオンのベストのひも（1855・1881〜1887）は胸（関節 1）に付け、技の途中でも胸の近くにある（前は前腕・手に付いて体から離れた。ユーザーの指摘）
+if(has("disc/states/05_shun_lion/eeMemory.bin")&&has("disc/bin/IC12_15.dec")) await t("揺れもの: リオンのベストのひもが技の途中でも胸から離れない（写し 05・技 877）",()=>{
+  const mem=fs.readFileSync("disc/states/05_shun_lion/eeMemory.bin"), E=g("motEngine")(new Uint8Array(fs.readFileSync("disc/bin/IC12_15.dec")),mem,null), sc=g("sceneRead")(mem);
+  const att=g("motAttach")(sc,1,[E.units(1)],E.parts(1)), ids=[1855,1881,1882,1883,1884,1885,1886,1887];
+  for(const p of att.parts) if(ids.includes(sc.draws[p.i].id)) assert.strictEqual(p.k,1,"ひも "+sc.draws[p.i].id+" が関節 "+p.k+" に付いた");
+  E.start(1,877); const U=E.frame(1,16), out=g("motApply")(sc,att,U,E.parts(1)), V=g("motInvG")(att.V), c=U[1].slice(9);
+  for(const d of out.draws) if(d.player===1&&ids.includes(d.id)){ const w=g("motMul")(d.m,V).slice(9); assert.ok(Math.hypot(w[0]-c[0],w[1]-c[1],w[2]-c[2])<0.5,"ひも "+d.id+" が胸から離れた") } });
 console.log(ok,"件 ok");

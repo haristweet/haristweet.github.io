@@ -102,6 +102,8 @@ function motAttach(sc, pl, Us, ids, keep=null){
   if(!Array.isArray(Us[0][0])) Us=[Us];
   let best=null; for(const U of Us){ const a=motAttach1(sc,pl,U,ids,keep); if(!best||a.parts.filter(p=>p.body).length>best.parts.filter(p=>p.body).length) best=a } best.ids=ids||null; return best;
 }
+// 揺れもの（髪・ひも・布）の部品の番号 → ぶら下がる関節（node swing.mjs が写しから作る。2 つ以上の写しにある部品だけ）
+const MOT_SWING={4:1,6:1,148:1,149:1,664:1,665:0,666:0,667:0,668:0,670:0,671:0,672:0,673:0,1471:2,1472:2,1473:2,1474:2,1493:2,2441:9,2442:9,2536:6,2537:6,2677:2,2678:2,3575:6,3576:7,3577:7,3578:6,3579:7,3580:7,3741:2,3742:2,3743:2,3744:2,3745:2,3746:2,4710:2,4785:2,4786:2,4787:2,4788:2};
 function motAttach1(sc, pl, U, ids, keep=null){
   let V=null, nv=0; for(const d of sc.draws){ let n=0; for(const e of sc.draws) if(motDist(e.m,d.m)<1e-4) n++; if(n>nv){ nv=n; V=d.m } }
   const iV=motInvG(V), out=[], shadows=[], mirrors=[];
@@ -112,7 +114,11 @@ function motAttach1(sc, pl, U, ids, keep=null){
     if(motDet(d.m)<-0.05){ mirrors.push({i,W}); return }   // 床への映り込み（行列式が負。写し16・17）
     if(ids&&d.id>=0){ const k=ids.indexOf(d.id); if(k>=0){ out.push({i,k,rel:[...MOT_I,0,0,0],body:true}); return } }
     let bk=0, be=1e9; for(let k=0;k<16;k++){ const rel=motMul(W,motInv(U[k])); const e=motDist(rel.slice(0,9),MOT_I)+Math.hypot(rel[9],rel[10],rel[11]); if(e<be){ be=e; bk=k } }
-    if(be>=0.6){ be=1e9; for(let k=0;k<16;k++){ const e=Math.hypot(U[k][9]-W[9],U[k][10]-W[10],U[k][11]-W[11]); if(e<be){ be=e; bk=k } } out.push({i,k:bk,rel:motMul(W,motInv(U[bk]))}); return }   // 髪など: いちばん近い関節
+    // 揺れもの（髪・ひも・布。ゲームは別の処理で揺らす）: 親の関節は、写しから決めた表 MOT_SWING（swing.mjs）にあればそれ。無ければ胸（腰から首の線に近い）か頭（首より上）。
+    // 前は関節の位置がいちばん近い関節に付けていて、構えで胸の前にある前腕・手や脚に付いたリオンのベストのひもが、技の途中で体から離れた（v0.17.3）
+    if(be>=0.6){ if(MOT_SWING[d.id]!==undefined) bk=MOT_SWING[d.id];
+      else { const a=U[1].slice(9), n=U[2].slice(9), ax=[n[0]-a[0],n[1]-a[1],n[2]-a[2]], L2=ax[0]**2+ax[1]**2+ax[2]**2||1, t=((W[9]-a[0])*ax[0]+(W[10]-a[1])*ax[1]+(W[11]-a[2])*ax[2])/L2; bk=t>=1?2:1 }
+      out.push({i,k:bk,rel:motMul(W,motInv(U[bk]))}); return }
     out.push({i,k:bk,rel:[...MOT_I,0,0,0],body:true});
   });
   // 映り込み: 世界＝関節·F（F は床で折り返す行列で全部に共通）。F＝inv(U_k)·W をすべての組で作り、いちばん多く一致するもの
