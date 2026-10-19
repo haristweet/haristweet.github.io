@@ -34,3 +34,6 @@ GitHub Pages のサイト。ビューアは `tobal1-model-viewer/`・`vf2-model-
    canvas は透明に描き（`clearColor(0,0,0,0)`）、背景を透かして見せる。PNG で保存するときも同じ背景（50% 35% からいちばん遠い角まで）を塗る。「背景なし」で透明。
    作りの見本は `fv-model-viewer/src/fapp.js`（BG_PRESETS・setBackground・paintBackground）と `jwe2010-model-viewer/src/app.js`（BG_PRESETS・savePng）。
    2026-10-14 の時点で選べるのは tobal1・vf2・fv・jwe2010。we2012・we2001 はダークだけ（選ぶボタンがまだ無い）
+9. **一度指摘されて直したことは、試験に残し、新しい機能で同じ所を通るときに見直す。**
+   vf2 では腹の隙間を写しの絵で直したあと、技を出す機能で同じ部品を写しの形のまま動かし、同じ隙間をまた出した（同じ指摘を 2 回受けた）。
+   直したら「それが壊れたら落ちる試験」を足す。新しい機能を足すときは、その部品・処理について前に受けた指摘を作業メモで探して確かめる

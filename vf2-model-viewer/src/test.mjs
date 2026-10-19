@@ -76,4 +76,14 @@ if(has("disc/vf2.bin")){
     });
   }
 }
+// 腹の帯（v0.17.2）: 技を出したとき、帯の部品をそのコマにゲームが作り直した面に差し替える。
+// 9/26 にユーザーが「腹が空いている」と指摘して v0.7.1 で写しの帯を描くようにしたが、技を出す機能（v0.12.0）で写しの形のまま付けたため、技の途中でまた隙間が開いていた。同じことを繰り返さないための試験
+if(has("disc/states/19_jacky_sarah/eeMemory.bin")&&has("disc/bin/IC12_15.dec")) await t("腹の帯: 技のコマごとに作り直した面に差し替わる（写し 19 のジャッキー 技 1265）",()=>{
+  for(const f of ["ee.js","motion.js"]) vm.runInContext(fs.readFileSync(f,"utf8"),ctx,{filename:f});
+  const mem=fs.readFileSync("disc/states/19_jacky_sarah/eeMemory.bin"), E=g("motEngine")(new Uint8Array(fs.readFileSync("disc/bin/IC12_15.dec")),mem,null), sc=g("sceneRead")(mem);
+  const att=g("motAttach")(sc,0,[E.units(0)],E.parts(0)), dyn=att.parts.find(p=>sc.draws[p.i].dyn); assert.ok(dyn,"帯が関節に付いていない");
+  E.start(0,1265); const U=E.frame(0,14); assert.ok(U.band,"作り直した帯の面が無い");
+  const d=g("motApply")(sc,att,U,E.parts(0)).draws.find(x=>x.dyn&&x.player===0); assert.strictEqual(d.dyn.ch[3],U.band,"帯の面が差し替わっていない");
+  const a=new DataView(U.band.buffer), b0=sc.draws[dyn.i].dyn.ch[3], b=new DataView(b0.buffer,b0.byteOffset); let m=0; for(let i=0;i<20;i++) for(const o of [16,20,24,28,32,36]) m=Math.max(m,Math.abs(a.getFloat32(i*40+o,true)-b.getFloat32(i*40+o,true)));
+  assert.ok(m>0.01,"技の途中なのに帯の形が写しと同じ（差 "+m+"）") });
 console.log(ok,"件 ok");
