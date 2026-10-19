@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ウイニングイレブン2001 モデルビューア</title>
+<meta name="description" content="PS1『Jリーグ実況ウイニングイレブン2001』のディスクから、選手をユニフォーム・髪型・動きを選んで見る">
+<style>
+:root{--bg:#f4f2ee;--card:#fff;--fg:#1f1e1b;--mut:#6b6860;--line:#dedad2;--acc:#2f7a4a;--bad:#b3392f;--stage:#2a2926}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1917;--card:#24231f;--fg:#ecebe6;--mut:#a09d94;--line:#3a3833;--acc:#6fcf93;--bad:#ec7a6f}}
+*{box-sizing:border-box}
+html{touch-action:manipulation}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Hiragino Sans",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 14px}
+.step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 12px}
+.step b{display:block;margin:0 0 2px}.step small{color:var(--mut);display:block;margin:0 0 8px}
+.step.done{border-color:var(--acc)}
+.step label.btn{display:inline-block;background:var(--acc);color:#fff;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600}
+.step input[type=file]{display:none}
+.step .name{margin-left:8px;font-size:13px;color:var(--mut);overflow-wrap:anywhere}
+#status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
+.viewer{position:relative;background:radial-gradient(circle at 50% 35%,#3a3833,var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:4/3;max-height:70vh;margin:0 auto;touch-action:none;user-select:none}
+.viewer canvas{position:absolute;inset:0;width:100%;height:100%}
+.viewer [hidden]{display:none!important}
+.viewer .hint{position:absolute;left:12px;bottom:10px;color:#cfccc4;font-size:12px;pointer-events:none}
+@media (max-width:640px){.viewer .hint{display:none}}
+.viewer .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a8a49a;text-align:center;padding:20px}
+.viewer.drop-over{outline:3px dashed var(--acc);outline-offset:-3px}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:10px 0}
+.ctrl[hidden]{display:none}
+.ctrl label{white-space:nowrap}
+.ctrl select,.ctrl button,.ctrl input[type=number]{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
+.ctrl button{cursor:pointer}
+.btn2 .fake{display:inline-block;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:4px 8px;cursor:pointer}
+.ctrl .grp{white-space:nowrap}
+#info{color:var(--mut);font-size:13px;margin:6px 0 0}
+.ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
+details{margin:16px 0 0;color:var(--mut);font-size:13px}
+body.photo .one,body.photo #detail,body.photo #motion{display:none!important}body:not(.photo) .photo{display:none!important}
+details.more{margin:0 0 6px;color:var(--fg);font-size:14px}details.more[hidden]{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>ウイニングイレブン2001 モデルビューア <span id="ver-h" class="ver"></span></h1>
+<p class="sub">PS1『Jリーグ実況ウイニングイレブン2001』のディスクのイメージから、選手を組んで見ます。チーム・選手・動きを選べます。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
+<div class="step" id="step-disc"><b>ディスクのイメージ</b><small>.chd・.bin（2352、1 つ目のトラック）・.iso。ページにドロップしても読み込めます</small>
+  <label class="btn">選ぶ<input type="file" id="f-disc" accept=".chd,.bin,.iso,.img"></label><span class="name" id="n-disc">まだ</span></div>
+<div id="status"></div>
+<div class="viewer" id="viewer"><canvas id="cv"></canvas>
+  <div class="empty" id="empty">ディスクのイメージを選ぶと、ここに選手が出ます</div>
+  <div class="hint" id="hint" hidden>ドラッグで回す・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
+<div class="ctrl" id="pick" hidden>
+  <label>表示 <select id="s-mode" aria-label="表示"><option value="one">1 人</option><option value="photo">集合写真</option></select></label>
+  <label>チーム <select id="s-team" aria-label="チーム"></select></label>
+  <label class="one">選手 <select id="s-player" aria-label="選手"></select></label>
+  <label>着 <select id="s-alt" aria-label="何着目"><option value="0">1 着目</option><option value="1">2 着目</option></select></label>
+  <label title="キーパーの服の色。ゲームも選手のユニフォームとは別に選ぶ">GK <select id="s-gk" aria-label="キーパーの服"><option value="0">1</option><option value="1">2</option></select></label>
+  <label class="one">体 <select id="s-set" aria-label="体の組"></select></label>
+  <button id="b-rand" class="one">🎲 おまかせ</button>
+  <label class="photo" title="1P 側はキーパーが左、2P 側は右">側 <select id="s-side" aria-label="側"><option value="0">1P</option><option value="1">2P</option></select></label>
+  <label class="photo" title="ゲームのカメラ: 最初は斜めから、だんだん正面へ寄る">カメラ <input id="r-cam" type="range" min="0" max="100" value="100" style="width:8em;vertical-align:middle" aria-label="カメラ"></label>
+  <button id="b-pose" class="photo" title="ゲームと同じ決まりで、姿勢を乱数で選び直す">🎲 並べ直す</button>
+  <button id="b-pose0" class="photo" title="ゲームの表に入っている決まった姿勢に戻す">表の姿勢</button>
+</div>
+<details class="more" id="detail" hidden><summary>見た目を手で変える</summary><div class="ctrl">
+  <label>髪型 <select id="s-hair" aria-label="髪型"></select></label>
+  <label title="顔の模様。5 以上はひげのある頭になる（ゲームと同じ）">顔 <select id="s-face" aria-label="顔"></select></label>
+  <label>肌 <select id="s-skin" aria-label="肌"></select></label>
+  <label>髪の色 <select id="s-hcol" aria-label="髪の色"></select></label>
+  <label title="色の表の 9 番目より後ろを選ぶ値。ひげや眉の色かもしれない（確かめていない）">色 2 <select id="s-s112" aria-label="色 2"></select></label>
+  <label>スパイク <select id="s-boots" aria-label="スパイク"></select></label>
+  <label>背番号 <input id="n-num" type="number" min="0" max="99" style="width:4.5em" aria-label="背番号"></label>
+</div></details>
+<div class="ctrl" id="motion" hidden>
+  <span class="grp">動き <button id="m-prev" aria-label="前の動き">◀</button> <input id="m-num" type="number" min="0" max="203" value="0" style="width:5em" aria-label="動きの番号"> <button id="m-next" aria-label="次の動き">▶</button></span>
+  <span class="grp">コマ <input id="m-frame" type="range" min="0" max="0" value="0" style="width:12em;vertical-align:middle" aria-label="コマ"> <span id="m-fn">-</span></span>
+  <button id="m-play">▶ 再生</button>
+</div>
+<details class="more" id="ownkit" hidden><summary>自分のユニフォーム</summary><div class="ctrl">
+  <button id="b-kittpl" title="いまのチーム・着のユニフォームの絵を 256×256 の PNG で保存。これに描いて読み込む">下絵を書き出す</button>
+  <label class="btn2"><input type="file" id="f-kit" accept="image/*" style="display:none"><span class="fake">絵を読み込む</span></label>
+  <span id="n-kit" style="color:var(--mut);font-size:13px">ゲームの絵</span> <button id="b-kit0" hidden>ゲームの絵に戻す</button>
+  <small style="flex-basis:100%;color:var(--mut)">フィールドの選手の服（キーパーの服は変わりません）。絵は下絵と同じ並びの 256×256 で、背番号も絵の中の小さな数字（左寄りの 0〜9 の並び）とシャツの無地の所から、ゲームと同じ決まりで組み立てます。絵はこのブラウザの中だけで使い、どこにも送りません</small>
+</div></details>
+<div class="ctrl" id="savebar" hidden><button id="b-png">PNG で保存</button>
+  <label title="PNG を透明な背景で"><input type="checkbox" id="c-clear"> 背景なし</label></div>
+<div id="info"></div>
+<details><summary>しくみ</summary>
+<p>モデルは MODEL.BIN（PS1 標準の TMD が 104 個）、動きは ANIME.BIN、顔・肌・髪の絵は DAT2D.BIN、ユニフォームの絵は TEX_00〜45.BIN から読みます。どれも読み方は、ゲームのプログラム（SLPM_868.35）で選手を描く処理・動きを読む処理・絵の圧縮をほどく処理を読んで、そのとおりにしています。</p>
+<p>選手は、チーム名・選手名・背番号の表（SELECT.BIN と本体）と、選手ごとの見た目の値（髪型・顔・肌・髪の色・スパイク）から、ゲームが描くときと同じように色の表の位置と顔・背番号の UV を書き換えて描きます。背番号の絵も、ゲームと同じく小さな数字の絵をシャツの空いた所に組み立てます。</p>
+<p>集合写真は、試合前の場面（ENTER.BIN）にある 11 人の立ち位置・姿勢の表とカメラの値をそのまま使います。姿勢はゲームでは並びごとに乱数で選ばれます（「並べ直す」で同じ決まりで選び直します）。投影もゲームと同じく、512×240 の画面を 4:3 に引き伸ばしたものです。スタメンは選手の表の最初の 11 人としています（推測）。背景（スタジアム）はまだ描きません。</p>
+<p>まだのこと: チームとユニフォームの対応は、チームの並び順と TEX の番号が同じとしています（色を見比べた範囲では合います。ゲームの対応表は見つけていません）。名前はゲーム独自の文字があるので、崩れて出るものがあります。キーパーかどうかは選手の値の 1 つから推測しています。動きの速さは 1 秒 30 コマとしています（確かめていません）。光はゲームと同じく当てず、テクスチャの色をそのまま描きます。</p>
+<p id="ver"></p></details>
+</main>
+<script>
+
+// ディスクのイメージを読む。CHD（MAME の圧縮イメージ v5・CD）は FV の fdisc.js（もとは tobal1 の disc.js）を写したもの。
+// .bin（2352）・.iso（2048）も読める。返り値: Map(名前 → () => Promise<Uint8Array>)（名前は BIN/MODEL.BIN のように / で区切る）
+// ============================================================
+//  CHD（MAME の圧縮ディスクイメージ、v5・CD）
+// ============================================================
+class MsbBits{
+  constructor(d){this.d=d;this.pos=0}
+  peek(n){let v=0;for(let i=0;i<n;i++){const p=this.pos+i;v=v*2+(((this.d[p>>3]||0)>>(7-(p&7)))&1)}return v}
+  read(n){const v=this.peek(n);this.pos+=n;return v}
+}
+function huffmanFromRle(br,numcodes,maxbits){
+  const nb=maxbits>=16?5:maxbits>=8?4:3, len=new Array(numcodes).fill(0);
+  for(let cur=0;cur<numcodes;){
+    let b=br.read(nb);
+    if(b!==1){len[cur++]=b;continue}
+    b=br.read(nb);
+    if(b===1){len[cur++]=1;continue}
+    for(let r=br.read(nb)+3;r>0&&cur<numcodes;r--) len[cur++]=b;
+  }
+  const hist=new Array(33).fill(0); for(const l of len) if(l) hist[l]++;
+  let start=0; for(let l=32;l>0;l--){const next=(start+hist[l])>>1; hist[l]=start; start=next}
+  const table=new Array(1<<maxbits).fill(0);
+  len.forEach((l,sym)=>{ if(!l) return; const code=hist[l]++, sh=maxbits-l; for(let k=code<<sh;k<((code+1)<<sh);k++) table[k]=[sym,l] });
+  return ()=>{const e=table[br.peek(maxbits)]; if(!e) throw new Error("CHD の目次が壊れています"); br.pos+=e[1]; return e[0]};
+}
+function lzmaDecode(src,outLen,lc=3,lp=0,pb=2){
+  const out=new Uint8Array(outLen);
+  let ip=5, range=0xFFFFFFFF, code=((src[1]<<24)>>>0)+(src[2]<<16)+(src[3]<<8)+src[4];
+  const P=n=>new Uint16Array(n).fill(1024);
+  const bit=(p,i)=>{
+    const b=(range>>>11)*p[i]; let r;
+    if(code<b){range=b; p[i]+=(2048-p[i])>>5; r=0} else {range-=b; code-=b; p[i]-=p[i]>>5; r=1}
+    if(range<16777216){range*=256; code=code*256+(src[ip++]||0)}
+    return r;
+  };
+  const tree=(p,base,n)=>{let m=1;for(let i=0;i<n;i++)m=(m<<1)+bit(p,base+m);return m-(1<<n)};
+  const rtree=(p,base,n)=>{let m=1,s=0;for(let i=0;i<n;i++){const b=bit(p,base+m);m=(m<<1)+b;s|=b<<i}return s};
+  const isMatch=P(192),isRep=P(12),isRepG0=P(12),isRepG1=P(12),isRepG2=P(12),isRep0Long=P(192);
+  const posSlot=P(256),specPos=P(114),align=P(16),lenC=P(514),repLenC=P(514),lit=P(0x300<<(lc+lp));
+  const len=(p,ps)=>!bit(p,0)?tree(p,2+(ps<<3),3):!bit(p,1)?8+tree(p,130+(ps<<3),3):16+tree(p,258,8);
+  let state=0,r0=0,r1=0,r2=0,r3=0,op=0;
+  const pbMask=(1<<pb)-1, lpMask=(1<<lp)-1;
+  while(op<outLen){
+    const ps=op&pbMask;
+    if(!bit(isMatch,(state<<4)+ps)){
+      const base=0x300*(((op&lpMask)<<lc)+((op?out[op-1]:0)>>(8-lc)));
+      let s=1;
+      if(state<7){ while(s<0x100) s=(s<<1)|bit(lit,base+s) }
+      else{
+        let mb=out[op-r0-1];
+        while(s<0x100){ const m=(mb>>7)&1; mb<<=1; const b=bit(lit,base+0x100+(m<<8)+s); s=(s<<1)|b; if(m!==b){ while(s<0x100) s=(s<<1)|bit(lit,base+s); break } }
+      }
+      out[op++]=s&255; state=state<4?0:state<10?state-3:state-6; continue;
+    }
+    let n;
+    if(bit(isRep,state)){
+      if(!bit(isRepG0,state)){
+        if(!bit(isRep0Long,(state<<4)+ps)){ state=state<7?9:11; out[op]=out[op-r0-1]; op++; continue }
+      }else{
+        let d;
+        if(!bit(isRepG1,state)) d=r1; else { if(!bit(isRepG2,state)) d=r2; else {d=r3; r3=r2} r2=r1 }
+        r1=r0; r0=d;
+      }
+      n=len(repLenC,ps); state=state<7?8:11;
+    }else{
+      r3=r2; r2=r1; r1=r0;
+      n=len(lenC,ps); state=state<7?7:10;
+      const slot=tree(posSlot,Math.min(n,3)<<6,6);
+      if(slot<4) r0=slot;
+      else{
+        const nd=(slot>>1)-1; let d=(2|(slot&1))*2**nd;
+        if(slot<14) d+=rtree(specPos,d-slot-1,nd);
+        else{
+          let direct=0;
+          for(let i=0;i<nd-4;i++){ range=range>>>1; let b=0; if(code>=range){code-=range;b=1} direct=direct*2+b; if(range<16777216){range*=256; code=code*256+(src[ip++]||0)} }
+          d+=direct*16+rtree(align,0,4);
+        }
+        if(d>=0xFFFFFFFF) break;
+        r0=d;
+      }
+    }
+    for(n+=2;n>0&&op<outLen;n--,op++) out[op]=out[op-r0-1];
+  }
+  return out;
+}
+async function inflateRaw(data){
+  if(typeof DecompressionStream==="undefined") throw new Error("このブラウザは CHD の展開に必要な機能に対応していません。iPhone は iOS 16.4 以降にしてください（.bin なら読めます）");
+  const s=new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+class ChdDisc{
+  constructor(file){this.file=file;this.cache=new Map()}
+  async bytes(off,n){return new Uint8Array(await this.file.slice(off,off+n).arrayBuffer())}
+  async init(){
+    const h=await this.bytes(0,124), dv=new DataView(h.buffer);
+    if(String.fromCharCode(...h.subarray(0,8))!=="MComprHD") throw new Error("CHD ファイルとして読めませんでした");
+    if(dv.getUint32(12)!==5) throw new Error("この版の CHD にはまだ対応していません（v5 のみ）");
+    this.codecs=[0,1,2,3].map(i=>String.fromCharCode(...h.subarray(16+i*4,20+i*4)).replace(/\0/g,""));
+    const logical=Number(dv.getBigUint64(32)), mapoff=Number(dv.getBigUint64(40));
+    this.hunkBytes=dv.getUint32(56); this.unitBytes=dv.getUint32(60);
+    if(dv.getBigUint64(104)|dv.getBigUint64(112)) throw new Error("差分形式（親ファイルが必要）の CHD には対応していません");
+    if(!this.codecs[0]) throw new Error("非圧縮の CHD にはまだ対応していません");
+    const count=Math.ceil(logical/this.hunkBytes);
+    const mh=await this.bytes(mapoff,16), mdv=new DataView(mh.buffer);
+    const mapLen=mdv.getUint32(0), lengthBits=mh[12], selfBits=mh[13], parentBits=mh[14];
+    let cur=mdv.getUint32(4)*65536+mdv.getUint16(8);
+    const br=new MsbBits(await this.bytes(mapoff+16,mapLen)), dec=huffmanFromRle(br,16,8);
+    const types=new Uint8Array(count);
+    for(let i=0,last=0,rep=0;i<count;i++){
+      if(rep>0){types[i]=last;rep--;continue}
+      const v=dec();
+      if(v===7){types[i]=last;rep=2+dec()}
+      else if(v===8){types[i]=last;rep=2+16+(dec()<<4);rep+=dec()}
+      else types[i]=last=v;
+    }
+    this.map=[];
+    for(let i=0,lastSelf=0;i<count;i++){
+      let t=types[i], off=0, len=0;
+      if(t<=3){len=br.read(lengthBits);off=cur;cur+=len;br.read(16)}
+      else if(t===4){len=this.hunkBytes;off=cur;cur+=len;br.read(16)}
+      else if(t===5){off=lastSelf=br.read(selfBits)}
+      else if(t===9||t===10){if(t===10)lastSelf++;t=5;off=lastSelf}
+      else throw new Error("親ファイルを参照する CHD には対応していません");
+      this.map.push([t,off,len]);
+    }
+    const f0=await this.hunk(0);
+    this.dataOff=f0[15]===1?16:24;
+  }
+  async hunk(i){
+    if(this.cache.has(i)) return this.cache.get(i);
+    const [t,off,len]=this.map[i]; let out;
+    if(t===5) out=await this.hunk(off);
+    else if(t===4) out=await this.bytes(off,len);
+    else{
+      const src=await this.bytes(off,len), codec=this.codecs[t], hb=this.hunkBytes;
+      if(!/^cd(lz|zl)$/.test(codec)) throw new Error(`この圧縮形式（${codec}）の部分はまだ読めません`);
+      const frames=hb/2448, eccBytes=(frames+7)>>3, clBytes=hb<65536?2:3;
+      let cl=0; for(let k=0;k<clBytes;k++) cl=cl*256+src[eccBytes+k];
+      const body=src.subarray(eccBytes+clBytes,eccBytes+clBytes+cl);
+      const sect=codec==="cdlz"?lzmaDecode(body,frames*2352):await inflateRaw(body);
+      out=new Uint8Array(hb);
+      for(let f=0;f<frames;f++) out.set(sect.subarray(f*2352,(f+1)*2352),f*2448);
+    }
+    if(this.cache.size>64) this.cache.delete(this.cache.keys().next().value);
+    this.cache.set(i,out); return out;
+  }
+  async read(lba,count){
+    const out=new Uint8Array(count*2048);
+    for(let k=0;k<count;k++){
+      const pos=(lba+k)*this.unitBytes, h=await this.hunk(Math.floor(pos/this.hunkBytes)), o=pos%this.hunkBytes;
+      out.set(h.subarray(o+this.dataOff,o+this.dataOff+2048),k*2048);
+    }
+    return out;
+  }
+  async readRaw(lba){ const pos=lba*this.unitBytes, h=await this.hunk(Math.floor(pos/this.hunkBytes)), o=pos%this.hunkBytes; return h.subarray(o,o+2352) }
+  async rootFiles(){return BinDisc.prototype.rootFiles.call(this)}
+}
+async function vdSlice(file,off,len){ return new Uint8Array(await file.slice(off,off+len).arrayBuffer()) }
+function vdWalk(readSec,root){   // ISO9660 のファイルを全部たどる。readSec(lba,count)→Promise<Uint8Array>
+  const out=[];
+  const walk=async(lba,size,pre)=>{
+    const d=await readSec(lba,Math.ceil(size/2048)), dv=new DataView(d.buffer,d.byteOffset,d.byteLength);
+    for(let p=0;p<d.length;){
+      const L=d[p]; if(!L){ p=(Math.floor(p/2048)+1)*2048; continue }
+      const el=dv.getUint32(p+2,true), es=dv.getUint32(p+10,true), fl=d[p+25], nl=d[p+32];
+      const nm=String.fromCharCode(...d.subarray(p+33,p+33+nl)).split(";")[0];
+      if(nl===1&&d[p+33]<2){ p+=L; continue }
+      if(fl&2) await walk(el,es,pre+nm+"/"); else out.push({name:pre+nm,lba:el,size:es});
+      p+=L;
+    }
+  };
+  return walk(root[0],root[1],"").then(()=>out);
+}
+function vdRootOf(pvd){ const dv=new DataView(pvd.buffer,pvd.byteOffset,pvd.byteLength); return [dv.getUint32(156+2,true),dv.getUint32(156+10,true)] }
+async function discOpen(file){
+  const head=await vdSlice(file,0,16); let readSec;
+  if(String.fromCharCode(...head.subarray(0,8))==="MComprHD"){ const chd=new ChdDisc(file); await chd.init(); readSec=(lba,n)=>chd.read(lba,n) }
+  else {
+    let sec,base;
+    if(String.fromCharCode(...(await vdSlice(file,16*2352+25,5)))==="CD001"){ sec=2352; base=24 }
+    else if(String.fromCharCode(...(await vdSlice(file,16*2048+1,5)))==="CD001"){ sec=2048; base=0 }
+    else throw new Error("ディスクのイメージ（.chd・.bin・.iso）ではない");
+    readSec=async(lba,n)=>{ const raw=await vdSlice(file,lba*sec,n*sec); if(sec===2048) return raw;
+      const o=new Uint8Array(n*2048); for(let i=0;i<n;i++) o.set(raw.subarray(i*sec+base,i*sec+base+2048),i*2048); return o };
+  }
+  const files=new Map();
+  for(const f of await vdWalk(readSec,vdRootOf(await readSec(16,1)))) files.set(f.name.toUpperCase(),()=>readSec(f.lba,Math.ceil(f.size/2048)).then(d=>d.subarray(0,f.size)));
+  return files;
+}
+// PS1 の標準のモデル形式 TMD を読む（MODEL.BIN の中身はこれが並んだもの）。
+// tmdRead(u8, off) → {objs:[{verts:[[x,y,z]], prims:[{v:[番号], uv:[[u,v]]|null, uvRaw（TMD の並びのまま）, quad, cba, tsb, col, mode, flag}], bad}]}
+// 1 つの部品の並び（ilen）と、モード・フラグから計算した長さが合わないものは bad に数える（読み方の確かめ）
+function tmdRead(u8,off){
+  const dv=new DataView(u8.buffer,u8.byteOffset,u8.byteLength);
+  const h=i=>dv.getInt16(i,true), w=i=>dv.getUint32(i,true);
+  if(w(off)!==0x41) return null;
+  const flags=w(off+4), n=w(off+8), top=off+12, objs=[];
+  for(let k=0;k<n;k++){
+    const o=top+k*28, base=flags&1?off:top;
+    const vt=base+w(o), nv=w(o+4), pt=base+w(o+16), np=w(o+20);
+    const verts=[]; for(let i=0;i<nv;i++) verts.push([h(vt+i*8),h(vt+i*8+2),h(vt+i*8+4)]);
+    const prims=[]; let p=pt, bad=0;
+    for(let i=0;i<np;i++){
+      const ilen=u8[p+1], flag=u8[p+2], mode=u8[p+3], d=p+4;
+      if(mode>>5===1){
+        const quad=mode>>3&1, tme=mode>>2&1, iip=mode>>4&1, lgt=flag&1, grd=flag>>2&1, nn=quad?4:3;
+        let q=d, uv=null, cba=0, tsb=0, col=null;
+        if(tme){ uv=[]; for(let j=0;j<nn;j++){ uv.push([u8[q],u8[q+1]]); if(j===0) cba=dv.getUint16(q+2,true); if(j===1) tsb=dv.getUint16(q+2,true); q+=4 } }
+        const ncol=lgt?(iip||grd?nn:1):(!tme?(grd?nn:1):0);
+        if(ncol){ col=[]; for(let j=0;j<ncol;j++){ col.push([u8[q],u8[q+1],u8[q+2]]); q+=4 } }
+        const idx=[]; let hw=q;
+        if(lgt){ for(let j=0;j<nn;j++){ idx.push(dv.getUint16(hw,true)); hw+=2 } }
+        else if(iip){ for(let j=0;j<nn;j++){ hw+=2; idx.push(dv.getUint16(hw,true)); hw+=2 } }
+        else { hw+=2; for(let j=0;j<nn;j++){ idx.push(dv.getUint16(hw,true)); hw+=2 } }
+        const len=((hw-d)+3)>>2;
+        if(len!==ilen) bad++;
+        // 四角は頂点 0,1,2,3 が Z の字の並び（0-1-3-2 で一周）
+        const v=quad?[idx[0],idx[1],idx[3],idx[2]]:idx, uvs=uv&&(quad?[uv[0],uv[1],uv[3],uv[2]]:uv);
+        prims.push({v,uv:uvs,uvRaw:uv,quad,cba,tsb,col,mode,flag});
+      } else bad++;
+      p=d+ilen*4;
+    }
+    objs.push({verts,prims,bad});
+  }
+  return {objs};
+}
+// ANIME.BIN（動き）と MODEL.BIN（部品の組）を読んで、選手の部品を置く。
+// 読み方は本体（SLPM_868.35）の 0x80011444（選手を描く関数）から。
+//  - ANIME.BIN は 0x8017ee80 に読まれる。先頭は動きの番号→「コマの番地の並び」への番地の表（0x80026c74 が引く）
+//  - 1 コマ＝部品ごとに 8 バイト（2 語 w,v）。部品は MODEL.BIN の組の並び（0 番が頭）と同じ順
+//      回転 x,y,z＝w の 0-9・10-19・20-29 ビット（符号付き 10 ビット）×16（4096＝1 周）
+//      位置 x＝v の 0-10 ビット（符号付き 11 ビット）
+//           y＝(w の 30 ビット)×4096＋(v の 11-15 ビット)×32＋(v の 16-20 ビット)、w の 31 ビットが立てば負
+//           z＝v の 21-31 ビット（符号付き 11 ビット）
+//  - 部品ごとの行列は RotMatrix（0x8003c560）＋位置で、選手全体の行列に掛ける（親子はたどらない）。
+//    掛ける順は Rz·Ry·Rx（x を先に回す）。全コマで「ももから見たすねの付け根」がいちばんぶれない順を 48 通りから選んだ（数字。2 番目の約半分のぶれ）
+//  - MODEL.BIN は 0x8016ab80 に読まれる。先頭 18 個の番地が「組」（型と番地の並び。0xff で終わり）
+//      型 0x80＝頭（0x68 からの 64 個の表から選ぶ）、2＝部品、0＝無し
+const WE_MODEL_BASE=0x8016ab80, WE_ANIME_BASE=0x8017ee80;
+function weU32(u8,o){ return (u8[o]|u8[o+1]<<8|u8[o+2]<<16|u8[o+3]<<24)>>>0 }
+function weSext(v,b){ return v&(1<<(b-1))?v-(1<<b):v }
+// 組 k の並び → [{type, off（MODEL.BIN の中の位置）}]
+function weModelSet(model,k){
+  const out=[]; let o=weU32(model,k*4)-WE_MODEL_BASE;
+  for(;;){ const t=weU32(model,o), p=weU32(model,o+4); if(t===0xff) break; out.push({type:t,off:p?p-WE_MODEL_BASE:-1}); o+=8 }
+  return out;
+}
+// 頭の表（0x80 の型が指す）。番号 i の頭の TMD の位置
+function weHeadOff(model,listOff,i){ return weU32(model,listOff+i*4)-WE_MODEL_BASE }
+// 動き a のコマ f の番地（ANIME.BIN の中の位置）
+function weAnimFrame(anime,a,f){ const e=weU32(anime,a*4)-WE_ANIME_BASE; return weU32(anime,e+f*4)-WE_ANIME_BASE }
+// コマの数（並びの番地が ANIME.BIN の中を指している間を数える。推測：終わりの印は見ていない）
+function weAnimFrames(anime,a){
+  const e=weU32(anime,a*4)-WE_ANIME_BASE; let n=0;
+  for(;;){ const p=weU32(anime,e+n*4); if(p<WE_ANIME_BASE||p>=WE_ANIME_BASE+anime.length||((p-WE_ANIME_BASE)&3)) break; n++; if(n>2000) break }
+  return n;
+}
+function weDecodePart(anime,o){
+  const w=weU32(anime,o), v=weU32(anime,o+4);
+  const rot=[weSext(w&1023,10)*16, weSext(w>>>10&1023,10)*16, weSext(w>>>20&1023,10)*16];
+  let y=((w>>>30)&1)*4096+((v>>>11)&31)*32+((v>>>16)&31); if(w>>>31) y=-y;
+  return {rot, t:[weSext(v&2047,11), y, weSext(v>>>21,11)]};
+}
+// RotMatrix（PsyQ）: Rz·Ry·Rx。角度は 4096＝1 周
+function weRotMatrix([x,y,z]){
+  const a=k=>k*Math.PI*2/4096, sx=Math.sin(a(x)), cx=Math.cos(a(x)), sy=Math.sin(a(y)), cy=Math.cos(a(y)), sz=Math.sin(a(z)), cz=Math.cos(a(z));
+  return [[cz*cy,cz*sy*sx-sz*cx,cz*sy*cx+sz*sx],[sz*cy,sz*sy*sx+cz*cx,sz*sy*cx-cz*sx],[-sy,cy*sx,cy*cx]];
+}
+function weXform(m,t,p){ return [0,1,2].map(i=>m[i][0]*p[0]+m[i][1]*p[1]+m[i][2]*p[2]+t[i]) }
+// 選手 1 人を組む。set＝MODEL.BIN の組の番号、head＝頭の番号、anim/frame＝動き（frameOff を渡すと anime の中のその位置のコマを直接読む）。
+// 返すのは [{part:番号, off, m, t}]（m,t は体の基準からの行列と位置）
+function wePose(model,anime,set,head,anim,frame,frameOff){
+  const list=weModelSet(model,set), fo=frameOff??weAnimFrame(anime,anim,frame), out=[];
+  list.forEach((e,k)=>{
+    let off=e.off; if(e.type===0x80) off=weHeadOff(model,e.off,head); else if(e.type!==2) return;
+    const {rot,t}=weDecodePart(anime,fo+k*8);
+    out.push({part:k,off,m:weRotMatrix(rot),t,rot});
+  });
+  return out;
+}
+// テクスチャ（TEX_xx.BIN など）を読んで VRAM（1024×512、16 ビット）に置く。読み方は本体から。
+//  - TEX_xx は 0x800f0000 に読まれる。先頭は「絵の札」への番地の並び（0 は無し）
+//  - 札: +0 型（9＝そのまま、10＝圧縮、0＝無し）、+2 x、+4 y、+6 幅（16 ビット単位）、+8 高さ、+12 中身の番地（0x8001c8d8）
+//  - 圧縮は 0x8001cae8（下の weUnlz）
+const WE_TEX_BASE=0x800f0000;
+function weUnlz(s,p){
+  const out=[]; let f=0;
+  while(p<s.length){
+    f>>>=1; if(!(f&0x100)){ f=s[p++]|0xff00 }
+    const c=s[p];
+    if(!(f&1)){ out.push(c); p++; continue }
+    if(!(c&0x80)){ const d=((c&3)<<8)|s[p+1], n=(c>>2)+3; p+=2; for(let i=0;i<n;i++) out.push(out[out.length-d]) }
+    else if(!(c&0x40)){ const d=(c&15)+1, n=(c>>4)-6; p++; for(let i=0;i<n;i++) out.push(out[out.length-d]) }
+    else { if(c===0xff) break; const n=c-184; p++; for(let i=0;i<n;i++) out.push(s[p++]) }
+  }
+  return new Uint8Array(out);
+}
+function weVramNew(){ return new Uint16Array(1024*512) }
+// 札を 1 枚 VRAM に置く
+function weTexPut(vram,u8,base,o,put,i){
+  const u32=o=>(u8[o]|u8[o+1]<<8|u8[o+2]<<16|u8[o+3]<<24)>>>0, u16=o=>u8[o]|u8[o+1]<<8;
+  {
+    const type=u8[o], x=u16(o+2), y=u16(o+4), w=u16(o+6), h=u16(o+8), d=u32(o+12)-base;
+    if(type!==9&&type!==10) return false;
+    const px=type===10?weUnlz(u8,d):u8.subarray(d,d+w*h*2);
+    for(let yy=0;yy<h;yy++) for(let xx=0;xx<w;xx++){ const k=(yy*w+xx)*2; if(k+1<px.length&&y+yy<512&&x+xx<1024) vram[(y+yy)*1024+x+xx]=px[k]|px[k+1]<<8 }
+    put.push({i,type,x,y,w,h,len:px.length,want:w*h*2});
+  }
+  return true;
+}
+// TEX_xx: 先頭の番地の並び（0 は飛ばす）が札を 1 枚ずつ指す。only に番号の集合を渡すとそれだけ置く
+function weTexLoad(vram,u8,base,only){
+  const u32=o=>(u8[o]|u8[o+1]<<8|u8[o+2]<<16|u8[o+3]<<24)>>>0, put=[];
+  for(let i=0;;i++){
+    const p=u32(i*4); if(p===0) continue; if(p<0x80000000||p>=0x80200000) break;
+    const o=p-base; if(o<0||o+16>u8.length) break;
+    if(!only||only.has(i)) weTexPut(vram,u8,base,o,put,i);
+  }
+  return put;
+}
+// DAT2D.BIN など: 先頭の番地が札の並び（16 バイトずつ続く）を指す。型が 9/10 でなくなったら終わり（推測）
+function weTexLoadRun(vram,u8,base,k=0){
+  const u32=o=>(u8[o]|u8[o+1]<<8|u8[o+2]<<16|u8[o+3]<<24)>>>0, put=[];
+  let o=u32(k*4)-base;
+  for(let i=0;o+16<=u8.length;i++,o+=16) if(!weTexPut(vram,u8,base,o,put,i)) break;
+  return put;
+}
+// VRAM から 1 点取る。tsb/cba は TMD の値。色 0 は抜き（null）
+function weTexel(vram,tsb,cba,u,v){
+  const tx=(tsb&15)*64, ty=(tsb>>4&1)*256, md=tsb>>7&3, cx=(cba&63)*16, cy=cba>>6;
+  u&=255; v&=255; let c;
+  if(md===0){ const w=vram[(ty+v)*1024+tx+(u>>2)]; c=vram[cy*1024+cx+(w>>((u&3)*4)&15)] }
+  else if(md===1){ const w=vram[(ty+v)*1024+tx+(u>>1)]; c=vram[cy*1024+cx+(w>>((u&1)*8)&255)] }
+  else c=vram[(ty+v)*1024+tx+u];
+  if(!c) return null;
+  return [(c&31)<<3,(c>>5&31)<<3,(c>>10&31)<<3];
+}
+// 背番号を VRAM に組み立てる（本体の 0x8001f204。1P 側）。cell＝欄（0〜9。並びの 2〜11 番目の選手。10＝並びの 1 番目＝キーパーの欄 (626,360)）、num＝背番号
+//  欄は (576＋(cell%5)×10, 336＋⌊cell/5⌋×24) の 10×24（16 ビット単位。8 ビットの絵で 20×24 点）。まずシャツの無地 (598,262)（キーパーの欄は (630,262)）を写し、
+//  数字の絵 (608＋3×数字, 324) の 3×12 を、1 桁なら欄の (+3,+7)、2 桁なら (+1,+7) と (+5,+7) へ、1 点右にずらして色 0 を抜いて重ねる
+function weComposeNumber(vram,cell,num){
+  if(num===100) num=0; else if(num>100) num=14;
+  const cx=cell===10?626:576+(cell%5)*10, cy=cell===10?360:336+Math.floor(cell/5)*24;
+  const bx=cell===10?630:598;
+  for(let y=0;y<24;y++) for(let x=0;x<10;x++) vram[(cy+y)*1024+cx+x]=vram[(262+y)*1024+bx+x];
+  const glyph=(d,dx)=>{ const sx=608+3*d, tx=cx+dx, ty=cy+7;
+    for(let y=0;y<12;y++){ const row=[]; for(let x=0;x<3;x++){ const w=vram[(324+y)*1024+sx+x]; row.push(w&255,w>>8) }
+      const dst=[]; for(let x=0;x<4;x++){ const w=vram[(ty+y)*1024+tx+x]; dst.push(w&255,w>>8) }
+      for(let i=0;i<6;i++) if(row[i]) dst[i+1]=row[i];
+      for(let x=0;x<4;x++) vram[(ty+y)*1024+tx+x]=dst[x*2]|dst[x*2+1]<<8 } };
+  if(num<10) glyph(num,3); else { glyph(Math.floor(num/10),1); glyph(num%10,5) }
+}
+// 自分のユニフォームの絵（256×256 の RGBA。ページ 576,256 を色の表 486 で絵にしたものと同じ並び）に、背番号を組み立てる。
+// weComposeNumber と同じ決まりを、16 ビット単位ではなく点の単位で行う（x は 2 倍。透明の点＝PS1 の色 0 は重ねない）
+function weComposeNumberRGBA(img,cell,num){
+  if(num===100) num=0; else if(num>100) num=14;
+  const cu=cell===10?100:(cell%5)*20, cv=cell===10?104:80+Math.floor(cell/5)*24, bu=cell===10?108:44;
+  const at=(u,v)=>(v*256+u)*4;
+  for(let y=0;y<24;y++) for(let x=0;x<20;x++) img.copyWithin(at(cu+x,cv+y),at(bu+x,6+y),at(bu+x,6+y)+4);
+  const glyph=(d,dx)=>{ for(let y=0;y<12;y++) for(let x=0;x<6;x++){ const s=at(64+6*d+x,68+y); if(img[s+3]) img.copyWithin(at(cu+dx*2+1+x,cv+7+y),s,s+4) } };
+  if(num<10) glyph(num,3); else { glyph(Math.floor(num/10),1); glyph(num%10,5) }
+}
+// 自分のユニフォームの絵から 1 点取る（色 0 の代わりに透明）
+function weKitTexel(img,u,v){ const i=((v&255)*256+(u&255))*4; return img[i+3]?[img[i],img[i+1],img[i+2]]:null }
+// 選手ごとの見た目（肌・髪の色・髪型・ひげ・顔・スパイク・背番号）。読み方は本体と SELECT.BIN から。
+//  - チーム名: SELECT.BIN（0x8007a558 に読む）の 0x3b1e0 からの番地の表（43 チーム）
+//  - 選手の表（12 バイト＝3 語 A,B,C）: J の 28 チームは SELECT.BIN の 0x26e28＋(t×26＋i)×12、34〜40 は 0x29048＋((t−34)×26＋i)×12（SELECT の 0x80087060）
+//    試合の前に本体の 0x80079948 へ写す（SELECT の 0x80081e48）
+//  - 名前: J は SELECT.BIN の 0x439a0 からの番地の表（728 人）、34〜40 は本体の 0x80052bc8＋t×260＋i×10（10 バイト）
+//  - 値の意味（本体の 0x80011444 と 0x8001b640）: 髪型＝本体 0x800516e8 の表[(A>>4)&31]（0〜15）、髪の色＝(A>>9)&15、
+//    顔＝(A>>13)&15（5 以上でひげのある頭）、もう 1 つの色＝(A>>17)&7、肌＝B&3、スパイク＝(C>>27)&7。
+//    キーパーかどうかは A&15＝0 で見ている（推測。各チームの GK とされる選手が 0 だった）
+//  - 背番号: 本体の 0x80055e5c＋t×26＋i の値＋1（SELECT の 0x80087f7c が 0x800611a0 へ写し、0x8002fcb0 で 0x8001f204 に渡す）。0xff は空き
+const WE_SELECT_BASE=0x8007a558, WE_EXE_BASE=0x8000f800;
+function weSjis(u8,o){ let e=o; while(e<u8.length&&u8[e]) e++; try{ return new TextDecoder("shift_jis").decode(u8.subarray(o,e)).normalize("NFKC") }catch(_){ return "" } }
+function weTeamNames(sel){
+  const out=[]; for(let i=0;i<43;i++) out.push(weSjis(sel,weU32(sel,0x3b1e0+i*4)-WE_SELECT_BASE)); return out;
+}
+function weHasRoster(t){ return t<28||(t>=34&&t<=40) }
+function wePlayer(sel,exe,t,i){
+  const o=t<28?0x26e28+(t*26+i)*12:0x29048+((t-34)*26+i)*12, A=weU32(sel,o), B=weU32(sel,o+4), C=weU32(sel,o+8);
+  const name=t<28?weSjis(sel,weU32(sel,0x439a0+(t*26+i)*4)-WE_SELECT_BASE):weSjis(exe.subarray(0,exe.length),0x80052bc8+t*260+i*10-WE_EXE_BASE).slice(0,10);
+  const hmap=exe[0x800516e8-WE_EXE_BASE+((A>>4)&31)], face=(A>>13)&15;
+  const nb=exe[0x80055e5c-WE_EXE_BASE+t*26+i];
+  return {name, num:nb===255?0:nb+1, gk:(A&15)===0, look:{hmap, hcol:(A>>9)&15, face, beard:face>=5, s112:(A>>17)&7, skin:B&3, boots:(C>>>27)&7}, raw:[A,B,C]};
+}
+// 面 1 つの UV・CBA・TSB を、選手の見た目に合わせて書き換えた値で返す。part＝組の中の番号（0 頭・1 胴）、k＝部品の中の面の番号（1 から）
+// look が null なら書き換えない。書き換えは本体と同じく TMD の並び（Z の字）の UV に対して行い、最後に描く並び（0-1-3-2）に直す
+function weLookPrim(p,part,k,look){
+  if(!look||!p.uvRaw) return {uv:p.uv,cba:p.cba,tsb:p.tsb};
+  const uv=p.uvRaw.map(a=>a.slice()); let cba=p.cba, tsb=p.tsb;
+  const cls=cba&0xffc0, low=cba&15;
+  // 色の表の位置（0x800125b4〜0x80012674）
+  if(cls>=0x7800&&cls<=0x78c0){ const t4=0x7800|look.skin<<6; cba=low===0?t4:low<9?t4|(look.hcol+1):t4|(look.s112+9) }
+  else if(cls===0x7900){ if(low<8) cba=0x7900|look.boots }
+  else if(cls===0x7980||cls===0x79c0){ cba=0x7980; tsb=153 }     // 1P 側（2P 側は 0x79c0・154）
+  else if(cls===0x7a00||cls===0x7a40){ cba=0x7a00; tsb=153 }
+  const V=(j,v)=>{ if(uv[j]) uv[j][1]=v&255 }, U=(j,u)=>{ if(uv[j]) uv[j][0]=u&255 };
+  if(part===0){   // 顔と髪の模様（0x800112a4）
+    const lo=uv[0][1]&15, u0=uv[0][0], F=look.face*16, H=look.hmap*16;
+    if(lo>=14){ if(look.hmap<9){
+        const T2=[1,1,0,0,0,0,0,0,1,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1];
+        if(u0>=176&&u0<216&&T2[u0-176]){ V(0,H+15); V(1,H+1); V(2,H+15); V(3,H+1) }
+        if(u0===212||u0===200){ V(0,H+15); V(1,H+5); V(2,H+15); V(3,H+5) } } }
+    else if(lo===0){ const c=u0-160;
+      if(c===0||c===4){ V(0,F); V(1,F+16); V(2,F); V(3,F+12) }
+      else if(c===14||c===15){ V(0,F); V(1,F+12); V(2,F); V(3,F+16) }
+      else if(c===7){ V(0,F); V(1,F+16); V(2,F); V(3,F+16) } }
+    else if(lo===12){ if(u0>=171&&u0<=173){ V(0,F+12); V(1,F+16); V(2,F); V(3,F) } }
+  }
+  if(part===1&&look.cell!=null&&(k===3||k===15)){   // 背番号の欄（0x80011184。本体は並びの 2〜11 番目の選手に欄 0〜9 を指す。番号の絵は weComposeNumber が欄に描く）
+    const n=look.cell, q=Math.floor(n/5), r=n%5, a0=r*20, b=q*24;
+    if(k===3){ U(0,a0+10); V(0,b+103); U(1,a0+2); V(1,b+103); U(2,a0+10); V(2,b+86); U(3,a0); V(3,b+82) }
+    else { U(0,a0+10); V(0,b+86); U(1,a0+19); V(1,b+82); U(2,a0+10); V(2,b+103); U(3,a0+17); V(3,b+103) }
+  }
+  return {uv:p.quad?[uv[0],uv[1],uv[3],uv[2]]:uv, cba, tsb};
+}
+// 試合前の集合写真（ENTER.BIN。0x8007a558 に読む）。読み方は ENTER.BIN のプログラムから。
+//  - 姿勢: ENTER.BIN 0xfad8 の 16 個の動きの表（ANIME.BIN と同じ形。0＝歩き、2〜15＝1 コマの姿勢）。
+//    0x8007c76c が 11 人の並び i に姿勢を付ける: 0（GK）＝7（腕組み）、1〜4＝8〜12 から乱数、5・6＝8・9・12 から乱数、7〜10＝2 か 6 から乱数
+//  - 立ち位置: 0xfb18 からの表（11 人 ×（x, z, 姿勢）、1P 側。2P 側は 66 バイト後ろ）。x＋3072（2P 側は符号を反対）、z＋4096。
+//    3 つ目の値は決まった姿勢（＋256）。ゲームは乱数で選び直すが、ここでは既定にこの値を使う
+//  - カメラ: 場面 64（0x8007ff74）。位置 (−178,−320,−3633)・見る点 (−2096,−256,−2609)・奥行き 603（0x8003ea60）。
+//    48 コマ目から毎コマ、位置 (−1280,−384,−4554)・見る点 (−1280,−382,−416) へ寄せる（0x80080538。最後は正面）
+//  - スタメン: 選手の表の 0〜10 番目を並びの 0〜10 番目とする（推測。鹿島・磐田などの 2001 年の先発と合う）
+const WE_ENTER_BASE=0x8007a558;
+function weEnterFrame(enter,k){ const e=weU32(enter,0xfad8+k*4)-WE_ENTER_BASE; return weU32(enter,e)-WE_ENTER_BASE }
+// 姿勢を乱数で選ぶ（ゲームの決まり）。rnd(n)→0〜n−1
+function wePhotoRandomPose(i,rnd){
+  if(i===0) return 7; if(i<=4) return 8+rnd(5);
+  if(i<=6) return [8,9,12][rnd(3)]; return rnd(3)===0?2:6;
+}
+// 11 人を組む。poses に 11 個の姿勢（ENTER の表の番号）を渡すとそれを使い、null なら表の決まった姿勢
+function wePhotoScene(model,enter,sel,exe,team,poses,side=0){
+  const players=[];
+  for(let i=0;i<11;i++){
+    const o=0xfb18+side*66+i*6, x0=weSext((enter[o]|enter[o+1]<<8),16)+3072, x=side?-x0:x0, z=weSext((enter[o+2]|enter[o+3]<<8),16)+4096;
+    const pose=poses?poses[i]:weSext((enter[o+4]|enter[o+5]<<8),16)-256;
+    const pl=weHasRoster(team)?wePlayer(sel,exe,team,i):{name:"",num:i+1,gk:i===0,look:{hmap:0,hcol:0,face:0,beard:false,s112:0,skin:1,boots:0}};
+    const gk=i===0, set=gk?4:6, look={...pl.look,cell:gk?null:i-1};
+    const parts=wePose(model,enter,set,look.hmap*2+(look.beard?1:0),0,0,weEnterFrame(enter,pose));
+    players.push({i,name:pl.name,num:pl.num,gk,set,look,pose,pos:[x,0,z],parts});
+  }
+  return {players};
+}
+// カメラ。p＝0（最初の斜め）〜100（最後の正面）。ゲームは毎コマ少しずつ寄せるが、ここでは直線で混ぜる。side＝1 は 2P 側（場面 65。x が反対）
+function wePhotoCamera(p,side=0){
+  const sg=side?-1:1, a=[-178*sg,-320,-3633,-2096*sg,-256,-2609], b=[-1280*sg,-384,-4554,-1280*sg,-382,-416], m=a.map((v,i)=>v+(b[i]-v)*p/100);
+  const eye=m.slice(0,3), tgt=m.slice(3), f=tgt.map((v,i)=>v-eye[i]), fl=Math.hypot(...f); f.forEach((v,i)=>f[i]=v/fl);
+  // PS1 の画面: x 右・y 下・z 奥。下向き (0,1,0) と前で右を作る
+  const r=[f[2],0,-f[0]], rl=Math.hypot(...r); r.forEach((v,i)=>r[i]=v/rl);
+  const d=[f[1]*r[2]-f[2]*r[1],f[2]*r[0]-f[0]*r[2],f[0]*r[1]-f[1]*r[0]];
+  return {eye,tgt,f,r,d,h:603};
+}
+function wePhotoView(C,p){ const q=p.map((v,i)=>v-C.eye[i]); const dot=a=>a[0]*q[0]+a[1]*q[1]+a[2]*q[2]; return [dot(C.r),dot(C.d),dot(C.f)] }
+// ページの描画（WebGL1）。テクスチャは「(tsb,cba) の組ごとに 256×256 にほどいた絵」を 1 枚の大きな絵（4×4 欄）に並べて使う。
+// 三角形は [x,y,z, u,v, 明るさ] を CPU で作って毎回送る（選手 1 人で 600 面ほどなので軽い）
+const WE_ATLAS=2048, WE_TILE=256;   // 8×8 欄（集合写真は 11 人で色の表の組が増える）
+// VRAM と (tsb,cba) の並びから、RGBA の大きな絵と「組→欄の番号」を作る。色 0 は透明
+// kit に自分のユニフォームの絵（256×256 の RGBA、背番号は組み立て済み）を渡すと、選手の服（ページ 153・色の表 486）はそれで描く
+function weAtlas(vram,combos,kit){
+  const px=new Uint8Array(WE_ATLAS*WE_ATLAS*4), slot=new Map();
+  combos.slice(0,64).forEach((k,n)=>{ const [tsb,cba]=k.split(",").map(Number), ox=(n&7)*WE_TILE, oy=(n>>3)*WE_TILE; slot.set(k,n); const own=kit&&tsb===153&&(cba>>6)===486;
+    for(let v=0;v<256;v++) for(let u=0;u<256;u++){ const c=own?weKitTexel(kit,u,v):weTexel(vram,tsb,cba,u,v), i=((oy+v)*WE_ATLAS+ox+u)*4; if(c){ px[i]=c[0]; px[i+1]=c[1]; px[i+2]=c[2]; px[i+3]=255 } } });
+  return {px,slot};
+}
+// 組んだ部品（wePose の返り値）から三角形の列を作る。tmds は 位置→tmdRead の結果。light は使わない（ゲームが光を当てないので。呼び出しの形だけ残す）。
+// look は選手の見た目（look.js の weLookPrim で面ごとに UV・色の表の位置を書き換える。null なら書き換えない）
+function weTris(tmds,parts,slot,light,look){
+  const out=[], used=new Set();
+  for(const pt of parts){ const t=tmds.get(pt.off); if(!t) continue; let pk=0;
+    for(const o of t.objs) for(const p0 of o.prims){ pk++; if(!p0.uv) continue;
+      const L=weLookPrim(p0,pt.part,pk,look), p={...p0,uv:L.uv,cba:L.cba,tsb:L.tsb};
+      const k=p.tsb+","+p.cba; used.add(k); const n=slot?slot.get(k):undefined; if(slot&&n===undefined) continue;
+      const P=p.v.map(i=>weXform(pt.m,pt.t,o.verts[i]||[0,0,0]));
+      // 明るさ: ゲームは選手に光を当てず、どの面も色 127,127,127 でテクスチャを描く（本体 0x8001235c。光の計算の命令が無い）＝ほぼそのまま
+      const sh=127/128;
+      const ox=((n??0)&7)*WE_TILE, oy=((n??0)>>3)*WE_TILE;
+      const V=P.map((q,j)=>[q[0],q[1],q[2],(ox+p.uv[j][0]+.5)/WE_ATLAS,(oy+p.uv[j][1]+.5)/WE_ATLAS,sh]);
+      for(let i=1;i+1<V.length;i++) out.push(...V[0],...V[i],...V[i+1]);
+    } }
+  return {tris:new Float32Array(out),used:[...used]};
+}
+function weGL(canvas){
+  const gl=canvas.getContext("webgl",{preserveDrawingBuffer:true,alpha:true,antialias:true});
+  if(!gl) throw new Error("このブラウザでは WebGL が使えません");
+  const sh=(t,s)=>{ const o=gl.createShader(t); gl.shaderSource(o,s); gl.compileShader(o); if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o };
+  const pr=gl.createProgram();
+  gl.attachShader(pr,sh(gl.VERTEX_SHADER,"attribute vec3 p;attribute vec2 t;attribute float s;uniform mat4 M;varying vec2 vt;varying float vs;void main(){gl_Position=M*vec4(p,1.);vt=t;vs=s;}"));
+  gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,"precision mediump float;uniform sampler2D T;varying vec2 vt;varying float vs;void main(){vec4 c=texture2D(T,vt);if(c.a<.5)discard;gl_FragColor=vec4(min(c.rgb*vs,1.),1.);}"));
+  gl.linkProgram(pr); gl.useProgram(pr);
+  const buf=gl.createBuffer(), tex=gl.createTexture(), A={p:gl.getAttribLocation(pr,"p"),t:gl.getAttribLocation(pr,"t"),s:gl.getAttribLocation(pr,"s")}, uM=gl.getUniformLocation(pr,"M");
+  gl.bindTexture(gl.TEXTURE_2D,tex);
+  for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.NEAREST],[gl.TEXTURE_MAG_FILTER,gl.NEAREST],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D,k,v);
+  let n=0;
+  return {
+    setAtlas(px){ gl.bindTexture(gl.TEXTURE_2D,tex); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,WE_ATLAS,WE_ATLAS,0,gl.RGBA,gl.UNSIGNED_BYTE,px) },
+    setTris(f){ gl.bindBuffer(gl.ARRAY_BUFFER,buf); gl.bufferData(gl.ARRAY_BUFFER,f,gl.DYNAMIC_DRAW); n=f.length/6 },
+    // view: {yaw,pitch,dist,target:[x,y,z],fov}。PS1 の座標は Y が下向き・正面が -Z なので、X 軸まわりに半回転して（Y と Z を反転。鏡写しにしない）画面へ
+    draw(view,bg){
+      const W=canvas.width=Math.round(canvas.clientWidth*devicePixelRatio), H=canvas.height=Math.round(canvas.clientHeight*devicePixelRatio);
+      gl.viewport(0,0,W,H); gl.clearColor(...(bg||[0,0,0,0])); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+      if(!n) return;
+      gl.useProgram(pr); gl.uniformMatrix4fv(uM,false,weViewMatrix(view,W/H));
+      gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+      gl.enableVertexAttribArray(A.p); gl.vertexAttribPointer(A.p,3,gl.FLOAT,false,24,0);
+      gl.enableVertexAttribArray(A.t); gl.vertexAttribPointer(A.t,2,gl.FLOAT,false,24,12);
+      gl.enableVertexAttribArray(A.s); gl.vertexAttribPointer(A.s,1,gl.FLOAT,false,24,20);
+      gl.drawArrays(gl.TRIANGLES,0,n);
+    }
+  };
+}
+// 列優先の 4×4。体の座標 → 画面。v.fx・v.fy があれば、画面の横・縦の倍率をそのまま使う（PS1 の 512×240・奥行き 603 を 4:3 に引き伸ばす投影＝fx 603/256・fy 603/120）
+function weViewMatrix(v,aspect){
+  const cy=Math.cos(v.yaw), sy=Math.sin(v.yaw), cp=Math.cos(v.pitch), sp=Math.sin(v.pitch), [tx,ty,tz]=v.target;
+  // 回す: まず X 軸まわりに半回転（Y を上向きに、正面をカメラへ）、ヨー（縦の軸）、ピッチ（横の軸）、カメラは -Z を向く
+  const f=1/Math.tan((v.fov||30)*Math.PI/360), near=10, far=20000;
+  const tr=p=>{ const x=p[0]-tx, y=-(p[1]-ty), z=-(p[2]-tz);
+    const x1=x*cy-z*sy, z1=x*sy+z*cy, y2=y*cp-z1*sp, z2=y*sp+z1*cp; return [x1,y2,z2-v.dist] };
+  const o=tr([0,0,0]), ex=tr([1,0,0]).map((a,i)=>a-o[i]), ey=tr([0,1,0]).map((a,i)=>a-o[i]), ez=tr([0,0,1]).map((a,i)=>a-o[i]);
+  const V=[ex[0],ex[1],ex[2],0, ey[0],ey[1],ey[2],0, ez[0],ez[1],ez[2],0, o[0],o[1],o[2],1];
+  const P=[v.fx?v.fx*(4/3)/aspect:f/aspect,0,0,0, 0,v.fy||f,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0];
+  const M=new Float32Array(16);
+  for(let c=0;c<4;c++) for(let r=0;r<4;r++){ let s=0; for(let k=0;k<4;k++) s+=P[k*4+r]*V[c*4+k]; M[c*4+r]=s }
+  return M;
+}
+// 画面の組み立て
+const VERSION="0.4.0";
+const $=id=>document.getElementById(id);
+// 体の組（MODEL.BIN の先頭の 18 個。0,1 は球）。名前は絵で見た印象（推測）。2・3・16・17 は服の色の表がディスクのどこから来るかまだ分からず、服が抜ける
+const WE_SETS=[[6,"フィールド・半袖"],[8,"フィールド・長袖"],[12,"フィールド・半袖 2"],[14,"フィールド・長袖 2"],[7,"フィールド 3"],[9,"フィールド 4"],[13,"フィールド 5"],[15,"フィールド 6"],
+  [4,"キーパー"],[10,"キーパー 2"],[5,"キーパー 3"],[11,"キーパー 4"],[2,"組 2（服が抜ける）"],[3,"組 3（服が抜ける）"],[16,"組 16（服が抜ける）"],[17,"組 17（服が抜ける）"]];
+// TEX_xx の札のうち、1 着目・2 着目に使うもの（同じ VRAM の場所へ置く札が 2 組ある）。キーパーの色の表は別に札 4 か 5
+// （ゲームも別々に選ぶ: SELECT.BIN の 0x8008eea4 が札 1/3、0x8008eee8 が札 4/5。集合写真の画面で、鹿島の GK は 5、山形の GK は 4 だった）
+const WE_KIT_REC=[[0,1,7,8,9,11],[2,3,7,8,10,11]];
+const WE_FPS=30;   // 推測
+const APP={files:null, model:null, anime:null, dat2d:null, sel:null, exe:null, teams:[], texFiles:new Map(), tmds:new Map(), gl:null, atlasKey:"", slot:null,
+  view:{yaw:0,pitch:0.08,dist:1400,target:[0,0,0],fov:30}, base:null, playing:false, last:0};
+function status(msg,err){ const s=$("status"); s.textContent=msg||""; s.className=err?"err":"" }
+async function readFile(name){ const f=APP.files.get(name); if(!f) throw new Error(name+" がディスクに無い（ウイニングイレブン2001 のディスクではない？）"); return f() }
+function tmdAt(off){ if(!APP.tmds.has(off)) APP.tmds.set(off,tmdRead(APP.model,off)); return APP.tmds.get(off) }
+async function openDisc(file){
+  try{
+    status("ディスクを開いています…"); $("n-disc").textContent=file.name;
+    APP.files=await discOpen(file);
+    status("モデルと動きを読んでいます…");
+    APP.model=await readFile("BIN/MODEL.BIN"); APP.anime=await readFile("BIN/ANIME.BIN"); APP.dat2d=await readFile("BIN/DAT2D.BIN");
+    APP.sel=await readFile("SELECT.BIN"); APP.exe=await readFile("SLPM_868.35"); APP.enter=await readFile("ENTER.BIN");
+    APP.tmds.clear(); APP.texFiles.clear(); APP.atlasKey="";
+    // チーム: 名前の表（43）と TEX_00〜45。名前の無い TEX は番号で
+    const kits=[...APP.files.keys()].filter(n=>/^BIN\/TEX_\d+\.BIN$/.test(n)).sort(); APP.teams=weTeamNames(APP.sel);
+    $("s-team").innerHTML=kits.map((n,t)=>`<option value="${t}">${APP.teams[t]||"ユニフォーム "+n.slice(8,-4)}</option>`).join("");
+    $("s-set").innerHTML=WE_SETS.map(([k,n])=>`<option value="${k}">${n}</option>`).join("");
+    const opts=(n,f)=>Array.from({length:n},(_,i)=>`<option value="${i}">${f?f(i):i}</option>`).join("");
+    $("s-hair").innerHTML=opts(16); $("s-face").innerHTML=opts(16,i=>i>=5?i+"（ひげ）":i); $("s-skin").innerHTML=opts(4); $("s-hcol").innerHTML=opts(16); $("s-s112").innerHTML=opts(8); $("s-boots").innerHTML=opts(8);
+    $("step-disc").classList.add("done"); $("pick").hidden=false; $("detail").hidden=false; $("motion").hidden=false; $("savebar").hidden=false; $("ownkit").hidden=false; $("empty").hidden=true; $("hint").hidden=false;
+    $("s-team").value="1"; listPlayers(); $("s-player").value="8"; pickPlayer();
+    APP.base=null; await refresh(true); status("");
+  }catch(e){ console.error(e); status("読めなかった: "+e.message,true) }
+}
+// 選手の一覧（選手の表があるチームだけ）。値は 選手の番号、"" は手で選ぶ
+function listPlayers(){
+  const t=+$("s-team").value, sp=$("s-player"); let h='<option value="">（手で選ぶ）</option>';
+  if(weHasRoster(t)) for(let i=0;i<26;i++){ const p=wePlayer(APP.sel,APP.exe,t,i); if(p.name) h+=`<option value="${i}">${p.num||"-"} ${p.name}</option>` }
+  sp.innerHTML=h; sp.disabled=!weHasRoster(t);
+}
+// 選手を選んだら、その選手の値を細かい欄に入れる（体はキーパーなら 4、ほかは 6）
+function pickPlayer(){
+  const t=+$("s-team").value, i=$("s-player").value; if(i===""||!weHasRoster(t)) return;
+  const p=wePlayer(APP.sel,APP.exe,t,+i), L=p.look;
+  $("s-hair").value=L.hmap; $("s-face").value=L.face; $("s-skin").value=L.skin; $("s-hcol").value=L.hcol; $("s-s112").value=L.s112; $("s-boots").value=L.boots; $("n-num").value=p.num;
+  $("s-set").value=p.gk?4:6;
+}
+function cur(){
+  const set=+$("s-set").value, face=+$("s-face").value, hmap=+$("s-hair").value, gk=[4,5,10,11].includes(set);
+  const look={hmap, face, beard:face>=5, skin:+$("s-skin").value, hcol:+$("s-hcol").value, s112:+$("s-s112").value, boots:+$("s-boots").value, cell:gk?null:0};
+  return {team:+$("s-team").value, kit:[...APP.files.keys()].filter(n=>/^BIN\/TEX_\d+\.BIN$/.test(n)).sort()[+$("s-team").value], alt:+$("s-alt").value, gkKit:+$("s-gk").value, set, head:hmap*2+(look.beard?1:0),
+    look, num:Math.max(0,Math.min(99,+$("n-num").value|0)), anim:Math.max(0,Math.min(203,+$("m-num").value|0)), frame:+$("m-frame").value};
+}
+async function loadAtlas(c,used){
+  const key=c.kit+"|"+c.alt+"|"+c.gkKit+"|"+(APP.userKitId||0)+"|"+c.num+"|"+c.look.cell+"|"+used.join(";"); if(key===APP.atlasKey) return;
+  if(!APP.texFiles.has(c.kit)){ const f=await readFile(c.kit); APP.texFiles.set(c.kit,f) }
+  if(cur().kit!==c.kit) return;   // 読む間に選び直された
+  const vram=weVramNew(); weTexLoadRun(vram,APP.dat2d,WE_TEX_BASE,0); weTexLoadRun(vram,APP.dat2d,WE_TEX_BASE,1);
+  weTexLoad(vram,APP.texFiles.get(c.kit),WE_TEX_BASE,new Set([...WE_KIT_REC[c.alt],4+c.gkKit]));
+  if(c.num) weComposeNumber(vram,c.look.cell??10,c.num);   // 背番号（キーパーの体は欄 10）
+  let kit=null; if(APP.userKit){ kit=APP.userKit.slice(); if(c.num&&c.look.cell!=null) weComposeNumberRGBA(kit,c.look.cell,c.num) }
+  const a=weAtlas(vram,used,kit); APP.gl.setAtlas(a.px); APP.slot=a.slot; APP.atlasKey=key;
+}
+// 動きの番号が変わったらコマの数を数え直す
+function setAnim(){
+  const c=cur(), n=weAnimFrames(APP.anime,c.anim), r=$("m-frame");
+  r.max=Math.max(0,n-1); if(+r.value>n-1) r.value=0; APP.nFrames=n;
+}
+// 描き直し。テクスチャを読む間に次の描き直しが始まったら、古いほうは途中でやめる（古い選択で上書きしない）
+async function refresh(resetView){
+  if(!APP.model) return;
+  const seq=APP.seq=(APP.seq||0)+1;
+  if($("s-mode").value==="photo") return refreshPhoto(seq,resetView);
+  const c=cur(); if(APP.nFrames==null||resetView) setAnim();
+  if(!APP.nFrames){ $("m-fn").textContent="この番号にはコマが無い"; return }
+  const parts=wePose(APP.model,APP.anime,c.set,c.head,c.anim,+$("m-frame").value), tm=new Map(parts.map(p=>[p.off,tmdAt(p.off)]));
+  const light=[0.35,-0.6,0.7], first=weTris(tm,parts,null,light,c.look);
+  await loadAtlas(c,first.used); if(seq!==APP.seq) return;
+  const {tris}=weTris(tm,parts,APP.slot,light,c.look); APP.gl.setTris(tris);
+  if(!APP.base||resetView){ // 立ち姿（動き 0 のコマ 0）の大きさで、見る所と距離を決める
+    const p0=wePose(APP.model,APP.anime,c.set,c.head,0,0), b=weTris(new Map(p0.map(p=>[p.off,tmdAt(p.off)])),p0,null,light).tris, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+    for(let i=0;i<b.length;i+=6) for(let k=0;k<3;k++){ mn[k]=Math.min(mn[k],b[i+k]); mx[k]=Math.max(mx[k],b[i+k]) }
+    APP.base={target:mn.map((v,k)=>(v+mx[k])/2), h:mx[1]-mn[1]};
+    if(resetView) resetCam();
+  }
+  $("m-fn").textContent=`${+$("m-frame").value+1} / ${APP.nFrames}`;
+  $("info").textContent=`${$("s-team").selectedOptions[0]?.textContent||""}（${c.kit.slice(4,-4)}・${c.alt+1} 着目・GK ${c.gkKit+1}）・体の組 ${c.set}・頭 ${c.head}・背番号 ${c.num||"なし"}・動き ${c.anim}・面 ${tris.length/18|0}`;
+  draw();
+}
+// ===== 集合写真 =====
+// 11 人を、ENTER.BIN の立ち位置・姿勢と、ゲームのカメラで描く（photo.js）。テクスチャは 11 人ぶんの背番号を組み立てた 1 枚
+async function refreshPhoto(seq,resetView){
+  const team=+$("s-team").value, alt=+$("s-alt").value, gkKit=+$("s-gk").value, side=+$("s-side").value;
+  const kit=[...APP.files.keys()].filter(n=>/^BIN\/TEX_\d+\.BIN$/.test(n)).sort()[team];
+  const sc=wePhotoScene(APP.model,APP.enter,APP.sel,APP.exe,team,APP.photoPoses||null,side);
+  const light=[0,-1,0], all=[];
+  for(const p of sc.players){ const parts=p.parts.map(pt=>({...pt,t:[pt.t[0]+p.pos[0],pt.t[1]+p.pos[1],pt.t[2]+p.pos[2]]}));
+    all.push({p,parts,tm:new Map(parts.map(q=>[q.off,tmdAt(q.off)]))}) }
+  const used=[...new Set(all.flatMap(a=>weTris(a.tm,a.parts,null,light,a.p.look).used))];
+  const key="photo|"+kit+"|"+alt+"|"+gkKit+"|"+(APP.userKitId||0)+"|"+sc.players.map(p=>p.num).join(",")+"|"+used.join(";");
+  if(key!==APP.atlasKey){
+    if(!APP.texFiles.has(kit)){ const f=await readFile(kit); APP.texFiles.set(kit,f) } if(seq!==APP.seq) return;
+    const vram=weVramNew(); weTexLoadRun(vram,APP.dat2d,WE_TEX_BASE,0); weTexLoadRun(vram,APP.dat2d,WE_TEX_BASE,1);
+    weTexLoad(vram,APP.texFiles.get(kit),WE_TEX_BASE,new Set([...WE_KIT_REC[alt],4+gkKit]));
+    for(const p of sc.players) if(p.num) weComposeNumber(vram,p.look.cell??10,p.num);
+    let own=null; if(APP.userKit){ own=APP.userKit.slice(); for(const p of sc.players) if(p.num&&p.look.cell!=null) weComposeNumberRGBA(own,p.look.cell,p.num) }
+    const a=weAtlas(vram,used,own); APP.gl.setAtlas(a.px); APP.slot=a.slot; APP.atlasKey=key;
+  }
+  const parts=all.map(a=>weTris(a.tm,a.parts,APP.slot,light,a.p.look).tris), n=parts.reduce((s,t)=>s+t.length,0), tris=new Float32Array(n);
+  let o=0; for(const t of parts){ tris.set(t,o); o+=t.length }
+  APP.gl.setTris(tris);
+  if(resetView) photoCam();
+  $("info").textContent=`集合写真: ${$("s-team").selectedOptions[0]?.textContent||""}（${kit.slice(4,-4)}・${alt+1} 着目・GK ${gkKit+1}・${side?"2P":"1P"} 側）・`+sc.players.map(p=>(p.num||"-")+" "+p.name).join("・");
+  draw();
+}
+// ゲームのカメラ（場面 64/65）を、回せる形（見る点・向き・距離）に直す。見る点は列の奥行きのところに置く
+function photoCam(){
+  const C=wePhotoCamera(+$("r-cam").value,+$("s-side").value), D=-3088-C.eye[2], dist=D/C.f[2], tgt=C.eye.map((v,i)=>v+C.f[i]*dist);
+  const a=C.f[0], b=-C.f[1], c=-C.f[2], yaw=Math.atan2(-a,-c), z1=-Math.hypot(a,c), pitch=Math.atan2(-b,-z1);
+  Object.assign(APP.view,{yaw,pitch,dist,target:tgt,fx:603/256,fy:603/120}); draw();
+}
+// ===== 自分のユニフォーム =====
+// 下絵: いまのチーム・着のユニフォームの絵（ページ 576,256 を色の表 486 で）を 256×256 の PNG に。色 0 は透明
+async function kitTemplate(){
+  const c=cur(); if(!APP.texFiles.has(c.kit)) APP.texFiles.set(c.kit,await readFile(c.kit));
+  const vram=weVramNew(); weTexLoad(vram,APP.texFiles.get(c.kit),WE_TEX_BASE,new Set([...WE_KIT_REC[c.alt],4+c.gkKit]));
+  const cv=document.createElement("canvas"); cv.width=cv.height=256; const g=cv.getContext("2d"), im=g.createImageData(256,256);
+  for(let v=0;v<256;v++) for(let u=0;u<256;u++){ const t=weTexel(vram,153,486<<6,u,v), i=(v*256+u)*4; if(t){ im.data[i]=t[0]; im.data[i+1]=t[1]; im.data[i+2]=t[2]; im.data[i+3]=255 } }
+  g.putImageData(im,0,0); cv.toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=`we2001_kit_${c.kit.slice(8,-4)}_${c.alt+1}.png`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000) },"image/png");
+}
+// 自分の絵を読む（256×256。大きさが違えば 256×256 に縮める）
+function openKit(file){
+  const img=new Image(); img.onload=()=>{ const cv=document.createElement("canvas"); cv.width=cv.height=256; const g=cv.getContext("2d"); g.imageSmoothingEnabled=false; g.drawImage(img,0,0,256,256);
+    APP.userKit=new Uint8Array(g.getImageData(0,0,256,256).data); APP.userKitId=(APP.userKitId||0)+1; URL.revokeObjectURL(img.src);
+    $("n-kit").textContent=file.name; $("b-kit0").hidden=false; status(""); refresh(false) };
+  img.onerror=()=>status("絵として読めなかった: "+file.name,true); img.src=URL.createObjectURL(file);
+}
+function setMode(){
+  const ph=$("s-mode").value==="photo"; document.body.classList.toggle("photo",ph); play(false);
+  if(!ph){ delete APP.view.fx; delete APP.view.fy } APP.atlasKey=""; refresh(true);
+}
+function resetCam(){ Object.assign(APP.view,{yaw:0,pitch:0.08,target:APP.base.target.slice(),dist:APP.base.h*2.6}); draw() }
+function draw(){ if(APP.gl) APP.gl.draw(APP.view,$("c-clear").checked?[0,0,0,0]:null) }
+function play(on){
+  APP.playing=on; $("m-play").textContent=on?"■ 止める":"▶ 再生";
+  if(on){ APP.last=performance.now(); requestAnimationFrame(tick) }
+}
+function tick(t){
+  if(!APP.playing) return;
+  if(t-APP.last>=1000/WE_FPS){ APP.last=t; const r=$("m-frame"); r.value=(+r.value+1)%(APP.nFrames||1); refresh(false) }
+  requestAnimationFrame(tick);
+}
+function stepAnim(d){ const e=$("m-num"); e.value=(Math.max(0,Math.min(203,+e.value|0))+d+204)%204; $("m-frame").value=0; setAnim(); refresh(false) }
+function savePng(){
+  APP.gl.draw(APP.view,$("c-clear").checked?[0,0,0,0]:[0.17,0.165,0.15,1]);
+  $("cv").toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); const c=cur();
+    a.download=$("s-mode").value==="photo"?`we2001_photo_${c.kit.slice(8,-4)}_${c.alt+1}.png`:`we2001_${c.kit.slice(8,-4)}_${c.alt+1}_${c.num}_${c.head}_${c.anim}_${c.frame+1}.png`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); draw() },"image/png");
+}
+// おまかせ: 選手の表のあるチームから 1 人と、1 着目か 2 着目
+function randomPick(){
+  const r=n=>Math.floor(Math.random()*n), teams=[...Array(28).keys(),34,35,36,37,38,39,40];
+  $("s-team").value=teams[r(teams.length)]; listPlayers(); const sp=$("s-player"); sp.selectedIndex=1+r(sp.options.length-1); $("s-alt").value=r(2); $("s-gk").value=r(2);
+  pickPlayer(); refresh(false);
+}
+function init(){
+  $("ver-h").textContent="v"+VERSION; $("ver").textContent="版 "+VERSION;
+  try{ APP.gl=weGL($("cv")) }catch(e){ status(e.message,true) }
+  $("f-disc").onchange=e=>{ const f=e.target.files[0]; if(f) openDisc(f) };
+  $("s-team").onchange=()=>{ const keep=$("s-player").value; listPlayers(); if(keep!==""&&[...$("s-player").options].some(o=>o.value===keep)) $("s-player").value=keep; pickPlayer(); refresh(false) };
+  $("s-player").onchange=()=>{ pickPlayer(); refresh(false) };
+  $("s-mode").onchange=setMode;
+  $("b-kittpl").onclick=kitTemplate; $("f-kit").onchange=e=>{ const f=e.target.files[0]; if(f) openKit(f); e.target.value="" };
+  $("b-kit0").onclick=()=>{ APP.userKit=null; APP.userKitId=(APP.userKitId||0)+1; $("n-kit").textContent="ゲームの絵"; $("b-kit0").hidden=true; refresh(false) }; $("s-side").onchange=()=>refresh(true); $("r-cam").oninput=photoCam;
+  $("b-pose").onclick=()=>{ APP.photoPoses=Array.from({length:11},(_,i)=>wePhotoRandomPose(i,n=>Math.floor(Math.random()*n))); refresh(false) };
+  $("b-pose0").onclick=()=>{ APP.photoPoses=null; refresh(false) };
+  for(const id of ["s-alt","s-gk","s-set","s-hair","s-face","s-skin","s-hcol","s-s112","s-boots","n-num"]) $(id).onchange=()=>{ if(!["s-alt","s-gk","s-set"].includes(id)) $("s-player").value=""; refresh(false) };
+  $("m-num").onchange=()=>{ $("m-frame").value=0; setAnim(); refresh(false) };
+  $("m-prev").onclick=()=>stepAnim(-1); $("m-next").onclick=()=>stepAnim(1);
+  $("m-frame").oninput=()=>refresh(false);
+  $("m-play").onclick=()=>play(!APP.playing);
+  $("b-png").onclick=savePng; $("c-clear").onchange=draw; $("b-rand").onclick=randomPick;
+  // 回す・寄る
+  const cv=$("cv"), pts=new Map(); let pinch=0;
+  cv.addEventListener("pointerdown",e=>{ cv.setPointerCapture(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]) });
+  cv.addEventListener("pointermove",e=>{ if(!pts.has(e.pointerId)) return; const [x,y]=pts.get(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]);
+    if(pts.size===2){ const [a,b]=[...pts.values()], d=Math.hypot(a[0]-b[0],a[1]-b[1]); if(pinch) APP.view.dist=Math.max(200,Math.min(8000,APP.view.dist*pinch/d)); pinch=d; draw(); return }
+    APP.view.yaw+=(e.clientX-x)*0.01; APP.view.pitch=Math.max(-1.5,Math.min(1.5,APP.view.pitch+(e.clientY-y)*0.01)); draw() });
+  const up=e=>{ pts.delete(e.pointerId); if(pts.size<2) pinch=0 };
+  cv.addEventListener("pointerup",up); cv.addEventListener("pointercancel",up);
+  cv.addEventListener("wheel",e=>{ e.preventDefault(); APP.view.dist=Math.max(200,Math.min(8000,APP.view.dist*Math.exp(e.deltaY*0.001))); draw() },{passive:false});
+  cv.addEventListener("dblclick",()=>{ if($("s-mode").value==="photo") photoCam(); else if(APP.base) resetCam() });
+  // ドロップ
+  const vw=$("viewer");
+  document.addEventListener("dragover",e=>{ e.preventDefault(); vw.classList.add("drop-over") });
+  document.addEventListener("dragleave",e=>{ if(!e.relatedTarget) vw.classList.remove("drop-over") });
+  document.addEventListener("drop",e=>{ e.preventDefault(); vw.classList.remove("drop-over"); const f=e.dataTransfer.files[0]; if(f) openDisc(f) });
+  document.addEventListener("keydown",e=>{ if(!APP.model||/INPUT|SELECT/.test(document.activeElement?.tagName)&&document.activeElement.type!=="range") return;
+    const r=$("m-frame");
+    if(e.key==="ArrowRight"){ r.value=Math.min(+r.max,+r.value+1); refresh(false) } else if(e.key==="ArrowLeft"){ r.value=Math.max(0,+r.value-1); refresh(false) }
+    else if(e.key===" "){ e.preventDefault(); play(!APP.playing) } });
+  addEventListener("resize",draw);
+}
+init();
+</script>
+</body>
+</html>

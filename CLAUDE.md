@@ -1,6 +1,6 @@
 # haristweet.github.io
 
-GitHub Pages のサイト。ビューアは `tobal1-model-viewer/`・`vf2-model-viewer/`・`fv-model-viewer/`（作りはじめ）。
+GitHub Pages のサイト。ビューアは `tobal1-model-viewer/`・`vf2-model-viewer/`・`fv-model-viewer/`・`we2001-model-viewer/`・`we2012-model-viewer/`・`jwe2010-model-viewer/`（作りはじめ。PS2）。
 そちらの作業メモ `tobal1-model-viewer/CLAUDE.md` を先に読むこと（進め方の決まりもそこにある）。
 
 ## ビューア作りで守ること（tobal1 ビューアで学んだこと。新しいビューアを作るときも必ず守る）
@@ -22,3 +22,15 @@ GitHub Pages のサイト。ビューアは `tobal1-model-viewer/`・`vf2-model-
 5. **初めて使う人の目で画面を触る。** ディスクを持っていない人の流れ（写しだけで開く）が
    長いあいだ隠れていた。新しい機能を入れたら、何も読み込んでいない状態から一度たどる。
 6. **本筋から外れる話は、どこまでやるか先に決める。** 寄り道（3Dプリントなど）は止めどころを決めてから始める。
+7. **見る操作は最初からこれにそろえる（ユーザーの指定、2026-10-13）。** 新しいビューアでも既定にする:
+   ドラッグ＝回す、**Shift＋ドラッグ**・右ドラッグ・中ボタンのドラッグ＝平行に動かす、ホイール＝カーソルの所へ寄る（カーソルの下の物が動かない）、
+   2本指＝ピンチで寄る＋指の中ほどの移動で平行に動かす、ダブルクリック＝向き・寄り・ずらしを全部戻す、右クリックのメニューは出さない。
+   画面の下に「ドラッグで回す・Shift＋ドラッグ（右ボタン・2本指）で動かす・ホイールかピンチで寄る・ダブルクリックで戻す」と書く。
+   作りの見本は `jwe2010-model-viewer/src/app.js`（init の中）と `fv-model-viewer/src/fapp.js`（hookInput）。操作をたどる台本は `jwe2010-model-viewer/src/ctrl.mjs`
+8. **見る所（モデルを描く枠）の背景は全ビューアで同じにする（ユーザーの指定、2026-10-14）。**
+   ふだんは CSS で `background:radial-gradient(circle at 50% 35%,var(--stage2,#3a3833),var(--stage))`（`--stage:#2a2926`。明るい画面・暗い画面とも同じ）。
+   背景の色は 8 種から丸いボタンで選べて、選んだものを localStorage に覚える: ダーク #3a3834/#2a2926・黒 #111111/#000000・グレー #8a8a8a/#6a6a6a・白 #ffffff/#e6e4df・
+   空 #bfe3ff/#5a9fd6・夕焼け #ffcf8a/#c4533a・夜 #35407a/#0d1030・グリーンバック #00b140/#00b140（中心/周り。`--stage2`/`--stage` を書きかえる）。
+   canvas は透明に描き（`clearColor(0,0,0,0)`）、背景を透かして見せる。PNG で保存するときも同じ背景（50% 35% からいちばん遠い角まで）を塗る。「背景なし」で透明。
+   作りの見本は `fv-model-viewer/src/fapp.js`（BG_PRESETS・setBackground・paintBackground）と `jwe2010-model-viewer/src/app.js`（BG_PRESETS・savePng）。
+   2026-10-14 の時点で選べるのは tobal1・vf2・fv・jwe2010。we2012・we2001 はダークだけ（選ぶボタンがまだ無い）

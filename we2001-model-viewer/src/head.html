@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ウイニングイレブン2001 モデルビューア</title>
+<meta name="description" content="PS1『Jリーグ実況ウイニングイレブン2001』のディスクから、選手をユニフォーム・髪型・動きを選んで見る">
+<style>
+:root{--bg:#f4f2ee;--card:#fff;--fg:#1f1e1b;--mut:#6b6860;--line:#dedad2;--acc:#2f7a4a;--bad:#b3392f;--stage:#2a2926}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1a1917;--card:#24231f;--fg:#ecebe6;--mut:#a09d94;--line:#3a3833;--acc:#6fcf93;--bad:#ec7a6f}}
+*{box-sizing:border-box}
+html{touch-action:manipulation}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Hiragino Sans",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 14px}
+.step{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 12px}
+.step b{display:block;margin:0 0 2px}.step small{color:var(--mut);display:block;margin:0 0 8px}
+.step.done{border-color:var(--acc)}
+.step label.btn{display:inline-block;background:var(--acc);color:#fff;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600}
+.step input[type=file]{display:none}
+.step .name{margin-left:8px;font-size:13px;color:var(--mut);overflow-wrap:anywhere}
+#status{min-height:1.6em;margin:0 0 10px;font-size:14px}#status.err{color:var(--bad)}
+.viewer{position:relative;background:radial-gradient(circle at 50% 35%,#3a3833,var(--stage));border-radius:10px;overflow:hidden;aspect-ratio:4/3;max-height:70vh;margin:0 auto;touch-action:none;user-select:none}
+.viewer canvas{position:absolute;inset:0;width:100%;height:100%}
+.viewer [hidden]{display:none!important}
+.viewer .hint{position:absolute;left:12px;bottom:10px;color:#cfccc4;font-size:12px;pointer-events:none}
+@media (max-width:640px){.viewer .hint{display:none}}
+.viewer .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a8a49a;text-align:center;padding:20px}
+.viewer.drop-over{outline:3px dashed var(--acc);outline-offset:-3px}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:10px 0}
+.ctrl[hidden]{display:none}
+.ctrl label{white-space:nowrap}
+.ctrl select,.ctrl button,.ctrl input[type=number]{font:inherit;padding:4px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px}
+.ctrl button{cursor:pointer}
+.btn2 .fake{display:inline-block;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:4px 8px;cursor:pointer}
+.ctrl .grp{white-space:nowrap}
+#info{color:var(--mut);font-size:13px;margin:6px 0 0}
+.ver{font-size:13px;font-weight:normal;color:var(--mut);border:1px solid currentColor;border-radius:6px;padding:1px 6px;vertical-align:middle;white-space:nowrap}
+details{margin:16px 0 0;color:var(--mut);font-size:13px}
+body.photo .one,body.photo #detail,body.photo #motion{display:none!important}body:not(.photo) .photo{display:none!important}
+details.more{margin:0 0 6px;color:var(--fg);font-size:14px}details.more[hidden]{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>ウイニングイレブン2001 モデルビューア <span id="ver-h" class="ver"></span></h1>
+<p class="sub">PS1『Jリーグ実況ウイニングイレブン2001』のディスクのイメージから、選手を組んで見ます。チーム・選手・動きを選べます。ファイルはこのブラウザの中だけで読み、どこにも送りません。</p>
+<div class="step" id="step-disc"><b>ディスクのイメージ</b><small>.chd・.bin（2352、1 つ目のトラック）・.iso。ページにドロップしても読み込めます</small>
+  <label class="btn">選ぶ<input type="file" id="f-disc" accept=".chd,.bin,.iso,.img"></label><span class="name" id="n-disc">まだ</span></div>
+<div id="status"></div>
+<div class="viewer" id="viewer"><canvas id="cv"></canvas>
+  <div class="empty" id="empty">ディスクのイメージを選ぶと、ここに選手が出ます</div>
+  <div class="hint" id="hint" hidden>ドラッグで回す・ホイールかピンチで寄る・ダブルクリックで戻す</div></div>
+<div class="ctrl" id="pick" hidden>
+  <label>表示 <select id="s-mode" aria-label="表示"><option value="one">1 人</option><option value="photo">集合写真</option></select></label>
+  <label>チーム <select id="s-team" aria-label="チーム"></select></label>
+  <label class="one">選手 <select id="s-player" aria-label="選手"></select></label>
+  <label>着 <select id="s-alt" aria-label="何着目"><option value="0">1 着目</option><option value="1">2 着目</option></select></label>
+  <label title="キーパーの服の色。ゲームも選手のユニフォームとは別に選ぶ">GK <select id="s-gk" aria-label="キーパーの服"><option value="0">1</option><option value="1">2</option></select></label>
+  <label class="one">体 <select id="s-set" aria-label="体の組"></select></label>
+  <button id="b-rand" class="one">🎲 おまかせ</button>
+  <label class="photo" title="1P 側はキーパーが左、2P 側は右">側 <select id="s-side" aria-label="側"><option value="0">1P</option><option value="1">2P</option></select></label>
+  <label class="photo" title="ゲームのカメラ: 最初は斜めから、だんだん正面へ寄る">カメラ <input id="r-cam" type="range" min="0" max="100" value="100" style="width:8em;vertical-align:middle" aria-label="カメラ"></label>
+  <button id="b-pose" class="photo" title="ゲームと同じ決まりで、姿勢を乱数で選び直す">🎲 並べ直す</button>
+  <button id="b-pose0" class="photo" title="ゲームの表に入っている決まった姿勢に戻す">表の姿勢</button>
+</div>
+<details class="more" id="detail" hidden><summary>見た目を手で変える</summary><div class="ctrl">
+  <label>髪型 <select id="s-hair" aria-label="髪型"></select></label>
+  <label title="顔の模様。5 以上はひげのある頭になる（ゲームと同じ）">顔 <select id="s-face" aria-label="顔"></select></label>
+  <label>肌 <select id="s-skin" aria-label="肌"></select></label>
+  <label>髪の色 <select id="s-hcol" aria-label="髪の色"></select></label>
+  <label title="色の表の 9 番目より後ろを選ぶ値。ひげや眉の色かもしれない（確かめていない）">色 2 <select id="s-s112" aria-label="色 2"></select></label>
+  <label>スパイク <select id="s-boots" aria-label="スパイク"></select></label>
+  <label>背番号 <input id="n-num" type="number" min="0" max="99" style="width:4.5em" aria-label="背番号"></label>
+</div></details>
+<div class="ctrl" id="motion" hidden>
+  <span class="grp">動き <button id="m-prev" aria-label="前の動き">◀</button> <input id="m-num" type="number" min="0" max="203" value="0" style="width:5em" aria-label="動きの番号"> <button id="m-next" aria-label="次の動き">▶</button></span>
+  <span class="grp">コマ <input id="m-frame" type="range" min="0" max="0" value="0" style="width:12em;vertical-align:middle" aria-label="コマ"> <span id="m-fn">-</span></span>
+  <button id="m-play">▶ 再生</button>
+</div>
+<details class="more" id="ownkit" hidden><summary>自分のユニフォーム</summary><div class="ctrl">
+  <button id="b-kittpl" title="いまのチーム・着のユニフォームの絵を 256×256 の PNG で保存。これに描いて読み込む">下絵を書き出す</button>
+  <label class="btn2"><input type="file" id="f-kit" accept="image/*" style="display:none"><span class="fake">絵を読み込む</span></label>
+  <span id="n-kit" style="color:var(--mut);font-size:13px">ゲームの絵</span> <button id="b-kit0" hidden>ゲームの絵に戻す</button>
+  <small style="flex-basis:100%;color:var(--mut)">フィールドの選手の服（キーパーの服は変わりません）。絵は下絵と同じ並びの 256×256 で、背番号も絵の中の小さな数字（左寄りの 0〜9 の並び）とシャツの無地の所から、ゲームと同じ決まりで組み立てます。絵はこのブラウザの中だけで使い、どこにも送りません</small>
+</div></details>
+<div class="ctrl" id="savebar" hidden><button id="b-png">PNG で保存</button>
+  <label title="PNG を透明な背景で"><input type="checkbox" id="c-clear"> 背景なし</label></div>
+<div id="info"></div>
+<details><summary>しくみ</summary>
+<p>モデルは MODEL.BIN（PS1 標準の TMD が 104 個）、動きは ANIME.BIN、顔・肌・髪の絵は DAT2D.BIN、ユニフォームの絵は TEX_00〜45.BIN から読みます。どれも読み方は、ゲームのプログラム（SLPM_868.35）で選手を描く処理・動きを読む処理・絵の圧縮をほどく処理を読んで、そのとおりにしています。</p>
+<p>選手は、チーム名・選手名・背番号の表（SELECT.BIN と本体）と、選手ごとの見た目の値（髪型・顔・肌・髪の色・スパイク）から、ゲームが描くときと同じように色の表の位置と顔・背番号の UV を書き換えて描きます。背番号の絵も、ゲームと同じく小さな数字の絵をシャツの空いた所に組み立てます。</p>
+<p>集合写真は、試合前の場面（ENTER.BIN）にある 11 人の立ち位置・姿勢の表とカメラの値をそのまま使います。姿勢はゲームでは並びごとに乱数で選ばれます（「並べ直す」で同じ決まりで選び直します）。投影もゲームと同じく、512×240 の画面を 4:3 に引き伸ばしたものです。スタメンは選手の表の最初の 11 人としています（推測）。背景（スタジアム）はまだ描きません。</p>
+<p>まだのこと: チームとユニフォームの対応は、チームの並び順と TEX の番号が同じとしています（色を見比べた範囲では合います。ゲームの対応表は見つけていません）。名前はゲーム独自の文字があるので、崩れて出るものがあります。キーパーかどうかは選手の値の 1 つから推測しています。動きの速さは 1 秒 30 コマとしています（確かめていません）。光はゲームと同じく当てず、テクスチャの色をそのまま描きます。</p>
+<p id="ver"></p></details>
+</main>
+<script>
