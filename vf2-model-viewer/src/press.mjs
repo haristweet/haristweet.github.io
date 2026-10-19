@@ -6,12 +6,14 @@ import fs from "fs"; import vm from "vm"; import path from "path";
 const here=path.dirname(new URL(import.meta.url).pathname), ctx={console}; vm.createContext(ctx);
 for(const f of ["arcade.js","ee.js","motion.js"]) vm.runInContext(fs.readFileSync(path.join(here,f),"utf8"),ctx);
 const g=n=>vm.runInContext(n,ctx), prog=new Uint8Array(fs.readFileSync(path.join(here,"disc/bin/IC12_15.dec")));
-export const VF2IN={input:0x1bac8, body:0x14324, end:0x142a8};
+export const VF2IN={input:0x1bac8, body:0x14324, end:0x142a8, after:0x1645c};
 export function vf2Frame(E,pl){ const cpu=E.cpu, G=E.mem.r32(pl?0x500808:0x500804), G8=E.mem.r32(pl?0x500804:0x500808); class Y extends Error{};
   const R=cpu.r; R[1]=R[31]=0x5f8000; R[29]=G; R[23]=G; R[24]=G8; R[28]=0x4000; R[27]=0x880000; R[26]=0x800000; R[30]=0;
   cpu.trace=pc=>{ if(pc===VF2IN.end) throw new Y() };
   try{ cpu.run(VF2IN.body,2e7) }catch(e){ if(!(e instanceof Y)) throw e } finally{ cpu.trace=null } }
-export function vf2Step(E,pl,bits){ const G=E.mem.r32(pl?0x500808:0x500804); E.mem.w8(G+0x1200,bits); const cpu=E.cpu, R=cpu.r; R[1]=R[31]=0x5f8000; R[23]=R[29]=G; R[24]=E.mem.r32(pl?0x500804:0x500808); R[26]=0x800000; R[27]=0x880000; R[28]=0x4000; R[30]=0; cpu.run(VF2IN.input,2e7); vf2Frame(E,pl) }
+export function vf2Step(E,pl,bits){ const G=E.mem.r32(pl?0x500808:0x500804); E.mem.w8(G+0x1200,bits); const cpu=E.cpu, R=cpu.r; R[1]=R[31]=0x5f8000; R[23]=R[29]=G; R[24]=E.mem.r32(pl?0x500804:0x500808); R[26]=0x800000; R[27]=0x880000; R[28]=0x4000; R[30]=0; cpu.run(VF2IN.input,2e7); vf2Frame(E,pl);
+  // 2 人の間の処理（0x1645c: 押し合い 0x18144 と、相手との距離 +0x5f4・向きなどを 0x18644 で求める。投げの「近い」はこの距離で決まる）
+  R[1]=R[31]=0x5f8000; R[26]=0x800000; R[27]=0x880000; R[28]=0x4000; cpu.run(VF2IN.after,2e7) }
 if(process.argv[1]&&process.argv[1].endsWith("press.mjs")){
   const st=process.argv[2]||"16_jacky_jacky_gg", pl=+(process.argv[3]||0), mem=fs.readFileSync(path.join(here,"disc/states",st,"eeMemory.bin"));
   const seqs=JSON.parse(process.argv[4]||'[[1],[2],[4],[8],[16],[32],[64],[128]]');

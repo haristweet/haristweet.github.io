@@ -37,14 +37,16 @@ const mem0={};
 // near: 投げ・崩しなど「近」の技は、相手に近づいてから（前に歩いて腰の間が near より近くなるまで）
 export function tryInput(st,pl,inp,flip,near=0){ if(!mem0[st]) mem0[st]=fs.readFileSync(path.join(here,"disc/states",st,"eeMemory.bin"));
   const E=g("motEngine")(prog,mem0[st],null), M=E.mem, G=M.r32(pl?0x500808:0x500804), basic=new Set(); for(let k=0;k<55;k++) basic.add(M.r16(M.r32(G+0x1a0)+2*k));
+  // 相手も毎コマ動かす（何も押さない）。相手が技の途中のままだと投げが空振りになった（写し 01 のラウ 704）
+  const op=1-pl, step=(b)=>{ vf2Step(E,pl,b); vf2Step(E,op,0) };
   const stance=M.r16(M.r32(G+0x1a0)), sw=b=>flip?(b&~(BIT.r|BIT.l))|(b&BIT.r?BIT.l:0)|(b&BIT.l?BIT.r:0):b;
-  for(let k=0;k<200&&E.info(pl).motion!==stance;k++) vf2Step(E,pl,0);
-  for(let k=0;k<10;k++) vf2Step(E,pl,0);
+  for(let k=0;k<200&&E.info(pl).motion!==stance;k++) step(0);
+  for(let k=0;k<10;k++) step(0);
   if(near){ const d=()=>{ const a=E.units(0)[0], b=E.units(1)[0]; return Math.hypot(a[9]-b[9],a[11]-b[11]) };
-    for(let k=0;k<240&&d()>near;k++) vf2Step(E,pl,sw(BIT.r)); for(let k=0;k<6;k++) vf2Step(E,pl,0) }
+    for(let k=0;k<240&&d()>near;k++) step(sw(BIT.r)); for(let k=0;k<6;k++) step(0) }
   const seen=[]; let last=-1;
-  inp.forEach((b,k)=>{ vf2Step(E,pl,sw(b)); const m=E.info(pl).motion; if(m!==last){ seen.push([k,m]); last=m } });
-  for(let k=0;k<30;k++){ vf2Step(E,pl,0); const m=E.info(pl).motion; if(m!==last){ seen.push([inp.length+k,m]); last=m } }
+  inp.forEach((b,k)=>{ step(sw(b)); const m=E.info(pl).motion; if(m!==last){ seen.push([k,m]); last=m } });
+  for(let k=0;k<30;k++){ step(0); const m=E.info(pl).motion; if(m!==last){ seen.push([inp.length+k,m]); last=m } }
   const cand=seen.filter(([k,m])=>!basic.has(m)), lastBtn=inp.reduce((a,b,i)=>b&(BIT.P|BIT.K|BIT.G)?i:a,-1);
   let pick=cand.filter(([k])=>k>=lastBtn).map(([,m])=>m)[0]; if(pick===undefined&&cand.length) pick=cand[cand.length-1][1];
   return {move:pick??null,seen,stance} }

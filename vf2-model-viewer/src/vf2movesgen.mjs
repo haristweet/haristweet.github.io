@@ -8,9 +8,8 @@ const ARROW={r:"→",l:"←",u:"↑",d:"↓",x:"↘",z:"↙",a:"↗",s:"↖"};
 const pretty=c=>c.replace(/^\[近\]/,"（近）").replace(/[rludxzas]/g,ch=>ARROW[ch]).replace(/[RLUDXZAS]/g,ch=>ARROW[ch.toLowerCase()]+"長").replace(/\+/g,"＋");
 const out={}; let n=0;
 for(const [ch,rows] of Object.entries(J)){
-  // 「近」の技（投げ・崩し）は、相手との距離の判定がこの動かし方では効かず空振りの動きになるので入れない
-  // P＋G（と G の後の P）は投げの入力で、空振りの動きが出ることがある（舜帝の後側後避払手・リオンの偸歩背掃手が絵で別の動きだった）ので入れない
-  const R=rows.filter(r=>!r.skip&&!/^\[/.test(r.cmd)&&!/P\+G|GP/.test(r.cmd)), used=new Map(), add=m=>used.set(m,(used.get(m)||0)+1);
+  // 条件付きの技は「近」（投げ・崩しなど。前に歩いて近づいてから入力）だけ。背後・しゃがみなどは入れない
+  const R=rows.filter(r=>!r.skip&&!/^\[(?!近)/.test(r.cmd)), used=new Map(), add=m=>used.set(m,(used.get(m)||0)+1);
   for(const r of R) if(!/[?@]/.test(r.cmd)){ r.m=r.tries[0].move; r.c=r.tries[0].c; if(r.m!=null) add(r.m) }
   for(const r of R) if(/[?@]/.test(r.cmd)){ const c=[...new Set(r.tries.map(t=>t.move).filter(m=>m!=null&&!used.has(m)))];
     if(c.length===1){ r.m=c[0]; r.c=r.tries.find(t=>t.move===r.m).c; add(r.m) } else r.m=null }
