@@ -77,6 +77,14 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:13px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .gen{background:var(--accent-soft);border-color:var(--accent)}
+.liverow{display:flex;gap:8px 14px;align-items:center;flex-wrap:wrap;font-size:14px}
+.liverow label.chk{display:flex;gap:8px;align-items:center;font-weight:700;cursor:pointer;min-height:38px}
+.liverow input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);margin:0}
+.liverow select{width:auto;min-height:38px;padding:6px 10px;font-size:14px}
+.livehint{font-size:13px;color:var(--muted);margin:0;flex-basis:100%}
+.livehint code{font-family:var(--f-mono);font-size:12px;background:var(--sunk);padding:0 4px;border-radius:4px;color:var(--ink)}
+.lv{font-size:10px;font-weight:700;letter-spacing:.06em;padding:1px 5px;border-radius:4px;margin-left:6px;background:var(--on-accent);color:var(--accent);vertical-align:1px}
+.btn:not(.primary) .lv{background:var(--accent);color:var(--on-accent)}
 @media (max-width:620px){.card-head{grid-template-columns:1fr}.quick{justify-content:flex-start}}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 </style>
@@ -96,6 +104,17 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
       <span class="count" id="count"></span>
     </div>
     <div class="chips" id="chips" aria-label="ジャンルで絞り込む"></div>
+    <div class="liverow">
+      <label class="chk"><input type="checkbox" id="live"> ライブ版にしてコピー</label>
+      <select id="liveKind" aria-label="ライブの種類" hidden>
+        <option value="auto">種類：ジャンルから自動</option>
+        <option value="band">歌もの・バンド</option>
+        <option value="club">クラブ・レイヴ</option>
+        <option value="hiphop">ヒップホップ</option>
+        <option value="quiet">アンビエント・静かな曲</option>
+      </select>
+      <p class="livehint" id="liveHint" hidden>Style と Exclude にライブ録音の言葉を足してコピーします（Exclude の <code>live drums</code> <code>live band</code> などは外します）。歌詞欄の最初に <code>[Crowd Cheering]</code>、最後に <code>[Applause]</code> を入れると歓声と拍手が入りやすくなります。インスト曲では歌詞欄が使われないので、Style だけで効かせます。</p>
+    </div>
     <div class="list" id="list"></div>
   </section>
 </div>
@@ -110,6 +129,31 @@ const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
 const generated = [];
+/* ---------- live version ---------- */
+const LIVE_GROUP = 'ライブ版にする追加';
+const LIVE_KIND_BY_GENRE = {'歌もの・バンド':'band','クラブ・レイヴ':'club','ヒップホップ':'hiphop','アンビエント・静かな曲':'quiet'};
+const LIVE = {};
+DATA.forEach(e=>{ if(e.group===LIVE_GROUP && LIVE_KIND_BY_GENRE[e.genre]) LIVE[LIVE_KIND_BY_GENRE[e.genre]]=e; });
+const KIND_BY_CAT = {'ヒップホップ':'hiphop','ブレイクコア／DnB':'club','ビッグビート':'club','ハウス／ディスコ':'club','テクノ':'club','アンビエント／エレクトロニカ':'quiet'};
+let live = !!store.get('live',false);
+let liveKind = store.get('liveKind','auto');
+const LIVE_BLOCK = /^(live|live drums|live band|live recording|live performance|crowd|crowd noise|audience|applause|cheering)$/;
+const splitTerms = s => s.split(',').map(t=>t.trim()).filter(Boolean);
+function kindOf(e){ return liveKind!=='auto' ? liveKind : (KIND_BY_CAT[e.cat]||'band'); }
+function isLiveOn(e){ return live && e.group!==LIVE_GROUP && !!LIVE[kindOf(e)]; }
+function styleOf(e){
+  if(!isLiveOn(e)) return e.style;
+  return e.style.replace(/[\s,]+$/,'') + LIVE[kindOf(e)].style;
+}
+function excludeOf(e){
+  if(!isLiveOn(e)) return e.exclude;
+  const st = e.style.toLowerCase();
+  const base = splitTerms(e.exclude).filter(t=>!LIVE_BLOCK.test(t.toLowerCase()));
+  const have = new Set(base.map(t=>t.toLowerCase()));
+  /* 足す言葉のうち、すでにあるもの・その曲の Style に出てくるもの（例：acoustic を使う曲）は足さない */
+  const add = splitTerms(LIVE[kindOf(e)].exclude).filter(t=>{const k=t.toLowerCase(); return !have.has(k) && !st.includes(k);});
+  return base.concat(add).join(', ');
+}
 const open = new Set();
 
 /* ---------- copy ---------- */
@@ -141,6 +185,7 @@ function renderChips(){
 function card(e,isGen){
   const mix = e.mix ? `<span class="mix ${e.mixStatus==='候補'?'cand':''}" title="ミックス名（${esc(e.mixStatus)}）">${esc(e.mix)}</span>` : '';
   const isOpen = open.has(e.id);
+  const lv = isLiveOn(e) ? '<span class="lv">LIVE</span>' : '';
   return `<article class="card ${isGen?'gen':''}" data-id="${e.id}">
     <div class="card-head">
       <button class="toggle" aria-expanded="${isOpen}" aria-controls="b-${e.id}">
@@ -148,13 +193,13 @@ function card(e,isGen){
         <span class="genre">${esc(e.genre)}</span>
       </button>
       <div class="quick">
-        <button class="btn primary" data-copy="style">Style をコピー</button>
-        <button class="btn" data-copy="exclude">Exclude をコピー</button>
+        <button class="btn primary" data-copy="style">Style をコピー${lv}</button>
+        <button class="btn" data-copy="exclude">Exclude をコピー${lv}</button>
       </div>
     </div>
     <div class="body" id="b-${e.id}" ${isOpen?'':'hidden'}>
-      <div><div class="field-label"><span>Style of Music</span><button class="btn" data-copy="style">コピー</button></div><pre class="code" style="margin-top:6px">${esc(e.style)}</pre></div>
-      <div><div class="field-label"><span>Exclude Styles</span><button class="btn" data-copy="exclude">コピー</button></div><pre class="code" style="margin-top:6px">${esc(e.exclude)}</pre></div>
+      <div><div class="field-label"><span>Style of Music</span><button class="btn" data-copy="style">コピー</button></div><pre class="code" style="margin-top:6px">${esc(styleOf(e))}</pre></div>
+      <div><div class="field-label"><span>Exclude Styles</span><button class="btn" data-copy="exclude">コピー</button></div><pre class="code" style="margin-top:6px">${esc(excludeOf(e))}</pre></div>
       ${(e.notes&&e.notes.length)?`<ul class="notes">${e.notes.map(n=>`<li>${noteHTML(n)}</li>`).join('')}</ul>`:''}
     </div>
   </article>`;
@@ -177,13 +222,18 @@ $('#q').addEventListener('input',render);
 $('#list').addEventListener('click',ev=>{
   const art = ev.target.closest('.card');
   const cp = ev.target.closest('[data-copy]');
-  if(cp&&art){const e=byId(art.dataset.id);copy(e[cp.dataset.copy],cp.dataset.copy==='style'?'Style':'Exclude');return}
+  if(cp&&art){const e=byId(art.dataset.id);const isS=cp.dataset.copy==='style';copy(isS?styleOf(e):excludeOf(e),(isS?'Style':'Exclude')+(isLiveOn(e)?'（ライブ版）':''));return}
   const tg = ev.target.closest('.toggle');
   if(tg&&art){const id=art.dataset.id;open.has(id)?open.delete(id):open.add(id);const body=art.querySelector('.body');body.hidden=!open.has(id);tg.setAttribute('aria-expanded',open.has(id));return}
 });
 
+function syncLive(){ $('#live').checked=live; $('#liveKind').value=liveKind; $('#liveKind').hidden=!live; $('#liveHint').hidden=!live; }
+$('#live').addEventListener('change',ev=>{live=ev.target.checked;store.set('live',live);syncLive();render()});
+$('#liveKind').addEventListener('change',ev=>{liveKind=ev.target.value;store.set('liveKind',liveKind);render()});
+
 /* ---------- boot ---------- */
-renderChips(); render();
+if(!['auto','band','club','hiphop','quiet'].includes(liveKind)) liveKind='auto';
+syncLive(); renderChips(); render();
 })();
 </script>
 
