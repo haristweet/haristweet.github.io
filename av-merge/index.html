@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>音声ガッちゃんこ</title>
+<meta name="description" content="動画ファイルと音声ファイルを1つずつ入れると、音を差し替えた（または混ぜた）動画ができる。ブラウザの中だけで処理し、どこにも送らない。">
+<meta property="og:title" content="音声ガッちゃんこ">
+<meta property="og:description" content="動画と音声を1つずつ入れると、くっつけた動画ができる。ブラウザの中だけで処理。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://haristweet.github.io/av-merge/">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🎬</text></svg>">
+<style>
+  :root {
+    --ground: #F3F1EC;
+    --panel:  #FFFFFF;
+    --rule:   #D9D4C9;
+    --ink:    #23211C;
+    --ink-dim:#6B665B;
+    --accent: #D2462F;
+    --accent-ink: #FFFFFF;
+    --ok:     #2F7D4A;
+    --warn:   #A15C00;
+    --drop:   #FBEFE9;
+    --sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic Medium", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #1D1C19;
+      --panel:  #282622;
+      --rule:   #45423B;
+      --ink:    #ECE8DF;
+      --ink-dim:#A49E91;
+      --accent: #FF7A5C;
+      --accent-ink: #1D1C19;
+      --ok:     #6FD08F;
+      --warn:   #F2B25C;
+      --drop:   #3A2B25;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #1D1C19; --panel: #282622; --rule: #45423B; --ink: #ECE8DF; --ink-dim: #A49E91;
+    --accent: #FF7A5C; --accent-ink: #1D1C19; --ok: #6FD08F; --warn: #F2B25C; --drop: #3A2B25;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.6;
+  }
+  .sheet { max-width: 46rem; margin: 0 auto; padding: 28px 16px 64px; display: flex; flex-direction: column; gap: 20px; }
+  h1 { margin: 0; font-size: clamp(1.6rem, 6vw, 2.2rem); letter-spacing: -0.01em; }
+  .lede { margin: 4px 0 0; color: var(--ink-dim); }
+  .pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: stretch; }
+  .plus { align-self: center; font-size: 1.6rem; font-weight: 700; color: var(--ink-dim); }
+  @media (max-width: 560px) { .pair { grid-template-columns: 1fr; } .plus { justify-self: center; } }
+  .drop {
+    position: relative; display: flex; flex-direction: column; gap: 8px; min-height: 150px;
+    padding: 14px; border: 2px dashed var(--rule); border-radius: 14px; background: var(--panel);
+    cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop:focus-within { border-color: var(--accent); }
+  .drop.over { border-color: var(--accent); background: var(--drop); }
+  .drop.has { border-style: solid; }
+  .drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .drop .kind { font-weight: 700; }
+  .drop .hint { color: var(--ink-dim); font-size: 13px; }
+  .drop .name { font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--ink-dim); }
+  .drop video { width: 100%; max-height: 220px; border-radius: 8px; background: #000; }
+  .drop audio { width: 100%; }
+  .drop .big { font-size: 2rem; line-height: 1; }
+  .panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .panel h2 { margin: 0; font-size: 1rem; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+  .row > .lab { min-width: 7.5em; color: var(--ink-dim); font-size: 14px; }
+  .seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+  .seg label { padding: 6px 12px; cursor: pointer; font-size: 14px; border-right: 1px solid var(--rule); }
+  .seg label:last-child { border-right: 0; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label:has(input:checked) { background: var(--accent); color: var(--accent-ink); }
+  .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .seg label:has(input:disabled) { opacity: .4; cursor: not-allowed; }
+  input[type=number] { width: 5.5em; padding: 4px 6px; font: inherit; border: 1px solid var(--rule); border-radius: 8px; background: var(--ground); color: var(--ink); }
+  input[type=range] { width: min(220px, 100%); accent-color: var(--accent); }
+  .vol { font-family: var(--mono); font-size: 13px; min-width: 3.5em; }
+  .note { margin: 0; font-size: 13px; color: var(--ink-dim); }
+  .note.warn { color: var(--warn); }
+  .go {
+    font: inherit; font-size: 1.1rem; font-weight: 700; padding: 14px 18px; border: 0; border-radius: 14px;
+    background: var(--accent); color: var(--accent-ink); cursor: pointer;
+  }
+  .go:disabled { opacity: .4; cursor: not-allowed; }
+  .ghost { font: inherit; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 10px; background: transparent; color: var(--ink); cursor: pointer; }
+  .bar { height: 10px; border-radius: 6px; background: var(--rule); overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .status { font-size: 14px; }
+  .status.err { color: var(--accent); white-space: pre-wrap; }
+  #result video { width: 100%; border-radius: 10px; background: #000; max-height: 60vh; }
+  .dl {
+    display: inline-block; text-align: center; font-weight: 700; padding: 12px 18px; border-radius: 12px;
+    background: var(--ok); color: var(--panel); text-decoration: none;
+  }
+  details { font-size: 13px; color: var(--ink-dim); }
+  details pre { max-height: 220px; overflow: auto; font-size: 11px; background: var(--ground); padding: 8px; border-radius: 8px; white-space: pre-wrap; word-break: break-all; }
+  .foot { color: var(--ink-dim); font-size: 13px; }
+  .foot a { color: inherit; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <header>
+    <h1>音声ガッちゃんこ 🎬＋🎵</h1>
+    <p class="lede">動画を1つと音声を1つ入れると、音をくっつけた動画ができます。ファイルはどこにも送らず、このブラウザの中だけで処理します。</p>
+  </header>
+
+  <div class="pair">
+    <label class="drop" id="vdrop">
+      <input type="file" id="vfile" accept="video/*,.mp4,.mov,.m4v,.webm,.mkv">
+      <span class="kind">🎬 動画ファイル</span>
+      <span class="hint" data-empty>ここをタップして選ぶか、ファイルを落とす<br>（mp4・mov・webm など）</span>
+      <video id="vprev" controls playsinline muted hidden></video>
+      <span class="name" id="vname"></span>
+    </label>
+    <span class="plus" aria-hidden="true">＋</span>
+    <label class="drop" id="adrop">
+      <input type="file" id="afile" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac">
+      <span class="kind">🎵 音声ファイル</span>
+      <span class="hint" data-empty>ここをタップして選ぶか、ファイルを落とす<br>（mp3・m4a・wav など。動画ファイルの音も使えます）</span>
+      <audio id="aprev" controls hidden></audio>
+      <span class="name" id="aname"></span>
+    </label>
+  </div>
+
+  <section class="panel">
+    <h2>くっつけ方</h2>
+    <div class="row">
+      <span class="lab">動画の元の音</span>
+      <span class="seg">
+        <label><input type="radio" name="orig" value="replace" checked>消して差し替える</label>
+        <label><input type="radio" name="orig" value="mix">残して混ぜる</label>
+      </span>
+    </div>
+    <div class="row">
+      <span class="lab">長さ</span>
+      <span class="seg">
+        <label><input type="radio" name="len" value="video" checked>動画に合わせる</label>
+        <label><input type="radio" name="len" value="loop">音声をくり返す</label>
+        <label><input type="radio" name="len" value="shortest">短いほうで切る</label>
+      </span>
+    </div>
+    <div class="row">
+      <span class="lab">音声の音量</span>
+      <input type="range" id="avol" min="0" max="200" value="100" step="5">
+      <span class="vol" id="avolv">100%</span>
+    </div>
+    <div class="row" id="vvolrow" hidden>
+      <span class="lab">元の音の音量</span>
+      <input type="range" id="vvol" min="0" max="200" value="60" step="5">
+      <span class="vol" id="vvolv">60%</span>
+    </div>
+    <div class="row">
+      <span class="lab">音声の頭出し</span>
+      <label><input type="number" id="askip" min="0" step="0.1" value="0"> 秒目から使う</label>
+    </div>
+    <div class="row">
+      <span class="lab">入れ始め</span>
+      <label>動画の <input type="number" id="adelay" min="0" step="0.1" value="0"> 秒目から鳴らす</label>
+    </div>
+    <div class="row">
+      <span class="lab">終わり</span>
+      <label><input type="checkbox" id="fade" checked> 最後の <input type="number" id="fadesec" min="0.1" step="0.5" value="2"> 秒で音を小さくして消す</label>
+    </div>
+    <p class="note" id="lenNote"></p>
+  </section>
+
+  <button class="go" id="go" disabled>ガッちゃんこする</button>
+
+  <section class="panel" id="work" hidden>
+    <div class="status" id="status"></div>
+    <div class="bar"><i id="barfill"></i></div>
+    <div class="row"><button class="ghost" id="cancel">やめる</button></div>
+  </section>
+
+  <section class="panel" id="result" hidden>
+    <h2>できあがり</h2>
+    <video id="rvideo" controls playsinline></video>
+    <div class="row">
+      <a class="dl" id="dl" download>⬇ 保存する</a>
+      <span class="note" id="rinfo"></span>
+    </div>
+  </section>
+
+  <details id="logbox">
+    <summary>処理の記録（うまくいかないとき用）</summary>
+    <pre id="log"></pre>
+  </details>
+
+  <p class="foot">
+    はじめの1回だけ、処理の道具（ffmpeg.wasm・約30MB）を読み込みます。動画の絵は作り直さずそのまま使うので速く、画質も落ちません
+    （H.264 / H.265 以外の動画は H.264 に作り直すので時間がかかります）。
+    とても大きいファイル（目安 1.5GB 以上）はブラウザのメモリが足りず失敗することがあります。<br>
+    <a href="../">← つくったもの</a>
+  </p>
+</div>
+
+<script type="module">
+import { FFmpeg } from "./vendor/ffmpeg/index.js";
+
+// 試験のときは ?core=<フォルダのURL> で読み込み先を差し替える
+const CORE_BASE = new URLSearchParams(location.search).get("core")
+  || "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
+
+const $ = (id) => document.getElementById(id);
+const state = { video: null, audio: null, vinfo: null, ainfo: null, outURL: null };
+let ffmpeg = null, coreURLs = null, logLines = [], onLog = null, busy = false, cancelled = false;
+
+// ── ffmpeg の用意 ──
+async function fetchBlobURL(url, type, onProgress) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url} を読めません (${res.status})`);
+  const total = +res.headers.get("content-length") || 0;
+  const reader = res.body.getReader();
+  const chunks = []; let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value); got += value.length;
+    onProgress?.(got, total);
+  }
+  return URL.createObjectURL(new Blob(chunks, { type }));
+}
+
+async function getFFmpeg() {
+  if (ffmpeg) return ffmpeg;
+  if (!coreURLs) {
+    setStatus("処理の道具を読み込み中…（はじめの1回だけ）");
+    const coreURL = await fetchBlobURL(`${CORE_BASE}/ffmpeg-core.js`, "text/javascript");
+    const wasmURL = await fetchBlobURL(`${CORE_BASE}/ffmpeg-core.wasm`, "application/wasm", (g, t) => {
+      setStatus(`処理の道具を読み込み中… ${(g / 1e6).toFixed(1)}${t ? " / " + (t / 1e6).toFixed(1) : ""} MB（はじめの1回だけ）`);
+      if (t) setBar(g / t);
+    });
+    coreURLs = { coreURL, wasmURL };
+  }
+  const f = new FFmpeg();
+  f.on("log", ({ message }) => { logLines.push(message); onLog?.(message); });
+  await f.load(coreURLs);
+  ffmpeg = f;
+  return f;
+}
+
+function log(s) { logLines.push(s); }
+function flushLog() { $("log").textContent = logLines.slice(-400).join("\n"); }
+
+// ── 調べる ──
+function parseInfo(lines) {
+  const text = lines.join("\n");
+  const d = text.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+  const dur = d ? (+d[1]) * 3600 + (+d[2]) * 60 + parseFloat(d[3]) : NaN;
+  let vcodec = null, acodec = null;
+  for (const line of lines) {
+    const m = line.match(/Stream #\d+:\d+.*?: (Video|Audio): (\w+)/);
+    if (!m) continue;
+    // mp3 のジャケット画像などは動画として数えない
+    if (m[1] === "Video" && !vcodec && !/attached pic/.test(line)) vcodec = m[2];
+    if (m[1] === "Audio" && !acodec) acodec = m[2];
+  }
+  return { dur, vcodec, acodec };
+}
+
+async function probe(f, path) {
+  const start = logLines.length;
+  await f.exec(["-hide_banner", "-i", path]);
+  return parseInfo(logLines.slice(start));
+}
+
+// ── 画面 ──
+function setStatus(s, err = false) { $("status").textContent = s; $("status").classList.toggle("err", err); }
+function setBar(r) { $("barfill").style.width = `${Math.max(0, Math.min(1, r)) * 100}%`; }
+const fmtT = (t) => { if (!isFinite(t)) return "?"; const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s.toFixed(1).padStart(4, "0")}`; };
+const fmtMB = (n) => n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(1)} MB`;
+const opt = (name) => document.querySelector(`input[name=${name}]:checked`).value;
+const num = (id, def = 0) => { const v = parseFloat($(id).value); return isFinite(v) && v >= 0 ? v : def; };
+
+function setFile(kind, file) {
+  if (!file) return;
+  state[kind] = file;
+  state[kind === "video" ? "vinfo" : "ainfo"] = null;
+  const k = kind[0];
+  const drop = $(k + "drop"), prev = $(k + "prev");
+  drop.classList.add("has");
+  drop.querySelector("[data-empty]").hidden = true;
+  if (prev.src) URL.revokeObjectURL(prev.src);
+  prev.src = URL.createObjectURL(file);
+  prev.hidden = false;
+  $(k + "name").textContent = `${file.name}（${fmtMB(file.size)}）`;
+  prev.onloadedmetadata = refresh;
+  refresh();
+}
+
+function refresh() {
+  $("go").disabled = busy || !state.video || !state.audio;
+  $("vvolrow").hidden = opt("orig") !== "mix";
+  $("avolv").textContent = `${$("avol").value}%`;
+  $("vvolv").textContent = `${$("vvol").value}%`;
+  // 長さの見込みは <video>/<audio> の読み取りで出す（読めない形式なら空のまま）
+  const vd = $("vprev").duration, ad = $("aprev").duration;
+  let note = "";
+  if (state.video && state.audio && isFinite(vd) && isFinite(ad)) {
+    const eff = Math.max(0, ad - num("askip")) + num("adelay");
+    const len = opt("len");
+    const out = len === "shortest" ? Math.min(vd, eff) : vd;
+    note = `動画 ${fmtT(vd)} ・ 音声 ${fmtT(ad)} → できあがり ${fmtT(out)}`;
+    if (len === "video" && eff < vd - 0.05) note += `（最後の ${fmtT(vd - eff)} は音声なし）`;
+    if (len !== "shortest" && eff > vd + 0.05) note += `（音声の残り ${fmtT(eff - vd)} は切る）`;
+  }
+  $("lenNote").textContent = note;
+}
+
+for (const kind of ["video", "audio"]) {
+  const k = kind[0], drop = $(k + "drop");
+  $(k + "file").addEventListener("change", (e) => setFile(kind, e.target.files[0]));
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault(); drop.classList.remove("over");
+    const f = e.dataTransfer.files[0];
+    if (f) setFile(kind, f);
+  });
+}
+// 枠の外に落としてもブラウザがファイルを開かないように。種類を見て振り分ける
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  for (const f of e.dataTransfer.files) {
+    if (f.type.startsWith("audio/")) setFile("audio", f);
+    else if (f.type.startsWith("video/")) setFile("video", f);
+  }
+});
+document.querySelectorAll("input").forEach((el) => el.addEventListener("input", refresh));
+
+// ── くっつける ──
+const COPY_OK = new Set(["h264", "hevc"]);
+
+function ext(name, def) { const m = name.match(/\.([A-Za-z0-9]{1,5})$/); return m ? m[1].toLowerCase() : def; }
+
+function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, avol, vvol, askip, adelay, fade, fadesec }) {
+  const vdur = vinfo.dur;
+  const adur = Math.max(0, ainfo.dur - askip);
+  const mix = orig === "mix" && !!vinfo.acodec;
+  const T = len === "shortest" ? Math.min(vdur, adur + adelay) : vdur;
+  const args = ["-hide_banner", "-y", "-i", vpath];
+  if (askip > 0) args.push("-ss", askip.toFixed(3));
+  if (len === "loop") args.push("-stream_loop", "-1");
+  args.push("-i", apath);
+
+  let music = `[1:a]volume=${(avol / 100).toFixed(2)}`;
+  if (adelay > 0) music += `,adelay=${Math.round(adelay * 1000)}:all=1`;
+  music += ",apad";
+  let graph, last;
+  if (mix) {
+    graph = `${music}[m];[0:a]volume=${(vvol / 100).toFixed(2)},apad[o];[o][m]amix=inputs=2:duration=longest:normalize=0`;
+  } else {
+    graph = music;
+  }
+  if (fade && fadesec > 0 && T > 0) {
+    const d = Math.min(fadesec, T);
+    graph += `,afade=t=out:st=${(T - d).toFixed(3)}:d=${d.toFixed(3)}`;
+  }
+  graph += "[a]";
+  args.push("-filter_complex", graph, "-map", "0:v:0", "-map", "[a]");
+  const copy = COPY_OK.has(vinfo.vcodec);
+  if (copy) {
+    args.push("-c:v", "copy");
+    if (vinfo.vcodec === "hevc") args.push("-tag:v", "hvc1");
+  } else {
+    args.push("-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p");
+  }
+  args.push("-c:a", "aac", "-b:a", "192k", "-t", T.toFixed(3), "-movflags", "+faststart", "/out.mp4");
+  return { args, T, copy, mix };
+}
+
+async function run() {
+  if (busy) return;
+  busy = true; cancelled = false; refresh();
+  $("work").hidden = false; $("result").hidden = true;
+  setBar(0);
+  logLines = [];
+  let mounted = false;
+  try {
+    const f = await getFFmpeg();
+    if (cancelled) return;
+    setStatus("ファイルを調べています…"); setBar(0);
+    // 同じ名前でもぶつからないように、中では決まった名前にする（中身はコピーしない）
+    const vname = `video.${ext(state.video.name, "mp4")}`, aname = `audio.${ext(state.audio.name, "mp3")}`;
+    await f.createDir("/in").catch(() => {});
+    await f.mount("WORKERFS", { files: [new File([state.video], vname), new File([state.audio], aname)] }, "/in");
+    mounted = true;
+    const vinfo = await probe(f, `/in/${vname}`);
+    const ainfo = await probe(f, `/in/${aname}`);
+    log(`[調べた結果] 動画 ${JSON.stringify(vinfo)} 音声 ${JSON.stringify(ainfo)}`);
+    if (!vinfo.vcodec) throw new Error("動画ファイルから絵が見つかりませんでした。動画ファイルの枠には動画を入れてください。");
+    if (!ainfo.acodec) throw new Error("音声ファイルから音が見つかりませんでした。");
+    if (!isFinite(vinfo.dur) || !isFinite(ainfo.dur)) throw new Error("ファイルの長さが読めませんでした。");
+
+    const opts = {
+      vpath: `/in/${vname}`, apath: `/in/${aname}`, vinfo, ainfo,
+      orig: opt("orig"), len: opt("len"),
+      avol: +$("avol").value, vvol: +$("vvol").value,
+      askip: num("askip"), adelay: num("adelay"),
+      fade: $("fade").checked, fadesec: num("fadesec", 2),
+    };
+    const { args, T, copy, mix } = buildArgs(opts);
+    log("[命令] ffmpeg " + args.join(" "));
+    const what = copy ? "くっつけています…" : `動画を H.264 に作り直しながらくっつけています…（${vinfo.vcodec} のため。時間がかかります）`;
+    setStatus(what);
+    onLog = (m) => {
+      const t = m.match(/time=(-?\d+):(\d+):(\d+(?:\.\d+)?)/);
+      if (t) {
+        const s = (+t[1]) * 3600 + (+t[2]) * 60 + parseFloat(t[3]);
+        setBar(s / T);
+        setStatus(`${what} ${fmtT(Math.max(0, s))} / ${fmtT(T)}`);
+      }
+    };
+    const ret = await f.exec(args);
+    onLog = null;
+    if (cancelled) return;
+    if (ret !== 0) throw new Error("ffmpeg が失敗しました。下の「処理の記録」を見てください。");
+    const data = await f.readFile("/out.mp4");
+    await f.deleteFile("/out.mp4").catch(() => {});
+    const blob = new Blob([data.buffer], { type: "video/mp4" });
+    if (state.outURL) URL.revokeObjectURL(state.outURL);
+    state.outURL = URL.createObjectURL(blob);
+    $("rvideo").src = state.outURL;
+    const base = state.video.name.replace(/\.[^.]+$/, "");
+    $("dl").href = state.outURL;
+    $("dl").download = `${base}_ガッちゃんこ.mp4`;
+    const notes = [`${fmtT(T)}・${fmtMB(blob.size)}`];
+    if (opts.orig === "mix" && !mix) notes.push("動画に元の音が無かったので差し替えにしました");
+    $("rinfo").textContent = notes.join("　");
+    $("result").hidden = false;
+    $("work").hidden = true;
+    $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    if (!cancelled) {
+      setStatus(String(e.message || e), true);
+      $("logbox").open = true;
+    }
+  } finally {
+    onLog = null;
+    if (mounted && ffmpeg) await ffmpeg.unmount("/in").catch(() => {});
+    busy = false; refresh(); flushLog();
+  }
+}
+
+$("go").addEventListener("click", run);
+$("cancel").addEventListener("click", () => {
+  if (!busy) { $("work").hidden = true; return; }
+  cancelled = true;
+  // 走っている ffmpeg は止められないので、作業ごと捨てて次に作り直す（読み込んだ道具は使い回す）
+  ffmpeg?.terminate(); ffmpeg = null;
+  busy = false; refresh();
+  setStatus("やめました。"); setBar(0);
+});
+refresh();
+</script>
+</body>
+</html>
