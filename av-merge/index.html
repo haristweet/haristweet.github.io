@@ -148,7 +148,16 @@
         <label><input type="radio" name="len" value="video" checked>動画に合わせる</label>
         <label><input type="radio" name="len" value="loop">音声をくり返す</label>
         <label><input type="radio" name="len" value="shortest">短いほうで切る</label>
+        <label><input type="radio" name="len" value="audio">音声に合わせる（動画をループ）</label>
       </span>
+    </div>
+    <div class="row" id="vlooprow" hidden>
+      <span class="lab">動画のループ</span>
+      <span class="seg">
+        <label><input type="radio" name="vloop" value="repeat" checked>繰り返す</label>
+        <label><input type="radio" name="vloop" value="bounce">逆回し（行って戻る）</label>
+      </span>
+      <p class="note" id="bounceNote" hidden>逆回しは動画を H.264 に作り直すので時間がかかります（長い動画や 4K は特に）。元の音を混ぜる場合、元の音は前向きのまま繰り返します。</p>
     </div>
     <div class="row">
       <span class="lab">音声の音量</span>
@@ -209,8 +218,10 @@
 import { FFmpeg } from "./vendor/ffmpeg/index.js";
 
 // 試験のときは ?core=<フォルダのURL> で読み込み先を差し替える
-const CORE_BASE = new URLSearchParams(location.search).get("core")
-  || "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
+const PARAMS = new URLSearchParams(location.search);
+const CORE_BASE = PARAMS.get("core") || "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
+// 逆回しの区切りの長さの上限（秒）。試験で区切りのつなぎ目を通すため
+const CHUNK_MAX = +PARAMS.get("chunk") || Infinity;
 
 const $ = (id) => document.getElementById(id);
 const state = { video: null, audio: null, vinfo: null, ainfo: null, outURL: null };
@@ -258,15 +269,20 @@ function parseInfo(lines) {
   const text = lines.join("\n");
   const d = text.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
   const dur = d ? (+d[1]) * 3600 + (+d[2]) * 60 + parseFloat(d[3]) : NaN;
-  let vcodec = null, acodec = null;
+  let vcodec = null, acodec = null, w = 0, h = 0, fps = 0;
   for (const line of lines) {
     const m = line.match(/Stream #\d+:\d+.*?: (Video|Audio): (\w+)/);
     if (!m) continue;
     // mp3 のジャケット画像などは動画として数えない
-    if (m[1] === "Video" && !vcodec && !/attached pic/.test(line)) vcodec = m[2];
+    if (m[1] === "Video" && !vcodec && !/attached pic/.test(line)) {
+      vcodec = m[2];
+      const wh = line.match(/, (\d{2,5})x(\d{2,5})/), r = line.match(/([\d.]+) fps/);
+      if (wh) { w = +wh[1]; h = +wh[2]; }
+      if (r) fps = parseFloat(r[1]);
+    }
     if (m[1] === "Audio" && !acodec) acodec = m[2];
   }
-  return { dur, vcodec, acodec };
+  return { dur, vcodec, acodec, w, h, fps };
 }
 
 async function probe(f, path) {
@@ -302,6 +318,8 @@ function setFile(kind, file) {
 function refresh() {
   $("go").disabled = busy || !state.video || !state.audio;
   $("vvolrow").hidden = opt("orig") !== "mix";
+  $("vlooprow").hidden = opt("len") !== "audio";
+  $("bounceNote").hidden = opt("vloop") !== "bounce";
   $("avolv").textContent = `${$("avol").value}%`;
   $("vvolv").textContent = `${$("vvol").value}%`;
   // 長さの見込みは <video>/<audio> の読み取りで出す（読めない形式なら空のまま）
@@ -310,10 +328,12 @@ function refresh() {
   if (state.video && state.audio && isFinite(vd) && isFinite(ad)) {
     const eff = Math.max(0, ad - num("askip")) + num("adelay");
     const len = opt("len");
-    const out = len === "shortest" ? Math.min(vd, eff) : vd;
+    const out = len === "shortest" ? Math.min(vd, eff) : len === "audio" ? eff : vd;
     note = `動画 ${fmtT(vd)} ・ 音声 ${fmtT(ad)} → できあがり ${fmtT(out)}`;
+    if (len === "audio" && eff > vd + 0.05) note += `（動画を ${(eff / vd).toFixed(1)} 回分ループ）`;
+    if (len === "audio" && eff < vd - 0.05) note += `（動画の残り ${fmtT(vd - eff)} は切る）`;
     if (len === "video" && eff < vd - 0.05) note += `（最後の ${fmtT(vd - eff)} は音声なし）`;
-    if (len !== "shortest" && eff > vd + 0.05) note += `（音声の残り ${fmtT(eff - vd)} は切る）`;
+    if ((len === "video" || len === "loop") && eff > vd + 0.05) note += `（音声の残り ${fmtT(eff - vd)} は切る）`;
   }
   $("lenNote").textContent = note;
 }
@@ -345,40 +365,78 @@ const COPY_OK = new Set(["h264", "hevc"]);
 
 function ext(name, def) { const m = name.match(/\.([A-Za-z0-9]{1,5})$/); return m ? m[1].toLowerCase() : def; }
 
-function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, avol, vvol, askip, adelay, fade, fadesec }) {
+// 音声に合わせて動画をループさせるか。逆回しのときは bounce に作っておいた往復の動画を渡す
+function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, avol, vvol, askip, adelay, fade, fadesec, bounce }) {
   const vdur = vinfo.dur;
   const adur = Math.max(0, ainfo.dur - askip);
   const mix = orig === "mix" && !!vinfo.acodec;
-  const T = len === "shortest" ? Math.min(vdur, adur + adelay) : vdur;
-  const args = ["-hide_banner", "-y", "-i", vpath];
+  const T = len === "shortest" || len === "audio" ? Math.min(len === "audio" ? Infinity : vdur, adur + adelay) : vdur;
+  const loopV = len === "audio" && T > vdur;
+  const args = ["-hide_banner", "-y"];
+  // 0: 絵（と元の音）
+  if (loopV) args.push("-stream_loop", "-1");
+  args.push("-i", loopV && vloop === "bounce" ? bounce : vpath);
+  // 1: 音声
   if (askip > 0) args.push("-ss", askip.toFixed(3));
   if (len === "loop") args.push("-stream_loop", "-1");
   args.push("-i", apath);
+  // 2: 往復の動画には音が無いので、元の音は元の動画から前向きに繰り返す
+  let oi = 0;
+  if (mix && loopV && vloop === "bounce") { args.push("-stream_loop", "-1", "-i", vpath); oi = 2; }
 
-  let music = `[1:a]volume=${(avol / 100).toFixed(2)}`;
-  if (adelay > 0) music += `,adelay=${Math.round(adelay * 1000)}:all=1`;
-  music += ",apad";
-  let graph, last;
-  if (mix) {
-    graph = `${music}[m];[0:a]volume=${(vvol / 100).toFixed(2)},apad[o];[o][m]amix=inputs=2:duration=longest:normalize=0`;
-  } else {
-    graph = music;
-  }
+  let graph = `[1:a]volume=${(avol / 100).toFixed(2)}`;
+  if (adelay > 0) graph += `,adelay=${Math.round(adelay * 1000)}:all=1`;
+  graph += ",apad";
+  if (mix) graph += `[m];[${oi}:a]volume=${(vvol / 100).toFixed(2)},apad[o];[o][m]amix=inputs=2:duration=longest:normalize=0`;
   if (fade && fadesec > 0 && T > 0) {
     const d = Math.min(fadesec, T);
     graph += `,afade=t=out:st=${(T - d).toFixed(3)}:d=${d.toFixed(3)}`;
   }
   graph += "[a]";
   args.push("-filter_complex", graph, "-map", "0:v:0", "-map", "[a]");
-  const copy = COPY_OK.has(vinfo.vcodec);
+  // 往復の動画はもう H.264 にしてあるのでそのまま使う
+  const codec = loopV && vloop === "bounce" ? "h264" : vinfo.vcodec;
+  const copy = COPY_OK.has(codec);
   if (copy) {
     args.push("-c:v", "copy");
-    if (vinfo.vcodec === "hevc") args.push("-tag:v", "hvc1");
+    if (codec === "hevc") args.push("-tag:v", "hvc1");
   } else {
-    args.push("-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p");
+    args.push(...X264);
   }
   args.push("-c:a", "aac", "-b:a", "192k", "-t", T.toFixed(3), "-movflags", "+faststart", "/out.mp4");
-  return { args, T, copy, mix };
+  return { args, T, copy, mix, loopV };
+}
+
+const X264 = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p"];
+
+// 前向き→逆回しの1往復を /work/pp.mp4 に作る。
+// reverse は区切りの全コマを生のまま抱えるので、メモリに収まる長さ（約200MB分）に切って逆回しし、後ろの区切りから並べる。
+// つなぎ目で同じコマが2回出ないよう、前向きと逆回しの頭の1コマずつを落とす（前向き 1..N-1、逆回し N-2..0）
+async function makeBounce(f, vpath, vinfo, step) {
+  const { dur, w, h } = vinfo;
+  const fps = vinfo.fps > 0 && vinfo.fps <= 240 ? vinfo.fps : 30;
+  const frameBytes = (w || 1920) * (h || 1080) * 1.5;
+  const L = Math.min(CHUNK_MAX, Math.max(0.5, Math.floor(200e6 / frameBytes) / fps));
+  const n = Math.max(1, Math.ceil(dur / L - 1e-6));
+  await f.createDir("/work").catch(() => {});
+  const parts = [];
+  let ret = await step(["-hide_banner", "-y", "-i", vpath, "-an", "-vf", "trim=start_frame=1,setpts=PTS-STARTPTS", ...X264, "-fps_mode", "passthrough", "/work/f.mp4"],
+    "前向きを作り直しています", dur);
+  if (ret !== 0) throw new Error("前向きの動画が作れませんでした。");
+  parts.push("f.mp4");
+  for (let i = n - 1; i >= 0; i--) {
+    const vf = i === n - 1 ? "reverse,trim=start_frame=1,setpts=PTS-STARTPTS" : "reverse,setpts=PTS-STARTPTS";
+    const name = `r${i}.mp4`;
+    ret = await step(["-hide_banner", "-y", "-ss", (i * L).toFixed(3), "-t", L.toFixed(3), "-i", vpath, "-an", "-vf", vf, ...X264, "-fps_mode", "passthrough", `/work/${name}`],
+      `逆回しを作っています（${n - i}/${n}）`, Math.min(L, dur - i * L));
+    if (ret !== 0) throw new Error("逆回しの動画が作れませんでした（メモリ不足かもしれません）。");
+    parts.push(name);
+  }
+  await f.writeFile("/work/list.txt", parts.map((p) => `file '${p}'`).join("\n"));
+  ret = await step(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", "/work/list.txt", "-c", "copy", "/work/pp.mp4"], "つないでいます", 0);
+  if (ret !== 0) throw new Error("往復の動画をつなげませんでした。");
+  for (const p of parts) await f.deleteFile(`/work/${p}`).catch(() => {});
+  return "/work/pp.mp4";
 }
 
 async function run() {
@@ -406,29 +464,41 @@ async function run() {
 
     const opts = {
       vpath: `/in/${vname}`, apath: `/in/${aname}`, vinfo, ainfo,
-      orig: opt("orig"), len: opt("len"),
+      orig: opt("orig"), len: opt("len"), vloop: opt("vloop"),
       avol: +$("avol").value, vvol: +$("vvol").value,
       askip: num("askip"), adelay: num("adelay"),
       fade: $("fade").checked, fadesec: num("fadesec", 2),
+      bounce: "/work/pp.mp4",
     };
-    const { args, T, copy, mix } = buildArgs(opts);
-    log("[命令] ffmpeg " + args.join(" "));
-    const what = copy ? "くっつけています…" : `動画を H.264 に作り直しながらくっつけています…（${vinfo.vcodec} のため。時間がかかります）`;
-    setStatus(what);
-    onLog = (m) => {
-      const t = m.match(/time=(-?\d+):(\d+):(\d+(?:\.\d+)?)/);
-      if (t) {
-        const s = (+t[1]) * 3600 + (+t[2]) * 60 + parseFloat(t[3]);
-        setBar(s / T);
-        setStatus(`${what} ${fmtT(Math.max(0, s))} / ${fmtT(T)}`);
-      }
+    let { args, T, copy, mix, loopV } = buildArgs(opts);
+    const bounce = loopV && opts.vloop === "bounce";
+    // 進み具合は、作り直す秒数の合計に対する割合で出す
+    const total = (bounce ? 2 * vinfo.dur : 0) + T;
+    let done = 0;
+    const step = async (a, label, span) => {
+      log("[命令] ffmpeg " + a.join(" "));
+      setStatus(label + "…");
+      onLog = (m) => {
+        const t = m.match(/time=(-?\d+):(\d+):(\d+(?:\.\d+)?)/);
+        if (!t) return;
+        const s = Math.max(0, (+t[1]) * 3600 + (+t[2]) * 60 + parseFloat(t[3]));
+        setBar((done + Math.min(s, span || s)) / total);
+        setStatus(`${label}… ${fmtT(s)}${span ? " / " + fmtT(span) : ""}`);
+      };
+      const r = await f.exec(a);
+      onLog = null;
+      if (cancelled) throw new Error("cancelled");
+      done += span;
+      return r;
     };
-    const ret = await f.exec(args);
-    onLog = null;
+    if (bounce) await makeBounce(f, opts.vpath, vinfo, step);
+    const what = copy ? "くっつけています" : `動画を H.264 に作り直しながらくっつけています（${vinfo.vcodec} のため。時間がかかります）`;
+    const ret = await step(args, what, T);
     if (cancelled) return;
     if (ret !== 0) throw new Error("ffmpeg が失敗しました。下の「処理の記録」を見てください。");
     const data = await f.readFile("/out.mp4");
     await f.deleteFile("/out.mp4").catch(() => {});
+    if (bounce) await f.deleteFile("/work/pp.mp4").catch(() => {});
     const blob = new Blob([data.buffer], { type: "video/mp4" });
     if (state.outURL) URL.revokeObjectURL(state.outURL);
     state.outURL = URL.createObjectURL(blob);
@@ -437,6 +507,7 @@ async function run() {
     $("dl").href = state.outURL;
     $("dl").download = `${base}_ガッちゃんこ.mp4`;
     const notes = [`${fmtT(T)}・${fmtMB(blob.size)}`];
+    if (loopV) notes.push(bounce ? "動画を逆回しで往復させました" : "動画を繰り返しました");
     if (opts.orig === "mix" && !mix) notes.push("動画に元の音が無かったので差し替えにしました");
     $("rinfo").textContent = notes.join("　");
     $("result").hidden = false;

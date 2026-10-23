@@ -23,6 +23,8 @@ ff("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=6", "-f", "lavfi"
    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", S("v_h264.mp4"));
 ff("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=5", "-c:v", "libx264", "-pix_fmt", "yuv420p", S("v_mute.mov"));
 ff("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=4", "-c:v", "libvpx-vp9", "-b:v", "300k", S("v_vp9.webm"));
+// コマごとに明るさが 8 ずつ上がる 3 秒（10fps・30 コマ）。逆回しの並びを明るさで読む
+ff("-f", "lavfi", "-i", "nullsrc=s=64x64:r=10:d=3,geq=lum='N*8':cb=128:cr=128", "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv420p", S("v_ramp.mp4"));
 ff("-f", "lavfi", "-i", "sine=f=880:duration=10", "-c:a", "libmp3lame", S("a_10s.mp3"));
 ff("-f", "lavfi", "-i", "sine=f=660:duration=2", S("a_2s.wav"));
 
@@ -44,7 +46,8 @@ const base = `http://127.0.0.1:${server.address().port}/`;
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 900, height: 1300 }, acceptDownloads: true });
 page.on("pageerror", (e) => console.log("pageerror:", e.message));
-await page.goto(`${base}?core=${encodeURIComponent(base + "core")}`);
+// chunk=0.7 で逆回しを区切りに分けさせ、つなぎ目も通す
+await page.goto(`${base}?chunk=0.7&core=${encodeURIComponent(base + "core")}`);
 await page.screenshot({ path: S("shot_empty.png"), fullPage: true });
 
 const cases = [
@@ -52,6 +55,10 @@ const cases = [
   { name: "混ぜる・短いほう", v: "v_h264.mp4", a: "a_2s.wav", set: { orig: "mix", len: "shortest" }, dur: 2 },
   { name: "音声をくり返す・無音の動画に混ぜる", v: "v_mute.mov", a: "a_2s.wav", set: { orig: "mix", len: "loop" }, dur: 5, note: /差し替え/ },
   { name: "頭出し・入れ始め", v: "v_h264.mp4", a: "a_10s.mp3", set: { askip: 3, adelay: 1 }, dur: 6 },
+  { name: "音声に合わせる・繰り返す", v: "v_h264.mp4", a: "a_10s.mp3", set: { len: "audio" }, dur: 10, vcodec: "h264", copy: true, note: /繰り返し/ },
+  { name: "音声に合わせる・音声が短い", v: "v_h264.mp4", a: "a_2s.wav", set: { len: "audio", vloop: "bounce" }, dur: 2 },
+  { name: "音声に合わせる・逆回し", v: "v_ramp.mp4", a: "a_10s.mp3", set: { len: "audio", vloop: "bounce" }, dur: 10, vcodec: "h264", note: /逆回し/, ramp: true },
+  { name: "音声に合わせる・逆回し＋元の音を混ぜる", v: "v_h264.mp4", a: "a_10s.mp3", set: { len: "audio", vloop: "bounce", orig: "mix" }, dur: 10, vcodec: "h264" },
   { name: "VP9 を作り直す", v: "v_vp9.webm", a: "a_10s.mp3", set: {}, dur: 4, vcodec: "h264", copy: false },
 ];
 let fail = 0;
@@ -60,6 +67,7 @@ for (const [i, c] of cases.entries()) {
   await page.setInputFiles("#afile", S(c.a));
   await page.check(`input[name=orig][value=${c.set.orig || "replace"}]`, { force: true });
   await page.check(`input[name=len][value=${c.set.len || "video"}]`, { force: true });
+  if (c.set.len === "audio") await page.check(`input[name=vloop][value=${c.set.vloop || "repeat"}]`, { force: true });
   await page.fill("#askip", String(c.set.askip || 0));
   await page.fill("#adelay", String(c.set.adelay || 0));
   await page.click("#go");
@@ -80,6 +88,15 @@ for (const [i, c] of cases.entries()) {
   if (c.vcodec && v?.codec_name !== c.vcodec) probs.push(`絵 ${v?.codec_name}`);
   if (a && a.codec_name !== "aac") probs.push(`音 ${a.codec_name}`);
   if (c.copy !== undefined && /-c:v copy/.test(log) !== c.copy) probs.push("絵のコピー／作り直しが期待と違う");
+  if (c.ramp) {
+    // 期待: 1..29, 28..0, 1..29, 28..0 …（10fps で 100 コマ）
+    const ys = execFileSync("ffprobe", ["-v", "error", "-f", "lavfi", "-i", `movie=${out},signalstats`, "-show_entries", "frame_tags=lavfi.signalstats.YAVG", "-of", "csv=p=0"]).toString().trim().split("\n").map((y) => Math.round(parseFloat(y) / 8));
+    const want = Array.from({ length: ys.length }, (_, k) => { const p = k % 58; return p < 29 ? p + 1 : 57 - p; });
+    const bad = ys.findIndex((y, k) => y !== want[k]);
+    const chunks = (log.match(/\/work\/r\d+\.mp4/g) || []).length / 2;
+    if (chunks < 5) probs.push(`逆回しが区切られていない（${chunks}）`);
+    if (ys.length < 99 || bad >= 0) probs.push(`コマの並びが違う（${ys.length} コマ, ${bad} コマ目: ${ys.slice(Math.max(0, bad - 3), bad + 4)} 期待 ${want.slice(Math.max(0, bad - 3), bad + 4)}）`);
+  }
   if (c.note && !c.note.test(rinfo)) probs.push(`知らせが無い: ${rinfo}`);
   console.log(`${probs.length ? "NG" : "OK"} ${c.name}: ${dur.toFixed(2)}s ${v?.codec_name}/${a?.codec_name} ${(await stat(out)).size}B ${probs.join(" / ")}`);
   if (probs.length) fail++;
