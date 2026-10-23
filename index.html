@@ -226,6 +226,49 @@
     .meta, .slug { grid-column: 1; grid-row: auto; text-align: left; }
   }
 
+  /* ── 絞り込み。上に貼りつくディスクメニューの見出し帯 ── */
+  .finder {
+    position: sticky; top: 0; z-index: 5;
+    margin: 0 calc(-1 * clamp(1rem, 4vw, 2rem));
+    padding: 0.75rem clamp(1rem, 4vw, 2rem);
+    background: var(--ground);
+    border-bottom: 1px solid var(--rule-soft);
+    display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+  .chip {
+    font-family: var(--mono); font-size: var(--step--1); font-weight: 700;
+    padding: 0.35rem 0.7rem; border: 1px solid var(--rule); border-radius: 0;
+    background: var(--panel); color: var(--ink); cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip .n { color: var(--ink-dim); font-weight: 400; margin-left: 0.35em; }
+  .chip[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-ink); border-color: var(--sel-bg); }
+  .chip[aria-pressed="true"] .n { color: inherit; }
+  .chip:focus-visible, .find:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .chip:disabled { opacity: 0.45; cursor: default; }
+  .find {
+    flex: 1 1 12rem; min-width: 0;
+    font: inherit; font-size: var(--step-0);
+    padding: 0.35rem 0.6rem; border: 1px solid var(--rule); border-radius: 0;
+    background: var(--panel); color: var(--ink);
+  }
+  .find::placeholder { color: var(--ink-dim); }
+  .none { color: var(--ink-dim); margin: 0; }
+  @media (max-width: 34rem) {
+    /* スマホでは帯を太らせないよう、分類ボタンは1段で横に送る */
+    .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * clamp(1rem, 4vw, 2rem)); padding: 0 clamp(1rem, 4vw, 2rem); }
+    .chips::-webkit-scrollbar { display: none; }
+    .chip { flex: none; }
+  }
+  .new {
+    display: inline-block; margin-left: 0.5em; padding: 0 0.35em; vertical-align: 0.15em;
+    font-size: var(--step--1); font-weight: 700; letter-spacing: 0.08em;
+    background: var(--live); color: var(--panel);
+  }
+  .entry:hover .new, .entry:focus-visible .new { background: var(--sel-ink); color: var(--sel-bg); }
+  .group[hidden], .entry[hidden] { display: none; }
+
   /* ── 脚注 ── */
   .colophon {
     border-top: 2px solid var(--rule);
@@ -259,10 +302,18 @@
     <hr class="rule-top">
     <h1>つくったもの</h1>
     <p class="lede">ブラウザだけで動く自作の道具とゲーム。全部リンクを開けばそのまま遊べます。</p>
-    <p class="tally">35 titles · 2026.04 — 2026.10 · all live</p>
+    <p class="tally">37 titles · 2026.04 — 2026.10 · all live</p>
   </header>
 
-  <section class="group">
+  <nav class="finder" aria-label="絞り込み">
+    <div class="chips" id="chips">
+      <button class="chip" type="button" data-g="" aria-pressed="true">すべて<span class="n"></span></button>
+    </div>
+    <input class="find" id="find" type="search" placeholder="名前や説明で探す" aria-label="名前と説明で探す" autocomplete="off">
+  </nav>
+  <p class="none" id="none" hidden>見つかりませんでした。</p>
+
+  <section class="group" id="music" data-title="音と音楽">
     <div class="group-head">
       <h2>音と音楽</h2>
       <span class="count">8</span>
@@ -289,35 +340,35 @@
       <span class="slug">flip-acid</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/album-track-quiz/" style="animation-delay:40ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/album-track-quiz/" style="animation-delay:30ms">
       <span class="name">ELECTRO ALBUM QUIZ</span>
       <p class="desc">テクノ／電子音楽の収録曲当てクイズ。25組237アルバムから出題。</p>
       <span class="meta">2026.07.16</span>
       <span class="slug">album-track-quiz</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/apple-music-artwork/" style="animation-delay:60ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/apple-music-artwork/" style="animation-delay:40ms">
       <span class="name">Album Art Downloader</span>
       <p class="desc">アルバム名で検索して高解像度のジャケット画像を取得する。</p>
       <span class="meta">2026.06.25</span>
       <span class="slug">apple-music-artwork</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/techno_sequencer/" style="animation-delay:80ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/techno_sequencer/" style="animation-delay:50ms">
       <span class="name">テクノシーケンサー</span>
       <p class="desc">16ステップで音を組むシーケンサー。</p>
       <span class="meta">2026.06.11</span>
       <span class="slug">techno_sequencer</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/amen-suno/" style="animation-delay:100ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/amen-suno/" style="animation-delay:60ms">
       <span class="name">AMEN GEN</span>
       <p class="desc">SUNO に読ませるアーメンブレイクのプロンプトを組み立てる。</p>
       <span class="meta">2026.05.21</span>
       <span class="slug">amen-suno</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/talking-sam/" style="animation-delay:120ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/talking-sam/" style="animation-delay:70ms">
       <span class="name">SAM — Software Automatic Mouth</span>
       <p class="desc">往年の音声合成 SAM をブラウザで喋らせる。</p>
       <span class="meta">2026.04.14</span>
@@ -325,69 +376,76 @@
     </a>
   </section>
 
-  <section class="group">
+  <section class="group" id="games" data-title="ゲーム">
     <div class="group-head">
       <h2>ゲーム</h2>
       <span class="count">13</span>
     </div>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/square-slide/" style="animation-delay:98ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/square-slide/" style="animation-delay:80ms">
       <span class="name">SQUARE SLIDE</span>
       <p class="desc">正方形の絵を4×4に切って、送って戻すスライドパズル。スクリーンショットを渡すと、写真のところを自動で正方形に切り出す。</p>
       <span class="meta">2026.09.04</span>
       <span class="slug">square-slide</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/soba-tower/" style="animation-delay:100ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/soba-tower/" style="animation-delay:90ms">
       <span class="name">SOBA TOWER</span>
       <p class="desc">具を段で落として重ねる立ち食いそば版バーガータイム。ネギとわかめをかわし、七味でしびれさせる。</p>
       <span class="meta">2026.08.13</span>
       <span class="slug">soba-tower</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/subterra/" style="animation-delay:102ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/stamp-rally/" style="animation-delay:100ms">
+      <span class="name">非公式ブックオフスタンプラリー</span>
+      <p class="desc">ブックオフの店舗を回ってスタンプを集める。全国706店舗。</p>
+      <span class="meta">2026.08.13</span>
+      <span class="slug">stamp-rally</span>
+    </a>
+
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/subterra/" style="animation-delay:110ms">
       <span class="name">SUBTERRA</span>
       <p class="desc">ビームや高跳びを手に入れて奥へ進む、Atari 2600 風の探索アクション。</p>
       <span class="meta">2026.08.12</span>
       <span class="slug">subterra</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/hyper-barrage/" style="animation-delay:105ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/hyper-barrage/" style="animation-delay:120ms">
       <span class="name">HYPER BARRAGE</span>
       <p class="desc">敵弾ばりばりの横スクロールシューティング。オート連射で撃ち込み、拡散を強化してボスへ挑む。</p>
       <span class="meta">2026.08.10</span>
       <span class="slug">hyper-barrage</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/mansion-poem/" style="animation-delay:110ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/mansion-poem/" style="animation-delay:130ms">
       <span class="name">高級集合住宅詩生成落下塊頭脳遊戯</span>
       <p class="desc">落ちてくる部屋をつなげて間取りを完成させると、大げさなポエムが生まれる。</p>
       <span class="meta">2026.08.10</span>
       <span class="slug">mansion-poem</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/pc8001-slot/" style="animation-delay:120ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/pc8001-slot/" style="animation-delay:140ms">
       <span class="name">LUCKY SEVEN</span>
       <p class="desc">目押しで止めるパチスロ風スロット。7を揃えると909/303のアシッド特化ゾーンに突入。</p>
       <span class="meta">2026.08.04</span>
       <span class="slug">pc8001-slot</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/pc8001-shooter/" style="animation-delay:130ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/pc8001-shooter/" style="animation-delay:150ms">
       <span class="name">STAR RAIDER</span>
       <p class="desc">都市・森・海・砂漠を飛び抜ける縦スクロールシューティング。連射が爽快。</p>
       <span class="meta">2026.08.03</span>
       <span class="slug">pc8001-shooter</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/bullet-dodge/" style="animation-delay:140ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/bullet-dodge/" style="animation-delay:160ms">
       <span class="name">弾避け練習</span>
       <p class="desc">弾幕系の弾避けだけをひたすら練習する。</p>
       <span class="meta">2026.06.04</span>
       <span class="slug">bullet-dodge</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/lores-hack/" style="animation-delay:160ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/lores-hack/" style="animation-delay:170ms">
       <span class="name">DEPTH 100</span>
       <p class="desc">低解像度のローグライク。潜って戦って、深度100を目指す。</p>
       <span class="meta">2026.05.28</span>
@@ -401,35 +459,35 @@
       <span class="slug">url-battler</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/succulent/" style="animation-delay:200ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/succulent/" style="animation-delay:190ms">
       <span class="name">SUCCULENT</span>
       <p class="desc">ドット絵の多肉植物を水やりで育てる放置ゲーム。</p>
       <span class="meta">2026.04.30</span>
       <span class="slug">succulent</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/kings-knight/" style="animation-delay:220ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/kings-knight/" style="animation-delay:200ms">
       <span class="name">Kings Knight — Prototype</span>
       <p class="desc">1986年のファミコン『キングスナイト』へのオマージュ。80×60ドット。</p>
       <span class="meta">2026.04.16</span>
       <span class="slug">kings-knight</span>
     </a>
-
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/stamp-rally/" style="animation-delay:240ms">
-      <span class="name">非公式ブックオフスタンプラリー</span>
-      <p class="desc">ブックオフの店舗を回ってスタンプを集める。全国706店舗。</p>
-      <span class="meta">2026.08.13</span>
-      <span class="slug">stamp-rally</span>
-    </a>
   </section>
 
-  <section class="group">
+  <section class="group" id="viewers" data-title="モデルビューア">
     <div class="group-head">
-      <h2>道具</h2>
-      <span class="count">16</span>
+      <h2>モデルビューア</h2>
+      <span class="count">8</span>
     </div>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/jwe2010-model-viewer/" style="animation-delay:229ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/vf2-model-viewer/" style="animation-delay:210ms">
+      <span class="name">バーチャファイター2 モデルビューア</span>
+      <p class="desc">PS2版バーチャファイター2のディスクと対戦中のセーブステートを読み込むと、そのコマの2人をゲームが描いたとおりの姿勢と色で取り出して回して見られる。アーケードのプログラムを中で動かして技を番号で選んで出せ（手の形も台本どおり、ランダムに連続も）、動画・透過PNGで保存できる。MAME のロムがあればテクスチャをアーケードの細かさで描く。2P をファイティングバイパーズのキャラに入れ替えて、2人にそれぞれのゲームの技を出させることもできる。</p>
+      <span class="meta">2026.10.19</span>
+      <span class="slug">vf2-model-viewer</span>
+    </a>
+
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/jwe2010-model-viewer/" style="animation-delay:220ms">
       <span class="name">JWE2010 モデルビューア</span>
       <p class="desc">PS2『Jリーグウイニングイレブン2010 クラブチャンピオンシップ』のディスクと、PCSX2のステートセーブを読み込むと、選手をチームや名前で選んで、ユニフォーム・背番号・名前の付いた姿を顔と髪と一緒に回して見られる。試合中のセーブなら、メモリにあるゲームの動き1,466個（スライディングなど）を再生できる。試合中のセーブならゲームのボールも足もとに置ける。自分で描いたユニフォームの絵や背番号の字体も使え、番号と名前も入れられる（下絵を書き出せる）。作りはじめ。どの選手がどの顔・髪かは、セーブの中のゲームの選手の表から読む。透過PNGで保存できる。</p>
       <span class="meta">2026.10.14</span>
@@ -443,77 +501,77 @@
       <span class="slug">we2001-model-viewer</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/we2012-model-viewer/" style="animation-delay:231ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/we2012-model-viewer/" style="animation-delay:240ms">
       <span class="name">ウイニングイレブン2012 モデルビューア</span>
       <p class="desc">PS2『ワールドサッカー ウイニングイレブン2012』のディスク（.iso か 0_TEXT.AFS）を読み込むと、選手の顔と髪を回して見られる。作りはじめ。名前の無い1万個のファイルをほどいて、顔と髪を一覧にする。番号で中身の絵も見られる。透過PNGで保存できる。</p>
       <span class="meta">2026.10.12</span>
       <span class="slug">we2012-model-viewer</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/endless-dungeon/" style="animation-delay:232ms">
-      <span class="name">ENDLESS DUNGEON</span>
-      <p class="desc">昔のRPGのような3Dダンジョンを、パーティが自動で延々と歩き続けるのを眺める。線画と8種のテクスチャから見た目を選び、4:3か16:9のMP4に書き出せる。</p>
-      <span class="meta">2026.10.12</span>
-      <span class="slug">endless-dungeon</span>
-    </a>
-
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/vegalta-companion/" style="animation-delay:236ms">
-      <span class="name">ベガ観戦のお供</span>
-      <p class="desc">ベガルタ仙台の選手名鑑と、当日のスタメンを並べるスマホ向けの道具。ホーム・アウェイ・DAZNで画面の色を切り替えられる。</p>
-      <span class="meta">2026.10.09</span>
-      <span class="slug">vegalta-companion</span>
-    </a>
-
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/fv-model-viewer/" style="animation-delay:234ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/fv-model-viewer/" style="animation-delay:250ms">
       <span class="name">ファイティングバイパーズ モデルビューア</span>
       <p class="desc">PS2版ファイティングバイパーズのディスク（.chd でも可）と対戦中のセーブステートを読み込むと、そのコマの2人と背景をゲームが描いたとおりの姿勢と色で回して見られる。アーケードのプログラムを中で動かして技をコマンド表の名前か番号で選んで出せ（ランダムに連続も）、動画・透過PNGで保存できる。テクスチャはディスクに入っているアーケード版の細かさで描く。</p>
       <span class="meta">2026.09.27</span>
       <span class="slug">fv-model-viewer</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/vf2-model-viewer/" style="animation-delay:236ms">
-      <span class="name">バーチャファイター2 モデルビューア</span>
-      <p class="desc">PS2版バーチャファイター2のディスクと対戦中のセーブステートを読み込むと、そのコマの2人をゲームが描いたとおりの姿勢と色で取り出して回して見られる。アーケードのプログラムを中で動かして技を番号で選んで出せ（手の形も台本どおり、ランダムに連続も）、動画・透過PNGで保存できる。MAME のロムがあればテクスチャをアーケードの細かさで描く。2P をファイティングバイパーズのキャラに入れ替えて、2人にそれぞれのゲームの技を出させることもできる。</p>
-      <span class="meta">2026.10.19</span>
-      <span class="slug">vf2-model-viewer</span>
-    </a>
-
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/tobal1-model-viewer/" style="animation-delay:238ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/tobal1-model-viewer/" style="animation-delay:260ms">
       <span class="name">トバルNo.1 モデルビューア</span>
       <p class="desc">トバルNo.1のディスクイメージを読み込むと、中のキャラクターの3Dモデルを取り出して回して見られる。どこに何が入っているかはディスクから自動で探す。</p>
       <span class="meta">2026.09.17</span>
       <span class="slug">tobal1-model-viewer</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/reboot-model-viewer/" style="animation-delay:240ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/reboot-model-viewer/" style="animation-delay:270ms">
       <span class="name">ReBoot モデルビューア</span>
       <p class="desc">ReBootのディスクイメージを読み込むと、キャラクター28体の3Dモデルをテクスチャ付きで回して見られる。動きの再生、動画の書き出し、BGMの再生もできる。</p>
       <span class="meta">2026.09.17</span>
       <span class="slug">reboot-model-viewer</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/tobal2-model-viewer/" style="animation-delay:245ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/tobal2-model-viewer/" style="animation-delay:280ms">
       <span class="name">トバル2 モデルビューア</span>
       <p class="desc">トバル2のディスクイメージを読み込むと、キャラクターの3Dモデルをテクスチャ付きで回して見られる。技の動きも再生できる。</p>
       <span class="meta">2026.09.13</span>
       <span class="slug">tobal2-model-viewer</span>
     </a>
+  </section>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/horipad-hid-bench/" style="animation-delay:250ms">
+  <section class="group" id="tools" data-title="道具">
+    <div class="group-head">
+      <h2>道具</h2>
+      <span class="count">8</span>
+    </div>
+
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/endless-dungeon/" style="animation-delay:290ms">
+      <span class="name">ENDLESS DUNGEON</span>
+      <p class="desc">昔のRPGのような3Dダンジョンを、パーティが自動で延々と歩き続けるのを眺める。線画と8種のテクスチャから見た目を選び、4:3か16:9のMP4に書き出せる。</p>
+      <span class="meta">2026.10.12</span>
+      <span class="slug">endless-dungeon</span>
+    </a>
+
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/vegalta-companion/" style="animation-delay:300ms">
+      <span class="name">ベガ観戦のお供</span>
+      <p class="desc">ベガルタ仙台の選手名鑑と、当日のスタメンを並べるスマホ向けの道具。ホーム・アウェイ・DAZNで画面の色を切り替えられる。</p>
+      <span class="meta">2026.10.09</span>
+      <span class="slug">vegalta-companion</span>
+    </a>
+
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/horipad-hid-bench/" style="animation-delay:300ms">
       <span class="name">HORIPAD HID BENCH</span>
       <p class="desc">ゲームパッドを繋ぐと、押したボタンとスティックの動きが8バイトのHIDレポートとして見える。</p>
       <span class="meta">2026.09.08</span>
       <span class="slug">horipad-hid-bench</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/slideshow/" style="animation-delay:260ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/slideshow/" style="animation-delay:300ms">
       <span class="name">フォルダスライドショー</span>
       <p class="desc">パソコンのフォルダを選ぶと、中の画像と動画を順に大きく映す。一覧で名前・メモ・タグを付けられて、同じフォルダの音声を流すASMRモードもある。</p>
       <span class="meta">2026.09.06</span>
       <span class="slug">slideshow</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/unit-price-compare/" style="animation-delay:280ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/unit-price-compare/" style="animation-delay:300ms">
       <span class="name">単価くらべ</span>
       <p class="desc">容量ちがいの同じ商品で、どれが一番おトクかを単価で比べる。</p>
       <span class="meta">2026.08.06</span>
@@ -527,14 +585,14 @@
       <span class="slug">calendar-event-maker</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/startgg-stream-viewer/" style="animation-delay:320ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/startgg-stream-viewer/" style="animation-delay:300ms">
       <span class="name">格ゲー大会ビューア</span>
       <p class="desc">大会の配信とブラケットを並べて追いかける。</p>
       <span class="meta">2026.06.17</span>
       <span class="slug">startgg-stream-viewer</span>
     </a>
 
-    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/cosplay/" style="animation-delay:340ms">
+    <a class="entry" target="_blank" rel="noopener" href="https://haristweet.github.io/cosplay/" style="animation-delay:300ms">
       <span class="name">COSTUME FUSION</span>
       <p class="desc">写真とイラストを掛け合わせ、AI に衣装を着せるための JSON を作る。</p>
       <span class="meta">2026.05.08</span>
@@ -544,12 +602,93 @@
 
   <!-- バージョンはここ1か所。README の更新履歴と揃えること -->
   <footer class="colophon">
-    <span class="rev">v1.28.0</span>
-    <span class="live">● 35件すべて公開中</span>
+    <span class="rev">v1.29.0</span>
+    <span class="live">● 37件すべて公開中</span>
     <span>更新 2026.10.23</span>
     <span><a target="_blank" rel="noopener" href="https://github.com/haristweet">github.com/haristweet</a></span>
   </footer>
 
 </div>
+
+<script>
+// 分類ボタン・探す欄・NEW の印・件数。件数は書いた .entry から数えるので、足すときに数字を直す所は無い
+(() => {
+  const NEW_DAYS = 7;
+  const groups = [...document.querySelectorAll(".group")];
+  const entries = [...document.querySelectorAll(".entry")];
+  const chips = document.getElementById("chips"), find = document.getElementById("find"), none = document.getElementById("none");
+
+  // 全角・半角、大文字・小文字、ひらがな・カタカナの違いは無視して探す
+  const fold = (t) => t.normalize("NFKC").toLowerCase().replace(/[\u3041-\u3096]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  for (const e of entries) {
+    e.dataset.text = fold(e.textContent);
+    const m = e.querySelector(".meta")?.textContent.match(/(\d{4})\.(\d{2})\.(\d{2})/);
+    if (m && (today - new Date(+m[1], m[2] - 1, +m[3])) / 864e5 <= NEW_DAYS) {
+      const b = document.createElement("span");
+      b.className = "new"; b.textContent = "NEW";
+      e.querySelector(".name").append(b);
+    }
+  }
+  const total = entries.length;
+  document.querySelector(".tally").textContent = document.querySelector(".tally").textContent.replace(/^\d+ titles/, `${total} titles`);
+  document.querySelector(".colophon .live").textContent = `● ${total}件すべて公開中`;
+
+  for (const g of groups) {
+    const b = document.createElement("button");
+    b.className = "chip"; b.type = "button"; b.dataset.g = g.id; b.setAttribute("aria-pressed", "false");
+    b.append(g.dataset.title, Object.assign(document.createElement("span"), { className: "n" }));
+    chips.append(b);
+  }
+  const chipEls = [...chips.querySelectorAll(".chip")];
+
+  let current = "";
+  function apply() {
+    const words = fold(find.value).split(/\s+/).filter(Boolean);
+    const hit = (e) => words.every((w) => e.dataset.text.includes(w));
+    let shown = 0;
+    const per = {};
+    for (const g of groups) {
+      let n = 0;
+      for (const e of g.querySelectorAll(".entry")) {
+        const ok = hit(e);
+        e.hidden = !ok || (current && current !== g.id);
+        if (ok) n++;
+      }
+      per[g.id] = n;
+      g.querySelector(".count").textContent = words.length ? `${n} / ${g.querySelectorAll(".entry").length}` : n;
+      g.hidden = n === 0 || (current && current !== g.id);
+      if (!g.hidden) shown += n;
+    }
+    for (const c of chipEls) {
+      const n = c.dataset.g ? per[c.dataset.g] : Object.values(per).reduce((a, b) => a + b, 0);
+      c.querySelector(".n").textContent = n;
+      c.setAttribute("aria-pressed", String(c.dataset.g === current));
+    }
+    none.hidden = shown > 0;
+    none.textContent = current && words.length && Object.values(per).some(Boolean)
+      ? "この分類には見つかりませんでした。数字の付いている分類を見てください。"
+      : "見つかりませんでした。";
+  }
+  function select(id, push) {
+    current = groups.some((g) => g.id === id) ? id : "";
+    if (push) history.replaceState(null, "", current ? `#${current}` : location.pathname + location.search);
+    apply();
+  }
+  chips.addEventListener("click", (e) => {
+    const c = e.target.closest(".chip");
+    if (c) { select(c.dataset.g, true); window.scrollTo({ top: 0 }); }
+  });
+  find.addEventListener("input", apply);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "/" && document.activeElement !== find) { e.preventDefault(); find.focus(); }
+    else if (e.key === "Escape" && document.activeElement === find) { find.value = ""; apply(); }
+  });
+  window.addEventListener("hashchange", () => select(location.hash.slice(1), false));
+  select(location.hash.slice(1), false);
+  // #music などで開いたとき、ブラウザが見出しまで送ったのを先頭に戻す（帯の下に一覧が並ぶので）
+  if (current) requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+})();
+</script>
 </body>
 </html>
