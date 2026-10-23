@@ -67,6 +67,19 @@
   .drop .kind { font-weight: 700; }
   .drop .hint { color: var(--ink-dim); font-size: 13px; }
   .drop .name { font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--ink-dim); }
+  .vcol { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  #vlist { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; counter-reset: v; }
+  #vlist li {
+    display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; border: 1px solid var(--rule); border-radius: 10px;
+    background: var(--panel); font-size: 13px; counter-increment: v;
+  }
+  #vlist li::before { content: counter(v); font-weight: 700; color: var(--accent); min-width: 1.2em; }
+  #vlist li.sel { border-color: var(--accent); }
+  #vlist .nm { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  #vlist .d { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
+  #vlist button { font: inherit; width: 28px; height: 28px; padding: 0; border: 1px solid var(--rule); border-radius: 8px; background: transparent; color: var(--ink); cursor: pointer; }
+  #vlist button:disabled { opacity: .3; cursor: default; }
+  .ghost.small { padding: 4px 10px; font-size: 13px; margin-left: auto; }
   .drop video { width: 100%; max-height: 220px; border-radius: 8px; background: #000; }
   .drop audio { width: 100%; }
   .drop .big { font-size: 2rem; line-height: 1; }
@@ -112,17 +125,23 @@
 <div class="sheet">
   <header>
     <h1>音声ガッちゃんこ 🎬＋🎵</h1>
-    <p class="lede">動画を1つと音声を1つ入れると、音をくっつけた動画ができます。ファイルはどこにも送らず、このブラウザの中だけで処理します。</p>
+    <p class="lede">動画と音声を入れると、音をくっつけた動画ができます。動画を何本か入れると、並べた順につなげてから音をくっつけます。ファイルはどこにも送らず、このブラウザの中だけで処理します。</p>
   </header>
 
   <div class="pair">
-    <label class="drop" id="vdrop">
-      <input type="file" id="vfile" accept="video/*,.mp4,.mov,.m4v,.webm,.mkv">
-      <span class="kind">🎬 動画ファイル</span>
-      <span class="hint" data-empty>ここをタップして選ぶか、ファイルを落とす<br>（mp4・mov・webm など）</span>
-      <video id="vprev" controls playsinline muted hidden></video>
-      <span class="name" id="vname"></span>
-    </label>
+    <div class="vcol">
+      <label class="drop" id="vdrop">
+        <input type="file" id="vfile" multiple accept="video/*,.mp4,.mov,.m4v,.webm,.mkv">
+        <span class="kind">🎬 動画ファイル</span>
+        <span class="hint" data-empty>ここをタップして選ぶか、ファイルを落とす<br>（mp4・mov・webm など。何本でも。並べた順につなげます）</span>
+        <video id="vprev" controls playsinline muted hidden></video>
+        <span class="hint" id="vmore" hidden>タップか落とすで動画を足す（つなげる）</span>
+      </label>
+      <div id="vlistbox" hidden>
+        <ol id="vlist"></ol>
+        <div class="row"><span class="note" id="vtotal"></span><button class="ghost small" id="vclear">全部外す</button></div>
+      </div>
+    </div>
     <span class="plus" aria-hidden="true">＋</span>
     <label class="drop" id="adrop">
       <input type="file" id="afile" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac">
@@ -209,7 +228,7 @@
   <p class="foot">
     はじめの1回だけ、処理の道具（ffmpeg.wasm・約30MB）を読み込みます。動画の絵は作り直さずそのまま使うので速く、画質も落ちません
     （H.264 / H.265 以外の動画は H.264 に作り直すので時間がかかります）。
-    とても大きいファイル（目安 1.5GB 以上）はブラウザのメモリが足りず失敗することがあります。<br>
+    とても大きいファイル（目安 1.5GB 以上。何本かつなげるときは合計で 1GB ほど）はブラウザのメモリが足りず失敗することがあります。<br>
     <a href="../">← つくったもの</a>
   </p>
 </div>
@@ -224,7 +243,8 @@ const CORE_BASE = PARAMS.get("core") || "https://cdn.jsdelivr.net/npm/@ffmpeg/co
 const CHUNK_MAX = +PARAMS.get("chunk") || Infinity;
 
 const $ = (id) => document.getElementById(id);
-const state = { video: null, audio: null, vinfo: null, ainfo: null, outURL: null };
+// videos: つなげる順の { file, dur }。1本ならつなげずにそのまま使う
+const state = { videos: [], sel: 0, audio: null, outURL: null };
 let ffmpeg = null, coreURLs = null, logLines = [], onLog = null, busy = false, cancelled = false;
 
 // ── ffmpeg の用意 ──
@@ -262,27 +282,35 @@ async function getFFmpeg() {
 }
 
 function log(s) { logLines.push(s); }
-function flushLog() { $("log").textContent = logLines.slice(-400).join("\n"); }
+// 命令と調べた結果（[ で始まる行）はいつも頭に残し、ffmpeg の出力は最後の 400 行だけ出す
+function flushLog() {
+  const mine = logLines.filter((l) => l.startsWith("["));
+  $("log").textContent = [...mine, "――――", ...logLines.slice(-400)].join("\n");
+}
 
 // ── 調べる ──
 function parseInfo(lines) {
   const text = lines.join("\n");
   const d = text.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
   const dur = d ? (+d[1]) * 3600 + (+d[2]) * 60 + parseFloat(d[3]) : NaN;
-  let vcodec = null, acodec = null, w = 0, h = 0, fps = 0;
+  let vcodec = null, acodec = null, w = 0, h = 0, fps = 0, sig = "", asig = "";
   for (const line of lines) {
     const m = line.match(/Stream #\d+:\d+.*?: (Video|Audio): (\w+)/);
     if (!m) continue;
     // mp3 のジャケット画像などは動画として数えない
     if (m[1] === "Video" && !vcodec && !/attached pic/.test(line)) {
       vcodec = m[2];
+      // つなげるとき「そのまま並べてよいか」を見るための形。ビットレートの違いは気にしない
+      sig = line.replace(/^.*?: Video: /, "").replace(/, \d+ kb\/s/, "").replace(/ \((default|forced)\)/g, "").trim();
       const wh = line.match(/, (\d{2,5})x(\d{2,5})/), r = line.match(/([\d.]+) fps/);
       if (wh) { w = +wh[1]; h = +wh[2]; }
       if (r) fps = parseFloat(r[1]);
     }
     if (m[1] === "Audio" && !acodec) acodec = m[2];
   }
-  return { dur, vcodec, acodec, w, h, fps };
+  // 縦に撮ったスマホの動画は横長に記録して「90°回す」印を付けている
+  const rot = text.match(/rotation of (-?[\d.]+) degrees/);
+  return { dur, vcodec, acodec, w, h, fps, sig, rot: rot ? Math.round(parseFloat(rot[1])) : 0 };
 }
 
 async function probe(f, path) {
@@ -299,37 +327,93 @@ const fmtMB = (n) => n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFi
 const opt = (name) => document.querySelector(`input[name=${name}]:checked`).value;
 const num = (id, def = 0) => { const v = parseFloat($(id).value); return isFinite(v) && v >= 0 ? v : def; };
 
-function setFile(kind, file) {
+function setAudio(file) {
   if (!file) return;
-  state[kind] = file;
-  state[kind === "video" ? "vinfo" : "ainfo"] = null;
-  const k = kind[0];
-  const drop = $(k + "drop"), prev = $(k + "prev");
-  drop.classList.add("has");
-  drop.querySelector("[data-empty]").hidden = true;
+  state.audio = file;
+  const prev = $("aprev");
+  $("adrop").classList.add("has");
+  $("adrop").querySelector("[data-empty]").hidden = true;
   if (prev.src) URL.revokeObjectURL(prev.src);
   prev.src = URL.createObjectURL(file);
   prev.hidden = false;
-  $(k + "name").textContent = `${file.name}（${fmtMB(file.size)}）`;
+  $("aname").textContent = `${file.name}（${fmtMB(file.size)}）`;
   prev.onloadedmetadata = refresh;
   refresh();
 }
 
+// 長さは見えない <video> で読む（読めない形式なら NaN のまま。処理には ffmpeg で調べた長さを使う）
+function addVideos(files) {
+  for (const file of files) {
+    const item = { file, dur: NaN };
+    state.videos.push(item);
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    v.src = URL.createObjectURL(file);
+    v.onloadedmetadata = () => { item.dur = v.duration; URL.revokeObjectURL(v.src); renderVideos(); };
+    v.onerror = () => URL.revokeObjectURL(v.src);
+  }
+  if (files.length) state.sel = state.videos.length - files.length;
+  renderVideos();
+}
+
+function showPreview() {
+  const prev = $("vprev"), item = state.videos[state.sel];
+  if (prev.src) { URL.revokeObjectURL(prev.src); prev.removeAttribute("src"); prev.load(); }
+  prev.hidden = !item;
+  if (item) prev.src = URL.createObjectURL(item.file);
+}
+
+function renderVideos() {
+  const vs = state.videos, n = vs.length;
+  state.sel = Math.min(state.sel, Math.max(0, n - 1));
+  $("vdrop").classList.toggle("has", n > 0);
+  $("vdrop").querySelector("[data-empty]").hidden = n > 0;
+  $("vmore").hidden = n === 0;
+  $("vlistbox").hidden = n === 0;
+  const list = $("vlist");
+  list.textContent = "";
+  vs.forEach((it, i) => {
+    const li = document.createElement("li");
+    li.classList.toggle("sel", i === state.sel && n > 1);
+    const nm = document.createElement("span");
+    nm.className = "nm"; nm.textContent = it.file.name; nm.title = `${it.file.name}（${fmtMB(it.file.size)}）見る`;
+    nm.onclick = () => { state.sel = i; renderVideos(); showPreview(); };
+    const d = document.createElement("span");
+    d.className = "d"; d.textContent = fmtT(it.dur);
+    const btn = (label, title, dis, fn) => {
+      const b = document.createElement("button");
+      b.textContent = label; b.title = title; b.setAttribute("aria-label", title); b.disabled = dis || busy;
+      b.onclick = fn; return b;
+    };
+    const move = (j) => () => { [vs[i], vs[j]] = [vs[j], vs[i]]; if (state.sel === i) state.sel = j; else if (state.sel === j) state.sel = i; renderVideos(); };
+    li.append(nm, d,
+      btn("↑", "前へ", i === 0, move(i - 1)),
+      btn("↓", "後ろへ", i === n - 1, move(i + 1)),
+      btn("✕", "外す", false, () => { const was = state.sel; vs.splice(i, 1); if (was >= i && was > 0) state.sel--; renderVideos(); showPreview(); }));
+    list.append(li);
+  });
+  const total = vs.reduce((t, it) => t + it.dur, 0);
+  $("vtotal").textContent = n > 1 ? `${n} 本をこの順につなげます（合計 ${fmtT(total)}）` : `${fmtMB(vs[0]?.file.size || 0)}・${fmtT(total)}`;
+  $("vclear").disabled = busy;
+  if (!$("vprev").src && n) showPreview();
+  refresh();
+}
+
 function refresh() {
-  $("go").disabled = busy || !state.video || !state.audio;
+  $("go").disabled = busy || !state.videos.length || !state.audio;
   $("vvolrow").hidden = opt("orig") !== "mix";
   $("vlooprow").hidden = opt("len") !== "audio";
   $("bounceNote").hidden = opt("vloop") !== "bounce";
   $("avolv").textContent = `${$("avol").value}%`;
   $("vvolv").textContent = `${$("vvol").value}%`;
   // 長さの見込みは <video>/<audio> の読み取りで出す（読めない形式なら空のまま）
-  const vd = $("vprev").duration, ad = $("aprev").duration;
+  const vd = state.videos.reduce((t, it) => t + it.dur, 0), ad = $("aprev").duration;
   let note = "";
-  if (state.video && state.audio && isFinite(vd) && isFinite(ad)) {
+  if (state.videos.length && state.audio && isFinite(vd) && isFinite(ad)) {
     const eff = Math.max(0, ad - num("askip")) + num("adelay");
     const len = opt("len");
     const out = len === "shortest" ? Math.min(vd, eff) : len === "audio" ? eff : vd;
-    note = `動画 ${fmtT(vd)} ・ 音声 ${fmtT(ad)} → できあがり ${fmtT(out)}`;
+    note = `動画${state.videos.length > 1 ? `（${state.videos.length} 本つなげて）` : ""} ${fmtT(vd)} ・ 音声 ${fmtT(ad)} → できあがり ${fmtT(out)}`;
     if (len === "audio" && eff > vd + 0.05) note += `（動画を ${(eff / vd).toFixed(1)} 回分ループ）`;
     if (len === "audio" && eff < vd - 0.05) note += `（動画の残り ${fmtT(vd - eff)} は切る）`;
     if (len === "video" && eff < vd - 0.05) note += `（最後の ${fmtT(vd - eff)} は音声なし）`;
@@ -340,24 +424,25 @@ function refresh() {
 
 for (const kind of ["video", "audio"]) {
   const k = kind[0], drop = $(k + "drop");
-  $(k + "file").addEventListener("change", (e) => setFile(kind, e.target.files[0]));
+  const take = (files) => kind === "video" ? addVideos([...files]) : setAudio(files[0]);
+  $(k + "file").addEventListener("change", (e) => { take(e.target.files); e.target.value = ""; });
   drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
   drop.addEventListener("dragleave", () => drop.classList.remove("over"));
   drop.addEventListener("drop", (e) => {
-    e.preventDefault(); drop.classList.remove("over");
-    const f = e.dataTransfer.files[0];
-    if (f) setFile(kind, f);
+    e.preventDefault(); e.stopPropagation(); drop.classList.remove("over");
+    if (e.dataTransfer.files.length) take(e.dataTransfer.files);
   });
 }
 // 枠の外に落としてもブラウザがファイルを開かないように。種類を見て振り分ける
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => {
   e.preventDefault();
-  for (const f of e.dataTransfer.files) {
-    if (f.type.startsWith("audio/")) setFile("audio", f);
-    else if (f.type.startsWith("video/")) setFile("video", f);
-  }
+  const fs = [...e.dataTransfer.files];
+  addVideos(fs.filter((f) => f.type.startsWith("video/")));
+  const a = fs.find((f) => f.type.startsWith("audio/"));
+  if (a) setAudio(a);
 });
+$("vclear").addEventListener("click", () => { state.videos = []; state.sel = 0; renderVideos(); showPreview(); });
 document.querySelectorAll("input").forEach((el) => el.addEventListener("input", refresh));
 
 // ── くっつける ──
@@ -409,6 +494,63 @@ function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, avol, vvol, a
 
 const X264 = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p"];
 
+// 何本かの動画を順につないで /work/cat.mp4 に作る。
+// 全部が同じ形（コーデック・大きさ・fps・向き）なら絵はそのまま並べ、違えば1本目の大きさに合わせて H.264 に作り直す（はみ出す分は黒い帯）。
+// 元の音は毎回作り直す（音の無い動画は無音で埋め、絵の長さに合わせる）
+function concatPlan(infos) {
+  const first = infos[0];
+  const same = COPY_OK.has(first.vcodec) && infos.every((i) => i.sig === first.sig && i.rot === first.rot);
+  const sum = infos.reduce((t, i) => t + i.dur, 0);
+  return { same, sum };
+}
+
+async function makeConcat(f, paths, infos, step) {
+  const { same, sum } = concatPlan(infos);
+  const n = paths.length, anyA = infos.some((i) => i.acodec);
+  await f.createDir("/work").catch(() => {});
+  const args = ["-hide_banner", "-y"];
+  let base = 0;
+  if (same) {
+    await f.writeFile("/work/vlist.txt", paths.map((p, i) => `file '${p}'\nduration ${infos[i].dur.toFixed(3)}`).join("\n"));
+    args.push("-f", "concat", "-safe", "0", "-i", "/work/vlist.txt");
+    base = 1;
+  }
+  for (const p of paths) args.push("-i", p);
+  const parts = [];
+  const first = infos[0];
+  const turned = Math.abs(first.rot) % 180 === 90;
+  const even = (x) => Math.max(2, Math.round(x / 2) * 2);
+  const W = even(turned ? first.h : first.w), H = even(turned ? first.w : first.h);
+  const F = first.fps > 0 && first.fps <= 240 ? first.fps : 30;
+  let pairs = "";
+  infos.forEach((info, i) => {
+    const k = base + i;
+    if (!same) parts.push(`[${k}:v:0]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${F},format=yuv420p[v${i}]`);
+    if (anyA) {
+      const D = info.dur.toFixed(3);
+      parts.push(info.acodec
+        ? `[${k}:a:0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${D}[a${i}]`
+        : `anullsrc=r=48000:cl=stereo,atrim=duration=${D}[a${i}]`);
+    }
+    pairs += (same ? "" : `[v${i}]`) + (anyA ? `[a${i}]` : "");
+  });
+  if (same && anyA) parts.push(`${pairs}concat=n=${n}:v=0:a=1[ca]`);
+  if (!same) parts.push(`${pairs}concat=n=${n}:v=1:a=${anyA ? 1 : 0}[cv]${anyA ? "[ca]" : ""}`);
+  if (parts.length) args.push("-filter_complex", parts.join(";"));
+  if (same) {
+    args.push("-map", "0:v:0", "-c:v", "copy");
+    if (first.vcodec === "hevc") args.push("-tag:v", "hvc1");
+  } else {
+    args.push("-map", "[cv]", ...X264);
+  }
+  if (anyA) args.push("-map", "[ca]", "-c:a", "aac", "-b:a", "192k");
+  args.push("/work/cat.mp4");
+  const label = same ? `${n} 本をつなげています` : `${n} 本を ${W}×${H} の H.264 に作り直してつなげています（形がそろっていないため。時間がかかります）`;
+  const ret = await step(args, label, same ? 0 : sum);
+  if (ret !== 0) throw new Error("動画をつなげられませんでした。下の「処理の記録」を見てください。");
+  return { path: "/work/cat.mp4", same };
+}
+
 // 前向き→逆回しの1往復を /work/pp.mp4 に作る。
 // reverse は区切りの全コマを生のまま抱えるので、メモリに収まる長さ（約200MB分）に切って逆回しし、後ろの区切りから並べる。
 // つなぎ目で同じコマが2回出ないよう、前向きと逆回しの頭の1コマずつを落とす（前向き 1..N-1、逆回し N-2..0）
@@ -441,7 +583,7 @@ async function makeBounce(f, vpath, vinfo, step) {
 
 async function run() {
   if (busy) return;
-  busy = true; cancelled = false; refresh();
+  busy = true; cancelled = false; renderVideos();
   $("work").hidden = false; $("result").hidden = true;
   setBar(0);
   logLines = [];
@@ -451,29 +593,43 @@ async function run() {
     if (cancelled) return;
     setStatus("ファイルを調べています…"); setBar(0);
     // 同じ名前でもぶつからないように、中では決まった名前にする（中身はコピーしない）
-    const vname = `video.${ext(state.video.name, "mp4")}`, aname = `audio.${ext(state.audio.name, "mp3")}`;
+    const vnames = state.videos.map((it, i) => `video${i}.${ext(it.file.name, "mp4")}`);
+    const aname = `audio.${ext(state.audio.name, "mp3")}`;
     await f.createDir("/in").catch(() => {});
-    await f.mount("WORKERFS", { files: [new File([state.video], vname), new File([state.audio], aname)] }, "/in");
+    await f.mount("WORKERFS", {
+      files: [...state.videos.map((it, i) => new File([it.file], vnames[i])), new File([state.audio], aname)],
+    }, "/in");
     mounted = true;
-    const vinfo = await probe(f, `/in/${vname}`);
+    const vinfos = [];
+    for (const [i, name] of vnames.entries()) {
+      const info = await probe(f, `/in/${name}`);
+      log(`[調べた結果] 動画${i + 1} ${JSON.stringify(info)}`);
+      const who = vnames.length > 1 ? `${i + 1} 本目の動画（${state.videos[i].file.name}）` : "動画ファイル";
+      if (!info.vcodec) throw new Error(`${who}から絵が見つかりませんでした。動画ファイルの枠には動画を入れてください。`);
+      if (!isFinite(info.dur)) throw new Error(`${who}の長さが読めませんでした。`);
+      vinfos.push(info);
+    }
     const ainfo = await probe(f, `/in/${aname}`);
-    log(`[調べた結果] 動画 ${JSON.stringify(vinfo)} 音声 ${JSON.stringify(ainfo)}`);
-    if (!vinfo.vcodec) throw new Error("動画ファイルから絵が見つかりませんでした。動画ファイルの枠には動画を入れてください。");
+    log(`[調べた結果] 音声 ${JSON.stringify(ainfo)}`);
     if (!ainfo.acodec) throw new Error("音声ファイルから音が見つかりませんでした。");
-    if (!isFinite(vinfo.dur) || !isFinite(ainfo.dur)) throw new Error("ファイルの長さが読めませんでした。");
+    if (!isFinite(ainfo.dur)) throw new Error("ファイルの長さが読めませんでした。");
 
     const opts = {
-      vpath: `/in/${vname}`, apath: `/in/${aname}`, vinfo, ainfo,
+      vpath: `/in/${vnames[0]}`, apath: `/in/${aname}`, vinfo: vinfos[0], ainfo,
       orig: opt("orig"), len: opt("len"), vloop: opt("vloop"),
       avol: +$("avol").value, vvol: +$("vvol").value,
       askip: num("askip"), adelay: num("adelay"),
       fade: $("fade").checked, fadesec: num("fadesec", 2),
       bounce: "/work/pp.mp4",
     };
-    let { args, T, copy, mix, loopV } = buildArgs(opts);
-    const bounce = loopV && opts.vloop === "bounce";
+    const many = vinfos.length > 1;
+    const plan = many ? concatPlan(vinfos) : null;
+    // つないだあとの見込み（進み具合の分母に使う。つないだあと本当の値で作り直す）
+    if (many) opts.vinfo = { ...vinfos[0], dur: plan.sum, vcodec: plan.same ? vinfos[0].vcodec : "h264", acodec: vinfos.some((i) => i.acodec) ? "aac" : null };
+    let built = buildArgs(opts);
+    const isBounce = (b) => b.loopV && opts.vloop === "bounce";
     // 進み具合は、作り直す秒数の合計に対する割合で出す
-    const total = (bounce ? 2 * vinfo.dur : 0) + T;
+    let total = (many && !plan.same ? plan.sum : 0) + (isBounce(built) ? 2 * opts.vinfo.dur : 0) + built.T;
     let done = 0;
     const step = async (a, label, span) => {
       log("[命令] ffmpeg " + a.join(" "));
@@ -491,22 +647,34 @@ async function run() {
       done += span;
       return r;
     };
-    if (bounce) await makeBounce(f, opts.vpath, vinfo, step);
-    const what = copy ? "くっつけています" : `動画を H.264 に作り直しながらくっつけています（${vinfo.vcodec} のため。時間がかかります）`;
+    if (many) {
+      const cat = await makeConcat(f, vnames.map((n) => `/in/${n}`), vinfos, step);
+      opts.vpath = cat.path;
+      opts.vinfo = await probe(f, cat.path);
+      log(`[調べた結果] つないだ動画 ${JSON.stringify(opts.vinfo)}`);
+      built = buildArgs(opts);
+    }
+    const { args, T, copy, mix, loopV } = built;
+    const bounce = isBounce(built);
+    total = done + (bounce ? 2 * opts.vinfo.dur : 0) + T;
+    if (bounce) await makeBounce(f, opts.vpath, opts.vinfo, step);
+    const what = copy ? "くっつけています" : `動画を H.264 に作り直しながらくっつけています（${opts.vinfo.vcodec} のため。時間がかかります）`;
     const ret = await step(args, what, T);
     if (cancelled) return;
     if (ret !== 0) throw new Error("ffmpeg が失敗しました。下の「処理の記録」を見てください。");
     const data = await f.readFile("/out.mp4");
     await f.deleteFile("/out.mp4").catch(() => {});
     if (bounce) await f.deleteFile("/work/pp.mp4").catch(() => {});
+    if (many) await f.deleteFile("/work/cat.mp4").catch(() => {});
     const blob = new Blob([data.buffer], { type: "video/mp4" });
     if (state.outURL) URL.revokeObjectURL(state.outURL);
     state.outURL = URL.createObjectURL(blob);
     $("rvideo").src = state.outURL;
-    const base = state.video.name.replace(/\.[^.]+$/, "");
+    const base = state.videos[0].file.name.replace(/\.[^.]+$/, "") + (many ? `_ほか${vinfos.length - 1}本` : "");
     $("dl").href = state.outURL;
     $("dl").download = `${base}_ガッちゃんこ.mp4`;
     const notes = [`${fmtT(T)}・${fmtMB(blob.size)}`];
+    if (many) notes.push(`${vinfos.length} 本を${plan.same ? "そのまま" : "作り直して"}つなげました`);
     if (loopV) notes.push(bounce ? "動画を逆回しで往復させました" : "動画を繰り返しました");
     if (opts.orig === "mix" && !mix) notes.push("動画に元の音が無かったので差し替えにしました");
     $("rinfo").textContent = notes.join("　");
@@ -521,7 +689,7 @@ async function run() {
   } finally {
     onLog = null;
     if (mounted && ffmpeg) await ffmpeg.unmount("/in").catch(() => {});
-    busy = false; refresh(); flushLog();
+    busy = false; renderVideos(); flushLog();
   }
 }
 
@@ -531,7 +699,7 @@ $("cancel").addEventListener("click", () => {
   cancelled = true;
   // 走っている ffmpeg は止められないので、作業ごと捨てて次に作り直す（読み込んだ道具は使い回す）
   ffmpeg?.terminate(); ffmpeg = null;
-  busy = false; refresh();
+  busy = false; renderVideos();
   setStatus("やめました。"); setBar(0);
 });
 refresh();

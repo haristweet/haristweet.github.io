@@ -25,6 +25,10 @@ ff("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=5", "-c:v", "libx
 ff("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=4", "-c:v", "libvpx-vp9", "-b:v", "300k", S("v_vp9.webm"));
 // コマごとに明るさが 8 ずつ上がる 3 秒（10fps・30 コマ）。逆回しの並びを明るさで読む
 ff("-f", "lavfi", "-i", "nullsrc=s=64x64:r=10:d=3,geq=lum='N*8':cb=128:cr=128", "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv420p", S("v_ramp.mp4"));
+// つなげる用: v_h264 と同じ形の 2 秒（音なし）、縦長、スマホのような「90°回す」印付き
+ff("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", S("v_same2.mp4"));
+ff("-f", "lavfi", "-i", "testsrc=size=240x320:rate=25:duration=2", "-f", "lavfi", "-i", "sine=f=330:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ac", "1", "-ar", "22050", S("v_tall.mp4"));
+ff("-display_rotation", "90", "-i", S("v_same2.mp4"), "-c", "copy", S("v_rot.mp4"));
 ff("-f", "lavfi", "-i", "sine=f=880:duration=10", "-c:a", "libmp3lame", S("a_10s.mp3"));
 ff("-f", "lavfi", "-i", "sine=f=660:duration=2", S("a_2s.wav"));
 
@@ -59,11 +63,16 @@ const cases = [
   { name: "音声に合わせる・音声が短い", v: "v_h264.mp4", a: "a_2s.wav", set: { len: "audio", vloop: "bounce" }, dur: 2 },
   { name: "音声に合わせる・逆回し", v: "v_ramp.mp4", a: "a_10s.mp3", set: { len: "audio", vloop: "bounce" }, dur: 10, vcodec: "h264", note: /逆回し/, ramp: true },
   { name: "音声に合わせる・逆回し＋元の音を混ぜる", v: "v_h264.mp4", a: "a_10s.mp3", set: { len: "audio", vloop: "bounce", orig: "mix" }, dur: 10, vcodec: "h264" },
+  { name: "つなげる・同じ形はそのまま", v: ["v_h264.mp4", "v_same2.mp4"], a: "a_10s.mp3", set: { orig: "mix" }, dur: 8, vcodec: "h264", copy: true, catCopy: true, size: "320x240", note: /2 本をそのまま/ },
+  { name: "つなげる・形が違うと作り直す", v: ["v_h264.mp4", "v_vp9.webm", "v_tall.mp4"], a: "a_10s.mp3", set: { orig: "mix" }, dur: 12, vcodec: "h264", catCopy: false, size: "320x240", note: /3 本を作り直して/ },
+  { name: "つなげる・回す印はそのまま残る", v: ["v_rot.mp4", "v_rot.mp4"], a: "a_10s.mp3", set: {}, dur: 4, vcodec: "h264", catCopy: true, rot: true },
+  { name: "つなげる・音声に合わせて逆回し", v: ["v_ramp.mp4", "v_ramp.mp4"], a: "a_10s.mp3", set: { len: "audio", vloop: "bounce" }, dur: 10, vcodec: "h264", catCopy: true },
   { name: "VP9 を作り直す", v: "v_vp9.webm", a: "a_10s.mp3", set: {}, dur: 4, vcodec: "h264", copy: false },
 ];
 let fail = 0;
 for (const [i, c] of cases.entries()) {
-  await page.setInputFiles("#vfile", S(c.v));
+  if (await page.isVisible("#vclear")) await page.click("#vclear");
+  await page.setInputFiles("#vfile", [c.v].flat().map(S));
   await page.setInputFiles("#afile", S(c.a));
   await page.check(`input[name=orig][value=${c.set.orig || "replace"}]`, { force: true });
   await page.check(`input[name=len][value=${c.set.len || "video"}]`, { force: true });
@@ -97,6 +106,9 @@ for (const [i, c] of cases.entries()) {
     if (chunks < 5) probs.push(`逆回しが区切られていない（${chunks}）`);
     if (ys.length < 99 || bad >= 0) probs.push(`コマの並びが違う（${ys.length} コマ, ${bad} コマ目: ${ys.slice(Math.max(0, bad - 3), bad + 4)} 期待 ${want.slice(Math.max(0, bad - 3), bad + 4)}）`);
   }
+  if (c.catCopy !== undefined && /-f concat -safe 0 -i \/work\/vlist/.test(log) !== c.catCopy) probs.push("つなぎ方（そのまま／作り直し）が期待と違う");
+  if (c.size && `${v?.width}x${v?.height}` !== c.size) probs.push(`大きさ ${v?.width}x${v?.height}`);
+  if (c.rot && !JSON.stringify(v?.side_data_list || []).includes("rotation")) probs.push("回す印が消えた");
   if (c.note && !c.note.test(rinfo)) probs.push(`知らせが無い: ${rinfo}`);
   console.log(`${probs.length ? "NG" : "OK"} ${c.name}: ${dur.toFixed(2)}s ${v?.codec_name}/${a?.codec_name} ${(await stat(out)).size}B ${probs.join(" / ")}`);
   if (probs.length) fail++;
