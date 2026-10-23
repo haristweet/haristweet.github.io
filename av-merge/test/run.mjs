@@ -67,10 +67,21 @@ const cases = [
   { name: "つなげる・形が違うと作り直す", v: ["v_h264.mp4", "v_vp9.webm", "v_tall.mp4"], a: "a_10s.mp3", set: { orig: "mix" }, dur: 12, vcodec: "h264", catCopy: false, size: "320x240", note: /3 本を作り直して/ },
   { name: "つなげる・回す印はそのまま残る", v: ["v_rot.mp4", "v_rot.mp4"], a: "a_10s.mp3", set: {}, dur: 4, vcodec: "h264", catCopy: true, rot: true },
   { name: "つなげる・音声に合わせて逆回し", v: ["v_ramp.mp4", "v_ramp.mp4"], a: "a_10s.mp3", set: { len: "audio", vloop: "bounce" }, dur: 10, vcodec: "h264", catCopy: true },
+  // 繰り返しの折り返しを 1 秒重ねる。1回目は 0..19、そのあと「重ね（20+j と j を溶かす。おおよそ 20→11）＋中ほど 10..19」の 20 コマずつ
+  { name: "繰り返す・折り返しを重ねる", v: "v_ramp.mp4", a: "a_10s.mp3", set: { len: "audio", xfade: 1 }, dur: 10, vcodec: "h264", copy: true, note: /折り返しを 1 秒重ねて/,
+    frames: { n: 100, at: (k) => { if (k < 20) return [k, k]; const p = (k - 20) % 20; return p < 10 ? [p, 20 + p] : [p, p]; } } },
+  // 2本を 1 秒重ねてつなぐ。0..19、重ね 10 コマ、10..29 で 50 コマ
+  { name: "つなげる・つなぎ目を重ねる", v: ["v_ramp.mp4", "v_ramp.mp4"], a: "a_10s.mp3", set: { xfade: 1 }, dur: 5, vcodec: "h264", catCopy: false, note: /つなぎ目を 1 秒重ねて/,
+    frames: { n: 50, at: (k) => k < 20 ? [k, k] : k < 30 ? [k - 20, k] : [k - 20, k - 20] } },
+  { name: "つなげる・形が違う＋重ねる＋元の音", v: ["v_h264.mp4", "v_vp9.webm", "v_tall.mp4"], a: "a_10s.mp3", set: { orig: "mix", xfade: 1 }, dur: 10, vcodec: "h264", size: "320x240" },
+  { name: "繰り返す・重ねる＋元の音", v: "v_h264.mp4", a: "a_10s.mp3", set: { len: "audio", xfade: 1.5, orig: "mix" }, dur: 10, vcodec: "h264" },
+  { name: "重ねる秒数が長すぎると縮める", v: ["v_same2.mp4", "v_h264.mp4"], a: "a_10s.mp3", set: { xfade: 3 }, dur: 7.05, vcodec: "h264", note: /縮めました/ },
   { name: "VP9 を作り直す", v: "v_vp9.webm", a: "a_10s.mp3", set: {}, dur: 4, vcodec: "h264", copy: false },
 ];
 let fail = 0;
+// ONLY=名前の一部 で、その試験だけ回す
 for (const [i, c] of cases.entries()) {
+  if (process.env.ONLY && !c.name.includes(process.env.ONLY)) continue;
   if (await page.isVisible("#vclear")) await page.click("#vclear");
   await page.setInputFiles("#vfile", [c.v].flat().map(S));
   await page.setInputFiles("#afile", S(c.a));
@@ -79,8 +90,15 @@ for (const [i, c] of cases.entries()) {
   if (c.set.len === "audio") await page.check(`input[name=vloop][value=${c.set.vloop || "repeat"}]`, { force: true });
   await page.fill("#askip", String(c.set.askip || 0));
   await page.fill("#adelay", String(c.set.adelay || 0));
+  // つなぎ目の欄は出ていないこともあるので、値は直に入れる
+  await page.$eval("#xfade", (e, v) => { e.value = v; e.dispatchEvent(new Event("input", { bubbles: true })); }, String(c.set.xfade || 0));
   await page.click("#go");
-  await page.waitForFunction(() => !document.getElementById("result").hidden || document.getElementById("status").classList.contains("err"), null, { timeout: 180000 });
+  try {
+    await page.waitForFunction(() => !document.getElementById("result").hidden || document.getElementById("status").classList.contains("err"), null, { timeout: +process.env.WAIT || 180000 });
+  } catch {
+    console.log(`NG ${c.name}: 終わらない（${await page.$eval("#status", (e) => e.textContent)}）`);
+    fail++; break;
+  }
   const err = await page.$eval("#status", (e) => e.classList.contains("err") ? e.textContent : "");
   if (err) { console.log(`NG ${c.name}: ${err}`); console.log(await page.$eval("#log", (e) => e.textContent.slice(-1500))); fail++; continue; }
   const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#dl")]);
@@ -105,6 +123,14 @@ for (const [i, c] of cases.entries()) {
     const chunks = (log.match(/\/work\/r\d+\.mp4/g) || []).length / 2;
     if (chunks < 5) probs.push(`逆回しが区切られていない（${chunks}）`);
     if (ys.length < 99 || bad >= 0) probs.push(`コマの並びが違う（${ys.length} コマ, ${bad} コマ目: ${ys.slice(Math.max(0, bad - 3), bad + 4)} 期待 ${want.slice(Math.max(0, bad - 3), bad + 4)}）`);
+  }
+  if (c.frames) {
+    // コマごとの明るさ（÷8 でコマ番号）が、期待の幅 [lo, hi] に入っているか
+    const ys = execFileSync("ffprobe", ["-v", "error", "-f", "lavfi", "-i", `movie=${out},signalstats`, "-show_entries", "frame_tags=lavfi.signalstats.YAVG", "-of", "csv=p=0"]).toString().trim().split("\n").map((y) => parseFloat(y) / 8);
+    const bad = ys.findIndex((y, k) => { const [lo, hi] = c.frames.at(k); return y < lo - 0.6 || y > hi + 0.6; });
+    if (Math.abs(ys.length - c.frames.n) > 1 || bad >= 0) {
+      probs.push(`コマの並びが違う（${ys.length} コマ, ${bad} コマ目: ${ys.slice(Math.max(0, bad - 3), bad + 4).map((y) => y.toFixed(1))} 期待 ${JSON.stringify(c.frames.at(bad))}）`);
+    }
   }
   if (c.catCopy !== undefined && /-f concat -safe 0 -i \/work\/vlist/.test(log) !== c.catCopy) probs.push("つなぎ方（そのまま／作り直し）が期待と違う");
   if (c.size && `${v?.width}x${v?.height}` !== c.size) probs.push(`大きさ ${v?.width}x${v?.height}`);

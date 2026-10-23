@@ -200,6 +200,11 @@
       <span class="lab">終わり</span>
       <label><input type="checkbox" id="fade" checked> 最後の <input type="number" id="fadesec" min="0.1" step="0.5" value="2"> 秒で音を小さくして消す</label>
     </div>
+    <div class="row" id="xfaderow" hidden>
+      <span class="lab">つなぎ目</span>
+      <label><input type="number" id="xfade" min="0" step="0.1" value="0"> 秒 重ねて溶かす</label>
+      <p class="note" id="xfadeNote"></p>
+    </div>
     <p class="note" id="lenNote"></p>
   </section>
 
@@ -404,17 +409,27 @@ function refresh() {
   $("vvolrow").hidden = opt("orig") !== "mix";
   $("vlooprow").hidden = opt("len") !== "audio";
   $("bounceNote").hidden = opt("vloop") !== "bounce";
+  // つなぎ目を重ねるのは「何本かつなぐ所」と「繰り返しの折り返し」。逆回しは折り返しで絵が続いているので使わない
+  const xcat = state.videos.length > 1, xloop = opt("len") === "audio" && opt("vloop") === "repeat";
+  $("xfaderow").hidden = !xcat && !xloop;
+  const where = [xcat && "動画をつなぐ所", xloop && "繰り返しの折り返し"].filter(Boolean).join("と");
+  $("xfadeNote").textContent = num("xfade") > 0
+    ? `${where}で、前の終わりと次の頭を重ねて溶かします。その分だけ全体が短くなり、動画は H.264 に作り直します。`
+    : `0 で重ねません（${where}をそのままつなぐ。作り直さないので速い）。`;
   $("avolv").textContent = `${$("avol").value}%`;
   $("vvolv").textContent = `${$("vvol").value}%`;
   // 長さの見込みは <video>/<audio> の読み取りで出す（読めない形式なら空のまま）
-  const vd = state.videos.reduce((t, it) => t + it.dur, 0), ad = $("aprev").duration;
+  const vd = state.videos.reduce((t, it) => t + it.dur, 0) - (state.videos.length - 1) * num("xfade"), ad = $("aprev").duration;
   let note = "";
   if (state.videos.length && state.audio && isFinite(vd) && isFinite(ad)) {
     const eff = Math.max(0, ad - num("askip")) + num("adelay");
     const len = opt("len");
     const out = len === "shortest" ? Math.min(vd, eff) : len === "audio" ? eff : vd;
     note = `動画${state.videos.length > 1 ? `（${state.videos.length} 本つなげて）` : ""} ${fmtT(vd)} ・ 音声 ${fmtT(ad)} → できあがり ${fmtT(out)}`;
-    if (len === "audio" && eff > vd + 0.05) note += `（動画を ${(eff / vd).toFixed(1)} 回分ループ）`;
+    if (len === "audio" && eff > vd + 0.05) {
+      const unit = opt("vloop") === "repeat" ? Math.max(0.1, vd - num("xfade")) : vd;
+      note += `（動画を ${(1 + Math.max(0, eff - vd) / unit).toFixed(1)} 回分ループ）`;
+    }
     if (len === "audio" && eff < vd - 0.05) note += `（動画の残り ${fmtT(vd - eff)} は切る）`;
     if (len === "video" && eff < vd - 0.05) note += `（最後の ${fmtT(vd - eff)} は音声なし）`;
     if ((len === "video" || len === "loop") && eff > vd + 0.05) note += `（音声の残り ${fmtT(eff - vd)} は切る）`;
@@ -450,24 +465,26 @@ const COPY_OK = new Set(["h264", "hevc"]);
 
 function ext(name, def) { const m = name.match(/\.([A-Za-z0-9]{1,5})$/); return m ? m[1].toLowerCase() : def; }
 
-// 音声に合わせて動画をループさせるか。逆回しのときは bounce に作っておいた往復の動画を渡す
-function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, avol, vvol, askip, adelay, fade, fadesec, bounce }) {
+// 音声に合わせて動画をループさせるか。ループのしかた（loop）は
+//   repeat: 元の動画をそのまま繰り返す / xloop: 折り返しを重ねた長い動画（xl）を作っておく / bounce: 往復の動画（bounce）を作っておいて繰り返す
+function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, vvol, askip, adelay, fade, fadesec, bounce, xl }) {
   const vdur = vinfo.dur;
   const adur = Math.max(0, ainfo.dur - askip);
   const mix = orig === "mix" && !!vinfo.acodec;
   const T = len === "shortest" || len === "audio" ? Math.min(len === "audio" ? Infinity : vdur, adur + adelay) : vdur;
   const loopV = len === "audio" && T > vdur;
+  const loop = !loopV ? "" : vloop === "bounce" ? "bounce" : loopFade(xfade, vdur) > 0 ? "xloop" : "repeat";
   const args = ["-hide_banner", "-y"];
-  // 0: 絵（と元の音）
-  if (loopV) args.push("-stream_loop", "-1");
-  args.push("-i", loopV && vloop === "bounce" ? bounce : vpath);
+  // 0: 絵（と元の音）。xl は足りる長さに作ってあるので繰り返さない
+  if (loop === "repeat" || loop === "bounce") args.push("-stream_loop", "-1");
+  args.push("-i", loop === "bounce" ? bounce : loop === "xloop" ? xl : vpath);
   // 1: 音声
   if (askip > 0) args.push("-ss", askip.toFixed(3));
   if (len === "loop") args.push("-stream_loop", "-1");
   args.push("-i", apath);
   // 2: 往復の動画には音が無いので、元の音は元の動画から前向きに繰り返す
   let oi = 0;
-  if (mix && loopV && vloop === "bounce") { args.push("-stream_loop", "-1", "-i", vpath); oi = 2; }
+  if (mix && loop === "bounce") { args.push("-stream_loop", "-1", "-i", vpath); oi = 2; }
 
   let graph = `[1:a]volume=${(avol / 100).toFixed(2)}`;
   if (adelay > 0) graph += `,adelay=${Math.round(adelay * 1000)}:all=1`;
@@ -479,8 +496,8 @@ function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, avol, vvol, a
   }
   graph += "[a]";
   args.push("-filter_complex", graph, "-map", "0:v:0", "-map", "[a]");
-  // 往復の動画はもう H.264 にしてあるのでそのまま使う
-  const codec = loopV && vloop === "bounce" ? "h264" : vinfo.vcodec;
+  // 往復・重ねた動画はもう H.264 にしてあるのでそのまま使う
+  const codec = loop === "bounce" || loop === "xloop" ? "h264" : vinfo.vcodec;
   const copy = COPY_OK.has(codec);
   if (copy) {
     args.push("-c:v", "copy");
@@ -489,8 +506,17 @@ function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, avol, vvol, a
     args.push(...X264);
   }
   args.push("-c:a", "aac", "-b:a", "192k", "-t", T.toFixed(3), "-movflags", "+faststart", "/out.mp4");
-  return { args, T, copy, mix, loopV };
+  return { args, T, copy, mix, loopV, loop };
 }
+
+// 重ねる秒数は、つなぐ所なら一番短い動画の半分、折り返しなら動画の半分まで（それより短いと前後の重なりがぶつかる）
+const clampFade = (x, limit) => { const v = Math.min(x, limit / 2 - 0.05); return v >= 0.05 ? +v.toFixed(3) : 0; };
+const loopFade = (x, dur) => clampFade(x || 0, dur);
+
+// fps・大きさ・コマの時刻をそろえ、長さを D ちょうどにする（足りなければ最後のコマを延ばす）。xfade は両方の入力がそろっている必要がある
+const normV = (F, D, size) => `${size ? `scale=${size[0]}:${size[1]}:force_original_aspect_ratio=decrease,pad=${size[0]}:${size[1]}:(ow-iw)/2:(oh-ih)/2,` : ""}setsar=1,fps=${F},format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=1,trim=duration=${D.toFixed(3)}`;
+const normA = (D) => `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${D.toFixed(3)}`;
+const fpsOf = (info) => info.fps > 0 && info.fps <= 240 ? info.fps : 30;
 
 const X264 = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p"];
 
@@ -504,8 +530,10 @@ function concatPlan(infos) {
   return { same, sum };
 }
 
-async function makeConcat(f, paths, infos, step) {
-  const { same, sum } = concatPlan(infos);
+async function makeConcat(f, paths, infos, step, xfade = 0) {
+  const X = clampFade(xfade, Math.min(...infos.map((i) => i.dur)));
+  const { sum } = concatPlan(infos);
+  const same = concatPlan(infos).same && X === 0;
   const n = paths.length, anyA = infos.some((i) => i.acodec);
   await f.createDir("/work").catch(() => {});
   const args = ["-hide_banner", "-y"];
@@ -521,21 +549,34 @@ async function makeConcat(f, paths, infos, step) {
   const turned = Math.abs(first.rot) % 180 === 90;
   const even = (x) => Math.max(2, Math.round(x / 2) * 2);
   const W = even(turned ? first.h : first.w), H = even(turned ? first.w : first.h);
-  const F = first.fps > 0 && first.fps <= 240 ? first.fps : 30;
+  const F = fpsOf(first);
   let pairs = "";
   infos.forEach((info, i) => {
     const k = base + i;
-    if (!same) parts.push(`[${k}:v:0]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${F},format=yuv420p[v${i}]`);
+    if (!same) parts.push(X > 0
+      ? `[${k}:v:0]${normV(F, info.dur, [W, H])}[v${i}]`
+      : `[${k}:v:0]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${F},format=yuv420p[v${i}]`);
     if (anyA) {
-      const D = info.dur.toFixed(3);
       parts.push(info.acodec
-        ? `[${k}:a:0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${D}[a${i}]`
-        : `anullsrc=r=48000:cl=stereo,atrim=duration=${D}[a${i}]`);
+        ? `[${k}:a:0]${normA(info.dur)}[a${i}]`
+        : `anullsrc=r=48000:cl=stereo,atrim=duration=${info.dur.toFixed(3)}[a${i}]`);
     }
     pairs += (same ? "" : `[v${i}]`) + (anyA ? `[a${i}]` : "");
   });
-  if (same && anyA) parts.push(`${pairs}concat=n=${n}:v=0:a=1[ca]`);
-  if (!same) parts.push(`${pairs}concat=n=${n}:v=1:a=${anyA ? 1 : 0}[cv]${anyA ? "[ca]" : ""}`);
+  if (X > 0) {
+    // 前の動画の終わり X 秒と次の頭 X 秒を重ねる。offset は重ねはじめる時刻（できあがりの時刻で数える）
+    let off = 0, pv = "v0", pa = "a0";
+    for (let i = 1; i < n; i++) {
+      off += infos[i - 1].dur - X;
+      const last = i === n - 1;
+      parts.push(`[${pv}][v${i}]xfade=transition=fade:duration=${X}:offset=${off.toFixed(3)}[${last ? "cv" : "xv" + i}]`);
+      if (anyA) parts.push(`[${pa}][a${i}]acrossfade=d=${X}[${last ? "ca" : "xa" + i}]`);
+      pv = "xv" + i; pa = "xa" + i;
+    }
+  } else {
+    if (same && anyA) parts.push(`${pairs}concat=n=${n}:v=0:a=1[ca]`);
+    if (!same) parts.push(`${pairs}concat=n=${n}:v=1:a=${anyA ? 1 : 0}[cv]${anyA ? "[ca]" : ""}`);
+  }
   if (parts.length) args.push("-filter_complex", parts.join(";"));
   if (same) {
     args.push("-map", "0:v:0", "-c:v", "copy");
@@ -545,10 +586,44 @@ async function makeConcat(f, paths, infos, step) {
   }
   if (anyA) args.push("-map", "[ca]", "-c:a", "aac", "-b:a", "192k");
   args.push("/work/cat.mp4");
-  const label = same ? `${n} 本をつなげています` : `${n} 本を ${W}×${H} の H.264 に作り直してつなげています（形がそろっていないため。時間がかかります）`;
+  const label = same ? `${n} 本をつなげています`
+    : X > 0 ? `${n} 本をつなぎ目を ${X} 秒重ねてつなげています（H.264 に作り直すので時間がかかります）`
+    : `${n} 本を ${W}×${H} の H.264 に作り直してつなげています（形がそろっていないため。時間がかかります）`;
   const ret = await step(args, label, same ? 0 : sum);
   if (ret !== 0) throw new Error("動画をつなげられませんでした。下の「処理の記録」を見てください。");
-  return { path: "/work/cat.mp4", same };
+  return { path: "/work/cat.mp4", same, X };
+}
+
+// 繰り返しの折り返しを X 秒重ねた長い動画を /work/xl.mp4 に作る。元の動画 D 秒を
+//   はじめ: 0〜D-X（1回目だけ）
+//   重ね:   D-X〜D と 0〜X を X 秒かけて溶かす
+//   中ほど: X〜D-X
+// の3つに分けて作り直し、はじめ＋（重ね＋中ほど）×回数 を並べる。作り直すのは元の動画1本ぶんだけで、あとはそのまま並べる
+async function makeXLoop(f, vpath, vinfo, X, T, step) {
+  const D = vinfo.dur, F = fpsOf(vinfo), U = D - X;
+  const hasA = !!vinfo.acodec;
+  await f.createDir("/work").catch(() => {});
+  const enc = [...X264, ...(hasA ? ["-c:a", "aac", "-b:a", "192k"] : ["-an"])];
+  const piece = async (from, len, name, label) => {
+    const a = ["-hide_banner", "-y", "-ss", from.toFixed(3), "-t", len.toFixed(3), "-i", vpath, "-filter_complex",
+      `[0:v:0]${normV(F, len)}[v]` + (hasA ? `;[0:a:0]${normA(len)}[a]` : ""), "-map", "[v]", ...(hasA ? ["-map", "[a]"] : []), ...enc, `/work/${name}`];
+    if (await step(a, label, len) !== 0) throw new Error("繰り返しの部品が作れませんでした。");
+  };
+  await piece(0, U, "x_head.mp4", "繰り返しの1回目を作っています");
+  const blend = ["-hide_banner", "-y", "-ss", U.toFixed(3), "-t", X.toFixed(3), "-i", vpath, "-t", X.toFixed(3), "-i", vpath, "-filter_complex",
+    `[0:v:0]${normV(F, X)}[t];[1:v:0]${normV(F, X)}[h];[t][h]xfade=transition=fade:duration=${X}:offset=0[v]` +
+    (hasA ? `;[0:a:0]${normA(X)}[ta];[1:a:0]${normA(X)}[ha];[ta][ha]acrossfade=d=${X}[a]` : ""),
+    "-map", "[v]", ...(hasA ? ["-map", "[a]"] : []), ...enc, "/work/x_blend.mp4"];
+  if (await step(blend, "折り返しを重ねています", X) !== 0) throw new Error("折り返しを重ねられませんでした。");
+  await piece(X, D - 2 * X, "x_mid.mp4", "繰り返しの中ほどを作っています");
+  const times = Math.max(1, Math.ceil((T - U) / U) + 1);
+  const list = ["file 'x_head.mp4'"];
+  for (let i = 0; i < times; i++) list.push("file 'x_blend.mp4'", "file 'x_mid.mp4'");
+  await f.writeFile("/work/xlist.txt", list.join("\n"));
+  if (await step(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", "/work/xlist.txt", "-c", "copy", "/work/xl.mp4"], "並べています", 0) !== 0)
+    throw new Error("繰り返しを並べられませんでした。");
+  for (const p of ["x_head.mp4", "x_blend.mp4", "x_mid.mp4"]) await f.deleteFile(`/work/${p}`).catch(() => {});
+  return "/work/xl.mp4";
 }
 
 // 前向き→逆回しの1往復を /work/pp.mp4 に作る。
@@ -589,6 +664,8 @@ async function run() {
   logLines = [];
   let mounted = false;
   try {
+    // wasm のメモリは一度増えると減らず、何回も続けると詰まるので、毎回まっさらな ffmpeg で始める（読み込んだ道具は使い回す）
+    if (ffmpeg) { ffmpeg.terminate(); ffmpeg = null; }
     const f = await getFFmpeg();
     if (cancelled) return;
     setStatus("ファイルを調べています…"); setBar(0);
@@ -616,20 +693,21 @@ async function run() {
 
     const opts = {
       vpath: `/in/${vnames[0]}`, apath: `/in/${aname}`, vinfo: vinfos[0], ainfo,
-      orig: opt("orig"), len: opt("len"), vloop: opt("vloop"),
+      orig: opt("orig"), len: opt("len"), vloop: opt("vloop"), xfade: num("xfade"),
       avol: +$("avol").value, vvol: +$("vvol").value,
       askip: num("askip"), adelay: num("adelay"),
       fade: $("fade").checked, fadesec: num("fadesec", 2),
-      bounce: "/work/pp.mp4",
+      bounce: "/work/pp.mp4", xl: "/work/xl.mp4",
     };
     const many = vinfos.length > 1;
     const plan = many ? concatPlan(vinfos) : null;
+    if (many && clampFade(opts.xfade, Math.min(...vinfos.map((i) => i.dur))) > 0) plan.same = false;
     // つないだあとの見込み（進み具合の分母に使う。つないだあと本当の値で作り直す）
-    if (many) opts.vinfo = { ...vinfos[0], dur: plan.sum, vcodec: plan.same ? vinfos[0].vcodec : "h264", acodec: vinfos.some((i) => i.acodec) ? "aac" : null };
+    if (many) opts.vinfo = { ...vinfos[0], dur: plan.sum - (vinfos.length - 1) * clampFade(opts.xfade, Math.min(...vinfos.map((i) => i.dur))), vcodec: plan.same ? vinfos[0].vcodec : "h264", acodec: vinfos.some((i) => i.acodec) ? "aac" : null };
     let built = buildArgs(opts);
-    const isBounce = (b) => b.loopV && opts.vloop === "bounce";
     // 進み具合は、作り直す秒数の合計に対する割合で出す
-    let total = (many && !plan.same ? plan.sum : 0) + (isBounce(built) ? 2 * opts.vinfo.dur : 0) + built.T;
+    const prepWork = (b) => b.loop === "bounce" ? 2 * opts.vinfo.dur : b.loop === "xloop" ? opts.vinfo.dur : 0;
+    let total = (many && !plan.same ? plan.sum : 0) + prepWork(built) + built.T;
     let done = 0;
     const step = async (a, label, span) => {
       log("[命令] ffmpeg " + a.join(" "));
@@ -648,16 +726,19 @@ async function run() {
       return r;
     };
     if (many) {
-      const cat = await makeConcat(f, vnames.map((n) => `/in/${n}`), vinfos, step);
+      const cat = await makeConcat(f, vnames.map((n) => `/in/${n}`), vinfos, step, opts.xfade);
+      plan.X = cat.X;
       opts.vpath = cat.path;
       opts.vinfo = await probe(f, cat.path);
       log(`[調べた結果] つないだ動画 ${JSON.stringify(opts.vinfo)}`);
       built = buildArgs(opts);
     }
-    const { args, T, copy, mix, loopV } = built;
-    const bounce = isBounce(built);
-    total = done + (bounce ? 2 * opts.vinfo.dur : 0) + T;
+    const { args, T, copy, mix, loopV, loop } = built;
+    const bounce = loop === "bounce";
+    const XL = loopFade(opts.xfade, opts.vinfo.dur);
+    total = done + prepWork(built) + T;
     if (bounce) await makeBounce(f, opts.vpath, opts.vinfo, step);
+    if (loop === "xloop") await makeXLoop(f, opts.vpath, opts.vinfo, XL, T, step);
     const what = copy ? "くっつけています" : `動画を H.264 に作り直しながらくっつけています（${opts.vinfo.vcodec} のため。時間がかかります）`;
     const ret = await step(args, what, T);
     if (cancelled) return;
@@ -665,6 +746,7 @@ async function run() {
     const data = await f.readFile("/out.mp4");
     await f.deleteFile("/out.mp4").catch(() => {});
     if (bounce) await f.deleteFile("/work/pp.mp4").catch(() => {});
+    if (loop === "xloop") await f.deleteFile("/work/xl.mp4").catch(() => {});
     if (many) await f.deleteFile("/work/cat.mp4").catch(() => {});
     const blob = new Blob([data.buffer], { type: "video/mp4" });
     if (state.outURL) URL.revokeObjectURL(state.outURL);
@@ -674,8 +756,9 @@ async function run() {
     $("dl").href = state.outURL;
     $("dl").download = `${base}_ガッちゃんこ.mp4`;
     const notes = [`${fmtT(T)}・${fmtMB(blob.size)}`];
-    if (many) notes.push(`${vinfos.length} 本を${plan.same ? "そのまま" : "作り直して"}つなげました`);
-    if (loopV) notes.push(bounce ? "動画を逆回しで往復させました" : "動画を繰り返しました");
+    const shortened = (x) => x > 0 && x < opts.xfade - 0.01 ? `（短い動画に合わせて ${opts.xfade} 秒から縮めました）` : "";
+    if (many) notes.push(`${vinfos.length} 本を${plan.same ? "そのまま" : "作り直して"}つなげました` + (plan.X > 0 ? `（つなぎ目を ${plan.X} 秒重ねて）${shortened(plan.X)}` : ""));
+    if (loopV) notes.push(bounce ? "動画を逆回しで往復させました" : loop === "xloop" ? `動画を繰り返しました（折り返しを ${XL} 秒重ねて）${shortened(XL)}` : "動画を繰り返しました");
     if (opts.orig === "mix" && !mix) notes.push("動画に元の音が無かったので差し替えにしました");
     $("rinfo").textContent = notes.join("　");
     $("result").hidden = false;
