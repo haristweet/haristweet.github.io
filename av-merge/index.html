@@ -205,7 +205,16 @@
       <label><input type="number" id="xfade" min="0" step="0.1" value="0"> 秒 重ねて溶かす</label>
       <p class="note" id="xfadeNote"></p>
     </div>
+    <div class="row">
+      <span class="lab">大きさ</span>
+      <span class="seg">
+        <label><input type="radio" name="size" value="orig" checked>そのまま</label>
+        <label><input type="radio" name="size" value="720">軽く（720p）</label>
+        <label><input type="radio" name="size" value="480">もっと軽く（480p）</label>
+      </span>
+    </div>
     <p class="note" id="lenNote"></p>
+    <p class="note" id="sizeNote"></p>
   </section>
 
   <button class="go" id="go" disabled>ガッちゃんこする</button>
@@ -233,7 +242,8 @@
   <p class="foot">
     はじめの1回だけ、処理の道具（ffmpeg.wasm・約30MB）を読み込みます。動画の絵は作り直さずそのまま使うので速く、画質も落ちません
     （H.264 / H.265 以外の動画は H.264 に作り直すので時間がかかります）。
-    とても大きいファイル（目安 1.5GB 以上。何本かつなげるときは合計で 1GB ほど）はブラウザのメモリが足りず失敗することがあります。<br>
+    とても大きいファイル（目安 1.5GB 以上。何本かつなげるときは合計で 1GB ほど）はブラウザのメモリが足りず失敗することがあります。
+    ループで長くすると、できあがりは長さに比例して大きくなります。大きすぎるときは「大きさ」で軽くしてください（繰り返す動画1回ぶんだけ作り直すので、時間はあまり増えません）。<br>
     <a href="../">← つくったもの</a>
   </p>
 </div>
@@ -354,7 +364,7 @@ function addVideos(files) {
     const v = document.createElement("video");
     v.preload = "metadata";
     v.src = URL.createObjectURL(file);
-    v.onloadedmetadata = () => { item.dur = v.duration; URL.revokeObjectURL(v.src); renderVideos(); };
+    v.onloadedmetadata = () => { item.dur = v.duration; item.w = v.videoWidth; item.h = v.videoHeight; URL.revokeObjectURL(v.src); renderVideos(); };
     v.onerror = () => URL.revokeObjectURL(v.src);
   }
   if (files.length) state.sel = state.videos.length - files.length;
@@ -435,6 +445,35 @@ function refresh() {
     if ((len === "video" || len === "loop") && eff > vd + 0.05) note += `（音声の残り ${fmtT(eff - vd)} は切る）`;
   }
   $("lenNote").textContent = note;
+  sizeEstimate();
+}
+
+// できあがりの大きさとメモリの目安。元の動画の「1秒あたりの大きさ」から見積もる。作り直す所は画質の設定で増減するので大まかな目安
+const MEM_LIMIT = +PARAMS.get("memlimit") || 1.4e9;  // 試験では ?memlimit= で下げて警告を出させる
+function sizeEstimate() {
+  const el = $("sizeNote"), vs = state.videos, ad = $("aprev").duration;
+  el.textContent = ""; el.classList.remove("warn");
+  const sum = vs.reduce((t, it) => t + it.dur, 0), bytes = vs.reduce((t, it) => t + it.file.size, 0);
+  if (!vs.length || !state.audio || !isFinite(sum) || !isFinite(ad) || sum <= 0) return;
+  const n = vs.length, X = num("xfade"), vd = sum - (n - 1) * X;
+  const eff = Math.max(0, ad - num("askip")) + num("adelay"), len = opt("len");
+  const T = len === "shortest" ? Math.min(vd, eff) : len === "audio" ? eff : vd;
+  const size = SIZES[opt("size")] || SIZES.orig;
+  const short = Math.min(vs[0].w || 0, vs[0].h || 0);
+  const px = size.short && short > size.short ? (size.short / short) ** 2 : 1;
+  const q = { orig: 1, "720": 0.75, "480": 0.6 }[opt("size")] || 1;
+  const rate = (bytes / sum) * px * q;          // 1秒あたり
+  const out = rate * T;
+  // 同時にメモリに置くもの: できあがり＋つないだ動画＋軽くした1回ぶん＋往復1回ぶん
+  const loopB = len === "audio" && eff > vd && opt("vloop") === "bounce";
+  const mem = out + (n > 1 ? bytes * (size.short ? px * q : 1) : 0) + (size.short ? rate * vd : 0) + (loopB ? 2 * rate * vd : 0);
+  el.textContent = `できあがりの大きさ 約 ${fmtMB(out)}（目安）`;
+  if (mem > MEM_LIMIT) {
+    el.classList.add("warn");
+    el.textContent += size.short === 480
+      ? " ── 大きすぎてブラウザのメモリが足りず、失敗するかもしれません。音声を短くするか、動画を短くしてください。"
+      : " ── 大きすぎてブラウザのメモリが足りず、失敗するかもしれません。「大きさ」で軽くするか、音声を短くしてください。";
+  }
 }
 
 for (const kind of ["video", "audio"]) {
@@ -466,7 +505,7 @@ const COPY_OK = new Set(["h264", "hevc"]);
 function ext(name, def) { const m = name.match(/\.([A-Za-z0-9]{1,5})$/); return m ? m[1].toLowerCase() : def; }
 
 // 音声に合わせて動画をループさせるか。ループのしかた（loop）は
-//   repeat: 元の動画をそのまま繰り返す / xloop: 折り返しを重ねた長い動画（xl）を作っておく / bounce: 往復の動画（bounce）を作っておいて繰り返す
+//   repeat: 元の動画をそのまま繰り返す / xloop: 折り返しを重ねた部品の並び（xl。concat の一覧）を読む / bounce: 往復の動画（bounce）を作っておいて繰り返す
 function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, vvol, askip, adelay, fade, fadesec, bounce, xl }) {
   const vdur = vinfo.dur;
   const adur = Math.max(0, ainfo.dur - askip);
@@ -475,8 +514,9 @@ function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, 
   const loopV = len === "audio" && T > vdur;
   const loop = !loopV ? "" : vloop === "bounce" ? "bounce" : loopFade(xfade, vdur) > 0 ? "xloop" : "repeat";
   const args = ["-hide_banner", "-y"];
-  // 0: 絵（と元の音）。xl は足りる長さに作ってあるので繰り返さない
+  // 0: 絵（と元の音）。xl は足りる回数を並べた一覧なので繰り返さない
   if (loop === "repeat" || loop === "bounce") args.push("-stream_loop", "-1");
+  if (loop === "xloop") args.push("-f", "concat", "-safe", "0");
   args.push("-i", loop === "bounce" ? bounce : loop === "xloop" ? xl : vpath);
   // 1: 音声
   if (askip > 0) args.push("-ss", askip.toFixed(3));
@@ -505,7 +545,7 @@ function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, 
   } else {
     args.push(...X264);
   }
-  args.push("-c:a", "aac", "-b:a", "192k", "-t", T.toFixed(3), "-movflags", "+faststart", "/out.mp4");
+  args.push("-c:a", "aac", "-b:a", ABR, "-t", T.toFixed(3), "-movflags", "+faststart", "/out.mp4");
   return { args, T, copy, mix, loopV, loop };
 }
 
@@ -518,7 +558,14 @@ const normV = (F, D, size) => `${size ? `scale=${size[0]}:${size[1]}:force_origi
 const normA = (D) => `aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=duration=${D.toFixed(3)}`;
 const fpsOf = (info) => info.fps > 0 && info.fps <= 240 ? info.fps : 30;
 
-const X264 = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p"];
+// 大きさの段（size）ごとの作り直しの設定。short は短い辺の上限（これより大きい動画だけ縮める）
+const SIZES = {
+  orig: { short: 0, crf: 20, abr: "192k" },
+  "720": { short: 720, crf: 23, abr: "160k" },
+  "480": { short: 480, crf: 26, abr: "128k" },
+};
+// 作り直すときの設定。run の頭で選んだ大きさに合わせて入れかえる
+let X264 = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p"], ABR = "192k";
 
 // 何本かの動画を順につないで /work/cat.mp4 に作る。
 // 全部が同じ形（コーデック・大きさ・fps・向き）なら絵はそのまま並べ、違えば1本目の大きさに合わせて H.264 に作り直す（はみ出す分は黒い帯）。
@@ -530,7 +577,7 @@ function concatPlan(infos) {
   return { same, sum };
 }
 
-async function makeConcat(f, paths, infos, step, xfade = 0) {
+async function makeConcat(f, paths, infos, step, xfade = 0, short = 0) {
   const X = clampFade(xfade, Math.min(...infos.map((i) => i.dur)));
   const { sum } = concatPlan(infos);
   const same = concatPlan(infos).same && X === 0;
@@ -548,7 +595,9 @@ async function makeConcat(f, paths, infos, step, xfade = 0) {
   const first = infos[0];
   const turned = Math.abs(first.rot) % 180 === 90;
   const even = (x) => Math.max(2, Math.round(x / 2) * 2);
-  const W = even(turned ? first.h : first.w), H = even(turned ? first.w : first.h);
+  let W = even(turned ? first.h : first.w), H = even(turned ? first.w : first.h);
+  // 軽くするなら、作り直すついでにここで縮める（あとで二度作り直さない）
+  if (!same && short) [W, H] = smallDims({ w: W, h: H, rot: 0 }, short) || [W, H];
   const F = fpsOf(first);
   let pairs = "";
   infos.forEach((info, i) => {
@@ -584,7 +633,7 @@ async function makeConcat(f, paths, infos, step, xfade = 0) {
   } else {
     args.push("-map", "[cv]", ...X264);
   }
-  if (anyA) args.push("-map", "[ca]", "-c:a", "aac", "-b:a", "192k");
+  if (anyA) args.push("-map", "[ca]", "-c:a", "aac", "-b:a", ABR);
   args.push("/work/cat.mp4");
   const label = same ? `${n} 本をつなげています`
     : X > 0 ? `${n} 本をつなぎ目を ${X} 秒重ねてつなげています（H.264 に作り直すので時間がかかります）`
@@ -594,16 +643,17 @@ async function makeConcat(f, paths, infos, step, xfade = 0) {
   return { path: "/work/cat.mp4", same, X };
 }
 
-// 繰り返しの折り返しを X 秒重ねた長い動画を /work/xl.mp4 に作る。元の動画 D 秒を
+// 繰り返しの折り返しを X 秒重ねた並びを /work/xlist.txt（concat の一覧）に作る。元の動画 D 秒を
 //   はじめ: 0〜D-X（1回目だけ）
 //   重ね:   D-X〜D と 0〜X を X 秒かけて溶かす
 //   中ほど: X〜D-X
-// の3つに分けて作り直し、はじめ＋（重ね＋中ほど）×回数 を並べる。作り直すのは元の動画1本ぶんだけで、あとはそのまま並べる
+// の3つに分けて作り直し、はじめ＋（重ね＋中ほど）×回数 を並べる。作り直すのは元の動画1本ぶんだけで、あとはそのまま並べる。
+// 並べた長いファイルは作らず、一覧を最後の処理に直接読ませる（できあがりと同じ大きさの中間ファイルでメモリを倍使わないように）
 async function makeXLoop(f, vpath, vinfo, X, T, step) {
   const D = vinfo.dur, F = fpsOf(vinfo), U = D - X;
   const hasA = !!vinfo.acodec;
   await f.createDir("/work").catch(() => {});
-  const enc = [...X264, ...(hasA ? ["-c:a", "aac", "-b:a", "192k"] : ["-an"])];
+  const enc = [...X264, ...(hasA ? ["-c:a", "aac", "-b:a", ABR] : ["-an"])];
   const piece = async (from, len, name, label) => {
     const a = ["-hide_banner", "-y", "-ss", from.toFixed(3), "-t", len.toFixed(3), "-i", vpath, "-filter_complex",
       `[0:v:0]${normV(F, len)}[v]` + (hasA ? `;[0:a:0]${normA(len)}[a]` : ""), "-map", "[v]", ...(hasA ? ["-map", "[a]"] : []), ...enc, `/work/${name}`];
@@ -619,11 +669,30 @@ async function makeXLoop(f, vpath, vinfo, X, T, step) {
   const times = Math.max(1, Math.ceil((T - U) / U) + 1);
   const list = ["file 'x_head.mp4'"];
   for (let i = 0; i < times; i++) list.push("file 'x_blend.mp4'", "file 'x_mid.mp4'");
-  await f.writeFile("/work/xlist.txt", list.join("\n"));
-  if (await step(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", "/work/xlist.txt", "-c", "copy", "/work/xl.mp4"], "並べています", 0) !== 0)
-    throw new Error("繰り返しを並べられませんでした。");
-  for (const p of ["x_head.mp4", "x_blend.mp4", "x_mid.mp4"]) await f.deleteFile(`/work/${p}`).catch(() => {});
-  return "/work/xl.mp4";
+  await f.writeFile("/work/xlist.txt", list.map((l) => l.replace("file '", "file '/work/")).join("\n"));
+  return "/work/xlist.txt";
+}
+
+// 軽くする: 短い辺が short を超えていれば縮め、選んだ画質で H.264 に作り直して /work/small.mp4 に置く。
+// ループの前（1回ぶん）にやるので、何回繰り返しても作り直すのは1回ぶんだけ
+function smallDims(info, short) {
+  const turned = Math.abs(info.rot) % 180 === 90;
+  const w = turned ? info.h : info.w, h = turned ? info.w : info.h;
+  if (!w || !h || Math.min(w, h) <= short) return null;
+  const k = short / Math.min(w, h), even = (x) => Math.max(2, Math.round(x / 2) * 2);
+  return [even(w * k), even(h * k)];
+}
+
+async function makeSmall(f, vpath, vinfo, short, step) {
+  const dims = smallDims(vinfo, short);
+  const a = ["-hide_banner", "-y", "-i", vpath, "-map", "0:v:0"];
+  if (vinfo.acodec) a.push("-map", "0:a:0", "-c:a", "aac", "-b:a", ABR);
+  if (dims) a.push("-vf", `scale=${dims[0]}:${dims[1]},setsar=1`);
+  a.push(...X264, "/work/small.mp4");
+  await f.createDir("/work").catch(() => {});
+  const label = dims ? `${dims[0]}×${dims[1]} に縮めて軽くしています` : "画質を少し下げて軽くしています";
+  if (await step(a, label, vinfo.dur) !== 0) throw new Error("軽くする作り直しができませんでした。");
+  return "/work/small.mp4";
 }
 
 // 前向き→逆回しの1往復を /work/pp.mp4 に作る。
@@ -664,6 +733,9 @@ async function run() {
   logLines = [];
   let mounted = false;
   try {
+    const size = SIZES[opt("size")] || SIZES.orig;
+    X264 = ["-c:v", "libx264", "-preset", "ultrafast", "-crf", String(size.crf), "-pix_fmt", "yuv420p"];
+    ABR = size.abr;
     // wasm のメモリは一度増えると減らず、何回も続けると詰まるので、毎回まっさらな ffmpeg で始める（読み込んだ道具は使い回す）
     if (ffmpeg) { ffmpeg.terminate(); ffmpeg = null; }
     const f = await getFFmpeg();
@@ -697,7 +769,7 @@ async function run() {
       avol: +$("avol").value, vvol: +$("vvol").value,
       askip: num("askip"), adelay: num("adelay"),
       fade: $("fade").checked, fadesec: num("fadesec", 2),
-      bounce: "/work/pp.mp4", xl: "/work/xl.mp4",
+      bounce: "/work/pp.mp4", xl: "/work/xlist.txt",
     };
     const many = vinfos.length > 1;
     const plan = many ? concatPlan(vinfos) : null;
@@ -707,7 +779,10 @@ async function run() {
     let built = buildArgs(opts);
     // 進み具合は、作り直す秒数の合計に対する割合で出す
     const prepWork = (b) => b.loop === "bounce" ? 2 * opts.vinfo.dur : b.loop === "xloop" ? opts.vinfo.dur : 0;
-    let total = (many && !plan.same ? plan.sum : 0) + prepWork(built) + built.T;
+    const light = size.short > 0;
+    // つなぐときに作り直すなら、縮めるのもそこで済ませる
+    const shrink = light && !(many && !plan.same);
+    let total = (many && !plan.same ? plan.sum : 0) + (shrink ? opts.vinfo.dur : 0) + prepWork(built) + built.T;
     let done = 0;
     const step = async (a, label, span) => {
       log("[命令] ffmpeg " + a.join(" "));
@@ -726,11 +801,21 @@ async function run() {
       return r;
     };
     if (many) {
-      const cat = await makeConcat(f, vnames.map((n) => `/in/${n}`), vinfos, step, opts.xfade);
+      const cat = await makeConcat(f, vnames.map((n) => `/in/${n}`), vinfos, step, opts.xfade, size.short);
       plan.X = cat.X;
       opts.vpath = cat.path;
       opts.vinfo = await probe(f, cat.path);
       log(`[調べた結果] つないだ動画 ${JSON.stringify(opts.vinfo)}`);
+      built = buildArgs(opts);
+    }
+    if (shrink) {
+      const before = opts.vinfo;
+      opts.vpath = await makeSmall(f, opts.vpath, opts.vinfo, size.short, step);
+      opts.vinfo = await probe(f, opts.vpath);
+      log(`[調べた結果] 軽くした動画 ${JSON.stringify(opts.vinfo)}`);
+      // コマの丸めで少し短く読めても、ループの回数や長さが変わらないよう前の長さを使う
+      if (Math.abs(opts.vinfo.dur - before.dur) < 0.2) opts.vinfo.dur = before.dur;
+      if (many) await f.deleteFile("/work/cat.mp4").catch(() => {});
       built = buildArgs(opts);
     }
     const { args, T, copy, mix, loopV, loop } = built;
@@ -746,8 +831,9 @@ async function run() {
     const data = await f.readFile("/out.mp4");
     await f.deleteFile("/out.mp4").catch(() => {});
     if (bounce) await f.deleteFile("/work/pp.mp4").catch(() => {});
-    if (loop === "xloop") await f.deleteFile("/work/xl.mp4").catch(() => {});
+    if (loop === "xloop") for (const p of ["x_head.mp4", "x_blend.mp4", "x_mid.mp4"]) await f.deleteFile(`/work/${p}`).catch(() => {});
     if (many) await f.deleteFile("/work/cat.mp4").catch(() => {});
+    if (shrink) await f.deleteFile("/work/small.mp4").catch(() => {});
     const blob = new Blob([data.buffer], { type: "video/mp4" });
     if (state.outURL) URL.revokeObjectURL(state.outURL);
     state.outURL = URL.createObjectURL(blob);
@@ -759,6 +845,7 @@ async function run() {
     const shortened = (x) => x > 0 && x < opts.xfade - 0.01 ? `（短い動画に合わせて ${opts.xfade} 秒から縮めました）` : "";
     if (many) notes.push(`${vinfos.length} 本を${plan.same ? "そのまま" : "作り直して"}つなげました` + (plan.X > 0 ? `（つなぎ目を ${plan.X} 秒重ねて）${shortened(plan.X)}` : ""));
     if (loopV) notes.push(bounce ? "動画を逆回しで往復させました" : loop === "xloop" ? `動画を繰り返しました（折り返しを ${XL} 秒重ねて）${shortened(XL)}` : "動画を繰り返しました");
+    if (light) notes.push(`${opts.vinfo.w}×${opts.vinfo.h} に軽くしました`);
     if (opts.orig === "mix" && !mix) notes.push("動画に元の音が無かったので差し替えにしました");
     $("rinfo").textContent = notes.join("　");
     $("result").hidden = false;

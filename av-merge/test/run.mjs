@@ -29,6 +29,9 @@ ff("-f", "lavfi", "-i", "nullsrc=s=64x64:r=10:d=3,geq=lum='N*8':cb=128:cr=128", 
 ff("-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", S("v_same2.mp4"));
 ff("-f", "lavfi", "-i", "testsrc=size=240x320:rate=25:duration=2", "-f", "lavfi", "-i", "sine=f=330:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ac", "1", "-ar", "22050", S("v_tall.mp4"));
 ff("-display_rotation", "90", "-i", S("v_same2.mp4"), "-c", "copy", S("v_rot.mp4"));
+// 軽くする用: 1080p の横長と縦長（音付き）
+ff("-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=30:duration=2", "-f", "lavfi", "-i", "sine=f=440:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", S("v_big.mp4"));
+ff("-f", "lavfi", "-i", "testsrc=size=1080x1920:rate=30:duration=3", "-f", "lavfi", "-i", "sine=f=440:duration=3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", S("v_bigtall.mp4"));
 ff("-f", "lavfi", "-i", "sine=f=880:duration=10", "-c:a", "libmp3lame", S("a_10s.mp3"));
 ff("-f", "lavfi", "-i", "sine=f=660:duration=2", S("a_2s.wav"));
 
@@ -76,7 +79,11 @@ const cases = [
   { name: "つなげる・形が違う＋重ねる＋元の音", v: ["v_h264.mp4", "v_vp9.webm", "v_tall.mp4"], a: "a_10s.mp3", set: { orig: "mix", xfade: 1 }, dur: 10, vcodec: "h264", size: "320x240" },
   { name: "繰り返す・重ねる＋元の音", v: "v_h264.mp4", a: "a_10s.mp3", set: { len: "audio", xfade: 1.5, orig: "mix" }, dur: 10, vcodec: "h264" },
   { name: "重ねる秒数が長すぎると縮める", v: ["v_same2.mp4", "v_h264.mp4"], a: "a_10s.mp3", set: { xfade: 3 }, dur: 7.05, vcodec: "h264", note: /縮めました/ },
-  { name: "VP9 を作り直す", v: "v_vp9.webm", a: "a_10s.mp3", set: {}, dur: 4, vcodec: "h264", copy: false },
+  { name: "VP9 を作り直す", v: "v_vp9.webm", a: "a_10s.mp3", set: {}, dur: 4, vcodec: "h264", copy: false, est: true },
+  { name: "軽く 720p・繰り返す", v: "v_big.mp4", a: "a_10s.mp3", set: { len: "audio", size: "720" }, dur: 10, vcodec: "h264", size: "1280x720", lastCopy: true, note: /1280×720 に軽く/ },
+  { name: "もっと軽く 480p・縦長・折り返しを重ねる", v: "v_bigtall.mp4", a: "a_10s.mp3", set: { len: "audio", size: "480", xfade: 0.5, orig: "mix" }, dur: 10, vcodec: "h264", size: "480x854", lastCopy: true, noFile: /\/work\/xl\.mp4/ },
+  { name: "もっと軽く 480p・形が違う2本は一度で縮める", v: ["v_big.mp4", "v_tall.mp4"], a: "a_10s.mp3", set: { size: "480" }, dur: 4, vcodec: "h264", size: "854x480", noFile: /\/work\/small\.mp4/ },
+  { name: "VP9・軽く 720p（小さいので縮めない）", v: "v_vp9.webm", a: "a_10s.mp3", set: { size: "720", len: "audio" }, dur: 10, vcodec: "h264", size: "320x240", est: true },
 ];
 let fail = 0;
 // ONLY=名前の一部 で、その試験だけ回す
@@ -90,8 +97,14 @@ for (const [i, c] of cases.entries()) {
   if (c.set.len === "audio") await page.check(`input[name=vloop][value=${c.set.vloop || "repeat"}]`, { force: true });
   await page.fill("#askip", String(c.set.askip || 0));
   await page.fill("#adelay", String(c.set.adelay || 0));
+  await page.check(`input[name=size][value="${c.set.size || "orig"}"]`, { force: true });
   // つなぎ目の欄は出ていないこともあるので、値は直に入れる
   await page.$eval("#xfade", (e, v) => { e.value = v; e.dispatchEvent(new Event("input", { bubbles: true })); }, String(c.set.xfade || 0));
+  if (c.est) {
+    // 大きさの目安（<video> で長さが読める形式のときだけ出る）
+    await page.waitForFunction(() => /約 [\d.]+ (MB|GB)/.test(document.getElementById("sizeNote").textContent), null, { timeout: 5000 }).catch(() => {});
+    c.estText = await page.$eval("#sizeNote", (e) => e.textContent);
+  }
   await page.click("#go");
   try {
     await page.waitForFunction(() => !document.getElementById("result").hidden || document.getElementById("status").classList.contains("err"), null, { timeout: +process.env.WAIT || 180000 });
@@ -132,6 +145,10 @@ for (const [i, c] of cases.entries()) {
       probs.push(`コマの並びが違う（${ys.length} コマ, ${bad} コマ目: ${ys.slice(Math.max(0, bad - 3), bad + 4).map((y) => y.toFixed(1))} 期待 ${JSON.stringify(c.frames.at(bad))}）`);
     }
   }
+  if (c.est && !/約 [\d.]+ (MB|GB)/.test(c.estText)) probs.push(`大きさの目安が出ない: ${c.estText}`);
+  if (c.est) console.log(`   目安 ${c.estText} → 実際 ${(await stat(out)).size} B`);
+  if (c.noFile && c.noFile.test(log)) probs.push(`作らないはずのファイルを作った: ${log.match(c.noFile)[0]}`);
+  if (c.lastCopy !== undefined && /-c:v copy[^\n]*\/out\.mp4/.test(log) !== c.lastCopy) probs.push("最後の処理のコピー／作り直しが期待と違う");
   if (c.catCopy !== undefined && /-f concat -safe 0 -i \/work\/vlist/.test(log) !== c.catCopy) probs.push("つなぎ方（そのまま／作り直し）が期待と違う");
   if (c.size && `${v?.width}x${v?.height}` !== c.size) probs.push(`大きさ ${v?.width}x${v?.height}`);
   if (c.rot && !JSON.stringify(v?.side_data_list || []).includes("rotation")) probs.push("回す印が消えた");
@@ -139,6 +156,19 @@ for (const [i, c] of cases.entries()) {
   console.log(`${probs.length ? "NG" : "OK"} ${c.name}: ${dur.toFixed(2)}s ${v?.codec_name}/${a?.codec_name} ${(await stat(out)).size}B ${probs.join(" / ")}`);
   if (probs.length) fail++;
   if (i === 0) await page.screenshot({ path: S("shot_result.png"), fullPage: true });
+}
+// メモリの警告: 境目を下げたページで、大きすぎる見込みなら警告が出るか
+if (!process.env.ONLY || "メモリの警告".includes(process.env.ONLY)) {
+  const p2 = await browser.newPage();
+  await p2.goto(`${base}?memlimit=1000&core=${encodeURIComponent(base + "core")}`);
+  await p2.setInputFiles("#vfile", S("v_vp9.webm"));
+  await p2.setInputFiles("#afile", S("a_10s.mp3"));
+  const warned = await p2.waitForFunction(() => document.getElementById("sizeNote").classList.contains("warn"), null, { timeout: 5000 }).then(() => true, () => false);
+  const text = await p2.$eval("#sizeNote", (e) => e.textContent);
+  console.log(`${warned && /メモリが足りず/.test(text) ? "OK" : "NG"} メモリの警告: ${text}`);
+  if (!warned) fail++;
+  await p2.screenshot({ path: S("shot_warn.png"), fullPage: true });
+  await p2.close();
 }
 await page.setViewportSize({ width: 390, height: 1400 });
 await page.screenshot({ path: S("shot_phone.png"), fullPage: true });
