@@ -26,6 +26,11 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:1
 .wrap{max-width:980px;margin:0 auto;padding-block:20px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
 header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
 h1{font-family:var(--f-display);font-weight:400;font-size:clamp(26px,5vw,34px);margin:0;letter-spacing:.02em;line-height:1.1}
+.ver{font-family:var(--f-mono);font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 10px;white-space:nowrap}
+.foot{border-top:1px solid var(--line);padding-top:14px;font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:8px}
+.foot summary{cursor:pointer;font-weight:700;color:var(--ink);min-height:32px;display:flex;align-items:center}
+.foot ul{margin:6px 0 0;padding-left:1.1em;display:flex;flex-direction:column;gap:4px}
+.foot b{font-family:var(--f-mono);font-weight:500;color:var(--ink)}
 h1 small{display:block;font-family:var(--f-body);font-size:13px;color:var(--muted);letter-spacing:0;margin-top:6px;font-weight:500}
 .tabs{display:flex;gap:4px;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:4px}
 .tab{appearance:none;border:0;background:transparent;color:var(--muted);font:inherit;font-weight:700;padding:8px 14px;border-radius:7px;cursor:pointer;min-height:40px}
@@ -96,6 +101,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
 <div class="wrap">
   <header>
     <h1>Suno スタイル帳<small>これまで作った曲調を探して、Style と Exclude を一発でコピー</small></h1>
+    <span class="ver" id="ver"></span>
   </header>
 
   <section id="view-find" style="display:flex;flex-direction:column;gap:14px">
@@ -117,6 +123,19 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
     </div>
     <div class="list" id="list"></div>
   </section>
+  <!-- 版はここ1か所（VERSION）。上げたら更新履歴の先頭に1行足す -->
+  <footer class="foot">
+    <div><span id="verFoot"></span> ・ 更新 2026.10.25 ・ <span id="total"></span></div>
+    <details><summary>更新履歴</summary><ul>
+      <li><b>v1.6.0</b>（2026-10-25）8bit PSG のゲーム曲をハイエナジーにする3案、アップリフティングなミニマル・アシッド3案、303 に主旋律を弾かせるアシッド4案（乾いた音の版を含む）を追加。版の表示と更新履歴を付けた。</li>
+      <li><b>v1.5.0</b>（2026-10-25）「EXTEND MIX にする追加」を追加。「ライブ版にしてコピー」が「〜追加」の項目に効かないように。</li>
+      <li><b>v1.4.0</b>（2026-10-24）Little Fluffy Clouds 型の3件（リズムをサンプリングで組んだ版、詩を朗読させる版2案）を追加。</li>
+      <li><b>v1.3.0</b>（2026-10-21）「ライブ版にしてコピー」のチェックを追加。入れると、どの曲調でも Style と Exclude にライブ録音の言葉を足してコピーする。</li>
+      <li><b>v1.2.0</b>（2026-10-21）「ライブ版にする追加」4件（歌もの・クラブ・ヒップホップ・静かな曲）を追加。</li>
+      <li><b>v1.1.0</b>（2026-10-17）ゲームミュージック・リミックス7件と「テクノ」の分類を追加。</li>
+      <li><b>v1.0.0</b>（2026-10-15）公開。58件。</li>
+    </ul></details>
+  </footer>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -128,6 +147,7 @@ const CATS = ['すべて','ヒップホップ','ブレイクコア／DnB','ビ�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
+const VERSION = 'v1.6.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
@@ -233,6 +253,7 @@ $('#liveKind').addEventListener('change',ev=>{liveKind=ev.target.value;store.set
 
 /* ---------- boot ---------- */
 if(!['auto','band','club','hiphop','quiet'].includes(liveKind)) liveKind='auto';
+$('#ver').textContent=VERSION; $('#verFoot').textContent=VERSION; $('#total').textContent=DATA.length+' 件';
 syncLive(); renderChips(); render();
 })();
 </script>
