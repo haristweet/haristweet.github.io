@@ -119,7 +119,9 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
         <option value="hiphop">ヒップホップ</option>
         <option value="quiet">アンビエント・静かな曲</option>
       </select>
+      <label class="chk"><input type="checkbox" id="ext"> EXTEND MIX にしてコピー</label>
       <p class="livehint" id="liveHint" hidden>Style と Exclude にライブ録音の言葉を足してコピーします（Exclude の <code>live drums</code> <code>live band</code> などは外します）。歌詞欄の最初に <code>[Crowd Cheering]</code>、最後に <code>[Applause]</code> を入れると歓声と拍手が入りやすくなります。インスト曲では歌詞欄が使われないので、Style だけで効かせます。</p>
+      <p class="livehint" id="extHint" hidden>Style と Exclude に DJ 用エクステンデッド・ミックスの言葉を足してコピーします（リズムだけの長い頭と終わり、フェードアウトなし）。Instrumental はオフにして、歌詞欄は <code>[Intro]</code> <code>[Drums Only]</code> で始め <code>[Outro]</code> <code>[Drums Only]</code> <code>[End]</code> で終えるタグだけに。Duration は Custom 6:30〜7:30。短く終わったら最後から Extend で <code>[Outro]</code> <code>[Drums Only]</code> を足します。</p>
     </div>
     <div class="list" id="list"></div>
   </section>
@@ -127,6 +129,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.10.25 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v1.7.0</b>（2026-10-25）「EXTEND MIX にしてコピー」のチェックを追加。入れると、どの曲調でも Style と Exclude に DJ 用エクステンデッド・ミックスの言葉を足してコピーする。ライブ版と一緒に入れると両方足す。</li>
       <li><b>v1.6.0</b>（2026-10-25）8bit PSG のゲーム曲をハイエナジーにする3案、アップリフティングなミニマル・アシッド3案、303 に主旋律を弾かせるアシッド4案（乾いた音の版を含む）を追加。版の表示と更新履歴を付けた。</li>
       <li><b>v1.5.0</b>（2026-10-25）「EXTEND MIX にする追加」を追加。「ライブ版にしてコピー」が「〜追加」の項目に効かないように。</li>
       <li><b>v1.4.0</b>（2026-10-24）Little Fluffy Clouds 型の3件（リズムをサンプリングで組んだ版、詩を朗読させる版2案）を追加。</li>
@@ -147,7 +150,7 @@ const CATS = ['すべて','ヒップホップ','ブレイクコア／DnB','ビ�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v1.6.0';
+const VERSION = 'v1.7.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
@@ -160,20 +163,31 @@ let liveKind = store.get('liveKind','auto');
 const LIVE_BLOCK = /^(live|live drums|live band|live recording|live performance|crowd|crowd noise|audience|applause|cheering)$/;
 const splitTerms = s => s.split(',').map(t=>t.trim()).filter(Boolean);
 function kindOf(e){ return liveKind!=='auto' ? liveKind : (KIND_BY_CAT[e.cat]||'band'); }
-function isLiveOn(e){ return live && !/追加$/.test(e.group||'') && !!LIVE[kindOf(e)]; }
+/* ---------- extend mix ---------- */
+const EXT_GROUP = 'EXTEND MIX にする追加';
+const EXT = DATA.find(e=>e.group===EXT_GROUP);
+let ext = !!store.get('ext',false);
+const isAddon = e => /追加$/.test(e.group||'');
+function isLiveOn(e){ return live && !isAddon(e) && !!LIVE[kindOf(e)]; }
+function isExtOn(e){ return ext && !isAddon(e) && !!EXT; }
+/* 足すもの（ライブ → EXTEND の順）。どちらも入れたら両方足す */
+function addons(e){ const a=[]; if(isLiveOn(e)) a.push(LIVE[kindOf(e)]); if(isExtOn(e)) a.push(EXT); return a; }
 function styleOf(e){
-  if(!isLiveOn(e)) return e.style;
-  return e.style.replace(/[\s,]+$/,'') + LIVE[kindOf(e)].style;
+  const a = addons(e); if(!a.length) return e.style;
+  return e.style.replace(/[\s,]+$/,'') + a.map(x=>x.style).join('');
 }
 function excludeOf(e){
-  if(!isLiveOn(e)) return e.exclude;
+  const a = addons(e); if(!a.length) return e.exclude;
   const st = e.style.toLowerCase();
-  const base = splitTerms(e.exclude).filter(t=>!LIVE_BLOCK.test(t.toLowerCase()));
+  const base = splitTerms(e.exclude).filter(t=>!(isLiveOn(e) && LIVE_BLOCK.test(t.toLowerCase())));
   const have = new Set(base.map(t=>t.toLowerCase()));
   /* 足す言葉のうち、すでにあるもの・その曲の Style に出てくるもの（例：acoustic を使う曲）は足さない */
-  const add = splitTerms(LIVE[kindOf(e)].exclude).filter(t=>{const k=t.toLowerCase(); return !have.has(k) && !st.includes(k);});
+  const add = [];
+  a.forEach(x=>splitTerms(x.exclude).forEach(t=>{const k=t.toLowerCase(); if(!have.has(k) && !st.includes(k)){have.add(k); add.push(t);}}));
   return base.concat(add).join(', ');
 }
+function badgeOf(e){ return (isLiveOn(e)?'<span class="lv">LIVE</span>':'') + (isExtOn(e)?'<span class="lv">EXT</span>':''); }
+function labelOf(e){ const t=[]; if(isLiveOn(e)) t.push('ライブ版'); if(isExtOn(e)) t.push('EXTEND MIX'); return t.length?'（'+t.join('＋')+'）':''; }
 const open = new Set();
 
 /* ---------- copy ---------- */
@@ -205,7 +219,7 @@ function renderChips(){
 function card(e,isGen){
   const mix = e.mix ? `<span class="mix ${e.mixStatus==='候補'?'cand':''}" title="ミックス名（${esc(e.mixStatus)}）">${esc(e.mix)}</span>` : '';
   const isOpen = open.has(e.id);
-  const lv = isLiveOn(e) ? '<span class="lv">LIVE</span>' : '';
+  const lv = badgeOf(e);
   return `<article class="card ${isGen?'gen':''}" data-id="${e.id}">
     <div class="card-head">
       <button class="toggle" aria-expanded="${isOpen}" aria-controls="b-${e.id}">
@@ -242,19 +256,21 @@ $('#q').addEventListener('input',render);
 $('#list').addEventListener('click',ev=>{
   const art = ev.target.closest('.card');
   const cp = ev.target.closest('[data-copy]');
-  if(cp&&art){const e=byId(art.dataset.id);const isS=cp.dataset.copy==='style';copy(isS?styleOf(e):excludeOf(e),(isS?'Style':'Exclude')+(isLiveOn(e)?'（ライブ版）':''));return}
+  if(cp&&art){const e=byId(art.dataset.id);const isS=cp.dataset.copy==='style';copy(isS?styleOf(e):excludeOf(e),(isS?'Style':'Exclude')+labelOf(e));return}
   const tg = ev.target.closest('.toggle');
   if(tg&&art){const id=art.dataset.id;open.has(id)?open.delete(id):open.add(id);const body=art.querySelector('.body');body.hidden=!open.has(id);tg.setAttribute('aria-expanded',open.has(id));return}
 });
 
 function syncLive(){ $('#live').checked=live; $('#liveKind').value=liveKind; $('#liveKind').hidden=!live; $('#liveHint').hidden=!live; }
+function syncExt(){ $('#ext').checked=ext; $('#extHint').hidden=!ext; }
+$('#ext').addEventListener('change',ev=>{ext=ev.target.checked;store.set('ext',ext);syncExt();render()});
 $('#live').addEventListener('change',ev=>{live=ev.target.checked;store.set('live',live);syncLive();render()});
 $('#liveKind').addEventListener('change',ev=>{liveKind=ev.target.value;store.set('liveKind',liveKind);render()});
 
 /* ---------- boot ---------- */
 if(!['auto','band','club','hiphop','quiet'].includes(liveKind)) liveKind='auto';
 $('#ver').textContent=VERSION; $('#verFoot').textContent=VERSION; $('#total').textContent=DATA.length+' 件';
-syncLive(); renderChips(); render();
+syncLive(); syncExt(); renderChips(); render();
 })();
 </script>
 
