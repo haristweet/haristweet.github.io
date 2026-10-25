@@ -70,6 +70,13 @@ label.lbl{font-size:13px;font-weight:700;display:block;margin-bottom:6px}
 select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
 select{min-height:44px}
 textarea{font-family:var(--f-body);font-size:15px;line-height:1.7;min-height:220px;resize:vertical}
+textarea.code{display:block;width:100%;box-sizing:border-box;min-height:0;margin-top:6px;font-family:var(--f-mono);font-size:12.5px;line-height:1.6;padding:10px 12px;resize:vertical;overflow:hidden;background:var(--surface);border-color:var(--line)}
+textarea.code:focus{outline:2px solid var(--accent);outline-offset:1px}
+.addline{margin-top:6px;font-family:var(--f-mono);font-size:12px;line-height:1.6;color:var(--muted);background:var(--sunk);border:1px dashed var(--line);border-radius:8px;padding:6px 10px;word-break:break-word}
+.addline b{font-family:var(--f-body);font-weight:700;color:var(--accent);margin-right:6px}
+.edited{font-size:11px;padding:1px 8px;border-radius:999px;background:var(--sunk);color:var(--ink);font-weight:700}
+.btns{display:flex;gap:6px}
+.edit-hint{font-size:12px;color:var(--muted);margin:0}
 textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
 .opts{display:flex;flex-wrap:wrap;gap:8px 18px}
 .opts label{display:flex;gap:6px;align-items:center;font-size:14px;cursor:pointer;min-height:32px}
@@ -129,6 +136,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.10.25 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v1.8.0</b>（2026-10-25）開いたカードの Style と Exclude をその場で書きかえられるように。書きかえた文はブラウザに覚え、コピーにも使う。「元に戻す」で元の文へ。ライブ版・EXTEND MIX で足される言葉は欄の下に別に出す。</li>
       <li><b>v1.7.0</b>（2026-10-25）「EXTEND MIX にしてコピー」のチェックを追加。入れると、どの曲調でも Style と Exclude に DJ 用エクステンデッド・ミックスの言葉を足してコピーする。ライブ版と一緒に入れると両方足す。</li>
       <li><b>v1.6.0</b>（2026-10-25）8bit PSG のゲーム曲をハイエナジーにする3案、アップリフティングなミニマル・アシッド3案、303 に主旋律を弾かせるアシッド4案（乾いた音の版を含む）を追加。版の表示と更新履歴を付けた。</li>
       <li><b>v1.5.0</b>（2026-10-25）「EXTEND MIX にする追加」を追加。「ライブ版にしてコピー」が「〜追加」の項目に効かないように。</li>
@@ -150,7 +158,7 @@ const CATS = ['すべて','ヒップホップ','ブレイクコア／DnB','ビ�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v1.7.0';
+const VERSION = 'v1.8.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
@@ -163,6 +171,16 @@ let liveKind = store.get('liveKind','auto');
 const LIVE_BLOCK = /^(live|live drums|live band|live recording|live performance|crowd|crowd noise|audience|applause|cheering)$/;
 const splitTerms = s => s.split(',').map(t=>t.trim()).filter(Boolean);
 function kindOf(e){ return liveKind!=='auto' ? liveKind : (KIND_BY_CAT[e.cat]||'band'); }
+/* ---------- edits（ページの上で書きかえた文。ブラウザに覚える） ---------- */
+let edits = store.get('edits',{}); if(typeof edits!=='object'||!edits) edits={};
+function baseOf(e,f){ const v=edits[e.id]&&edits[e.id][f]; return typeof v==='string'?v:e[f]; }
+function isEdited(e){ return !!edits[e.id]; }
+function setEdit(e,f,v){
+  const cur = edits[e.id]||{};
+  if(v===e[f]) delete cur[f]; else cur[f]=v;
+  if(Object.keys(cur).length) edits[e.id]=cur; else delete edits[e.id];
+  store.set('edits',edits);
+}
 /* ---------- extend mix ---------- */
 const EXT_GROUP = 'EXTEND MIX にする追加';
 const EXT = DATA.find(e=>e.group===EXT_GROUP);
@@ -172,19 +190,36 @@ function isLiveOn(e){ return live && !isAddon(e) && !!LIVE[kindOf(e)]; }
 function isExtOn(e){ return ext && !isAddon(e) && !!EXT; }
 /* 足すもの（ライブ → EXTEND の順）。どちらも入れたら両方足す */
 function addons(e){ const a=[]; if(isLiveOn(e)) a.push(LIVE[kindOf(e)]); if(isExtOn(e)) a.push(EXT); return a; }
+function styleAdd(e){ return addons(e).map(x=>x.style).join(''); }
 function styleOf(e){
-  const a = addons(e); if(!a.length) return e.style;
-  return e.style.replace(/[\s,]+$/,'') + a.map(x=>x.style).join('');
+  const s = baseOf(e,'style'), a = styleAdd(e); if(!a) return s;
+  return s.replace(/[\s,]+$/,'') + a;
 }
-function excludeOf(e){
-  const a = addons(e); if(!a.length) return e.exclude;
-  const st = e.style.toLowerCase();
-  const base = splitTerms(e.exclude).filter(t=>!(isLiveOn(e) && LIVE_BLOCK.test(t.toLowerCase())));
+function excludeParts(e){
+  const a = addons(e), raw = splitTerms(baseOf(e,'exclude'));
+  if(!a.length) return {base:raw, add:[], removed:[]};
+  const st = baseOf(e,'style').toLowerCase();
+  const removed = [], base = [];
+  raw.forEach(t=>{ (isLiveOn(e) && LIVE_BLOCK.test(t.toLowerCase())) ? removed.push(t) : base.push(t); });
   const have = new Set(base.map(t=>t.toLowerCase()));
   /* 足す言葉のうち、すでにあるもの・その曲の Style に出てくるもの（例：acoustic を使う曲）は足さない */
   const add = [];
   a.forEach(x=>splitTerms(x.exclude).forEach(t=>{const k=t.toLowerCase(); if(!have.has(k) && !st.includes(k)){have.add(k); add.push(t);}}));
-  return base.concat(add).join(', ');
+  return {base, add, removed};
+}
+function excludeOf(e){
+  if(!addons(e).length) return baseOf(e,'exclude');
+  const p = excludeParts(e); return p.base.concat(p.add).join(', ');
+}
+function addLines(e){
+  const tag = labelOf(e).replace(/[（）]/g,'');
+  const s = styleAdd(e) ? `<div class="addline" data-add="style"><b>＋${esc(tag)}</b>${esc(styleAdd(e).replace(/^[\s,]+/,''))}</div>` : '';
+  const p = excludeParts(e);
+  let x = '';
+  if(p.add.length||p.removed.length){
+    x = `<div class="addline" data-add="exclude">${p.add.length?`<b>＋${esc(tag)}</b>${esc(p.add.join(', '))}`:''}${p.removed.length?`${p.add.length?'<br>':''}<b>外す</b>${esc(p.removed.join(', '))}`:''}</div>`;
+  }
+  return {s, x};
 }
 function badgeOf(e){ return (isLiveOn(e)?'<span class="lv">LIVE</span>':'') + (isExtOn(e)?'<span class="lv">EXT</span>':''); }
 function labelOf(e){ const t=[]; if(isLiveOn(e)) t.push('ライブ版'); if(isExtOn(e)) t.push('EXTEND MIX'); return t.length?'（'+t.join('＋')+'）':''; }
@@ -220,10 +255,11 @@ function card(e,isGen){
   const mix = e.mix ? `<span class="mix ${e.mixStatus==='候補'?'cand':''}" title="ミックス名（${esc(e.mixStatus)}）">${esc(e.mix)}</span>` : '';
   const isOpen = open.has(e.id);
   const lv = badgeOf(e);
+  const al = addLines(e);
   return `<article class="card ${isGen?'gen':''}" data-id="${e.id}">
     <div class="card-head">
       <button class="toggle" aria-expanded="${isOpen}" aria-controls="b-${e.id}">
-        <span class="song">${esc(e.song)} <span class="tag">${esc(e.cat)}</span>${mix}</span>
+        <span class="song">${esc(e.song)} <span class="tag">${esc(e.cat)}</span>${mix}<span class="edited" ${isEdited(e)?'':'hidden'}>書きかえ中</span></span>
         <span class="genre">${esc(e.genre)}</span>
       </button>
       <div class="quick">
@@ -232,8 +268,9 @@ function card(e,isGen){
       </div>
     </div>
     <div class="body" id="b-${e.id}" ${isOpen?'':'hidden'}>
-      <div><div class="field-label"><span>Style of Music</span><button class="btn" data-copy="style">コピー</button></div><pre class="code" style="margin-top:6px">${esc(styleOf(e))}</pre></div>
-      <div><div class="field-label"><span>Exclude Styles</span><button class="btn" data-copy="exclude">コピー</button></div><pre class="code" style="margin-top:6px">${esc(excludeOf(e))}</pre></div>
+      <p class="edit-hint">下の欄はそのまま書きかえられます。書きかえた文はこのブラウザに覚え、コピーにも使います。</p>
+      <div><div class="field-label"><span>Style of Music</span><span class="btns"><button class="btn" data-reset="style" ${baseOf(e,'style')!==e.style?'':'hidden'}>元に戻す</button><button class="btn" data-copy="style">コピー</button></span></div><textarea class="code" data-field="style" spellcheck="false" aria-label="Style of Music">${esc(baseOf(e,'style'))}</textarea>${al.s}</div>
+      <div><div class="field-label"><span>Exclude Styles</span><span class="btns"><button class="btn" data-reset="exclude" ${baseOf(e,'exclude')!==e.exclude?'':'hidden'}>元に戻す</button><button class="btn" data-copy="exclude">コピー</button></span></div><textarea class="code" data-field="exclude" spellcheck="false" aria-label="Exclude Styles">${esc(baseOf(e,'exclude'))}</textarea>${al.x}</div>
       ${(e.notes&&e.notes.length)?`<ul class="notes">${e.notes.map(n=>`<li>${noteHTML(n)}</li>`).join('')}</ul>`:''}
     </div>
   </article>`;
@@ -248,6 +285,20 @@ function render(){
     html += `<div class="empty"><p>${q?`「${esc(q)}」に合う曲調はまだ作っていません。`:'この絞り込みに合う曲調はありません。'}</p></div>`;
   }
   $('#list').innerHTML = html;
+  fitAll();
+}
+function fit(ta){ ta.style.height='auto'; ta.style.height=(ta.scrollHeight+2)+'px'; }
+function fitAll(root){ (root||document).querySelectorAll('textarea.code').forEach(ta=>{ if(ta.offsetParent) fit(ta); }); }
+/* 書きかえた所の下の「足される言葉」だけを描き直す（入力中のカーソルを動かさない） */
+function refreshAdds(art,e){
+  const al = addLines(e);
+  ['style','exclude'].forEach(f=>{
+    const ta = art.querySelector(`textarea[data-field="${f}"]`); const old = ta.parentNode.querySelector('.addline');
+    if(old) old.remove();
+    const html = f==='style'?al.s:al.x; if(html) ta.insertAdjacentHTML('afterend',html);
+    art.querySelector(`[data-reset="${f}"]`).hidden = baseOf(e,f)===e[f];
+  });
+  art.querySelector('.edited').hidden = !isEdited(e);
 }
 function byId(id){return DATA.find(e=>e.id===id)||generated.find(e=>e.id===id)}
 
@@ -257,8 +308,15 @@ $('#list').addEventListener('click',ev=>{
   const art = ev.target.closest('.card');
   const cp = ev.target.closest('[data-copy]');
   if(cp&&art){const e=byId(art.dataset.id);const isS=cp.dataset.copy==='style';copy(isS?styleOf(e):excludeOf(e),(isS?'Style':'Exclude')+labelOf(e));return}
+  const rs = ev.target.closest('[data-reset]');
+  if(rs&&art){const e=byId(art.dataset.id);const f=rs.dataset.reset;setEdit(e,f,e[f]);const ta=art.querySelector(`textarea[data-field="${f}"]`);ta.value=e[f];fit(ta);refreshAdds(art,e);toast('元に戻しました');return}
   const tg = ev.target.closest('.toggle');
-  if(tg&&art){const id=art.dataset.id;open.has(id)?open.delete(id):open.add(id);const body=art.querySelector('.body');body.hidden=!open.has(id);tg.setAttribute('aria-expanded',open.has(id));return}
+  if(tg&&art){const id=art.dataset.id;open.has(id)?open.delete(id):open.add(id);const body=art.querySelector('.body');body.hidden=!open.has(id);tg.setAttribute('aria-expanded',open.has(id));fitAll(art);return}
+});
+$('#list').addEventListener('input',ev=>{
+  const ta = ev.target.closest('textarea[data-field]'); if(!ta) return;
+  const art = ta.closest('.card'); const e = byId(art.dataset.id);
+  setEdit(e, ta.dataset.field, ta.value); fit(ta); refreshAdds(art,e);
 });
 
 function syncLive(){ $('#live').checked=live; $('#liveKind').value=liveKind; $('#liveKind').hidden=!live; $('#liveHint').hidden=!live; }
