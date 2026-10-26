@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>買取利益率くらべ</title>
+<meta name="description" content="買った値段と買取価格から利益率を出して、店や品物をいくつも並べて比べる。ポイント還元や送料も入れられる。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>💴</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Layout: one column — summary of the best row, a stack of editable rows (each shows its own result), a bar comparison */
+:root{
+  --bg:#f4f3ef; --surface:#ffffff; --sunk:#efede7; --ink:#1d1c19; --muted:#615d54; --line:#dcd8ce;
+  --accent:#1f5fbf; --accent-soft:#e6eefb; --on-accent:#ffffff;
+  --gain:#17804a; --gain-soft:#e3f4ea; --loss:#c0392b; --loss-soft:#fbe7e4;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141413; --surface:#1d1c1a; --sunk:#171615; --ink:#ece9e2; --muted:#a8a397; --line:#34322d;
+  --accent:#7fb0ff; --accent-soft:#1d2a40; --on-accent:#0f1520;
+  --gain:#5fd39a; --gain-soft:#173326; --loss:#ff8a7a; --loss-soft:#3a1d19; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141413; --surface:#1d1c1a; --sunk:#171615; --ink:#ece9e2; --muted:#a8a397; --line:#34322d;
+  --accent:#7fb0ff; --accent-soft:#1d2a40; --on-accent:#0f1520;
+  --gain:#5fd39a; --gain-soft:#173326; --loss:#ff8a7a; --loss-soft:#3a1d19; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6}
+.wrap{max-width:980px;margin:0 auto;padding-block:20px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-weight:900;font-size:clamp(24px,5vw,32px);margin:0;letter-spacing:.02em;line-height:1.15}
+h1 small{display:block;font-size:13px;color:var(--muted);letter-spacing:0;margin-top:6px;font-weight:500}
+.ver{font-family:var(--f-mono);font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 10px;white-space:nowrap}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+/* いちばん得な行の要約 */
+.best{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 16px;align-items:center}
+.best .lbl{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.06em}
+.best .who{font-size:18px;font-weight:700;overflow-wrap:anywhere}
+.best .big{font-family:var(--f-mono);font-size:clamp(28px,7vw,40px);font-weight:700;line-height:1;text-align:right;grid-row:1 / span 2;grid-column:2}
+.best .sub{font-size:13px;color:var(--muted);grid-column:1 / -1}
+
+/* 設定 */
+.opts{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;font-size:13px}
+.seg{display:inline-flex;gap:2px;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:3px}
+.seg button{appearance:none;border:0;background:transparent;color:var(--muted);font:inherit;font-weight:700;padding:6px 12px;border-radius:7px;cursor:pointer;min-height:36px}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgb(0 0 0/.1)}
+.opts .k{color:var(--muted);font-weight:700}
+
+/* 行 */
+.list{display:flex;flex-direction:column;gap:10px}
+.row{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;position:relative}
+.row.top{border-color:var(--gain);box-shadow:0 0 0 1px var(--gain) inset}
+.row-head{display:flex;gap:8px;align-items:center}
+.row-head .no{font-family:var(--f-mono);font-size:12px;color:var(--muted);min-width:1.6em}
+.row-head input.name{flex:1;min-width:0;font:inherit;font-weight:700;font-size:16px;border:1px solid transparent;background:transparent;color:var(--ink);border-radius:6px;padding:4px 6px}
+.row-head input.name:hover{border-color:var(--line)}
+.row-head input.name:focus{border-color:var(--accent);outline:none;background:var(--sunk)}
+.badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--gain-soft);color:var(--gain);white-space:nowrap}
+.icon{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--muted);font:inherit;font-size:13px;border-radius:8px;min-width:36px;min-height:36px;cursor:pointer;padding:0 8px}
+.icon:hover{color:var(--accent);border-color:var(--accent)}
+.icon.del:hover{color:var(--loss);border-color:var(--loss)}
+.fields{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.f span{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.f .in{display:flex;align-items:center;background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:0 8px}
+.f .in:focus-within{border-color:var(--accent)}
+.f input{flex:1;min-width:0;width:100%;border:0;background:transparent;color:var(--ink);font-family:var(--f-mono);font-size:16px;padding:8px 0;text-align:right;outline:none}
+.f .u{font-size:12px;color:var(--muted);padding-left:4px}
+.res{display:grid;grid-template-columns:auto repeat(4,minmax(0,1fr));gap:8px;align-items:stretch;border-top:1px dashed var(--line);padding-top:10px}
+.rate{font-family:var(--f-mono);font-size:26px;font-weight:700;line-height:1;padding:6px 12px;border-radius:10px;display:flex;align-items:center;justify-content:center;min-width:120px}
+.gain{color:var(--gain)} .loss{color:var(--loss)}
+.rate.gain{background:var(--gain-soft)} .rate.loss{background:var(--loss-soft)}
+.rate.even{background:var(--sunk);color:var(--muted)}
+.m{display:flex;flex-direction:column;gap:1px;min-width:0}
+.m span{font-size:11px;color:var(--muted);font-weight:700;white-space:nowrap}
+.m b{font-family:var(--f-mono);font-weight:500;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn{appearance:none;font:inherit;font-size:14px;font-weight:700;border-radius:9px;padding:8px 14px;cursor:pointer;min-height:42px;border:1px solid var(--line);background:var(--surface);color:var(--ink);white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:hover{filter:brightness(1.08);color:var(--on-accent)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* 比較の棒 */
+.chart{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.chart h2{font-size:14px;margin:0 0 4px;color:var(--muted)}
+.bar{display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr) 5.5em;gap:10px;align-items:center;font-size:13px}
+.bar .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .track{position:relative;height:18px;background:var(--sunk);border-radius:4px}
+.bar .zero{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--muted)}
+.bar .fill{position:absolute;top:2px;bottom:2px;border-radius:3px}
+.bar .fill.gain{background:var(--gain)} .bar .fill.loss{background:var(--loss)}
+.bar .v{font-family:var(--f-mono);text-align:right}
+
+.foot{border-top:1px solid var(--line);padding-top:14px;font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:8px}
+.foot summary{cursor:pointer;font-weight:700;color:var(--ink);min-height:32px;display:flex;align-items:center}
+.foot ul{margin:6px 0 0;padding-left:1.1em;display:flex;flex-direction:column;gap:4px}
+.foot code{font-family:var(--f-mono);font-size:12px;background:var(--sunk);padding:0 4px;border-radius:4px;color:var(--ink)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:999px;font-size:13px;font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+
+@media (max-width:720px){
+  .fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .res{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rate{grid-column:1 / -1}
+  .bar{grid-template-columns:minmax(0,6em) minmax(0,1fr) 5em}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>買取利益率くらべ<small>買った値段と買取価格から利益率を出して、いくつも並べて比べる</small></h1>
+    <span class="ver">v1.0.0</span>
+  </header>
+
+  <section class="best" id="best" aria-live="polite"></section>
+
+  <div class="opts">
+    <span class="k">利益率の分母</span>
+    <div class="seg" id="basis" role="group" aria-label="利益率の分母">
+      <button type="button" data-v="cost" aria-pressed="true">買った額</button>
+      <button type="button" data-v="sales" aria-pressed="false">受け取る額</button>
+    </div>
+    <span class="k">並び</span>
+    <div class="seg" id="sort" role="group" aria-label="並び">
+      <button type="button" data-v="input" aria-pressed="true">入力順</button>
+      <button type="button" data-v="rate" aria-pressed="false">利益率順</button>
+      <button type="button" data-v="profit" aria-pressed="false">利益額順</button>
+    </div>
+  </div>
+
+  <div class="list" id="list"></div>
+
+  <div class="actions">
+    <button type="button" class="btn primary" id="add">＋ 行を足す</button>
+    <button type="button" class="btn" id="copy">表をコピー</button>
+    <button type="button" class="btn" id="reset">例に戻す</button>
+  </div>
+
+  <section class="chart" id="chart" aria-label="利益率の比較"></section>
+
+  <div class="foot">
+    <details>
+      <summary>計算のしかた</summary>
+      <ul>
+        <li><b>受け取る額</b> ＝ 買取価格 ＋ ポイント還元（買った額 × 還元率）</li>
+        <li><b>利益</b> ＝ 受け取る額 − 買った額 − 経費（送料・手数料・交通費など）。個数を入れると利益はその倍。</li>
+        <li><b>利益率</b> ＝ 利益 ÷ 買った額（分母を「受け取る額」にすると 利益 ÷ 受け取る額）。個数を変えても率は同じ。</li>
+        <li><b>買取率</b> ＝ 買取価格 ÷ 買った額。例: 10,000円の物を9,000円で買い取ると買取率90%、利益 −1,000円、利益率 −10%。</li>
+        <li><b>トントンの還元率</b> ＝ この還元率を超えると黒字になる、という境目（(買った額 ＋ 経費 − 買取価格) ÷ 買った額）。</li>
+        <li>入力はこのブラウザに覚えます（ほかの人には見えません）。数字は「10,000」「1万」とも書けます。</li>
+      </ul>
+    </details>
+    <details>
+      <summary>更新履歴</summary>
+      <ul>
+        <li><code>v1.0.0</code> (2026-10-26) 最初の版。行ごとに利益・利益率・買取率・トントンの還元率を出し、いちばん得な行に印。棒で比較・表のコピー。</li>
+      </ul>
+    </details>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const KEY = 'kaitori-calc:v1';
+const EXAMPLE = () => ({
+  basis: 'cost', sort: 'input',
+  rows: [
+    { name: '買取店A', cost: 10000, buy: 9000, point: 0,  fee: 0,   qty: 1 },
+    { name: '買取店B', cost: 10000, buy: 9300, point: 0,  fee: 500, qty: 1 },
+    { name: '買取店A＋還元10%で購入', cost: 10000, buy: 9000, point: 10, fee: 0, qty: 1 },
+  ],
+});
+
+let state = load();
+
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && Array.isArray(s.rows)) return { ...EXAMPLE(), ...s };
+  } catch (e) {}
+  return EXAMPLE();
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+}
+
+// 「10,000」「1万」「9千」「¥9,000」「10%」などを数に
+function parseNum(s) {
+  if (typeof s === 'number') return s;
+  let t = String(s ?? '').trim()
+    .replace(/[０-９．－]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[,，\s円¥￥%％]/g, '');
+  if (!t) return 0;
+  let mul = 1;
+  if (/万$/.test(t)) { mul = 10000; t = t.slice(0, -1); }
+  else if (/千$/.test(t)) { mul = 1000; t = t.slice(0, -1); }
+  const v = parseFloat(t);
+  return Number.isFinite(v) ? v * mul : 0;
+}
+
+function calc(r) {
+  const cost = r.cost, qty = Math.max(1, Math.round(r.qty) || 1);
+  const point = cost * r.point / 100;
+  const recv = r.buy + point;
+  const profit1 = recv - cost - r.fee;
+  const denom = state.basis === 'sales' ? recv : cost;
+  return {
+    point, recv, qty,
+    profit: profit1 * qty,
+    rate: denom > 0 ? profit1 / denom * 100 : NaN,
+    buyRate: cost > 0 ? r.buy / cost * 100 : NaN,
+    breakEven: cost > 0 ? Math.max(0, (cost + r.fee - r.buy) / cost * 100) : NaN,
+  };
+}
+
+const yen = v => (v < 0 ? '−' : '') + Math.round(Math.abs(v)).toLocaleString('ja-JP') + '円';
+const signedYen = v => (v > 0 ? '+' : '') + yen(v);
+const pct = (v, d = 1) => Number.isFinite(v) ? (v < 0 ? '−' : '') + Math.abs(v).toFixed(d) + '%' : '—';
+const signedPct = v => Number.isFinite(v) ? (v > 0 ? '+' : '') + pct(v) : '—';
+const tone = v => !Number.isFinite(v) || Math.abs(v) < 0.05 ? 'even' : v > 0 ? 'gain' : 'loss';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmtIn = v => v ? (Number.isInteger(v) ? v.toLocaleString('ja-JP') : String(v)) : '';
+
+function order() {
+  const idx = state.rows.map((r, i) => ({ r, i, c: calc(r) }));
+  const f = v => Number.isFinite(v) ? v : -Infinity;
+  if (state.sort === 'rate') idx.sort((a, b) => f(b.c.rate) - f(a.c.rate));
+  if (state.sort === 'profit') idx.sort((a, b) => b.c.profit - a.c.profit);
+  return idx;
+}
+function bestIndex() {
+  let bi = -1, bv = -Infinity;
+  state.rows.forEach((r, i) => { const v = calc(r).rate; if (Number.isFinite(v) && v > bv) { bv = v; bi = i; } });
+  return state.rows.length > 1 ? bi : -1;
+}
+
+const FIELDS = [
+  ['cost',  '買った額',     '円'],
+  ['buy',   '買取価格',     '円'],
+  ['point', 'ポイント還元', '%'],
+  ['fee',   '経費（送料など）', '円'],
+  ['qty',   '個数',         '個'],
+];
+
+function rowHTML(r, i, no) {
+  return `<div class="row" data-i="${i}">
+    <div class="row-head">
+      <span class="no">${no}</span>
+      <input class="name" data-k="name" value="${esc(r.name)}" placeholder="店や品物の名前" aria-label="名前">
+      <span class="badge" hidden>いちばん得</span>
+      <button type="button" class="icon dup" title="この行を複製" aria-label="複製">⧉</button>
+      <button type="button" class="icon del" title="この行を消す" aria-label="消す">✕</button>
+    </div>
+    <div class="fields">
+      ${FIELDS.map(([k, label, u]) => `<label class="f"><span>${label}</span>
+        <span class="in"><input data-k="${k}" inputmode="decimal" autocomplete="off" value="${fmtIn(r[k])}" placeholder="0"><span class="u">${u}</span></span></label>`).join('')}
+    </div>
+    <div class="res"></div>
+  </div>`;
+}
+
+function resHTML(c) {
+  return `<div class="rate ${tone(c.rate)}" title="利益率">${signedPct(c.rate)}</div>
+    <div class="m"><span>利益${c.qty > 1 ? `（${c.qty}個）` : ''}</span><b class="${tone(c.profit)}">${signedYen(c.profit)}</b></div>
+    <div class="m"><span>受け取る額</span><b>${yen(c.recv)}</b></div>
+    <div class="m"><span>買取率</span><b>${pct(c.buyRate)}</b></div>
+    <div class="m"><span>トントンの還元率</span><b>${pct(c.breakEven)}</b></div>`;
+}
+
+const $list = document.getElementById('list');
+
+function renderList() {
+  $list.innerHTML = order().map(({ r, i }, n) => rowHTML(r, i, n + 1)).join('');
+  update();
+}
+
+// 打っている途中は行を作り直さず、結果だけ書きかえる（カーソルが飛ばないように）
+function update() {
+  const bi = bestIndex();
+  $list.querySelectorAll('.row').forEach(el => {
+    const i = +el.dataset.i, r = state.rows[i];
+    el.querySelector('.res').innerHTML = resHTML(calc(r));
+    el.classList.toggle('top', i === bi);
+    el.querySelector('.badge').hidden = i !== bi;
+  });
+  renderBest(bi);
+  renderChart(bi);
+  save();
+}
+
+function renderBest(bi) {
+  const el = document.getElementById('best');
+  if (!state.rows.length) { el.innerHTML = '<div class="who">行がありません。「＋ 行を足す」から。</div>'; return; }
+  const i = bi >= 0 ? bi : 0, r = state.rows[i], c = calc(r);
+  el.innerHTML = `<div class="lbl">${bi >= 0 ? 'いちばん得' : '結果'}</div>
+    <div class="big ${tone(c.rate)}">${signedPct(c.rate)}</div>
+    <div class="who">${esc(r.name || '名前なし')}</div>
+    <div class="sub">利益 <b class="num ${tone(c.profit)}">${signedYen(c.profit)}</b>・買取率 <span class="num">${pct(c.buyRate)}</span>${
+      state.rows.length > 1 ? `・${state.rows.length}件を比較` : ''}</div>`;
+}
+
+function renderChart(bi) {
+  const el = document.getElementById('chart');
+  const items = order().filter(x => Number.isFinite(x.c.rate));
+  if (items.length < 1) { el.hidden = true; return; }
+  el.hidden = false;
+  const lo = Math.min(0, ...items.map(x => x.c.rate)), hi = Math.max(0, ...items.map(x => x.c.rate));
+  const span = (hi - lo) || 1, z = -lo / span * 100;
+  el.innerHTML = `<h2>利益率の比較（${state.basis === 'sales' ? '受け取る額' : '買った額'}に対して）</h2>` + items.map(({ r, i, c }) => {
+    const w = Math.abs(c.rate) / span * 100, left = c.rate >= 0 ? z : z - w;
+    return `<div class="bar"><span class="n" title="${esc(r.name)}">${i === bi ? '★ ' : ''}${esc(r.name || '名前なし')}</span>
+      <span class="track"><span class="fill ${c.rate >= 0 ? 'gain' : 'loss'}" style="left:${left}%;width:${w}%"></span><span class="zero" style="left:${z}%"></span></span>
+      <span class="v ${tone(c.rate)}">${signedPct(c.rate)}</span></div>`;
+  }).join('');
+}
+
+$list.addEventListener('input', e => {
+  const k = e.target.dataset.k; if (!k) return;
+  const i = +e.target.closest('.row').dataset.i;
+  state.rows[i][k] = k === 'name' ? e.target.value : parseNum(e.target.value);
+  update();
+});
+// 打ち終えたら数字を整えて、並べ替え中なら並べ直す
+$list.addEventListener('change', e => {
+  const k = e.target.dataset.k; if (!k || k === 'name') { if (state.sort !== 'input') renderList(); return; }
+  e.target.value = fmtIn(state.rows[+e.target.closest('.row').dataset.i][k]);
+  if (state.sort !== 'input') renderList();
+});
+$list.addEventListener('click', e => {
+  const row = e.target.closest('.row'); if (!row) return;
+  const i = +row.dataset.i;
+  if (e.target.closest('.del')) { state.rows.splice(i, 1); renderList(); }
+  if (e.target.closest('.dup')) {
+    state.rows.splice(i + 1, 0, { ...state.rows[i], name: state.rows[i].name + '（コピー）' });
+    renderList();
+  }
+});
+
+document.getElementById('add').onclick = () => {
+  const last = state.rows[state.rows.length - 1];
+  state.rows.push({ name: `比較${state.rows.length + 1}`, cost: last ? last.cost : 10000, buy: 0, point: 0, fee: 0, qty: 1 });
+  renderList();
+  const inputs = $list.querySelectorAll(`.row[data-i="${state.rows.length - 1}"] input[data-k="buy"]`);
+  if (inputs[0]) inputs[0].focus();
+};
+document.getElementById('reset').onclick = () => {
+  if (!confirm('いまの入力を消して例に戻しますか？')) return;
+  state = EXAMPLE(); syncSeg(); renderList();
+};
+document.getElementById('copy').onclick = async () => {
+  const head = ['名前', '買った額', '買取価格', '還元率', '経費', '個数', '受け取る額', '利益', '利益率', '買取率'];
+  const lines = order().map(({ r, c }) => [r.name, r.cost, r.buy, r.point + '%', r.fee, c.qty,
+    Math.round(c.recv), Math.round(c.profit), Number.isFinite(c.rate) ? c.rate.toFixed(1) + '%' : '', Number.isFinite(c.buyRate) ? c.buyRate.toFixed(1) + '%' : ''].join('\t'));
+  const text = [head.join('\t'), ...lines].join('\n');
+  try { await navigator.clipboard.writeText(text); toast('コピーしました（表計算ソフトに貼れます）'); }
+  catch (e) { toast('コピーできませんでした'); }
+};
+
+function bindSeg(id, key) {
+  document.getElementById(id).addEventListener('click', e => {
+    const b = e.target.closest('button[data-v]'); if (!b) return;
+    state[key] = b.dataset.v; syncSeg(); renderList();
+  });
+}
+function syncSeg() {
+  for (const [id, key] of [['basis', 'basis'], ['sort', 'sort']])
+    document.querySelectorAll(`#${id} button`).forEach(b => b.setAttribute('aria-pressed', b.dataset.v === state[key]));
+}
+bindSeg('basis', 'basis'); bindSeg('sort', 'sort');
+
+let tt;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('on');
+  clearTimeout(tt); tt = setTimeout(() => el.classList.remove('on'), 1800);
+}
+
+syncSeg();
+renderList();
+</script>
+</body>
+</html>
