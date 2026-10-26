@@ -16,7 +16,7 @@
 - **音と音楽**（8） — 音声ガッちゃんこ／Suno スタイル帳／FLIP ACID／ELECTRO ALBUM QUIZ／Album Art Downloader／テクノシーケンサー／AMEN GEN／SAM
 - **ゲーム**（13） — SQUARE SLIDE／SOBA TOWER／非公式ブックオフスタンプラリー／SUBTERRA／HYPER BARRAGE／高級集合住宅詩生成落下塊頭脳遊戯／LUCKY SEVEN／STAR RAIDER／弾避け練習／DEPTH 100／URL BATTLER／SUCCULENT／Kings Knight
 - **モデルビューア**（8） — バーチャファイター2／JWE2010／ウイニングイレブン2001・2012／ファイティングバイパーズ／トバルNo.1／ReBoot／トバル2
-- **道具**（10） — ENDLESS WALK／ENDLESS FLIGHT／ENDLESS DUNGEON／ベガ観戦のお供／HORIPAD HID BENCH／フォルダスライドショー／単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
+- **道具**（11） — 買取利益率くらべ／ENDLESS WALK／ENDLESS FLIGHT／ENDLESS DUNGEON／ベガ観戦のお供／HORIPAD HID BENCH／フォルダスライドショー／単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
 
 ## 手入れするとき
 
@@ -29,6 +29,13 @@
 
 ## 更新履歴（Changelog）
 
+<<<<<<< HEAD
+=======
+- **v1.34.2** (2026-10-27) — 🎚 **Suno スタイル帳** v1.12.0: ビッグビートに「ボリウッド映画音楽型」を追加。全103件に。
+- **v1.34.1** (2026-10-27) — 🎚 **Suno スタイル帳** v1.11.0: ビッグビートのひな形7件を追加。全102件に。
+- **v1.34.0** (2026-10-26) — 💴 「道具」に **買取利益率くらべ**（買った値段と買取価格から利益率を出し、店や品物を並べて比べる／`kaitori-calc`）を追加。全40本に。このリポジトリの中に置いた（`kaitori-calc/index.html`）。
+>>>>>>> origin/main
+- **v1.33.3** (2026-10-26) — 🚶 **ENDLESS WALK** v1.3.0: 「インドの街並み」を追加（色とりどりの家並みと店、からまる電線、マリーゴールドの花かざり、牛とオートリキシャ、広場の奥の寺院の塔か玉ねぎ屋根の建物）。
 - **v1.33.2** (2026-10-26) — 🚀 **ENDLESS FLIGHT** v1.2.0: 曲を付けて「BAD END にする」にチェックを入れると、曲の終わりに前から来たミサイルに被弾して爆発して終わる終わり方を追加。
   **ENDLESS DUNGEON** v1.5.0 にも同じチェックを追加（曲の終わりにドラゴンの炎でパーティが全滅して終わる）。
 - **v1.33.1** (2026-10-26) — 🚶 **ENDLESS WALK** v1.2.0: 曲を付けて「BAD END にする」にチェックを入れると、曲の終わりに前から来た車に跳ねられて終わる終わり方を追加。
