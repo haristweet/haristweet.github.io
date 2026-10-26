@@ -13,10 +13,10 @@
 
 `index.html` の1枚のみ。外部ライブラリもビルドも無い。
 
-- **音と音楽** — 音声ガッちゃんこ／Suno スタイル帳／ELECTRO ALBUM QUIZ／Album Art Downloader／テクノシーケンサー／AMEN GEN／SAM
-- **ゲーム** — STAR RAIDER／弾避け練習／DEPTH 100／URL BATTLER／SUCCULENT／Kings Knight／勝手にスタンプラリー
-- **モデルビューア** — JWE2010／ウイニングイレブン2001・2012／ファイティングバイパーズ／バーチャファイター2／トバルNo.1／トバル2／ReBoot
-- **道具** — HORIPAD HID BENCH／フォルダスライドショー／単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
+- **音と音楽**（8） — 音声ガッちゃんこ／Suno スタイル帳／FLIP ACID／ELECTRO ALBUM QUIZ／Album Art Downloader／テクノシーケンサー／AMEN GEN／SAM
+- **ゲーム**（13） — SQUARE SLIDE／SOBA TOWER／非公式ブックオフスタンプラリー／SUBTERRA／HYPER BARRAGE／高級集合住宅詩生成落下塊頭脳遊戯／LUCKY SEVEN／STAR RAIDER／弾避け練習／DEPTH 100／URL BATTLER／SUCCULENT／Kings Knight
+- **モデルビューア**（8） — バーチャファイター2／JWE2010／ウイニングイレブン2001・2012／ファイティングバイパーズ／トバルNo.1／ReBoot／トバル2
+- **道具**（10） — ENDLESS WALK／ENDLESS FLIGHT／ENDLESS DUNGEON／ベガ観戦のお供／HORIPAD HID BENCH／フォルダスライドショー／単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
 
 ## 手入れするとき
 
