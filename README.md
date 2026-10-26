@@ -13,10 +13,10 @@
 
 `index.html` の1枚のみ。外部ライブラリもビルドも無い。
 
-- **音と音楽** — 音声ガッちゃんこ／Suno スタイル帳／ELECTRO ALBUM QUIZ／Album Art Downloader／テクノシーケンサー／AMEN GEN／SAM
-- **ゲーム** — STAR RAIDER／弾避け練習／DEPTH 100／URL BATTLER／SUCCULENT／Kings Knight／勝手にスタンプラリー
-- **モデルビューア** — JWE2010／ウイニングイレブン2001・2012／ファイティングバイパーズ／バーチャファイター2／トバルNo.1／トバル2／ReBoot
-- **道具** — HORIPAD HID BENCH／フォルダスライドショー／単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
+- **音と音楽**（8） — 音声ガッちゃんこ／Suno スタイル帳／FLIP ACID／ELECTRO ALBUM QUIZ／Album Art Downloader／テクノシーケンサー／AMEN GEN／SAM
+- **ゲーム**（13） — SQUARE SLIDE／SOBA TOWER／非公式ブックオフスタンプラリー／SUBTERRA／HYPER BARRAGE／高級集合住宅詩生成落下塊頭脳遊戯／LUCKY SEVEN／STAR RAIDER／弾避け練習／DEPTH 100／URL BATTLER／SUCCULENT／Kings Knight
+- **モデルビューア**（8） — バーチャファイター2／JWE2010／ウイニングイレブン2001・2012／ファイティングバイパーズ／トバルNo.1／ReBoot／トバル2
+- **道具**（10） — ENDLESS WALK／ENDLESS FLIGHT／ENDLESS DUNGEON／ベガ観戦のお供／HORIPAD HID BENCH／フォルダスライドショー／単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
 
 ## 手入れするとき
 
@@ -29,6 +29,7 @@
 
 ## 更新履歴（Changelog）
 
+- **v1.33.1** (2026-10-26) — 🚶 **ENDLESS WALK** v1.2.0: 曲を付けて「BAD END にする」にチェックを入れると、曲の終わりに前から来た車に跳ねられて終わる終わり方を追加。
 - **v1.33.0** (2026-10-26) — 🚶 「道具」に **ENDLESS WALK**（住宅街・杜の都・仙台・旧市街・ネオン街・港町を延々と歩くのを眺めてMP4に書き出す／`endless-walk`）を追加。全39本に。ENDLESS シリーズの3作目で、時刻が朝から夜へ移り変わる。
 - **v1.32.0** (2026-10-26) — 🚀 「道具」に **ENDLESS FLIGHT**（9つの景色を自機が自動で飛び続けるのを眺めてMP4に書き出す／`endless-flight`）を追加。全38本に。ENDLESS DUNGEON の姉妹作で、曲・歌詞付きの書き出しも同じ。
 - **v1.31.7** (2026-10-25) — 🎚 **Suno スタイル帳** v1.10.0: まだ無かったジャンルのひな形12件を追加。全95件に。
