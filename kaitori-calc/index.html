@@ -52,11 +52,15 @@ h1 small{display:block;font-size:13px;color:var(--muted);letter-spacing:0;margin
 .list{display:flex;flex-direction:column;gap:10px}
 .row{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;position:relative}
 .row.top{border-color:var(--gain);box-shadow:0 0 0 1px var(--gain) inset}
-.row-head{display:flex;gap:8px;align-items:center}
+.row-head{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
 .row-head .no{font-family:var(--f-mono);font-size:12px;color:var(--muted);min-width:1.6em}
-.row-head input.name{flex:1;min-width:0;font:inherit;font-weight:700;font-size:16px;border:1px solid transparent;background:transparent;color:var(--ink);border-radius:6px;padding:4px 6px}
-.row-head input.name:hover{border-color:var(--line)}
-.row-head input.name:focus{border-color:var(--accent);outline:none;background:var(--sunk)}
+.row-head .names{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px}
+.row-head .nf{flex:1 1 10em;min-width:0;display:flex;flex-direction:column;gap:1px}
+.row-head .nf span{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.04em;padding-left:7px}
+.row-head .nf input{width:100%;font:inherit;font-weight:700;font-size:16px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:8px;padding:5px 8px}
+.row-head .nf.item{flex-grow:2}
+.row-head .nf.shop input{font-weight:500}
+.row-head .nf input:focus{border-color:var(--accent);outline:none}
 .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--gain-soft);color:var(--gain);white-space:nowrap}
 .icon{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--muted);font:inherit;font-size:13px;border-radius:8px;min-width:36px;min-height:36px;cursor:pointer;padding:0 8px}
 .icon:hover{color:var(--accent);border-color:var(--accent)}
@@ -87,7 +91,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 /* 比較の棒 */
 .chart{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
 .chart h2{font-size:14px;margin:0 0 4px;color:var(--muted)}
-.bar{display:grid;grid-template-columns:minmax(0,9em) minmax(0,1fr) 5.5em;gap:10px;align-items:center;font-size:13px}
+.bar{display:grid;grid-template-columns:minmax(0,13em) minmax(0,1fr) 5.5em;gap:10px;align-items:center;font-size:13px}
 .bar .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bar .track{position:relative;height:18px;background:var(--sunk);border-radius:4px}
 .bar .zero{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--muted)}
@@ -114,7 +118,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 <div class="wrap">
   <header>
     <h1>買取利益率くらべ<small>買った値段と買取価格から利益率を出して、いくつも並べて比べる</small></h1>
-    <span class="ver">v1.0.0</span>
+    <span class="ver">v1.1.0</span>
   </header>
 
   <section class="best" id="best" aria-live="polite"></section>
@@ -158,6 +162,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <details>
       <summary>更新履歴</summary>
       <ul>
+        <li><code>v1.1.0</code> (2026-10-27) 行ごとに「商品名」の欄を足した（前からの名前の欄は「買取店・メモ」に）。行を足すと前の行の商品名を引き継ぐ。表のコピーにも商品名の列。</li>
         <li><code>v1.0.0</code> (2026-10-26) 最初の版。行ごとに利益・利益率・買取率・トントンの還元率を出し、いちばん得な行に印。棒で比較・表のコピー。</li>
       </ul>
     </details>
@@ -170,9 +175,9 @@ const KEY = 'kaitori-calc:v1';
 const EXAMPLE = () => ({
   basis: 'cost', sort: 'input',
   rows: [
-    { name: '買取店A', cost: 10000, buy: 9000, point: 0,  fee: 0,   qty: 1 },
-    { name: '買取店B', cost: 10000, buy: 9300, point: 0,  fee: 500, qty: 1 },
-    { name: '買取店A＋還元10%で購入', cost: 10000, buy: 9000, point: 10, fee: 0, qty: 1 },
+    { item: 'ワイヤレスイヤホン', name: '買取店A', cost: 10000, buy: 9000, point: 0,  fee: 0,   qty: 1 },
+    { item: 'ワイヤレスイヤホン', name: '買取店B', cost: 10000, buy: 9300, point: 0,  fee: 500, qty: 1 },
+    { item: 'ワイヤレスイヤホン', name: '買取店A（還元10%で購入）', cost: 10000, buy: 9000, point: 10, fee: 0, qty: 1 },
   ],
 });
 
@@ -181,7 +186,8 @@ let state = load();
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    if (s && Array.isArray(s.rows)) return { ...EXAMPLE(), ...s };
+    // v1.0 の行には商品名が無い
+    if (s && Array.isArray(s.rows)) return { ...EXAMPLE(), ...s, rows: s.rows.map(r => ({ item: '', ...r })) };
   } catch (e) {}
   return EXAMPLE();
 }
@@ -224,6 +230,7 @@ const pct = (v, d = 1) => Number.isFinite(v) ? (v < 0 ? '−' : '') + Math.abs(v
 const signedPct = v => Number.isFinite(v) ? (v > 0 ? '+' : '') + pct(v) : '—';
 const tone = v => !Number.isFinite(v) || Math.abs(v) < 0.05 ? 'even' : v > 0 ? 'gain' : 'loss';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const label = r => [r.item, r.name].filter(Boolean).join('・') || '名前なし';
 const fmtIn = v => v ? (Number.isInteger(v) ? v.toLocaleString('ja-JP') : String(v)) : '';
 
 function order() {
@@ -251,7 +258,10 @@ function rowHTML(r, i, no) {
   return `<div class="row" data-i="${i}">
     <div class="row-head">
       <span class="no">${no}</span>
-      <input class="name" data-k="name" value="${esc(r.name)}" placeholder="店や品物の名前" aria-label="名前">
+      <span class="names">
+        <label class="nf item"><span>商品名</span><input data-k="item" value="${esc(r.item || '')}" placeholder="例: ワイヤレスイヤホン"></label>
+        <label class="nf shop"><span>買取店・メモ</span><input data-k="name" value="${esc(r.name)}" placeholder="例: 買取店A"></label>
+      </span>
       <span class="badge" hidden>いちばん得</span>
       <button type="button" class="icon dup" title="この行を複製" aria-label="複製">⧉</button>
       <button type="button" class="icon del" title="この行を消す" aria-label="消す">✕</button>
@@ -299,7 +309,7 @@ function renderBest(bi) {
   const i = bi >= 0 ? bi : 0, r = state.rows[i], c = calc(r);
   el.innerHTML = `<div class="lbl">${bi >= 0 ? 'いちばん得' : '結果'}</div>
     <div class="big ${tone(c.rate)}">${signedPct(c.rate)}</div>
-    <div class="who">${esc(r.name || '名前なし')}</div>
+    <div class="who">${esc(label(r))}</div>
     <div class="sub">利益 <b class="num ${tone(c.profit)}">${signedYen(c.profit)}</b>・買取率 <span class="num">${pct(c.buyRate)}</span>${
       state.rows.length > 1 ? `・${state.rows.length}件を比較` : ''}</div>`;
 }
@@ -311,23 +321,27 @@ function renderChart(bi) {
   el.hidden = false;
   const lo = Math.min(0, ...items.map(x => x.c.rate)), hi = Math.max(0, ...items.map(x => x.c.rate));
   const span = (hi - lo) || 1, z = -lo / span * 100;
+  // 全部同じ商品なら棒の名前は店だけにする（商品名で切れて見分けられなくなるので）
+  const same = new Set(state.rows.map(r => r.item || '')).size <= 1;
+  const short = r => same ? (r.name || r.item || '名前なし') : label(r);
   el.innerHTML = `<h2>利益率の比較（${state.basis === 'sales' ? '受け取る額' : '買った額'}に対して）</h2>` + items.map(({ r, i, c }) => {
     const w = Math.abs(c.rate) / span * 100, left = c.rate >= 0 ? z : z - w;
-    return `<div class="bar"><span class="n" title="${esc(r.name)}">${i === bi ? '★ ' : ''}${esc(r.name || '名前なし')}</span>
+    return `<div class="bar"><span class="n" title="${esc(label(r))}">${i === bi ? '★ ' : ''}${esc(short(r))}</span>
       <span class="track"><span class="fill ${c.rate >= 0 ? 'gain' : 'loss'}" style="left:${left}%;width:${w}%"></span><span class="zero" style="left:${z}%"></span></span>
       <span class="v ${tone(c.rate)}">${signedPct(c.rate)}</span></div>`;
   }).join('');
 }
 
+const TEXT_KEYS = new Set(['item', 'name']);
 $list.addEventListener('input', e => {
   const k = e.target.dataset.k; if (!k) return;
   const i = +e.target.closest('.row').dataset.i;
-  state.rows[i][k] = k === 'name' ? e.target.value : parseNum(e.target.value);
+  state.rows[i][k] = TEXT_KEYS.has(k) ? e.target.value : parseNum(e.target.value);
   update();
 });
 // 打ち終えたら数字を整えて、並べ替え中なら並べ直す
 $list.addEventListener('change', e => {
-  const k = e.target.dataset.k; if (!k || k === 'name') { if (state.sort !== 'input') renderList(); return; }
+  const k = e.target.dataset.k; if (!k || TEXT_KEYS.has(k)) { if (state.sort !== 'input') renderList(); return; }
   e.target.value = fmtIn(state.rows[+e.target.closest('.row').dataset.i][k]);
   if (state.sort !== 'input') renderList();
 });
@@ -343,7 +357,7 @@ $list.addEventListener('click', e => {
 
 document.getElementById('add').onclick = () => {
   const last = state.rows[state.rows.length - 1];
-  state.rows.push({ name: `比較${state.rows.length + 1}`, cost: last ? last.cost : 10000, buy: 0, point: 0, fee: 0, qty: 1 });
+  state.rows.push({ item: last ? last.item : '', name: `比較${state.rows.length + 1}`, cost: last ? last.cost : 10000, buy: 0, point: 0, fee: 0, qty: 1 });
   renderList();
   const inputs = $list.querySelectorAll(`.row[data-i="${state.rows.length - 1}"] input[data-k="buy"]`);
   if (inputs[0]) inputs[0].focus();
@@ -353,8 +367,8 @@ document.getElementById('reset').onclick = () => {
   state = EXAMPLE(); syncSeg(); renderList();
 };
 document.getElementById('copy').onclick = async () => {
-  const head = ['名前', '買った額', '買取価格', '還元率', '経費', '個数', '受け取る額', '利益', '利益率', '買取率'];
-  const lines = order().map(({ r, c }) => [r.name, r.cost, r.buy, r.point + '%', r.fee, c.qty,
+  const head = ['商品名', '買取店・メモ', '買った額', '買取価格', '還元率', '経費', '個数', '受け取る額', '利益', '利益率', '買取率'];
+  const lines = order().map(({ r, c }) => [r.item || '', r.name, r.cost, r.buy, r.point + '%', r.fee, c.qty,
     Math.round(c.recv), Math.round(c.profit), Number.isFinite(c.rate) ? c.rate.toFixed(1) + '%' : '', Number.isFinite(c.buyRate) ? c.buyRate.toFixed(1) + '%' : ''].join('\t'));
   const text = [head.join('\t'), ...lines].join('\n');
   try { await navigator.clipboard.writeText(text); toast('コピーしました（表計算ソフトに貼れます）'); }
