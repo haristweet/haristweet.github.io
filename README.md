@@ -16,7 +16,7 @@
 - **音と音楽**（8） — 音声ガッちゃんこ／Suno スタイル帳／FLIP ACID／ELECTRO ALBUM QUIZ／Album Art Downloader／テクノシーケンサー／AMEN GEN／SAM
 - **ゲーム**（13） — SQUARE SLIDE／SOBA TOWER／非公式ブックオフスタンプラリー／SUBTERRA／HYPER BARRAGE／高級集合住宅詩生成落下塊頭脳遊戯／LUCKY SEVEN／STAR RAIDER／弾避け練習／DEPTH 100／URL BATTLER／SUCCULENT／Kings Knight
 - **モデルビューア**（8） — バーチャファイター2／JWE2010／ウイニングイレブン2001・2012／ファイティングバイパーズ／トバルNo.1／ReBoot／トバル2
-- **道具**（12） — ENDLESS DRIVE／買取利益率くらべ／ENDLESS WALK／ENDLESS FLIGHT／ENDLESS DUNGEON／ベガ観戦のお供／HORIPAD HID BENCH／フォルダスライドショー／単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
+- **道具**（13） — ENDLESS TRAIN／ENDLESS DRIVE／買取利益率くらべ／ENDLESS WALK／ENDLESS FLIGHT／ENDLESS DUNGEON／ベガ観戦のお供／HORIPAD HID BENCH／フォルダスライドショー／単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
 
 ## 手入れするとき
 
@@ -29,6 +29,7 @@
 
 ## 更新履歴（Changelog）
 
+- **v1.36.0** (2026-10-27) — 🚃 「道具」に **ENDLESS TRAIN**（郊外の街・田園・山あいの渓谷・海沿い・雪国を走る列車の車窓を延々と眺めてMP4に書き出す／`endless-train`）を追加。全42本に。ENDLESS シリーズの5作目で、トンネル・鉄橋・駅の通過・すれ違う列車、曲の終わりの BAD END（脱線）付き。あわせて **ENDLESS WALK** v1.3.1: 開いた直後に時刻のひとことが一度に全部出ていたのを直した。
 - **v1.35.0** (2026-10-27) — 🚗 「道具」に **ENDLESS DRIVE**（首都高の夜景・海沿い・峠・トンネル・田園・雪の国道・夕陽の海岸線を車で延々と走るのを眺めてMP4に書き出す／`endless-drive`）を追加。全41本に。ENDLESS シリーズの4作目で、対向車とヘッドライト、運転席の視点、曲の終わりの BAD END（正面衝突）付き。
 - **v1.34.4** (2026-10-27) — 💴 **買取利益率くらべ** v1.1.0: 行ごとに「商品名」の欄を追加（前からの名前の欄は「買取店・メモ」に）。表のコピーにも商品名の列。
 - **v1.34.3** (2026-10-27) — 🚶 **ENDLESS WALK** v1.3.0: 「インドの街並み」を追加（色とりどりの家並みと店、からまる電線、マリーゴールドの花かざり、牛とオートリキシャ、広場の奥の寺院の塔か玉ねぎ屋根の建物）。
