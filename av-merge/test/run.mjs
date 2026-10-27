@@ -13,6 +13,8 @@ const { chromium } = require(process.env.PLAYWRIGHT || "playwright");
 
 const CORE = resolve(process.argv[2] || "");
 const OUT = resolve(process.argv[3] || "test-out");
+// 歌詞の字の形（M PLUS Rounded 1c ExtraBold の ttf）。無ければ歌詞の試験は飛ばす
+const FONT = process.env.FONT ? resolve(process.env.FONT) : "";
 const ROOT = resolve(new URL("..", import.meta.url).pathname);
 await mkdir(OUT, { recursive: true });
 
@@ -32,6 +34,10 @@ ff("-display_rotation", "90", "-i", S("v_same2.mp4"), "-c", "copy", S("v_rot.mp4
 // 軽くする用: 1080p の横長と縦長（音付き）
 ff("-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=30:duration=2", "-f", "lavfi", "-i", "sine=f=440:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", S("v_big.mp4"));
 ff("-f", "lavfi", "-i", "testsrc=size=1080x1920:rate=30:duration=3", "-f", "lavfi", "-i", "sine=f=440:duration=3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", S("v_bigtall.mp4"));
+// 歌詞の見本: 真っ黒の 8 秒（字が出たか明るさで分かる）、時刻付き（0.5 秒と 3 秒に出て 6 秒で消える）と時刻なしの歌詞入り mp3
+ff("-f", "lavfi", "-i", "color=c=black:s=640x360:r=25:d=8", "-c:v", "libx264", "-pix_fmt", "yuv420p", S("v_black.mp4"));
+ff("-f", "lavfi", "-i", "sine=f=500:duration=8", "-c:a", "libmp3lame", "-metadata", "lyrics=[00:00.50]いちばん目の歌詞\n[00:03.00]二番目 second\n[00:06.00]", S("a_lrc.mp3"));
+ff("-f", "lavfi", "-i", "sine=f=500:duration=8", "-c:a", "libmp3lame", "-metadata", "lyrics=時刻の無い一行目\n二行目", S("a_plain.mp3"));
 ff("-f", "lavfi", "-i", "sine=f=880:duration=10", "-c:a", "libmp3lame", S("a_10s.mp3"));
 ff("-f", "lavfi", "-i", "sine=f=660:duration=2", S("a_2s.wav"));
 
@@ -41,7 +47,7 @@ const probe = (p) => JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_s
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "application/wasm" };
 const server = createServer(async (req, res) => {
   const u = decodeURIComponent(new URL(req.url, "http://x").pathname);
-  const file = u.startsWith("/core/") ? join(CORE, u.slice(6)) : join(ROOT, u.endsWith("/") ? u + "index.html" : u);
+  const file = u.startsWith("/core/") ? join(CORE, u.slice(6)) : u === "/font.ttf" ? FONT : join(ROOT, u.endsWith("/") ? u + "index.html" : u);
   try {
     const body = await readFile(file);
     res.writeHead(200, { "content-type": TYPES[extname(file)] || "application/octet-stream", "content-length": body.length });
@@ -54,10 +60,18 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 900, height: 1300 }, acceptDownloads: true });
 page.on("pageerror", (e) => console.log("pageerror:", e.message));
 // chunk=0.7 で逆回しを区切りに分けさせ、つなぎ目も通す
-await page.goto(`${base}?chunk=0.7&core=${encodeURIComponent(base + "core")}`);
+await page.goto(`${base}?chunk=0.7&core=${encodeURIComponent(base + "core")}&font=${encodeURIComponent(base + "font.ttf")}`);
 await page.screenshot({ path: S("shot_empty.png"), fullPage: true });
 
 const cases = [
+  ...(FONT ? [
+    { name: "歌詞・時刻付きを焼き込む", v: "v_black.mp4", a: "a_lrc.mp3", set: {}, dur: 8, vcodec: "h264", copy: false, note: /歌詞を 2 回/,
+      lyrics: { status: /時刻付き 2 行/, on: true, at: [[0.2, false], [1.5, true], [4, true], [7, false]], shot: 1.5 } },
+    { name: "歌詞・頭出しと入れ始めでずれる", v: "v_black.mp4", a: "a_lrc.mp3", set: { askip: 1, adelay: 2 }, dur: 8, vcodec: "h264",
+      lyrics: { status: /時刻付き 2 行/, on: true, at: [[1.3, false], [2.2, true], [6.5, true], [7.5, false]] } },
+    { name: "歌詞・時刻なしは焼き込まない", v: "v_black.mp4", a: "a_plain.mp3", set: {}, dur: 8, vcodec: "h264", copy: true,
+      lyrics: { status: /時刻が無いので/, on: true, at: [[1.5, false]] } },
+  ] : []),
   { name: "差し替え・動画に合わせる", v: "v_h264.mp4", a: "a_10s.mp3", set: {}, dur: 6, acodec: "aac", vcodec: "h264", copy: true },
   { name: "混ぜる・短いほう", v: "v_h264.mp4", a: "a_2s.wav", set: { orig: "mix", len: "shortest" }, dur: 2 },
   { name: "音声をくり返す・無音の動画に混ぜる", v: "v_mute.mov", a: "a_2s.wav", set: { orig: "mix", len: "loop" }, dur: 5, note: /差し替え/ },
@@ -92,6 +106,12 @@ for (const [i, c] of cases.entries()) {
   if (await page.isVisible("#vclear")) await page.click("#vclear");
   await page.setInputFiles("#vfile", [c.v].flat().map(S));
   await page.setInputFiles("#afile", S(c.a));
+  if (c.lyrics) {
+    // 歌詞を読み終わるのを待って、案内と「焼き込む」の印を確かめる
+    await page.waitForFunction(() => !/探しています/.test(document.getElementById("lyStatus").textContent), null, { timeout: 5000 });
+    c.lyStatus = await page.$eval("#lyStatus", (e) => e.textContent);
+    c.lyOn = await page.$eval("#lyOn", (e) => e.checked);
+  }
   await page.check(`input[name=orig][value=${c.set.orig || "replace"}]`, { force: true });
   await page.check(`input[name=len][value=${c.set.len || "video"}]`, { force: true });
   if (c.set.len === "audio") await page.check(`input[name=vloop][value=${c.set.vloop || "repeat"}]`, { force: true });
@@ -153,9 +173,36 @@ for (const [i, c] of cases.entries()) {
   if (c.size && `${v?.width}x${v?.height}` !== c.size) probs.push(`大きさ ${v?.width}x${v?.height}`);
   if (c.rot && !JSON.stringify(v?.side_data_list || []).includes("rotation")) probs.push("回す印が消えた");
   if (c.note && !c.note.test(rinfo)) probs.push(`知らせが無い: ${rinfo}`);
+  if (c.lyrics) {
+    if (!c.lyrics.status.test(c.lyStatus)) probs.push(`歌詞の案内が違う: ${c.lyStatus}`);
+    if (c.lyOn !== c.lyrics.on) probs.push(`焼き込むの印が ${c.lyOn}`);
+    // 黒い動画の下のほうの明るさ: 字が出ている時刻は明るく、出ていない時刻は真っ黒
+    for (const [t, lit] of c.lyrics.at) {
+      const yy = parseFloat((execFileSync("sh", ["-c", `ffmpeg -hide_banner -ss ${t} -i '${out}' -frames:v 1 -vf "crop=iw:ih/3:0:ih*2/3,signalstats,metadata=print:key=lavfi.signalstats.YAVG" -f null - 2>&1 | grep -o 'YAVG=[0-9.]*' | head -1`]).toString().split("=")[1]) || "0");
+      if (lit ? yy < 16.8 : yy > 16.8) probs.push(`${t} 秒の字の明るさ ${yy.toFixed(1)}（${lit ? "字が出るはず" : "何も出ないはず"}）`);
+    }
+    if (c.lyrics.shot) execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-ss", String(c.lyrics.shot), "-i", out, "-frames:v", "1", S(`shot_lyrics_${i}.png`)]);
+  }
   console.log(`${probs.length ? "NG" : "OK"} ${c.name}: ${dur.toFixed(2)}s ${v?.codec_name}/${a?.codec_name} ${(await stat(out)).size}B ${probs.join(" / ")}`);
   if (probs.length) fail++;
   if (i === 0) await page.screenshot({ path: S("shot_result.png"), fullPage: true });
+}
+// 歌詞にタップで時刻を付ける: 曲を流して 2 回押すと、2 行に時刻が付くか
+if (FONT && (!process.env.ONLY || "タップ".includes(process.env.ONLY))) {
+  const p3 = await browser.newPage();
+  await p3.goto(`${base}?core=${encodeURIComponent(base + "core")}`);
+  await p3.setInputFiles("#afile", S("a_plain.mp3"));
+  await p3.waitForFunction(() => /時刻なし 2 行/.test(document.getElementById("lyStatus").textContent), null, { timeout: 5000 });
+  await p3.click("#lyTap");
+  await p3.waitForTimeout(1200); await p3.keyboard.press("Space");
+  await p3.waitForTimeout(1000); await p3.keyboard.press("Space");
+  const text = await p3.$eval("#lyText", (e) => e.value);
+  const ts = [...text.matchAll(/\[(\d+):(\d+\.\d+)\]/g)].map((m) => +m[1] * 60 + +m[2]);
+  const ok = ts.length === 2 && ts[0] > 0.8 && ts[1] - ts[0] > 0.6 && /\]時刻の無い一行目\n\[.*\]二行目/.test(text);
+  console.log(`${ok ? "OK" : "NG"} タップで時刻を付ける: ${JSON.stringify(text)}`);
+  if (!ok) fail++;
+  await p3.screenshot({ path: S("shot_tap.png"), fullPage: true });
+  await p3.close();
 }
 // メモリの警告: 境目を下げたページで、大きすぎる見込みなら警告が出るか
 if (!process.env.ONLY || "メモリの警告".includes(process.env.ONLY)) {

@@ -94,6 +94,9 @@
   .seg label:has(input:checked) { background: var(--accent); color: var(--accent-ink); }
   .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
   .seg label:has(input:disabled) { opacity: .4; cursor: not-allowed; }
+  #lyText { width: 100%; min-height: 9em; resize: vertical; font-family: var(--mono); font-size: 13px; line-height: 1.6; padding: 8px; border: 1px solid var(--rule); border-radius: 8px; background: var(--ground); color: var(--ink); }
+  .lynow { min-height: 1.6em; font-weight: 700; text-align: center; padding: 6px; border-radius: 8px; background: var(--ground); }
+  .tapbtn { font: inherit; font-weight: 700; padding: 14px; border: 0; border-radius: 12px; background: var(--accent); color: var(--accent-ink); cursor: pointer; width: 100%; }
   input[type=number] { width: 5.5em; padding: 4px 6px; font: inherit; border: 1px solid var(--rule); border-radius: 8px; background: var(--ground); color: var(--ink); }
   input[type=range] { width: min(220px, 100%); accent-color: var(--accent); }
   .vol { font-family: var(--mono); font-size: 13px; min-width: 3.5em; }
@@ -217,6 +220,42 @@
     <p class="note" id="sizeNote"></p>
   </section>
 
+  <section class="panel" id="lyPanel" hidden>
+    <h2>歌詞</h2>
+    <p class="note" id="lyStatus"></p>
+    <label><input type="checkbox" id="lyOn"> 歌詞を動画に焼き込む</label>
+    <div id="lyBody" hidden>
+      <div class="row">
+        <button class="ghost" id="lyTap" type="button">▶ 流しながら最初から時刻を付ける</button>
+        <button class="ghost small" id="lyClear" type="button">時刻を全部消す</button>
+      </div>
+      <div id="lyTapBox" hidden>
+        <p class="note">歌い出しのところでスペースキーかボタンを押すと、その行に今の時刻が付きます。</p>
+        <button class="tapbtn" id="lyTapNext" type="button"></button>
+        <div class="row"><button class="ghost small" id="lyTapStop" type="button">止める</button></div>
+      </div>
+      <div class="lynow" id="lyNow" aria-live="polite"></div>
+      <textarea id="lyText" spellcheck="false" aria-label="歌詞（[分:秒] で時刻）"></textarea>
+      <p class="note">1行が1回の表示です。行の頭の <code>[01:02.50]</code> が出る時刻（曲の中の時刻）で、次の行まで出ます。時刻だけの行を書くと、そこで消えます。時刻の無い行は出ません。</p>
+      <div class="row">
+        <span class="lab">文字の大きさ</span>
+        <span class="seg">
+          <label><input type="radio" name="lysize" value="s">小</label>
+          <label><input type="radio" name="lysize" value="m" checked>中</label>
+          <label><input type="radio" name="lysize" value="l">大</label>
+        </span>
+      </div>
+      <div class="row">
+        <span class="lab">位置</span>
+        <span class="seg">
+          <label><input type="radio" name="lypos" value="bottom" checked>下</label>
+          <label><input type="radio" name="lypos" value="middle">まん中</label>
+        </span>
+      </div>
+      <p class="note">歌詞を入れると動画を全部作り直すので、入れないときより時間がかかります。はじめの1回だけ日本語の字の形（約3.6MB）を読み込みます。</p>
+    </div>
+  </section>
+
   <button class="go" id="go" disabled>ガッちゃんこする</button>
 
   <section class="panel" id="work" hidden>
@@ -250,9 +289,14 @@
 
 <script type="module">
 import { FFmpeg } from "./vendor/ffmpeg/index.js";
+import { readEmbeddedLyrics, parseLrc, buildAss, fmtLrc } from "./lyrics.js";
 
 // 試験のときは ?core=<フォルダのURL> で読み込み先を差し替える
 const PARAMS = new URLSearchParams(location.search);
+// 歌詞の字の形（M PLUS Rounded 1c ExtraBold、OFL）。試験では ?font= で差し替える
+const FONT_URL = PARAMS.get("font") || "https://cdn.jsdelivr.net/npm/@expo-google-fonts/m-plus-rounded-1c@0.4.4/800ExtraBold/MPLUSRounded1c_800ExtraBold.ttf";
+const FONT_NAME = "Rounded Mplus 1c ExtraBold";
+let fontBytes = null;
 const CORE_BASE = PARAMS.get("core") || "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
 // 逆回しの区切りの長さの上限（秒）。試験で区切りのつなぎ目を通すため
 const CHUNK_MAX = +PARAMS.get("chunk") || Infinity;
@@ -353,8 +397,89 @@ function setAudio(file) {
   prev.hidden = false;
   $("aname").textContent = `${file.name}（${fmtMB(file.size)}）`;
   prev.onloadedmetadata = refresh;
+  loadLyrics(file);
   refresh();
 }
+
+// ── 歌詞 ──
+let lyToken = 0;
+async function loadLyrics(file) {
+  const my = ++lyToken;
+  $("lyPanel").hidden = false;
+  $("lyStatus").textContent = "歌詞を探しています…";
+  const r = await readEmbeddedLyrics(file);
+  if (my !== lyToken) return;
+  $("lyText").value = r.text.replace(/\r\n?/g, "\n").trim();
+  $("lyOn").checked = !!r.text.trim();
+  lyRefresh(r.source);
+}
+
+function lyLines() { return parseLrc($("lyText").value); }
+
+function lyRefresh(source) {
+  if (source !== undefined) $("lyText").dataset.source = source;
+  const src = $("lyText").dataset.source || "";
+  const { timed, untimed } = lyLines();
+  const shown = timed.filter((l) => l.text).length;
+  const has = timed.length + untimed.length > 0;
+  let st = !has && !src ? "この音声ファイルには歌詞が入っていませんでした。下に貼り付けて使うこともできます。"
+    : `${src ? src + " の歌詞" : "歌詞"}：時刻付き ${shown} 行` + (untimed.length ? `・時刻なし ${untimed.length} 行` : "");
+  if (has && untimed.length && !timed.length) st += "。時刻が無いので、「流しながら最初から時刻を付ける」で付けてください。";
+  else if (untimed.length) st += "（時刻なしの行は出ません）";
+  $("lyStatus").textContent = st;
+  $("lyBody").hidden = !$("lyOn").checked;
+}
+
+// 時刻を付ける: 曲を頭から流し、押すたびに次の行の頭に今の時刻を書く
+let tap = null;
+function lyTapLabel() {
+  const rows = $("lyText").value.split("\n");
+  const next = tap && rows.slice(tap.row).findIndex((r) => r.trim() && !/^\s*\[[a-z]+:.*\]\s*$/i.test(r));
+  if (!tap || next < 0) { $("lyTapNext").textContent = "（最後の行まで付けました）"; return -1; }
+  tap.row += next;
+  $("lyTapNext").textContent = `この行を出す ▶ ${rows[tap.row].replace(/\[\d+:\d+(?:[.:]\d+)?\]/g, "").trim()}`;
+  return tap.row;
+}
+function lyTapStart() {
+  const a = $("aprev");
+  $("lyText").value = $("lyText").value.split("\n").map((r) => r.replace(/^(\s*\[\d+:\d+(?:[.:]\d+)?\])+/, "").trim()).filter((r, i, all) => r || (i > 0 && all[i - 1])).join("\n").trim();
+  tap = { row: 0 };
+  $("lyTapBox").hidden = false;
+  lyTapLabel();
+  a.currentTime = 0; a.play();
+  $("lyTapNext").focus();
+  lyRefresh();
+}
+function lyTapHit() {
+  if (!tap) return;
+  const row = lyTapLabel();
+  if (row < 0) return;
+  const rows = $("lyText").value.split("\n");
+  rows[row] = `[${fmtLrc($("aprev").currentTime)}]${rows[row].replace(/^(\s*\[\d+:\d+(?:[.:]\d+)?\])+/, "").trim()}`;
+  $("lyText").value = rows.join("\n");
+  tap.row = row + 1;
+  if (lyTapLabel() < 0) lyTapStop();
+  lyRefresh();
+}
+function lyTapStop() { tap = null; $("lyTapBox").hidden = true; }
+$("lyTap").addEventListener("click", lyTapStart);
+$("lyTapNext").addEventListener("click", lyTapHit);
+$("lyTapStop").addEventListener("click", () => { lyTapStop(); $("aprev").pause(); });
+$("lyClear").addEventListener("click", () => {
+  $("lyText").value = $("lyText").value.split("\n").map((r) => r.replace(/^(\s*\[\d+:\d+(?:[.:]\d+)?\])+/, "").trim()).join("\n");
+  lyRefresh();
+});
+$("lyOn").addEventListener("change", () => lyRefresh());
+$("lyText").addEventListener("input", () => lyRefresh());
+document.addEventListener("keydown", (e) => {
+  if (tap && e.code === "Space" && document.activeElement !== $("lyText")) { e.preventDefault(); lyTapHit(); }
+});
+// 曲を流している間、今の行を見せる（時刻の確かめ用）
+$("aprev").addEventListener("timeupdate", () => {
+  const t = $("aprev").currentTime;
+  const cur = lyLines().timed.filter((l) => l.t <= t).pop();
+  $("lyNow").textContent = cur ? cur.text : "";
+});
 
 // 長さは見えない <video> で読む（読めない形式なら NaN のまま。処理には ffmpeg で調べた長さを使う）
 function addVideos(files) {
@@ -506,7 +631,8 @@ function ext(name, def) { const m = name.match(/\.([A-Za-z0-9]{1,5})$/); return 
 
 // 音声に合わせて動画をループさせるか。ループのしかた（loop）は
 //   repeat: 元の動画をそのまま繰り返す / xloop: 折り返しを重ねた部品の並び（xl。concat の一覧）を読む / bounce: 往復の動画（bounce）を作っておいて繰り返す
-function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, vvol, askip, adelay, fade, fadesec, bounce, xl }) {
+// subs があれば、その ASS 字幕を焼き込む（絵は必ず作り直す）
+function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, vvol, askip, adelay, fade, fadesec, bounce, xl, subs }) {
   const vdur = vinfo.dur;
   const adur = Math.max(0, ainfo.dur - askip);
   const mix = orig === "mix" && !!vinfo.acodec;
@@ -535,10 +661,11 @@ function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, 
     graph += `,afade=t=out:st=${(T - d).toFixed(3)}:d=${d.toFixed(3)}`;
   }
   graph += "[a]";
-  args.push("-filter_complex", graph, "-map", "0:v:0", "-map", "[a]");
+  if (subs) graph += `;[0:v:0]subtitles=filename=${subs}:fontsdir=/fonts[v]`;
+  args.push("-filter_complex", graph, "-map", subs ? "[v]" : "0:v:0", "-map", "[a]");
   // 往復・重ねた動画はもう H.264 にしてあるのでそのまま使う
   const codec = loop === "bounce" || loop === "xloop" ? "h264" : vinfo.vcodec;
-  const copy = COPY_OK.has(codec);
+  const copy = COPY_OK.has(codec) && !subs;
   if (copy) {
     args.push("-c:v", "copy");
     if (codec === "hevc") args.push("-tag:v", "hvc1");
@@ -818,13 +945,39 @@ async function run() {
       if (many) await f.deleteFile("/work/cat.mp4").catch(() => {});
       built = buildArgs(opts);
     }
-    const { args, T, copy, mix, loopV, loop } = built;
+    let { args, T, copy, mix, loopV, loop } = built;
     const bounce = loop === "bounce";
     const XL = loopFade(opts.xfade, opts.vinfo.dur);
     total = done + prepWork(built) + T;
     if (bounce) await makeBounce(f, opts.vpath, opts.vinfo, step);
     if (loop === "xloop") await makeXLoop(f, opts.vpath, opts.vinfo, XL, T, step);
-    const what = copy ? "くっつけています" : `動画を H.264 に作り直しながらくっつけています（${opts.vinfo.vcodec} のため。時間がかかります）`;
+    // 歌詞: 曲の中の時刻を、頭出し・入れ始めのぶんずらしてできあがりの時刻にする
+    const lyTimed = $("lyOn").checked ? lyLines().timed : [];
+    let lyCount = 0;
+    if (lyTimed.some((l) => l.text)) {
+      if (!fontBytes) {
+        setStatus("歌詞の字の形を読み込み中…（はじめの1回だけ）");
+        const res = await fetch(FONT_URL);
+        if (!res.ok) throw new Error(`歌詞の字の形を読めませんでした (${res.status})`);
+        fontBytes = new Uint8Array(await res.arrayBuffer());
+      }
+      if (cancelled) throw new Error("cancelled");
+      await f.createDir("/fonts").catch(() => {});
+      await f.writeFile("/fonts/lyrics.ttf", fontBytes.slice());
+      const vi = opts.vinfo, turned = Math.abs(vi.rot) % 180 === 90;
+      const W = (turned ? vi.h : vi.w) || 1280, H = (turned ? vi.w : vi.h) || 720;
+      const ass = buildAss(lyTimed, {
+        W, H, T, shift: opts.adelay - opts.askip, period: opts.len === "loop" ? Math.max(0, ainfo.dur - opts.askip) : 0,
+        size: opt("lysize"), pos: opt("lypos"), font: FONT_NAME,
+      });
+      lyCount = (ass.match(/^Dialogue:/gm) || []).length;
+      await f.createDir("/work").catch(() => {});
+      await f.writeFile("/work/lyrics.ass", new TextEncoder().encode(ass));
+      log(`[歌詞] ${lyCount} 回表示（${W}×${H}）`);
+      if (lyCount) { opts.subs = "/work/lyrics.ass"; built = buildArgs(opts); }
+    }
+    ({ args, copy } = built);
+    const what = copy ? "くっつけています" : opts.subs ? "歌詞を入れながら動画を作り直しています（時間がかかります）" : `動画を H.264 に作り直しながらくっつけています（${opts.vinfo.vcodec} のため。時間がかかります）`;
     const ret = await step(args, what, T);
     if (cancelled) return;
     if (ret !== 0) throw new Error("ffmpeg が失敗しました。下の「処理の記録」を見てください。");
@@ -846,6 +999,7 @@ async function run() {
     if (many) notes.push(`${vinfos.length} 本を${plan.same ? "そのまま" : "作り直して"}つなげました` + (plan.X > 0 ? `（つなぎ目を ${plan.X} 秒重ねて）${shortened(plan.X)}` : ""));
     if (loopV) notes.push(bounce ? "動画を逆回しで往復させました" : loop === "xloop" ? `動画を繰り返しました（折り返しを ${XL} 秒重ねて）${shortened(XL)}` : "動画を繰り返しました");
     if (light) notes.push(`${opts.vinfo.w}×${opts.vinfo.h} に軽くしました`);
+    if (lyCount) notes.push(`歌詞を ${lyCount} 回出しました`);
     if (opts.orig === "mix" && !mix) notes.push("動画に元の音が無かったので差し替えにしました");
     $("rinfo").textContent = notes.join("　");
     $("result").hidden = false;
