@@ -16,7 +16,7 @@
 - **音と音楽**（8） — 音声ガッちゃんこ／Suno スタイル帳／FLIP ACID／ELECTRO ALBUM QUIZ／Album Art Downloader／テクノシーケンサー／AMEN GEN／SAM
 - **ゲーム**（13） — SQUARE SLIDE／SOBA TOWER／非公式ブックオフスタンプラリー／SUBTERRA／HYPER BARRAGE／高級集合住宅詩生成落下塊頭脳遊戯／LUCKY SEVEN／STAR RAIDER／弾避け練習／DEPTH 100／URL BATTLER／SUCCULENT／Kings Knight
 - **モデルビューア**（8） — バーチャファイター2／JWE2010／ウイニングイレブン2001・2012／ファイティングバイパーズ／トバルNo.1／ReBoot／トバル2
-- **道具**（13） — ENDLESS TRAIN／ENDLESS DRIVE／買取利益率くらべ／ENDLESS WALK／ENDLESS FLIGHT／ENDLESS DUNGEON／ベガ観戦のお供／HORIPAD HID BENCH／フォルダスライドショー／単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
+- **道具**（14） — ENDLESS HUMAN／ENDLESS TRAIN／ENDLESS DRIVE／買取利益率くらべ／ENDLESS WALK／ENDLESS FLIGHT／ENDLESS DUNGEON／ベガ観戦のお供／HORIPAD HID BENCH／フォルダスライドショー／単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
 
 ## 手入れするとき
 
@@ -29,6 +29,7 @@
 
 ## 更新履歴（Changelog）
 
+- **v1.38.0** (2026-10-28) — 🗣 「道具」に **ENDLESS HUMAN**（ポリゴンの顔がカメラの角度を変えながら歌うのを眺めてMP4に書き出す／`endless-human`）を追加。全43本に。ENDLESS シリーズの6作目で、曲に合わせて動く口、カットで切りかわるカメラ、線画と走査線、曲の終わりの BAD END（顔が砕け散る）付き。
 - **v1.37.1** (2026-10-28) — 🎬 ENDLESS シリーズ5作（WALK v1.4.0・FLIGHT v1.3.0・DUNGEON v1.6.0・DRIVE v1.1.0・TRAIN v1.1.0）に、SNS 向けの短い版を作る機能を追加：「曲のどこから」（サビからなど）、長さ「15秒」「30秒」、画面の比率 1:1・4:5（縦長）、変わる間隔「10秒」「15秒」（DUNGEON は「階を降りる間隔」）。
 - **v1.37.0** (2026-10-27) — 🎬 **音声ガッちゃんこ**で、音声ファイルに入っている歌詞を読んで動画に焼き込めるようにした（mp3 の USLT・SYLT・TXXX、m4a の ©lyr、flac・ogg・opus の LYRICS。時刻付きならそのまま、時刻が無ければ曲を流しながらタップで付ける）。字は M PLUS Rounded 1c（OFL、jsDelivr から読む）。試験は `node av-merge/test/lyrics.test.mjs` と `FONT=<ttf> node av-merge/test/run.mjs <core>`。
 - **v1.36.0** (2026-10-27) — 🚃 「道具」に **ENDLESS TRAIN**（郊外の街・田園・山あいの渓谷・海沿い・雪国を走る列車の車窓を延々と眺めてMP4に書き出す／`endless-train`）を追加。全42本に。ENDLESS シリーズの5作目で、トンネル・鉄橋・駅の通過・すれ違う列車、曲の終わりの BAD END（脱線）付き。あわせて **ENDLESS WALK** v1.3.1: 開いた直後に時刻のひとことが一度に全部出ていたのを直した。
