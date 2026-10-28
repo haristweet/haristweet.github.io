@@ -99,6 +99,20 @@ const url = await page.inputValue("#url");
 check(/[?&]ui=0/.test(url) && /[?&]mode=all/.test(url), `枠: キー 3 で OBS 用 URL に mode=all（${url}）`);
 check((await page.textContent("#status")) === "", "枠: カメラが開けたら案内は消える");
 await page.screenshot({ path: join(OUT, "panel.png") });
+// 枠は画面を触って隠す／出す（iPhone ではキーが無い。2026-10-28 に「邪魔だった」と言われて足した）
+await page.mouse.click(900, 600);
+check(await page.isHidden("#panel"), "枠: 画面を触ると隠れる");
+await page.waitForTimeout(300);
+await page.screenshot({ path: join(OUT, "panel-hidden.png") });
+check(await page.evaluate(() => document.getElementById("tapHint").classList.contains("on")), "枠: 隠したら出し方の案内が出る");
+await page.mouse.click(900, 600);
+check(await page.isVisible("#panel"), "枠: もう一度触ると出る");
+await page.click("#hide");
+check(await page.isHidden("#panel"), "枠: 「隠す」ボタンで隠れる");
+await page.goto(`${BASE}?ui=0`);
+await page.waitForFunction(() => window.__fw?.ready, null, { timeout: 30000 });
+await page.mouse.click(640, 360);
+check(await page.isHidden("#panel"), "枠なし URL: 触っても枠は出ない");
 
 // カメラの許可が無いとき（OBS を印なしで起動したときに近い）: 案内が出る
 const denied = await browser.newPage({ viewport: { width: 1280, height: 720 } });
