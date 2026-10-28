@@ -115,9 +115,6 @@ await page.mouse.click(640, 360);
 check(await page.isHidden("#panel"), "枠なし URL: 触っても枠は出ない");
 
 // 写真の顔: 写真を傾け・暗くし・額に赤い四角を描いたものを選ぶ。カメラの顔の所に、まっすぐに直って貼られれば当たり
-const PHOTO = join(OUT, "photo.jpg");
-execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", IMG, "-vf",
-  "drawbox=x=iw*0.44:y=ih*0.105:w=iw*0.12:h=ih*0.035:color=red:t=fill,eq=brightness=-0.25,rotate=12*PI/180:fillcolor=gray", PHOTO]);
 const facePx = () => page.evaluate(() => {
   // 額（顔の範囲の上から 12%）と、顔の真ん中の明るさ
   const c = document.getElementById("view"), g = c.getContext("2d"), [x0, y0, x1, y1] = window.__fw.box, w = x1 - x0, h = y1 - y0;
@@ -132,6 +129,16 @@ await page.goto(`${BASE}`);
 await page.waitForFunction(() => window.__fw?.faces > 0, null, { timeout: 30000 });
 await page.waitForTimeout(300);
 const base = await facePx();
+// 目の所も青く塗る（網には目の穴があり、ふさがないと自分の目がのぞく。2026-10-28 に「目が怖い」と言われて直した）。
+// 目の位置はカメラの絵（写真を 1280×720 の真ん中に置いたもの）の黒目から写真の座標へ戻す
+const [iw, ih] = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", IMG]).toString().trim().split(",").map(Number);
+const k = Math.min(1280 / iw, 720 / ih), padX = (1280 - iw * k) / 2, padY = (720 - ih * k) / 2;
+const { eyes, box: cbox } = await page.evaluate(() => window.__fw);
+const er = (cbox[2] - cbox[0]) * 1280 / k * 0.07;
+const eyeBoxes = eyes.map(([x, y]) => `drawbox=x=${((x * 1280 - padX) / k - er).toFixed(0)}:y=${((y * 720 - padY) / k - er * 0.6).toFixed(0)}:w=${(2 * er).toFixed(0)}:h=${(1.2 * er).toFixed(0)}:color=blue:t=fill`).join(",");
+const PHOTO = join(OUT, "photo.jpg");
+execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", IMG, "-vf",
+  `drawbox=x=iw*0.44:y=ih*0.105:w=iw*0.12:h=ih*0.035:color=red:t=fill,${eyeBoxes},eq=brightness=-0.25,rotate=12*PI/180:fillcolor=gray`, PHOTO]);
 await page.setInputFiles("#photoFile", PHOTO);
 const gotPhoto = await page.waitForFunction(() => window.__fw?.photo && window.__fw.mode === "photo", null, { timeout: 30000 }).then(() => true, () => false);
 check(gotPhoto, "写真の顔: 写真を選ぶと「写真の顔」になる");
@@ -139,6 +146,8 @@ await page.click("#hide");
 await page.waitForTimeout(1200);
 const withMatch = await facePx();
 check(withMatch.fr > 150 && withMatch.fg < 90, `写真の顔: 写真の額の赤がカメラの顔の額に来る（${withMatch.fr.toFixed(0)},${withMatch.fg.toFixed(0)}）`);
+const eyePx = await page.evaluate(() => window.__fw.eyes.map(([x, y]) => [...document.getElementById("view").getContext("2d").getImageData(x * 1280 - 2, y * 720 - 2, 1, 1).data]));
+check(eyePx.every(([r, g, b]) => b > 120 && b > r + 60 && b > g + 60), `写真の顔: 目の穴がふさがり、写真の目（青）が出る ${JSON.stringify(eyePx)}`);
 await page.screenshot({ path: join(OUT, "photo-mode.png") });
 const { box: pbox } = await page.evaluate(() => window.__fw);
 const pcx = (pbox[0] + pbox[2]) / 2 * 1280, pcy = (pbox[1] + pbox[3]) / 2 * 720, ph = Math.max((pbox[2] - pbox[0]) * 1280, (pbox[3] - pbox[1]) * 720) * 0.8;

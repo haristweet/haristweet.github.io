@@ -65,7 +65,7 @@
 
 <div id="tapHint">画面を触ると枠が出ます</div>
 <div id="panel">
-  <h1>顔ワイヤーフレーム<small id="ver">v1.2.0</small><button type="button" id="hide">隠す</button></h1>
+  <h1>顔ワイヤーフレーム<small id="ver">v1.2.1</small><button type="button" id="hide">隠す</button></h1>
   <div id="status">読み込み中…</div>
   <div class="row"><label for="camSel">カメラ</label><select id="camSel"></select></div>
   <div class="row"><label>見せ方</label>
@@ -121,7 +121,7 @@
 </div>
 
 <script type="module">
-const VERSION = "1.2.0";
+const VERSION = "1.2.1";
 const MP = "vendor/mediapipe/";
 const $ = (id) => document.getElementById(id);
 const video = $("cam"), canvas = $("view"), ctx = canvas.getContext("2d");
@@ -252,8 +252,25 @@ async function loadLandmarker() {
   TESS = pairs(v.FaceLandmarker.FACE_LANDMARKS_TESSELATION);
   CONTOURS = pairs(v.FaceLandmarker.FACE_LANDMARKS_CONTOURS);
   OVAL = chain(pairs(v.FaceLandmarker.FACE_LANDMARKS_FACE_OVAL));
-  TRIS = triangles(TESS);
+  // 網には目の穴があいている（口も）。そのままだと写真の顔の穴から自分の目がのぞいて怖いので、
+  // 目は黒目の真ん中から扇形にふさぐ。黒目の真ん中も自分の黒目の所へ動くので、写真の目が視線について来る
+  TRIS = triangles(TESS).concat(
+    fan(468, ring(pairs(v.FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE))),
+    fan(473, ring(pairs(v.FaceLandmarker.FACE_LANDMARKS_LEFT_EYE))));
 }
+// 輪になっている辺を、一回りする点の並びにする（辺の向きはそろっていなくてよい）
+function ring(edges) {
+  const adj = new Map();
+  for (const [a, b] of edges) { (adj.get(a) || adj.set(a, []).get(a)).push(b); (adj.get(b) || adj.set(b, []).get(b)).push(a); }
+  const out = [edges[0][0]];
+  for (let prev = -1, cur = out[0]; ;) {
+    const next = adj.get(cur).find((n) => n !== prev);
+    if (next === undefined || next === out[0]) break;
+    out.push(next); prev = cur; cur = next;
+  }
+  return out;
+}
+const fan = (c, r) => r.flatMap((a, i) => [c, a, r[(i + 1) % r.length]]);
 // 網の辺から三角形を拾う（3 点が互いにつながっている組。endless-human と同じ拾い方）
 function triangles(edges) {
   const adj = new Map();
@@ -430,7 +447,8 @@ function loop() {
   // 試験（test/shots.mjs）が読む。box は 1 人目の顔の範囲（canvas の中の割合、左右反転も込み）
   const xs = faces[0]?.map((p) => (S.mirror ? 1 - p.x : p.x)), ys = faces[0]?.map((p) => p.y);
   window.__fw = { faces: faces.length, fps, w: canvas.width, h: canvas.height, mode: S.mode, ready: !!lm, photo: !!photo, gain,
-    box: xs && [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] };
+    box: xs && [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)],
+    eyes: faces[0] && [468, 473].map((i) => [S.mirror ? 1 - faces[0][i].x : faces[0][i].x, faces[0][i].y]) };
 }
 
 $("ver").textContent = "v" + VERSION;
