@@ -16,7 +16,7 @@
 - **音と音楽**（8） — 音声ガッちゃんこ／Suno スタイル帳／FLIP ACID／ELECTRO ALBUM QUIZ／Album Art Downloader／テクノシーケンサー／AMEN GEN／SAM
 - **ゲーム**（13） — SQUARE SLIDE／SOBA TOWER／非公式ブックオフスタンプラリー／SUBTERRA／HYPER BARRAGE／高級集合住宅詩生成落下塊頭脳遊戯／LUCKY SEVEN／STAR RAIDER／弾避け練習／DEPTH 100／URL BATTLER／SUCCULENT／Kings Knight
 - **モデルビューア**（8） — バーチャファイター2／JWE2010／ウイニングイレブン2001・2012／ファイティングバイパーズ／トバルNo.1／ReBoot／トバル2
-- **道具**（14） — ENDLESS HUMAN／ENDLESS TRAIN／ENDLESS DRIVE／買取利益率くらべ／ENDLESS WALK／ENDLESS FLIGHT／ENDLESS DUNGEON／ベガ観戦のお供／HORIPAD HID BENCH／フォルダスライドショー／単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
+- **道具**（15） — 顔ワイヤーフレーム／ENDLESS HUMAN／ENDLESS TRAIN／ENDLESS DRIVE／買取利益率くらべ／ENDLESS WALK／ENDLESS FLIGHT／ENDLESS DUNGEON／ベガ観戦のお供／HORIPAD HID BENCH／フォルダスライドショー／単価くらべ／予定作成ツール／格ゲー大会ビューア／COSTUME FUSION
 
 ## 手入れするとき
 
@@ -29,6 +29,7 @@
 
 ## 更新履歴（Changelog）
 
+- **v1.39.0** (2026-10-28) — 🕸 「道具」に **顔ワイヤーフレーム**（カメラに映った顔を MediaPipe の顔の点 478 点でつないだ線の網にする／`face-wireframe`）を追加。全44本に。このリポジトリの中に置いた（`face-wireframe/index.html`、MediaPipe Tasks Vision 0.10.14 を `face-wireframe/vendor/mediapipe/` に同梱）。見せ方は「重ねる」「顔だけ網」「全部網」（背景は黒・グリーンバック・透明）をボタンかキー 1・2・3・M で切り替え。線の色・太さ・光らせる・輪郭を太く・左右反転・顔の数。OBS のブラウザソース用に、枠を出さない URL（`?ui=0&mode=…`）をコピーできる（OBS は `--enable-media-stream` を付けて起動する）。絵の確かめは `node face-wireframe/test/shots.mjs <顔の写真> [出力]`（見せ方ごとの全体と顔の寄りを一覧にし、背景の色・許可が無いときの案内・URL を数字で確かめる）。
 - **v1.38.1** (2026-10-28) — 🗣 **ENDLESS HUMAN** v1.1.0: 「写真から顔を作る」を追加。正面の顔写真（生成した写真でも）から顔の478点を読み取り、その顔が歌う（写真はブラウザの中だけで使う）。
 - **v1.38.0** (2026-10-28) — 🗣 「道具」に **ENDLESS HUMAN**（ポリゴンの顔がカメラの角度を変えながら歌うのを眺めてMP4に書き出す／`endless-human`）を追加。全43本に。ENDLESS シリーズの6作目で、曲に合わせて動く口、カットで切りかわるカメラ、線画と走査線、曲の終わりの BAD END（顔が砕け散る）付き。
 - **v1.37.1** (2026-10-28) — 🎬 ENDLESS シリーズ5作（WALK v1.4.0・FLIGHT v1.3.0・DUNGEON v1.6.0・DRIVE v1.1.0・TRAIN v1.1.0）に、SNS 向けの短い版を作る機能を追加：「曲のどこから」（サビからなど）、長さ「15秒」「30秒」、画面の比率 1:1・4:5（縦長）、変わる間隔「10秒」「15秒」（DUNGEON は「階を降りる間隔」）。

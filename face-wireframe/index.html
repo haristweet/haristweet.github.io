@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>顔ワイヤーフレーム</title>
+<meta name="description" content="カメラに映った顔を線の網（ワイヤーフレーム）にする。OBS のブラウザソースで使える。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🕸</text></svg>">
+<style>
+  :root {
+    --panel: rgba(20, 22, 26, .88);
+    --ink: #e8ecef;
+    --ink-dim: #9aa3ab;
+    --rule: #3a4048;
+    --accent: #00ffa0;
+  }
+  * { box-sizing: border-box; }
+  /* OBS のブラウザソースでは背景を透かして重ねられるように、ページの地は透明にしておく */
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; color: var(--ink); }
+  body.page { background: #111; }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+  video { display: none; }
+
+  #panel {
+    position: fixed; top: 12px; left: 12px; width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; backdrop-filter: blur(6px);
+  }
+  #panel[hidden] { display: none; }
+  h1 { font-size: 15px; margin: 0 0 8px; }
+  h1 small { color: var(--ink-dim); font-weight: normal; margin-left: 6px; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+  .row > label:first-child { width: 4.5em; color: var(--ink-dim); flex: none; }
+  select, input[type=text] { background: #1c2026; color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 6px; font: inherit; }
+  select { flex: 1; min-width: 0; }
+  .seg { display: flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+  .seg button { background: none; color: var(--ink); border: 0; padding: 4px 10px; font: inherit; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--rule); }
+  .seg button[aria-pressed=true] { background: var(--accent); color: #062; font-weight: bold; }
+  input[type=range] { flex: 1; }
+  input[type=color] { width: 36px; height: 26px; border: 1px solid var(--rule); border-radius: 6px; background: none; padding: 0; }
+  .url { width: 100%; font: 12px ui-monospace, Menlo, monospace; }
+  button.plain { background: #1c2026; color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer; }
+  #status { color: #ffcf8a; margin: 6px 0; white-space: pre-wrap; }
+  #status:empty { display: none; }
+  details { margin-top: 10px; color: var(--ink-dim); }
+  details summary { cursor: pointer; color: var(--ink); }
+  details ol { padding-left: 1.3em; margin: 6px 0; }
+  code { background: #1c2026; border-radius: 4px; padding: 0 4px; font-size: 12px; word-break: break-all; }
+  .hint { color: var(--ink-dim); font-size: 12px; margin: 8px 0 0; }
+</style>
+</head>
+<body class="page">
+<video id="cam" playsinline muted></video>
+<canvas id="view"></canvas>
+
+<div id="panel">
+  <h1>顔ワイヤーフレーム<small id="ver">v1.0.0</small></h1>
+  <div id="status">読み込み中…</div>
+  <div class="row"><label for="camSel">カメラ</label><select id="camSel"></select></div>
+  <div class="row"><label>見せ方</label>
+    <div class="seg" id="modeSeg">
+      <button type="button" data-v="overlay" title="キー 1">重ねる</button>
+      <button type="button" data-v="face" title="キー 2">顔だけ網</button>
+      <button type="button" data-v="all" title="キー 3">全部網</button>
+    </div>
+  </div>
+  <div class="row"><label>背景</label>
+    <div class="seg" id="bgSeg" title="「全部網」のときの背景">
+      <button type="button" data-v="black">黒</button>
+      <button type="button" data-v="green">グリーン</button>
+      <button type="button" data-v="none">透明</button>
+    </div>
+  </div>
+  <div class="row"><label for="color">線の色</label><input type="color" id="color"><label><input type="checkbox" id="glow"> 光らせる</label></div>
+  <div class="row"><label for="width">線の太さ</label><input type="range" id="width" min="0.5" max="4" step="0.5"><span id="widthOut"></span></div>
+  <div class="row"><label>その他</label>
+    <label><input type="checkbox" id="mirror"> 左右反転</label>
+    <label><input type="checkbox" id="contour"> 輪郭を太く</label>
+  </div>
+  <div class="row"><label for="faces">顔の数</label><select id="faces"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+  <div class="row"><label>OBS 用</label><input type="text" id="url" class="url" readonly><button type="button" class="plain" id="copy">URL をコピー</button></div>
+  <p class="hint">キー: 1・2・3 で見せ方、M で順に切り替え、H でこの枠を隠す／出す。</p>
+  <details>
+    <summary>OBS での使い方</summary>
+    <ol>
+      <li>OBS を閉じて、<b>カメラを使えるようにする印</b>を付けて起動し直す。<br>
+        Windows: OBS のショートカットのプロパティの「リンク先」の最後に <code>--enable-media-stream</code> を足す。<br>
+        Mac: ターミナルで <code>open -a OBS --args --enable-media-stream</code></li>
+      <li>ここで見せ方を決め、上の「URL をコピー」を押す（この枠を出さない URL になる）。</li>
+      <li>OBS の「ソース」の＋ →「ブラウザ」→ URL に貼る。幅と高さはカメラに合わせる（例 1280×720）。</li>
+      <li>同じカメラを OBS の「映像キャプチャデバイス」でも使っていると取り合いになるので、そちらは外す。</li>
+      <li>見せ方は OBS でソースを選んで「対話」を開き、1・2・3・M キーでも切り替えられる。</li>
+      <li>Meet などに出すときは、OBS の「仮想カメラ開始」を押し、Meet のカメラで「OBS Virtual Camera」を選ぶ。</li>
+    </ol>
+    <p>カメラの映像はこのパソコンの中だけで処理し、どこにも送りません。</p>
+  </details>
+</div>
+
+<script type="module">
+const VERSION = "1.0.0";
+const MP = "vendor/mediapipe/";
+const $ = (id) => document.getElementById(id);
+const video = $("cam"), canvas = $("view"), ctx = canvas.getContext("2d");
+const status = (t) => { $("status").textContent = t; };
+
+// ── 設定。ふつうのブラウザでは覚えておき、URL に書いたものはそれより強い（OBS には URL で渡す） ──
+const DEF = { mode: "overlay", bg: "black", color: "#00ffa0", width: 1, glow: false, mirror: false, contour: false, faces: 1, cam: "" };
+const MODES = ["overlay", "face", "all"], BGS = { black: "#000000", green: "#00b140", none: null };
+const S = { ...DEF };
+const q = new URLSearchParams(location.search);
+// 枠を出さない URL（OBS 用）は URL に書いたものだけで決める。覚えた設定は読まず、書きもしない
+const showUI = q.get("ui") !== "0";
+if (showUI) try { Object.assign(S, JSON.parse(localStorage.getItem("face-wireframe") || "{}")); } catch {}
+const flag = (v) => v === "1" || v === "true";
+if (MODES.includes(q.get("mode"))) S.mode = q.get("mode");
+if (q.get("bg") in BGS) S.bg = q.get("bg");
+if (/^#?[0-9a-f]{6}$/i.test(q.get("color") || "")) S.color = "#" + q.get("color").replace("#", "");
+if (q.has("width")) S.width = Math.min(8, Math.max(0.25, +q.get("width") || DEF.width));
+for (const k of ["glow", "mirror", "contour"]) if (q.has(k)) S[k] = flag(q.get(k));
+if (q.has("faces")) S.faces = Math.min(4, Math.max(1, Math.round(+q.get("faces")) || 1));
+if (q.has("cam")) S.cam = q.get("cam");
+if (!showUI) { $("panel").hidden = true; document.body.classList.remove("page"); }
+
+function save() {
+  if (showUI) try { localStorage.setItem("face-wireframe", JSON.stringify(S)); } catch {}
+  // OBS に貼る URL。既定と同じものは書かない
+  const p = new URLSearchParams({ ui: "0" });
+  for (const k of Object.keys(DEF)) {
+    if (S[k] === DEF[k]) continue;
+    p.set(k, typeof S[k] === "boolean" ? (S[k] ? "1" : "0") : k === "color" ? S[k].slice(1) : String(S[k]));
+  }
+  $("url").value = `${location.origin}${location.pathname}?${p}`;
+}
+
+// ── 画面の部品 ──
+function syncUI() {
+  for (const [seg, key] of [["modeSeg", "mode"], ["bgSeg", "bg"]])
+    for (const b of $(seg).children) b.setAttribute("aria-pressed", String(b.dataset.v === S[key]));
+  $("color").value = S.color; $("width").value = S.width; $("widthOut").textContent = S.width;
+  $("glow").checked = S.glow; $("mirror").checked = S.mirror; $("contour").checked = S.contour; $("faces").value = S.faces;
+  save();
+}
+for (const [seg, key] of [["modeSeg", "mode"], ["bgSeg", "bg"]])
+  $(seg).addEventListener("click", (e) => { const v = e.target.dataset?.v; if (v) { S[key] = v; syncUI(); } });
+$("color").addEventListener("input", (e) => { S.color = e.target.value; syncUI(); });
+$("width").addEventListener("input", (e) => { S.width = +e.target.value; syncUI(); });
+for (const k of ["glow", "mirror", "contour"]) $(k).addEventListener("change", (e) => { S[k] = e.target.checked; syncUI(); });
+$("faces").addEventListener("change", (e) => { S.faces = +e.target.value; syncUI(); lm?.setOptions({ numFaces: S.faces }); });
+$("camSel").addEventListener("change", (e) => { S.cam = e.target.selectedOptions[0]?.textContent || ""; syncUI(); startCamera(); });
+$("copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("url").value); $("copy").textContent = "コピーした"; }
+  catch { $("url").select(); $("copy").textContent = "選んだので Ctrl+C で"; }
+  setTimeout(() => { $("copy").textContent = "URL をコピー"; }, 1500);
+});
+addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k >= "1" && k <= "3") S.mode = MODES[+k - 1];
+  else if (k === "m") S.mode = MODES[(MODES.indexOf(S.mode) + 1) % MODES.length];
+  else if (k === "h") { $("panel").hidden = !$("panel").hidden; return; }
+  else return;
+  syncUI();
+});
+syncUI();
+
+// ── カメラ。OBS とふつうのブラウザでは機械の ID が違うので、名前（の一部）で選ぶ ──
+let stream = null;
+async function startCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    status("カメラが使えません。\nOBS なら --enable-media-stream を付けて起動してください（下の「OBS での使い方」）。");
+    return false;
+  }
+  stream?.getTracks().forEach((t) => t.stop());
+  const want = { width: { ideal: 1280 }, height: { ideal: 720 } };
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
+    const hit = S.cam && devs.find((d) => d.label && d.label.toLowerCase().includes(S.cam.toLowerCase()));
+    stream = await navigator.mediaDevices.getUserMedia({ video: hit ? { ...want, deviceId: { exact: hit.deviceId } } : want, audio: false });
+    // 許可が出るまで名前は読めないので、許可のあとに選び直す
+    if (S.cam && !hit) {
+      const again = (await navigator.mediaDevices.enumerateDevices()).find((d) => d.kind === "videoinput" && d.label.toLowerCase().includes(S.cam.toLowerCase()));
+      if (again && again.deviceId !== stream.getVideoTracks()[0].getSettings().deviceId) {
+        stream.getTracks().forEach((t) => t.stop());
+        stream = await navigator.mediaDevices.getUserMedia({ video: { ...want, deviceId: { exact: again.deviceId } }, audio: false });
+      }
+    }
+  } catch (e) {
+    const why = e.name === "NotAllowedError" ? "カメラを使う許可がありません。ブラウザの許可を確かめてください。\nOBS なら --enable-media-stream を付けて起動してください。"
+      : e.name === "NotReadableError" ? "カメラをほかのアプリ（OBS の映像キャプチャデバイスなど）が使っています。"
+      : e.name === "NotFoundError" || e.name === "OverconstrainedError" ? "カメラが見つかりません。"
+      : `カメラを開けませんでした（${e.name}）。`;
+    status(why); console.error(e);
+    return false;
+  }
+  video.srcObject = stream;
+  await video.play();
+  await listCameras();
+  return true;
+}
+async function listCameras() {
+  const cur = stream?.getVideoTracks()[0]?.label || "";
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
+  $("camSel").replaceChildren(...devs.map((d, i) => Object.assign(document.createElement("option"), { textContent: d.label || `カメラ ${i + 1}`, selected: d.label === cur })));
+}
+
+// ── 顔の点（MediaPipe の Face Landmarker、同梱） ──
+let lm = null, TESS = [], CONTOURS = [];
+// 顔の外周を一回りする点の並び（FACE_OVAL の辺をつないだもの）。「顔だけ網」で顔を塗りつぶすのに使う
+let OVAL = [];
+async function loadLandmarker() {
+  const v = await import(new URL(MP + "vision_bundle.mjs", location.href).href);
+  const fs = await v.FilesetResolver.forVisionTasks(new URL(MP + "wasm", location.href).href);
+  const opt = (delegate) => ({ baseOptions: { modelAssetPath: new URL(MP + "face_landmarker.task", location.href).href, delegate }, runningMode: "VIDEO", numFaces: S.faces });
+  try { lm = await v.FaceLandmarker.createFromOptions(fs, opt("GPU")); }
+  catch (e) { console.warn("GPU が使えないので CPU で", e); lm = await v.FaceLandmarker.createFromOptions(fs, opt("CPU")); }
+  const pairs = (a) => a.map((c) => [c.start, c.end]);
+  TESS = pairs(v.FaceLandmarker.FACE_LANDMARKS_TESSELATION);
+  CONTOURS = pairs(v.FaceLandmarker.FACE_LANDMARKS_CONTOURS);
+  OVAL = chain(pairs(v.FaceLandmarker.FACE_LANDMARKS_FACE_OVAL));
+}
+function chain(edges) {
+  const next = new Map(edges);
+  const out = [edges[0][0]];
+  for (let i = 0; i < edges.length; i++) { const n = next.get(out[out.length - 1]); if (n === undefined || n === out[0]) break; out.push(n); }
+  return out;
+}
+
+// ── 描く ──
+let faces = [], lastT = -1, fps = 0, fpsT = performance.now(), fpsN = 0;
+function strokeEdges(pts, edges, W, H) {
+  ctx.beginPath();
+  for (const [a, b] of edges) {
+    const p = pts[a], r = pts[b];
+    if (!p || !r) continue;
+    ctx.moveTo(p.x * W, p.y * H); ctx.lineTo(r.x * W, r.y * H);
+  }
+  ctx.stroke();
+}
+function draw() {
+  const W = canvas.width, H = canvas.height;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (S.mirror) ctx.setTransform(-1, 0, 0, 1, W, 0);
+  if (S.mode === "all") {
+    if (BGS[S.bg]) { ctx.fillStyle = BGS[S.bg]; ctx.fillRect(0, 0, W, H); }
+  } else {
+    ctx.drawImage(video, 0, 0, W, H);
+  }
+  ctx.lineJoin = ctx.lineCap = "round";
+  for (const pts of faces) {
+    // 線の太さは顔の大きさに合わせる（顔の高さ 400px で 1 倍）。遠くの小さい顔で網がつぶれないように
+    let y0 = 1, y1 = 0;
+    for (const p of pts) { if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y; }
+    const unit = Math.min(3, Math.max(0.3, (y1 - y0) * H / 400));
+    if (S.mode === "face") {
+      ctx.beginPath();
+      OVAL.forEach((i, n) => { const p = pts[i]; n ? ctx.lineTo(p.x * W, p.y * H) : ctx.moveTo(p.x * W, p.y * H); });
+      ctx.closePath();
+      ctx.fillStyle = "#000"; ctx.fill();
+    }
+    ctx.strokeStyle = S.color;
+    ctx.shadowColor = S.color; ctx.shadowBlur = S.glow ? 6 * unit : 0;
+    ctx.lineWidth = S.width * unit;
+    strokeEdges(pts, TESS, W, H);
+    if (S.contour) { ctx.lineWidth = S.width * 2 * unit; strokeEdges(pts, CONTOURS, W, H); }
+  }
+  ctx.shadowBlur = 0;
+}
+function loop() {
+  requestAnimationFrame(loop);
+  if (video.readyState < 2 || !video.videoWidth) return;
+  if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; }
+  // 新しいコマが来たときだけ顔を探す
+  if (lm && video.currentTime !== lastT) {
+    lastT = video.currentTime;
+    const res = lm.detectForVideo(video, performance.now());
+    faces = res.faceLandmarks || [];
+    fpsN++;
+    const now = performance.now();
+    if (now - fpsT > 1000) { fps = Math.round(fpsN * 1000 / (now - fpsT)); fpsN = 0; fpsT = now; }
+  }
+  draw();
+  // 試験（test/shots.mjs）が読む。box は 1 人目の顔の範囲（canvas の中の割合、左右反転も込み）
+  const xs = faces[0]?.map((p) => (S.mirror ? 1 - p.x : p.x)), ys = faces[0]?.map((p) => p.y);
+  window.__fw = { faces: faces.length, fps, w: canvas.width, h: canvas.height, mode: S.mode, ready: !!lm,
+    box: xs && [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] };
+}
+
+$("ver").textContent = "v" + VERSION;
+(async () => {
+  const [camOk] = await Promise.all([
+    startCamera(),
+    loadLandmarker().catch((e) => { console.error(e); status("顔を探す仕組みを読み込めませんでした。ページを読み込み直してください。"); throw e; }),
+  ]);
+  if (camOk) status("");
+  loop();
+})();
+</script>
+</body>
+</html>
