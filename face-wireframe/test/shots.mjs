@@ -114,6 +114,47 @@ await page.waitForFunction(() => window.__fw?.ready, null, { timeout: 30000 });
 await page.mouse.click(640, 360);
 check(await page.isHidden("#panel"), "枠なし URL: 触っても枠は出ない");
 
+// 写真の顔: 写真を傾け・暗くし・額に赤い四角を描いたものを選ぶ。カメラの顔の所に、まっすぐに直って貼られれば当たり
+const PHOTO = join(OUT, "photo.jpg");
+execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", IMG, "-vf",
+  "drawbox=x=iw*0.44:y=ih*0.105:w=iw*0.12:h=ih*0.035:color=red:t=fill,eq=brightness=-0.25,rotate=12*PI/180:fillcolor=gray", PHOTO]);
+const facePx = () => page.evaluate(() => {
+  // 額（顔の範囲の上から 12%）と、顔の真ん中の明るさ
+  const c = document.getElementById("view"), g = c.getContext("2d"), [x0, y0, x1, y1] = window.__fw.box, w = x1 - x0, h = y1 - y0;
+  const f = g.getImageData(c.width * (x0 + w * 0.45), c.height * (y0 + h * 0.1), c.width * w * 0.1, c.height * h * 0.05).data;
+  const m = g.getImageData(c.width * (x0 + w * 0.3), c.height * (y0 + h * 0.55), c.width * w * 0.4, c.height * h * 0.1).data;
+  const avg = (d, k) => { let s = 0; for (let i = k; i < d.length; i += 4) s += d[i]; return s / (d.length / 4); };
+  return { fr: avg(f, 0), fg: avg(f, 1), lum: (avg(m, 0) + avg(m, 1) + avg(m, 2)) / 3 };
+});
+await page.goto(`${BASE}?mode=overlay`);
+await page.evaluate(() => localStorage.clear());
+await page.goto(`${BASE}`);
+await page.waitForFunction(() => window.__fw?.faces > 0, null, { timeout: 30000 });
+await page.waitForTimeout(300);
+const base = await facePx();
+await page.setInputFiles("#photoFile", PHOTO);
+const gotPhoto = await page.waitForFunction(() => window.__fw?.photo && window.__fw.mode === "photo", null, { timeout: 30000 }).then(() => true, () => false);
+check(gotPhoto, "写真の顔: 写真を選ぶと「写真の顔」になる");
+await page.click("#hide");
+await page.waitForTimeout(1200);
+const withMatch = await facePx();
+check(withMatch.fr > 150 && withMatch.fg < 90, `写真の顔: 写真の額の赤がカメラの顔の額に来る（${withMatch.fr.toFixed(0)},${withMatch.fg.toFixed(0)}）`);
+await page.screenshot({ path: join(OUT, "photo-mode.png") });
+const { box: pbox } = await page.evaluate(() => window.__fw);
+const pcx = (pbox[0] + pbox[2]) / 2 * 1280, pcy = (pbox[1] + pbox[3]) / 2 * 720, ph = Math.max((pbox[2] - pbox[0]) * 1280, (pbox[3] - pbox[1]) * 720) * 0.8;
+await page.screenshot({ path: join(OUT, "photo-mode-zoom.png"), clip: { x: pcx - ph, y: Math.max(0, pcy - ph), width: 2 * ph, height: 2 * ph } });
+await page.keyboard.press("h");
+await page.uncheck("#match");
+await page.keyboard.press("h");
+await page.waitForTimeout(500);
+const noMatch = await facePx();
+check(Math.abs(withMatch.lum - base.lum) < Math.abs(noMatch.lum - base.lum), `写真の顔: 色を合わせると、暗い写真がカメラの明るさに近づく（カメラ ${base.lum.toFixed(0)}・合わせる ${withMatch.lum.toFixed(0)}・合わせない ${noMatch.lum.toFixed(0)}）`);
+// 開き直しても写真を覚えている
+await page.reload();
+check(await page.waitForFunction(() => window.__fw?.photo, null, { timeout: 30000 }).then(() => true, () => false), "写真の顔: 開き直しても写真を覚えている");
+await page.click("#dropPhoto");
+check(await page.evaluate(() => !window.__fw.photo && !localStorage.getItem("face-wireframe-photo")), "写真の顔: 「外す」で写真を忘れる");
+
 // カメラの許可が無いとき（OBS を印なしで起動したときに近い）: 案内が出る
 const denied = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await denied.addInitScript(() => { navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("no", "NotAllowedError")); });

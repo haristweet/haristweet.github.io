@@ -40,13 +40,13 @@
   select, input[type=text] { background: #1c2026; color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 6px; font: inherit; }
   select { flex: 1; min-width: 0; }
   .seg { display: flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
-  .seg button { background: none; color: var(--ink); border: 0; padding: 4px 10px; font: inherit; cursor: pointer; }
+  .seg button { background: none; color: var(--ink); border: 0; padding: 4px 8px; font: inherit; cursor: pointer; white-space: nowrap; }
   .seg button + button { border-left: 1px solid var(--rule); }
   .seg button[aria-pressed=true] { background: var(--accent); color: #062; font-weight: bold; }
   input[type=range] { flex: 1; }
   input[type=color] { width: 36px; height: 26px; border: 1px solid var(--rule); border-radius: 6px; background: none; padding: 0; }
   .url { width: 100%; font: 12px ui-monospace, Menlo, monospace; }
-  button.plain { background: #1c2026; color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer; }
+  button.plain { white-space: nowrap; flex: none; background: #1c2026; color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer; }
   #status { color: #ffcf8a; margin: 6px 0; white-space: pre-wrap; }
   #status:empty { display: none; }
   details { margin-top: 10px; color: var(--ink-dim); }
@@ -54,6 +54,9 @@
   details ol { padding-left: 1.3em; margin: 6px 0; }
   code { background: #1c2026; border-radius: 4px; padding: 0 4px; font-size: 12px; word-break: break-all; }
   .hint { color: var(--ink-dim); font-size: 12px; margin: 8px 0 0; }
+  #thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid var(--rule); }
+  #thumb[hidden] { display: none; }
+  #photoFile { display: none; }
 </style>
 </head>
 <body class="page">
@@ -62,7 +65,7 @@
 
 <div id="tapHint">画面を触ると枠が出ます</div>
 <div id="panel">
-  <h1>顔ワイヤーフレーム<small id="ver">v1.1.0</small><button type="button" id="hide">隠す</button></h1>
+  <h1>顔ワイヤーフレーム<small id="ver">v1.2.0</small><button type="button" id="hide">隠す</button></h1>
   <div id="status">読み込み中…</div>
   <div class="row"><label for="camSel">カメラ</label><select id="camSel"></select></div>
   <div class="row"><label>見せ方</label>
@@ -70,7 +73,18 @@
       <button type="button" data-v="overlay" title="キー 1">重ねる</button>
       <button type="button" data-v="face" title="キー 2">顔だけ網</button>
       <button type="button" data-v="all" title="キー 3">全部網</button>
+      <button type="button" data-v="photo" title="キー 4">写真の顔</button>
     </div>
+  </div>
+  <div class="row"><label>写真</label>
+    <img id="thumb" alt="" hidden>
+    <button type="button" class="plain" id="pickPhoto">写真を選ぶ</button>
+    <button type="button" class="plain" id="dropPhoto" hidden>外す</button>
+    <input type="file" id="photoFile" accept="image/*">
+  </div>
+  <div class="row"><label></label>
+    <label><input type="checkbox" id="match"> 色を合わせる</label>
+    <label><input type="checkbox" id="photoLines"> 網も重ねる</label>
   </div>
   <div class="row"><label>背景</label>
     <div class="seg" id="bgSeg" title="「全部網」のときの背景">
@@ -87,7 +101,8 @@
   </div>
   <div class="row"><label for="faces">顔の数</label><select id="faces"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
   <div class="row"><label>OBS 用</label><input type="text" id="url" class="url" readonly><button type="button" class="plain" id="copy">URL をコピー</button></div>
-  <p class="hint">画面を触る（クリックする）とこの枠を隠す／出す。キー: 1・2・3 で見せ方、M で順に切り替え、H で枠を隠す／出す。</p>
+  <p class="hint">画面を触る（クリックする）とこの枠を隠す／出す。キー: 1〜4 で見せ方、M で順に切り替え、H で枠を隠す／出す。<br>
+    「写真の顔」は、選んだ写真の顔がカメラの顔の向き・口・まばたきに合わせて動く。正面を向いて口を閉じた、明るい写真が向いている。</p>
   <details>
     <summary>OBS での使い方</summary>
     <ol>
@@ -97,23 +112,24 @@
       <li>ここで見せ方を決め、上の「URL をコピー」を押す（この枠を出さない URL になる）。</li>
       <li>OBS の「ソース」の＋ →「ブラウザ」→ URL に貼る。幅と高さはカメラに合わせる（例 1280×720）。</li>
       <li>同じカメラを OBS の「映像キャプチャデバイス」でも使っていると取り合いになるので、そちらは外す。</li>
-      <li>見せ方は OBS でソースを選んで「対話」を開き、1・2・3・M キーでも切り替えられる。</li>
+      <li>見せ方は OBS でソースを選んで「対話」を開き、1〜4・M キーでも切り替えられる。</li>
+      <li>「写真の顔」の写真は URL に入らないので、OBS の「対話」で H を押して枠を出し、「写真を選ぶ」で選ぶ（選んだ写真は覚えておく）。</li>
       <li>Meet などに出すときは、OBS の「仮想カメラ開始」を押し、Meet のカメラで「OBS Virtual Camera」を選ぶ。</li>
     </ol>
-    <p>カメラの映像はこのパソコンの中だけで処理し、どこにも送りません。</p>
+    <p>カメラの映像と写真はこの機械の中だけで処理し、どこにも送りません。</p>
   </details>
 </div>
 
 <script type="module">
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 const MP = "vendor/mediapipe/";
 const $ = (id) => document.getElementById(id);
 const video = $("cam"), canvas = $("view"), ctx = canvas.getContext("2d");
 const status = (t) => { $("status").textContent = t; };
 
 // ── 設定。ふつうのブラウザでは覚えておき、URL に書いたものはそれより強い（OBS には URL で渡す） ──
-const DEF = { mode: "overlay", bg: "black", color: "#00ffa0", width: 1, glow: false, mirror: false, contour: false, faces: 1, cam: "" };
-const MODES = ["overlay", "face", "all"], BGS = { black: "#000000", green: "#00b140", none: null };
+const DEF = { mode: "overlay", bg: "black", color: "#00ffa0", width: 1, glow: false, mirror: false, contour: false, faces: 1, cam: "", match: true, photoLines: false };
+const MODES = ["overlay", "face", "all", "photo"], BGS = { black: "#000000", green: "#00b140", none: null };
 const S = { ...DEF };
 const q = new URLSearchParams(location.search);
 // 枠を出さない URL（OBS 用）は URL に書いたものだけで決める。覚えた設定は読まず、書きもしない
@@ -124,7 +140,7 @@ if (MODES.includes(q.get("mode"))) S.mode = q.get("mode");
 if (q.get("bg") in BGS) S.bg = q.get("bg");
 if (/^#?[0-9a-f]{6}$/i.test(q.get("color") || "")) S.color = "#" + q.get("color").replace("#", "");
 if (q.has("width")) S.width = Math.min(8, Math.max(0.25, +q.get("width") || DEF.width));
-for (const k of ["glow", "mirror", "contour"]) if (q.has(k)) S[k] = flag(q.get(k));
+for (const k of ["glow", "mirror", "contour", "match", "photoLines"]) if (q.has(k)) S[k] = flag(q.get(k));
 if (q.has("faces")) S.faces = Math.min(4, Math.max(1, Math.round(+q.get("faces")) || 1));
 if (q.has("cam")) S.cam = q.get("cam");
 if (!showUI) { $("panel").hidden = true; document.body.classList.remove("page"); }
@@ -145,14 +161,15 @@ function syncUI() {
   for (const [seg, key] of [["modeSeg", "mode"], ["bgSeg", "bg"]])
     for (const b of $(seg).children) b.setAttribute("aria-pressed", String(b.dataset.v === S[key]));
   $("color").value = S.color; $("width").value = S.width; $("widthOut").textContent = S.width;
-  $("glow").checked = S.glow; $("mirror").checked = S.mirror; $("contour").checked = S.contour; $("faces").value = S.faces;
+  for (const k of ["glow", "mirror", "contour", "match", "photoLines"]) $(k).checked = S[k];
+  $("faces").value = S.faces;
   save();
 }
 for (const [seg, key] of [["modeSeg", "mode"], ["bgSeg", "bg"]])
   $(seg).addEventListener("click", (e) => { const v = e.target.dataset?.v; if (v) { S[key] = v; syncUI(); } });
 $("color").addEventListener("input", (e) => { S.color = e.target.value; syncUI(); });
 $("width").addEventListener("input", (e) => { S.width = +e.target.value; syncUI(); });
-for (const k of ["glow", "mirror", "contour"]) $(k).addEventListener("change", (e) => { S[k] = e.target.checked; syncUI(); });
+for (const k of ["glow", "mirror", "contour", "match", "photoLines"]) $(k).addEventListener("change", (e) => { S[k] = e.target.checked; syncUI(); });
 $("faces").addEventListener("change", (e) => { S.faces = +e.target.value; syncUI(); lm?.setOptions({ numFaces: S.faces }); });
 $("camSel").addEventListener("change", (e) => { S.cam = e.target.selectedOptions[0]?.textContent || ""; syncUI(); startCamera(); });
 $("copy").addEventListener("click", async () => {
@@ -173,7 +190,7 @@ canvas.addEventListener("click", () => { if (showUI) togglePanel(); });
 addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toLowerCase();
-  if (k >= "1" && k <= "3") S.mode = MODES[+k - 1];
+  if (k >= "1" && k <= "4") S.mode = MODES[+k - 1];
   else if (k === "m") S.mode = MODES[(MODES.indexOf(S.mode) + 1) % MODES.length];
   else if (k === "h") { togglePanel(); return; }
   else return;
@@ -222,12 +239,12 @@ async function listCameras() {
 }
 
 // ── 顔の点（MediaPipe の Face Landmarker、同梱） ──
-let lm = null, TESS = [], CONTOURS = [];
+let lm = null, TESS = [], CONTOURS = [], TRIS = [], vision = null, fileset = null;
 // 顔の外周を一回りする点の並び（FACE_OVAL の辺をつないだもの）。「顔だけ網」で顔を塗りつぶすのに使う
 let OVAL = [];
 async function loadLandmarker() {
-  const v = await import(new URL(MP + "vision_bundle.mjs", location.href).href);
-  const fs = await v.FilesetResolver.forVisionTasks(new URL(MP + "wasm", location.href).href);
+  const v = vision = await import(new URL(MP + "vision_bundle.mjs", location.href).href);
+  const fs = fileset = await v.FilesetResolver.forVisionTasks(new URL(MP + "wasm", location.href).href);
   const opt = (delegate) => ({ baseOptions: { modelAssetPath: new URL(MP + "face_landmarker.task", location.href).href, delegate }, runningMode: "VIDEO", numFaces: S.faces });
   try { lm = await v.FaceLandmarker.createFromOptions(fs, opt("GPU")); }
   catch (e) { console.warn("GPU が使えないので CPU で", e); lm = await v.FaceLandmarker.createFromOptions(fs, opt("CPU")); }
@@ -235,12 +252,120 @@ async function loadLandmarker() {
   TESS = pairs(v.FaceLandmarker.FACE_LANDMARKS_TESSELATION);
   CONTOURS = pairs(v.FaceLandmarker.FACE_LANDMARKS_CONTOURS);
   OVAL = chain(pairs(v.FaceLandmarker.FACE_LANDMARKS_FACE_OVAL));
+  TRIS = triangles(TESS);
+}
+// 網の辺から三角形を拾う（3 点が互いにつながっている組。endless-human と同じ拾い方）
+function triangles(edges) {
+  const adj = new Map();
+  for (const [a, b] of edges) { (adj.get(a) || adj.set(a, new Set()).get(a)).add(b); (adj.get(b) || adj.set(b, new Set()).get(b)).add(a); }
+  const out = [];
+  for (const [a, nb] of adj) for (const b of nb) if (b > a) for (const c of nb) if (c > b && adj.get(b).has(c)) out.push(a, b, c);
+  return out;
 }
 function chain(edges) {
   const next = new Map(edges);
   const out = [edges[0][0]];
   for (let i = 0; i < edges.length; i++) { const n = next.get(out[out.length - 1]); if (n === undefined || n === out[0]) break; out.push(n); }
   return out;
+}
+
+// ── 写真の顔。写真の顔の点を、カメラの顔の点の所へ三角形ごとに貼って動かす（WebGL） ──
+// 色を合わせるのに見る肌の点（額・頬・鼻・あご）
+const SKIN = [10, 151, 9, 108, 337, 117, 346, 123, 352, 50, 280, 205, 425, 4, 199, 175];
+let photo = null; // { canvas, pts, mean }
+let gain = [1, 1, 1];
+const glc = document.createElement("canvas");
+const gl = glc.getContext("webgl", { alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
+let G = null;
+function setupGL() {
+  const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); return o; };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, `
+    attribute vec3 aPos; attribute vec2 aUV; attribute float aA; varying vec2 vUV; varying float vA;
+    void main() { vUV = aUV; vA = aA; gl_Position = vec4(aPos.x * 2.0 - 1.0, 1.0 - aPos.y * 2.0, clamp(aPos.z * 2.0, -1.0, 1.0), 1.0); }`));
+  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `
+    precision mediump float; uniform sampler2D uTex; uniform vec3 uGain; varying vec2 vUV; varying float vA;
+    void main() { vec3 c = min(texture2D(uTex, vUV).rgb * uGain, 1.0); gl_FragColor = vec4(c * vA, vA); }`));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  const buf = (name, size) => { const b = gl.createBuffer(), at = gl.getAttribLocation(prog, name); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.enableVertexAttribArray(at); gl.vertexAttribPointer(at, size, gl.FLOAT, false, 0, 0); return b; };
+  const pos = buf("aPos", 3), uv = buf("aUV", 2), alpha = buf("aA", 1);
+  // 顔の外周の点だけ透明にして、境目をぼかす
+  const a = new Float32Array(478).fill(1); for (const i of OVAL) a[i] = 0;
+  gl.bindBuffer(gl.ARRAY_BUFFER, alpha); gl.bufferData(gl.ARRAY_BUFFER, a, gl.STATIC_DRAW);
+  const idx = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idx); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(TRIS), gl.STATIC_DRAW);
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  G = { pos, uv, tex, gain: gl.getUniformLocation(prog, "uGain") };
+}
+// 写真の平均の色（肌の点のまわり）
+function skinMean(g, pts, W, H) {
+  const m = [0, 0, 0];
+  for (const i of SKIN) { const d = g.getImageData(Math.round(pts[i].x * W) - 2, Math.round(pts[i].y * H) - 2, 5, 5).data; for (let j = 0; j < d.length; j += 4) { m[0] += d[j]; m[1] += d[j + 1]; m[2] += d[j + 2]; } }
+  return m.map((v) => v / (SKIN.length * 25) + 1);
+}
+let lmImg = null;
+async function setPhoto(src, remember) {
+  const img = new Image(); img.src = src; await img.decode();
+  // 大きすぎる写真は 1024px までにする（貼る絵と、覚えておく大きさのため）
+  const k = Math.min(1, 1024 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(img, 0, 0, c.width, c.height);
+  if (!lmImg) lmImg = await vision.FaceLandmarker.createFromOptions(fileset, { baseOptions: { modelAssetPath: new URL(MP + "face_landmarker.task", location.href).href }, runningMode: "IMAGE", numFaces: 1 });
+  const pts = lmImg.detect(c).faceLandmarks?.[0];
+  if (!pts) { status("写真に顔が見つかりませんでした。正面を向いた顔の写真を選んでください。"); return false; }
+  if (!G) setupGL();
+  gl.bindTexture(gl.TEXTURE_2D, G.tex); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+  gl.bindBuffer(gl.ARRAY_BUFFER, G.uv); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pts.flatMap((p) => [p.x, p.y])), gl.STATIC_DRAW);
+  photo = { pts, mean: skinMean(g, pts, c.width, c.height) };
+  gain = [1, 1, 1];
+  $("thumb").src = c.toDataURL("image/jpeg", 0.7); $("thumb").hidden = false; $("dropPhoto").hidden = false;
+  // 次に開いたときのために覚えておく（OBS では URL で渡せないので、枠なしでも覚える）
+  if (remember) try { localStorage.setItem("face-wireframe-photo", c.toDataURL("image/jpeg", 0.9)); } catch (e) { console.warn("写真を覚えられなかった", e); }
+  if (remember) status("");
+  return true;
+}
+$("pickPhoto").addEventListener("click", () => $("photoFile").click());
+$("photoFile").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  try { if (await setPhoto(url, true)) { S.mode = "photo"; syncUI(); } }
+  catch (err) { console.error(err); status("写真を読めませんでした。"); }
+  finally { URL.revokeObjectURL(url); }
+});
+$("dropPhoto").addEventListener("click", () => {
+  photo = null; $("thumb").hidden = true; $("dropPhoto").hidden = true;
+  try { localStorage.removeItem("face-wireframe-photo"); } catch {}
+  if (S.mode === "photo") { S.mode = "overlay"; syncUI(); }
+});
+// カメラの肌の色に写真を寄せる（15 コマに 1 回、少しずつ）
+const sampler = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+let matchN = 0;
+function updateGain(pts) {
+  if (!S.match) { gain = [1, 1, 1]; return; }
+  if (matchN++ % 15) return;
+  const W = 320, H = Math.round(320 * video.videoHeight / video.videoWidth);
+  if (sampler.canvas.width !== W || sampler.canvas.height !== H) { sampler.canvas.width = W; sampler.canvas.height = H; }
+  sampler.drawImage(video, 0, 0, W, H);
+  const cam = skinMean(sampler, pts, W, H);
+  gain = gain.map((g, i) => g + (Math.min(1.6, Math.max(0.6, cam[i] / photo.mean[i])) - g) * (matchN === 1 ? 1 : 0.3));
+}
+function drawPhotoFaces(W, H) {
+  if (glc.width !== W || glc.height !== H) { glc.width = W; glc.height = H; }
+  gl.viewport(0, 0, W, H);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+  updateGain(faces[0]);
+  gl.uniform3fv(G.gain, gain);
+  for (const pts of faces) {
+    const a = new Float32Array(478 * 3);
+    pts.forEach((p, i) => { a[i * 3] = p.x; a[i * 3 + 1] = p.y; a[i * 3 + 2] = p.z; });
+    gl.bindBuffer(gl.ARRAY_BUFFER, G.pos); gl.bufferData(gl.ARRAY_BUFFER, a, gl.DYNAMIC_DRAW);
+    gl.drawElements(gl.TRIANGLES, TRIS.length, gl.UNSIGNED_SHORT, 0);
+  }
+  ctx.drawImage(glc, 0, 0, W, H);
 }
 
 // ── 描く ──
@@ -264,6 +389,10 @@ function draw() {
   } else {
     ctx.drawImage(video, 0, 0, W, H);
   }
+  const usePhoto = S.mode === "photo" && photo;
+  if (usePhoto && faces.length) drawPhotoFaces(W, H);
+  // 「写真の顔」で写真が無いときは、重ねるのと同じに網を描く
+  if (usePhoto && !S.photoLines) return;
   ctx.lineJoin = ctx.lineCap = "round";
   for (const pts of faces) {
     // 線の太さは顔の大きさに合わせる（顔の高さ 400px で 1 倍）。遠くの小さい顔で網がつぶれないように
@@ -300,7 +429,7 @@ function loop() {
   draw();
   // 試験（test/shots.mjs）が読む。box は 1 人目の顔の範囲（canvas の中の割合、左右反転も込み）
   const xs = faces[0]?.map((p) => (S.mirror ? 1 - p.x : p.x)), ys = faces[0]?.map((p) => p.y);
-  window.__fw = { faces: faces.length, fps, w: canvas.width, h: canvas.height, mode: S.mode, ready: !!lm,
+  window.__fw = { faces: faces.length, fps, w: canvas.width, h: canvas.height, mode: S.mode, ready: !!lm, photo: !!photo, gain,
     box: xs && [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] };
 }
 
@@ -311,6 +440,10 @@ $("ver").textContent = "v" + VERSION;
     loadLandmarker().catch((e) => { console.error(e); status("顔を探す仕組みを読み込めませんでした。ページを読み込み直してください。"); throw e; }),
   ]);
   if (camOk) status("");
+  // 前に選んだ写真
+  let saved = null; try { saved = localStorage.getItem("face-wireframe-photo"); } catch {}
+  if (saved) await setPhoto(saved, false).catch((e) => console.error(e));
+  if (S.mode === "photo" && !photo && showUI) status("「写真を選ぶ」で顔の写真を選んでください。");
   loop();
 })();
 </script>
