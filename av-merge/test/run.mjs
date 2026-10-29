@@ -52,7 +52,7 @@ const probe = (p) => JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_s
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "application/wasm" };
 const server = createServer(async (req, res) => {
   const u = decodeURIComponent(new URL(req.url, "http://x").pathname);
-  const file = u.startsWith("/core/") ? join(CORE, u.slice(6)) : u === "/font.ttf" ? FONT : join(ROOT, u.endsWith("/") ? u + "index.html" : u);
+  const file = u.startsWith("/core/") ? join(CORE, u.slice(6)) : u.startsWith("/out/") ? join(OUT, u.slice(5)) : u === "/font.ttf" ? FONT : join(ROOT, u.endsWith("/") ? u + "index.html" : u);
   try {
     const body = await readFile(file);
     res.writeHead(200, { "content-type": TYPES[extname(file)] || "application/octet-stream", "content-length": body.length });
@@ -234,6 +234,41 @@ if (FONT && (!process.env.ONLY || "タップ".includes(process.env.ONLY))) {
   if (!ok) fail++;
   await p3.screenshot({ path: S("shot_tap.png"), fullPage: true });
   await p3.close();
+}
+// リミックスの崩し方を全部、ブラウザの ffmpeg（5.1）で 1 つずつ流し、ちょうど決めたコマ数が出るか。
+// 手元の ffmpeg（6.1）で通っても、ブラウザのほうに無い書き方があると本番で落ちるので
+if (!process.env.ONLY || "崩し方".includes(process.env.ONLY)) {
+  const p4 = await browser.newPage();
+  p4.on("pageerror", (e) => console.log("pageerror:", e.message));
+  await p4.goto(base);
+  const res = await p4.evaluate(async (core) => {
+    const { FFmpeg } = await import("/vendor/ffmpeg/index.js");
+    const { segFilter, TIME_FX, LOOK_FX } = await import("/remix.js");
+    const f = new FFmpeg(), logs = [];
+    f.on("log", ({ message }) => logs.push(message));
+    await f.load({ coreURL: `${core}/ffmpeg-core.js`, wasmURL: `${core}/ffmpeg-core.wasm` });
+    await f.writeFile("/src.mp4", new Uint8Array(await (await fetch("/out/v_h264.mp4")).arrayBuffer()));
+    const NEED = { fast: 2, warp: 4, skip: 2, slow: 0.5, pingpong: 0.5, freeze: 0.1 };
+    const tests = [
+      ...TIME_FX.map((time) => ({ name: time, seg: { frames: 13, time, reps: 3, need: 13 / 30 * (NEED[time] || 1), look: [] } })),
+      ...LOOK_FX.map((fx) => ({ name: fx, seg: { frames: 9, time: "normal", reps: 1, need: 0.3, look: [fx], p: { dir: -1, hue: 200 } } })),
+      { name: "pingpong+kaleido+rgbx+trail+huespin", seg: { frames: 15, time: "pingpong", reps: 1, need: 0.25, look: ["kaleido", "rgbx", "trail", "huespin"], p: { dir: 1, hue: 10 } } },
+      { name: "skip+grid4+strobe+zoomin+noise", seg: { frames: 11, time: "skip", reps: 1, need: 0.8, look: ["grid4", "strobe", "zoomin", "noise"] } },
+    ];
+    const out = [];
+    for (const t of tests) {
+      logs.length = 0;
+      const ret = await f.exec(["-hide_banner", "-ss", "1", "-t", t.seg.need.toFixed(3), "-i", "/src.mp4", "-filter_complex", `[0:v:0]${segFilter(t.seg, { W: 320, H: 180, F: 30 }, "q")}[v]`, "-map", "[v]", "-f", "null", "-"]);
+      const fr = logs.join("\n").match(/frame=\s*(\d+)/g);
+      out.push({ name: t.name, want: t.seg.frames, got: fr ? +fr[fr.length - 1].match(/\d+/)[0] : -1, ret, err: ret ? logs.slice(-4).join(" | ") : "" });
+    }
+    f.terminate();
+    return out;
+  }, `${base}core`);
+  const bad = res.filter((r) => r.ret !== 0 || r.got !== r.want);
+  console.log(`${bad.length ? "NG" : "OK"} 崩し方を全部ブラウザの ffmpeg で（${res.length} 通り）${bad.length ? " " + JSON.stringify(bad) : ""}`);
+  if (bad.length) fail++;
+  await p4.close();
 }
 // メモリの警告: 境目を下げたページで、大きすぎる見込みなら警告が出るか
 if (!process.env.ONLY || "メモリの警告".includes(process.env.ONLY)) {

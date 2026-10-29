@@ -81,13 +81,28 @@ export function detectBeats(x, sr, { minBpm = 70, maxBpm = 180 } = {}) {
 // ── 設計図 ──
 // 区間ごとに { src: 動画の番号, at: 使い始め（秒）, frames: 出すコマ数, time: 時間の崩し方, look: [見た目の崩し方] }。
 // 区切りは拍の上に置き、コマ数で数える（長い曲でも絵と曲がずれないように）
-export const TIME_FX = ["normal", "stutter", "reverse", "fast", "slow", "freeze"];
-export const LOOK_FX = ["hflip", "negate", "flash", "zoom", "rgb", "mono"];
+export const TIME_FX = ["normal", "stutter", "reverse", "fast", "slow", "freeze", "pingpong", "choppy", "warp", "skip"];
+// 見た目の崩し方。group が同じものは 1 区間に 1 つまで（画面の割り方・寄り方がぶつからないように）
+export const LOOKS = {
+  hflip: {}, vflip: {}, negate: {}, mono: {},
+  flash: { group: "fade" }, blackflash: { group: "fade" },
+  zoom: { group: "zoom" }, zoomin: { group: "zoom" }, shake: { group: "zoom" }, lens: { group: "zoom" },
+  mirror: { group: "layout" }, kaleido: { group: "layout" }, grid4: { group: "layout" },
+  rgb: { group: "rgb" }, rgbx: { group: "rgb" }, chroma: { group: "rgb" },
+  pixel: { group: "pixel" }, blur: { group: "pixel" },
+  posterize: { group: "color" }, edge: { group: "color" }, huespin: { group: "color" }, saturate: { group: "color" },
+  xpro: { group: "color" }, swap: { group: "color" },
+  contrast: {}, vignette: {}, noise: {}, strobe: {}, trail: {},
+};
+export const LOOK_FX = Object.keys(LOOKS);
+// 時間の崩し方ごとに、出す長さ dur に対して素材を何秒使うか
+const NEED = { fast: 2, warp: 4, skip: 2, slow: 0.5, pingpong: 0.5 };
 
-export function makePlan({ seed, chaos, bpm, offset, T, F, clips }) {
+// chaos（ぐちゃぐちゃ度）は切り方の細かさと時間の崩し、amount（効果の量）は見た目の崩しの多さ。どちらも 0〜1
+export function makePlan({ seed, chaos, amount = chaos, bpm, offset, T, F, clips }) {
   const R = rng(seed), pick = (a) => a[Math.floor(R() * a.length)];
   const beat = 60 / bpm, total = Math.round(T * F);
-  const c = Math.max(0, Math.min(1, chaos));
+  const c = Math.max(0, Math.min(1, chaos)), am = Math.max(0, Math.min(1, amount));
   // 区切りの時刻（秒）: 頭〜1拍目、そのあと拍ごと。ぐちゃぐちゃ度が高いほど 1 拍・半拍・1/4 拍に細かく割る
   const cuts = [0];
   let t = offset % beat;
@@ -106,27 +121,40 @@ export function makePlan({ seed, chaos, bpm, offset, T, F, clips }) {
     if (frames <= 0) continue;
     const dur = frames / F;
     let time = "normal";
-    if (R() < 0.75 * c) time = pick(TIME_FX.slice(1));
-    if (time === "reverse" && dur > 1.2) time = "normal";           // 逆回しはコマを全部抱えるので短い区間だけ
-    if (time === "stutter" && frames < 4) time = "normal";
-    const look = [];
-    for (const fx of LOOK_FX) if (R() < 0.12 * c) look.push(fx);
-    if (R() < 0.25 * c && !look.includes("flash")) look.push("flash");
+    if (R() < 0.85 * c) time = pick(TIME_FX.slice(1));
+    // 逆回し・行って戻るはコマを全部抱えるので短い区間だけ。くり返し・飛ばしは数コマないと形にならない
+    if ((time === "reverse" || time === "pingpong") && dur > 1.2) time = "normal";
+    if ((time === "stutter" || time === "skip" || time === "pingpong") && frames < 4) time = "normal";
+    // 見た目の崩し: 効果の量に応じて 0〜4 個重ねる。group ごとに 1 つまで
+    let k = 0;
+    while (k < 4 && R() < am * (k === 0 ? 0.9 : 0.55)) k++;
+    const look = [], groups = new Set();
+    for (let tries = 0; look.length < k && tries < 20; tries++) {
+      const fx = pick(LOOK_FX), g = LOOKS[fx].group;
+      if (look.includes(fx) || (g && groups.has(g))) continue;
+      look.push(fx); if (g) groups.add(g);
+    }
     const src = Math.floor(R() * clips.length);
     const reps = time === "stutter" ? 2 + Math.floor(R() * 3) : 1;
-    const need = time === "fast" ? dur * 2 : time === "slow" ? dur / 2 : time === "stutter" ? dur / reps : time === "freeze" ? 1 / F : dur;
+    const need = time === "stutter" ? dur / reps : time === "freeze" ? 1 / F : dur * (NEED[time] || 1);
     const len = clips[src].dur;
     // 動画が足りなければ短く使い、足りないぶんは最後のコマを延ばす（フィルタの tpad）
     const at = len > need ? R() * (len - need) : 0;
-    segs.push({ src, at: Math.round(at * 1000) / 1000, frames, time, reps, need: Math.min(need, len), look });
+    // 効果の加減（色相の回る向き、ずれの向き）も番号から決める
+    const p = { dir: R() < 0.5 ? -1 : 1, hue: Math.round(R() * 360) };
+    segs.push({ src, at: Math.round(at * 1000) / 1000, frames, time, reps, need: Math.min(need, len), look, p });
   }
   return segs;
 }
 
 export function planSummary(segs) {
   const n = (f) => segs.filter(f).length;
+  const kinds = new Set(segs.flatMap((s) => s.look));
   return {
     segments: segs.length,
+    timeFx: n((s) => s.time !== "normal"),
+    lookFx: segs.reduce((t, s) => t + s.look.length, 0),
+    kinds: kinds.size + new Set(segs.map((s) => s.time).filter((x) => x !== "normal")).size,
     stutter: n((s) => s.time === "stutter"), reverse: n((s) => s.time === "reverse"),
     fast: n((s) => s.time === "fast"), slow: n((s) => s.time === "slow"), freeze: n((s) => s.time === "freeze"),
     look: n((s) => s.look.length > 0),
@@ -134,14 +162,14 @@ export function planSummary(segs) {
 }
 
 // ── 1区間ぶんのフィルタ ──
-// 入力は「-ss at -t need -i 動画」で切り出してある前提。W×H・F コマ/秒にそろえ、ちょうど frames コマにする
-export function segFilter(seg, { W, H, F }) {
-  const N = seg.frames;
+// 入力は「-ss at -t need -i 動画」で切り出してある前提。W×H・F コマ/秒にそろえ、ちょうど frames コマにする。
+// id はこの区間の中だけで使う枝の名前の頭（鏡写し・万華鏡・4分割は枝分かれするので、グラフの中で名前がぶつからないように）
+export function segFilter(seg, { W, H, F }, id = "s") {
+  const N = seg.frames, p = seg.p || { dir: 1, hue: 90 };
   const fit = `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1`;
   const f = [];
-  if (seg.time === "fast") f.push("setpts=0.5*(PTS-STARTPTS)");
-  else if (seg.time === "slow") f.push("setpts=2*(PTS-STARTPTS)");
-  else f.push("setpts=PTS-STARTPTS");
+  const speed = { fast: 0.5, warp: 0.25, skip: 0.5, slow: 2, pingpong: 1 }[seg.time] || 1;
+  f.push(speed === 1 ? "setpts=PTS-STARTPTS" : `setpts=${speed}*(PTS-STARTPTS)`);
   f.push(`fps=${F}`, fit, "format=yuv420p");
   if (seg.time === "stutter") {
     const M = Math.max(1, Math.round(N / seg.reps));
@@ -150,16 +178,53 @@ export function segFilter(seg, { W, H, F }) {
     f.push("trim=end_frame=1", "setpts=PTS-STARTPTS", `loop=loop=${N}:size=1:start=0`);
   } else if (seg.time === "reverse") {
     f.push(`tpad=stop_mode=clone:stop=${N}`, `trim=end_frame=${N}`, "reverse");
+  } else if (seg.time === "pingpong") {
+    // 前半を前向き、後半を同じところの逆回し
+    const M = Math.max(1, Math.ceil(N / 2));
+    f.push(`tpad=stop_mode=clone:stop=${M}`, `trim=end_frame=${M}`, "setpts=PTS-STARTPTS",
+      `split[${id}pa][${id}pb];[${id}pb]reverse[${id}pr];[${id}pa][${id}pr]concat=n=2:v=1:a=0`);
+  } else if (seg.time === "choppy") {
+    f.push(`fps=${Math.max(4, Math.round(F / 5))}`, `fps=${F}`);
+  } else if (seg.time === "skip") {
+    // 2 倍の素材から 4 コマ出して 4 コマ飛ばす（つっかえながら進む）
+    f.push("select='lt(mod(n,8),4)'", "setpts=N/FRAME_RATE/TB");
   }
+  const sh = Math.max(2, Math.round(W / 80)) * p.dir;
   for (const fx of seg.look) {
-    if (fx === "hflip") f.push("hflip");
-    if (fx === "negate") f.push("negate");
-    if (fx === "mono") f.push("hue=s=0");
-    if (fx === "zoom") f.push(`crop=iw/1.35:ih/1.35,scale=${W}:${H},setsar=1`);
-    if (fx === "rgb") f.push(`rgbashift=rh=-${Math.max(2, Math.round(W / 80))}:bh=${Math.max(2, Math.round(W / 80))}`);
-    if (fx === "flash") f.push(`fade=t=in:st=0:d=${Math.min(0.15, N / F / 2).toFixed(3)}:color=white`);
+    const L = `${id}${fx}`;
+    switch (fx) {
+      case "hflip": f.push("hflip"); break;
+      case "vflip": f.push("vflip"); break;
+      case "negate": f.push("negate"); break;
+      case "mono": f.push("hue=s=0"); break;
+      case "flash": f.push(`fade=t=in:st=0:d=${Math.min(0.15, N / F / 2).toFixed(3)}:color=white`); break;
+      case "blackflash": f.push(`fade=t=in:st=0:d=${Math.min(0.2, N / F / 2).toFixed(3)}:color=black`); break;
+      case "zoom": f.push(`crop=iw/1.35:ih/1.35,scale=${W}:${H},setsar=1`); break;
+      case "zoomin": f.push(`zoompan=z='1+0.6*on/${N}':d=1:x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':s=${W}x${H}:fps=${F}`, "setsar=1"); break;
+      case "shake": f.push(`crop=iw*0.88:ih*0.88:x='(iw-ow)/2+(random(1)-0.5)*iw*0.1':y='(ih-oh)/2+(random(2)-0.5)*ih*0.1'`, `scale=${W}:${H}`, "setsar=1"); break;
+      case "lens": f.push("lenscorrection=k1=0.6:k2=0.4"); break;
+      case "mirror": f.push(`crop=iw/2:ih:0:0,split[${L}a][${L}b];[${L}b]hflip[${L}c];[${L}a][${L}c]hstack`, `scale=${W}:${H}`, "setsar=1"); break;
+      case "kaleido": f.push(`crop=iw/2:ih/2:0:0,split=4[${L}a][${L}b][${L}c][${L}d];[${L}b]hflip[${L}e];[${L}c]vflip[${L}f];[${L}d]hflip,vflip[${L}g];[${L}a][${L}e]hstack[${L}t];[${L}f][${L}g]hstack[${L}u];[${L}t][${L}u]vstack`, `scale=${W}:${H}`, "setsar=1"); break;
+      case "grid4": f.push(`scale=${Math.round(W / 2)}:${Math.round(H / 2)},split=4[${L}a][${L}b][${L}c][${L}d];[${L}a][${L}b]hstack[${L}t];[${L}c][${L}d]hstack[${L}u];[${L}t][${L}u]vstack`, `scale=${W}:${H}`, "setsar=1"); break;
+      case "rgb": f.push(`rgbashift=rh=${-sh}:bh=${sh}`); break;
+      case "rgbx": f.push(`rgbashift=rh=${-3 * sh}:bh=${3 * sh}:gv=${sh}`); break;
+      case "chroma": f.push(`chromashift=cbh=${2 * sh}:crh=${-2 * sh}:cbv=${sh}`); break;
+      case "pixel": f.push(`scale=${Math.max(8, Math.round(W / 24))}:-2,scale=${W}:${H}:flags=neighbor`, "setsar=1"); break;
+      case "blur": f.push("boxblur=10:2"); break;
+      case "posterize": f.push("lutrgb=r='bitand(val,192)':g='bitand(val,192)':b='bitand(val,192)'"); break;
+      case "edge": f.push("edgedetect=mode=colormix:high=0.15:low=0.05"); break;
+      case "huespin": f.push(`hue=h='${p.hue}+${720 * p.dir}*t':s=1.8`); break;
+      case "saturate": f.push("eq=saturation=3:contrast=1.2"); break;
+      case "xpro": f.push("curves=preset=cross_process"); break;
+      case "swap": f.push("colorchannelmixer=rr=0:rb=1:br=1:bb=0"); break;
+      case "contrast": f.push("eq=contrast=2.2:brightness=0.05"); break;
+      case "vignette": f.push("vignette=PI/3"); break;
+      case "noise": f.push("noise=alls=45:allf=t+u"); break;
+      case "strobe": f.push("eq=brightness='0.5*mod(floor(t*16),2)':eval=frame"); break;
+      case "trail": f.push("lagfun=decay=0.92"); break;
+    }
   }
-  // 最後にちょうど N コマに（足りなければ最後のコマを延ばす）
-  f.push("setpts=N/FRAME_RATE/TB", `tpad=stop_mode=clone:stop=${N}`, `trim=end_frame=${N}`, "setpts=PTS-STARTPTS");
+  // 最後にちょうど N コマに（足りなければ最後のコマを延ばす）。途中の効果で形が変わっても yuv420p にそろえる
+  f.push("format=yuv420p", "setpts=N/FRAME_RATE/TB", `tpad=stop_mode=clone:stop=${N}`, `trim=end_frame=${N}`, "setpts=PTS-STARTPTS");
   return f.join(",");
 }

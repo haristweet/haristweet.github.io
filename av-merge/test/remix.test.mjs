@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { detectBeats, makePlan, segFilter, TIME_FX, LOOK_FX } from "../remix.js";
+import { detectBeats, makePlan, segFilter, TIME_FX, LOOK_FX, LOOKS } from "../remix.js";
 
 const OUT = resolve(process.argv[2] || "test-out");
 await mkdir(OUT, { recursive: true });
@@ -53,9 +53,14 @@ check("区切りは 1/4 拍の上（コマの丸めの範囲）", offGrid === 0,
 check("素材の外を使わない", a.every((s) => s.at >= 0 && s.at + s.need <= clips[s.src].dur + 1e-6));
 const calm = makePlan({ ...base, chaos: 0 });
 check("ぐちゃぐちゃ度 0 は崩さない（区切りは 1〜2 拍）", calm.every((s) => s.time === "normal" && !s.look.length) && calm.slice(1, -1).every((s) => s.frames >= Math.round(60 / 128 * 30) - 1), "");
-const wild = makePlan({ ...base, chaos: 1, T: 180 });
+const wild = makePlan({ ...base, chaos: 1, amount: 1, T: 180 });
 const used = new Set(wild.flatMap((s) => [s.time, ...s.look]));
 check("ぐちゃぐちゃ度 1 なら崩し方が全部出る", [...TIME_FX, ...LOOK_FX].every((x) => used.has(x)), [...TIME_FX, ...LOOK_FX].filter((x) => !used.has(x)).join(","));
+const few = makePlan({ ...base, amount: 0.2 }), lots = makePlan({ ...base, amount: 1 });
+const per = (pl) => pl.reduce((t, s) => t + s.look.length, 0) / pl.length;
+check(`効果の量を上げると見た目の崩しが増える（${per(few).toFixed(2)} → ${per(lots).toFixed(2)} 個／区間）`, per(lots) > per(few) * 2 && per(lots) >= 1.5);
+const clash = lots.filter((sg) => sg.look.filter((fx) => LOOKS[fx].group === "layout").length > 1);
+check("画面の割り方を変える効果は 1 区間に 1 つまで", clash.length === 0, JSON.stringify(clash[0]));
 check("ぐちゃぐちゃ度が高いほど区切りが細かい", wild.length / 180 > calm.length / 60 * 1.3, `${wild.length / 180} vs ${calm.length / 60}`);
 
 // ── 区間のフィルタを手元の ffmpeg で流す ──
@@ -63,16 +68,19 @@ ff("-f", "lavfi", "-i", "testsrc=size=480x270:rate=24:duration=6", "-c:v", "libx
 ff("-f", "lavfi", "-i", "testsrc=size=270x480:rate=30:duration=0.3", "-c:v", "libx264", "-pix_fmt", "yuv420p", S("short.mp4"));
 const files = [S("src.mp4"), S("short.mp4"), S("src.mp4")];
 const dims = { W: 640, H: 360, F: 30 };
-// 崩し方ごとに 1 つずつ（見た目は全部まとめて 1 つ）＋短すぎる素材
+// 崩し方ごとに 1 つずつ＋重ねがけ＋短すぎる素材
+const NEEDX = { fast: 2, warp: 4, skip: 2, slow: 0.5, pingpong: 0.5, freeze: 0.1 };
 const tests = [
-  ...TIME_FX.map((time) => ({ src: 0, at: 1, frames: 13, time, reps: 3, need: time === "fast" ? 13 / 15 : time === "slow" ? 13 / 60 : 13 / 30, look: [] })),
-  { src: 0, at: 2, frames: 9, time: "normal", reps: 1, need: 0.3, look: [...LOOK_FX] },
+  ...TIME_FX.map((time) => ({ src: 0, at: 1, frames: 13, time, reps: 3, need: 13 / 30 * (NEEDX[time] || 1), look: [] })),
+  ...LOOK_FX.map((fx) => ({ src: 0, at: 2, frames: 9, time: "normal", reps: 1, need: 0.3, look: [fx], p: { dir: -1, hue: 200 } })),
+  { src: 0, at: 0.5, frames: 15, time: "pingpong", reps: 1, need: 0.25, look: ["kaleido", "rgbx", "trail", "huespin"], p: { dir: 1, hue: 10 } },
+  { src: 2, at: 0.2, frames: 11, time: "skip", reps: 1, need: 0.8, look: ["grid4", "strobe", "zoomin", "noise"] },
   { src: 1, at: 0, frames: 20, time: "fast", reps: 1, need: 0.3, look: ["zoom"] },
 ];
 for (const s of tests) {
   const out = S("seg.mp4");
   try {
-    ff("-ss", String(s.at), "-t", s.need.toFixed(3), "-i", files[s.src], "-vf", segFilter(s, dims), "-an", "-c:v", "libx264", "-preset", "ultrafast", out);
+    ff("-ss", String(s.at), "-t", s.need.toFixed(3), "-i", files[s.src], "-filter_complex", `[0:v:0]${segFilter(s, dims, "q")}[v]`, "-map", "[v]", "-an", "-c:v", "libx264", "-preset", "ultrafast", out);
     const info = execFileSync("ffprobe", ["-v", "error", "-count_frames", "-select_streams", "v", "-show_entries", "stream=nb_read_frames,width,height", "-of", "csv=p=0", out]).toString().trim();
     check(`フィルタ ${s.time}${s.look.length ? "＋" + s.look.join("・") : ""}${s.src === 1 ? "（短い素材）" : ""} → ${info}`, info === `640,360,${s.frames}`);
   } catch (e) {
