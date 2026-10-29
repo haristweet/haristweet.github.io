@@ -38,6 +38,11 @@ ff("-f", "lavfi", "-i", "testsrc=size=1080x1920:rate=30:duration=3", "-f", "lavf
 ff("-f", "lavfi", "-i", "color=c=black:s=640x360:r=25:d=8", "-c:v", "libx264", "-pix_fmt", "yuv420p", S("v_black.mp4"));
 ff("-f", "lavfi", "-i", "sine=f=500:duration=8", "-c:a", "libmp3lame", "-metadata", "lyrics=[00:00.50]いちばん目の歌詞\n[00:03.00]二番目 second\n[00:06.00]", S("a_lrc.mp3"));
 ff("-f", "lavfi", "-i", "sine=f=500:duration=8", "-c:a", "libmp3lame", "-metadata", "lyrics=時刻の無い一行目\n二行目", S("a_plain.mp3"));
+// リミックスの見本: 128 BPM のドラム 20 秒（1拍目 0.3 秒）
+{
+  const P = 60 / 128, inb = "mod(t-0.3," + P + ")", off = "mod(t-0.3+" + P / 2 + "," + P + ")";
+  ff("-f", "lavfi", "-i", `aevalsrc='if(gte(t,0.3), 0.9*sin(2*PI*55*${inb}*(1+3*exp(-40*${inb})))*exp(-12*${inb}) + 0.25*(random(0)-0.5)*exp(-60*${off}), 0) + 0.15*sin(2*PI*110*t)':s=44100:d=20`, "-c:a", "libmp3lame", S("a_drum.mp3"));
+}
 ff("-f", "lavfi", "-i", "sine=f=880:duration=10", "-c:a", "libmp3lame", S("a_10s.mp3"));
 ff("-f", "lavfi", "-i", "sine=f=660:duration=2", S("a_2s.wav"));
 
@@ -64,6 +69,13 @@ await page.goto(`${base}?chunk=0.7&core=${encodeURIComponent(base + "core")}&fon
 await page.screenshot({ path: S("shot_empty.png"), fullPage: true });
 
 const cases = [
+  // リミックス（並びを変えるとき sameAs / diffFrom の番号も直す）
+  { name: "リミックス・試し書き出し（1080p → 480p・頭 15 秒）", v: ["v_big.mp4", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 15, vcodec: "h264", size: "854x480", note: /試し書き出し/,
+    remix: { chaos: 80, seed: 7, try: true, shot: true } },
+  { name: "リミックス・同じ番号なら同じ絵", v: ["v_big.mp4", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 15, vcodec: "h264", remix: { chaos: 80, seed: 7, try: true, sameAs: 0 } },
+  { name: "リミックス・番号を変えると別の絵", v: ["v_big.mp4", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 15, vcodec: "h264", remix: { chaos: 80, seed: 8, try: true, diffFrom: 0 } },
+  { name: "リミックス・本番（曲の長さ 20 秒・形の違う 3 本）", v: ["v_h264.mp4", "v_vp9.webm", "v_tall.mp4"], a: "a_drum.mp3", set: {}, dur: 20, vcodec: "h264", size: "320x240", note: /区間/,
+    remix: { chaos: 100, seed: 3, shot: true } },
   ...(FONT ? [
     { name: "歌詞・時刻付きを焼き込む", v: "v_black.mp4", a: "a_lrc.mp3", set: {}, dur: 8, vcodec: "h264", copy: false, note: /歌詞を 2 回/,
       lyrics: { status: /時刻付き 2 行/, on: true, at: [[0.2, false], [1.5, true], [4, true], [7, false]], shot: 1.5 } },
@@ -103,6 +115,7 @@ let fail = 0;
 // ONLY=名前の一部 で、その試験だけ回す
 for (const [i, c] of cases.entries()) {
   if (process.env.ONLY && !c.name.includes(process.env.ONLY)) continue;
+  await page.check("input[name=mode][value=merge]", { force: true });
   if (await page.isVisible("#vclear")) await page.click("#vclear");
   await page.setInputFiles("#vfile", [c.v].flat().map(S));
   await page.setInputFiles("#afile", S(c.a));
@@ -125,7 +138,17 @@ for (const [i, c] of cases.entries()) {
     await page.waitForFunction(() => /約 [\d.]+ (MB|GB)/.test(document.getElementById("sizeNote").textContent), null, { timeout: 5000 }).catch(() => {});
     c.estText = await page.$eval("#sizeNote", (e) => e.textContent);
   }
-  await page.click("#go");
+  if (c.remix) {
+    // リミックスに切りかえ、テンポを自動で調べ終わるのを待つ
+    await page.check("input[name=mode][value=remix]", { force: true });
+    await page.waitForFunction(() => document.getElementById("rmBpm").value !== "", null, { timeout: 15000 }).catch(() => {});
+    c.gotBpm = +(await page.$eval("#rmBpm", (e) => e.value));
+    await page.$eval("#rmChaos", (e, v) => { e.value = v; e.dispatchEvent(new Event("input", { bubbles: true })); }, String(c.remix.chaos));
+    await page.fill("#rmSeed", String(c.remix.seed));
+    await page.click(c.remix.try ? "#rmTry" : "#go");
+  } else {
+    await page.click("#go");
+  }
   try {
     await page.waitForFunction(() => !document.getElementById("result").hidden || document.getElementById("status").classList.contains("err"), null, { timeout: +process.env.WAIT || 180000 });
   } catch {
@@ -169,6 +192,14 @@ for (const [i, c] of cases.entries()) {
   if (c.est) console.log(`   目安 ${c.estText} → 実際 ${(await stat(out)).size} B`);
   if (c.noFile && c.noFile.test(log)) probs.push(`作らないはずのファイルを作った: ${log.match(c.noFile)[0]}`);
   if (c.lastCopy !== undefined && /-c:v copy[^\n]*\/out\.mp4/.test(log) !== c.lastCopy) probs.push("最後の処理のコピー／作り直しが期待と違う");
+  if (c.remix) {
+    if (Math.abs(c.gotBpm - 128) > 0.5) probs.push(`テンポの自動検出 ${c.gotBpm}`);
+    // 絵の中身の指紋（同じ番号なら同じ絵になるか）
+    c.vmd5 = execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", out, "-map", "0:v", "-f", "md5", "-"]).toString().trim();
+    if (c.remix.sameAs !== undefined && cases[c.remix.sameAs].vmd5 !== c.vmd5) probs.push("同じ番号なのに絵が違う");
+    if (c.remix.diffFrom !== undefined && cases[c.remix.diffFrom].vmd5 === c.vmd5) probs.push("番号を変えたのに絵が同じ");
+    if (c.remix.shot) execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", out, "-vf", "fps=4,scale=160:-1,tile=8x4", "-frames:v", "1", S(`shot_remix_${i}.png`)]);
+  }
   if (c.catCopy !== undefined && /-f concat -safe 0 -i \/work\/vlist/.test(log) !== c.catCopy) probs.push("つなぎ方（そのまま／作り直し）が期待と違う");
   if (c.size && `${v?.width}x${v?.height}` !== c.size) probs.push(`大きさ ${v?.width}x${v?.height}`);
   if (c.rot && !JSON.stringify(v?.side_data_list || []).includes("rotation")) probs.push("回す印が消えた");

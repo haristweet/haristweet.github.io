@@ -122,6 +122,8 @@
   .foot { color: var(--ink-dim); font-size: 13px; }
   .foot a { color: inherit; }
   [hidden] { display: none !important; }
+  .modebar { padding: 0 2px; }
+  body.remix .only-merge { display: none !important; }
 </style>
 </head>
 <body>
@@ -155,16 +157,54 @@
     </label>
   </div>
 
-  <section class="panel">
-    <h2>くっつけ方</h2>
+  <div class="row modebar">
+    <span class="lab">作り方</span>
+    <span class="seg">
+      <label><input type="radio" name="mode" value="merge" checked>くっつける</label>
+      <label><input type="radio" name="mode" value="remix">ぐちゃぐちゃリミックス</label>
+    </span>
+  </div>
+
+  <section class="panel" id="rmPanel" hidden>
+    <h2>リミックス</h2>
+    <p class="note">曲の拍に合わせて、入れた動画をランダムに切り刻み、くり返し・逆回し・速く・遅く・止め・色の反転などで崩します。曲には手を加えません。</p>
     <div class="row">
+      <span class="lab">テンポ</span>
+      <label><input type="number" id="rmBpm" min="40" max="250" step="0.01"> BPM</label>
+      <button class="ghost small" id="rmTap" type="button" style="margin-left:0">タップでテンポ</button>
+      <p class="note" id="rmBpmNote"></p>
+    </div>
+    <div class="row">
+      <span class="lab">1拍目</span>
+      <label>曲の <input type="number" id="rmOffset" min="0" step="0.01" value="0"> 秒目</label>
+      <span class="note">（曲を流しながらタップすると、ここも合わせます）</span>
+    </div>
+    <div class="row">
+      <span class="lab">ぐちゃぐちゃ度</span>
+      <input type="range" id="rmChaos" min="0" max="100" value="60" step="5">
+      <span class="vol" id="rmChaosv">60</span>
+    </div>
+    <div class="row">
+      <span class="lab">番号</span>
+      <input type="number" id="rmSeed" min="1" step="1" value="1">
+      <button class="ghost small" id="rmDice" type="button" style="margin-left:0">🎲 もう一回</button>
+      <span class="note">同じ番号なら同じリミックスになります</span>
+    </div>
+    <p class="note" id="rmSummary"></p>
+    <button class="ghost" id="rmTry" type="button">試し書き出し（頭 15 秒・480p）</button>
+    <p class="note">映像は全部作り直すので、3 分の曲で数分〜十数分かかります。まず試し書き出しで雰囲気を見てください。</p>
+  </section>
+
+  <section class="panel">
+    <h2 id="optTitle">くっつけ方</h2>
+    <div class="row only-merge">
       <span class="lab">動画の元の音</span>
       <span class="seg">
         <label><input type="radio" name="orig" value="replace" checked>消して差し替える</label>
         <label><input type="radio" name="orig" value="mix">残して混ぜる</label>
       </span>
     </div>
-    <div class="row">
+    <div class="row only-merge">
       <span class="lab">長さ</span>
       <span class="seg">
         <label><input type="radio" name="len" value="video" checked>動画に合わせる</label>
@@ -181,7 +221,7 @@
       </span>
       <p class="note" id="bounceNote" hidden>逆回しは動画を H.264 に作り直すので時間がかかります（長い動画や 4K は特に）。元の音を混ぜる場合、元の音は前向きのまま繰り返します。</p>
     </div>
-    <div class="row">
+    <div class="row only-merge">
       <span class="lab">音声の音量</span>
       <input type="range" id="avol" min="0" max="200" value="100" step="5">
       <span class="vol" id="avolv">100%</span>
@@ -195,7 +235,7 @@
       <span class="lab">音声の頭出し</span>
       <label><input type="number" id="askip" min="0" step="0.1" value="0"> 秒目から使う</label>
     </div>
-    <div class="row">
+    <div class="row only-merge">
       <span class="lab">入れ始め</span>
       <label>動画の <input type="number" id="adelay" min="0" step="0.1" value="0"> 秒目から鳴らす</label>
     </div>
@@ -203,7 +243,7 @@
       <span class="lab">終わり</span>
       <label><input type="checkbox" id="fade" checked> 最後の <input type="number" id="fadesec" min="0.1" step="0.5" value="2"> 秒で音を小さくして消す</label>
     </div>
-    <div class="row" id="xfaderow" hidden>
+    <div class="row only-merge" id="xfaderow" hidden>
       <span class="lab">つなぎ目</span>
       <label><input type="number" id="xfade" min="0" step="0.1" value="0"> 秒 重ねて溶かす</label>
       <p class="note" id="xfadeNote"></p>
@@ -216,8 +256,8 @@
         <label><input type="radio" name="size" value="480">もっと軽く（480p）</label>
       </span>
     </div>
-    <p class="note" id="lenNote"></p>
-    <p class="note" id="sizeNote"></p>
+    <p class="note only-merge" id="lenNote"></p>
+    <p class="note only-merge" id="sizeNote"></p>
   </section>
 
   <section class="panel" id="lyPanel" hidden>
@@ -290,6 +330,7 @@
 <script type="module">
 import { FFmpeg } from "./vendor/ffmpeg/index.js";
 import { readEmbeddedLyrics, parseLrc, buildAss, fmtLrc } from "./lyrics.js";
+import { detectBeats, makePlan, planSummary, segFilter } from "./remix.js";
 
 // 試験のときは ?core=<フォルダのURL> で読み込み先を差し替える
 const PARAMS = new URLSearchParams(location.search);
@@ -398,8 +439,77 @@ function setAudio(file) {
   $("aname").textContent = `${file.name}（${fmtMB(file.size)}）`;
   prev.onloadedmetadata = refresh;
   loadLyrics(file);
+  state.beats = null;
+  if (opt("mode") === "remix") findTempo();
   refresh();
 }
+
+// ── リミックス ──
+// 曲を読んでテンポと1拍目を調べる（WebAudio で読めない形式なら手で入れてもらう）
+let tempoToken = 0;
+async function findTempo() {
+  const file = state.audio;
+  if (!file || state.beats) return;
+  const my = ++tempoToken;
+  $("rmBpmNote").textContent = "曲を調べています…";
+  try {
+    const ctx = new OfflineAudioContext(1, 1, 22050);
+    const buf = await ctx.decodeAudioData(await file.arrayBuffer());
+    if (my !== tempoToken) return;
+    // モノラルにまとめ、22050 に間引く（拍を見るには十分）
+    const step = buf.sampleRate / 22050, len = Math.floor(buf.length / step);
+    const mono = new Float32Array(len);
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < len; i++) mono[i] += d[Math.floor(i * step)] / buf.numberOfChannels;
+    }
+    await new Promise((r) => setTimeout(r, 0));
+    const r = detectBeats(mono, 22050);
+    if (my !== tempoToken) return;
+    if (!r) { $("rmBpmNote").textContent = "曲が短すぎてテンポを決められませんでした。手で入れてください。"; return; }
+    state.beats = r;
+    $("rmBpm").value = r.bpm; $("rmOffset").value = r.offset;
+    $("rmBpmNote").textContent = `自動で調べた値: ${r.bpm} BPM・1拍目 ${r.offset} 秒（${r.confidence > 3 ? "はっきり" : r.confidence > 2 ? "たぶん" : "自信なし。タップで直してください"}）`;
+  } catch (e) {
+    if (my === tempoToken) $("rmBpmNote").textContent = "この形式の曲はブラウザで読めないので、テンポを手で入れるか、タップで合わせてください。";
+  }
+  refresh();
+}
+
+function rmSettings() {
+  return { bpm: num("rmBpm"), offset: num("rmOffset"), chaos: +$("rmChaos").value / 100, seed: Math.max(1, Math.round(num("rmSeed", 1))) };
+}
+
+// 設計図の中身を数えて見せる（長さは <video>/<audio> で読めたときだけ）
+function rmRefresh() {
+  const vs = state.videos, ad = $("aprev").duration, R = rmSettings();
+  if (!vs.length || !isFinite(ad) || !(R.bpm > 0) || vs.some((v) => !isFinite(v.dur))) { $("rmSummary").textContent = ""; return; }
+  const T = Math.max(0, ad - num("askip")), beat = 60 / R.bpm;
+  const segs = makePlan({ ...R, offset: ((R.offset - num("askip")) % beat + beat) % beat, T, F: 30, clips: vs.map((v) => ({ dur: v.dur })) });
+  const c = planSummary(segs);
+  $("rmSummary").textContent = `${fmtT(T)} を ${c.segments} 区間に切ります（くり返し ${c.stutter}・逆回し ${c.reverse}・速く ${c.fast}・遅く ${c.slow}・止め ${c.freeze}・見た目を崩す ${c.look}）`;
+}
+
+// タップでテンポ: 間隔の平均から BPM。曲を流していれば、最後に押した所を1拍目にする
+let taps = [];
+$("rmTap").addEventListener("click", () => {
+  const now = performance.now();
+  if (taps.length && now - taps[taps.length - 1] > 2000) taps = [];
+  taps.push(now);
+  if (taps.length > 8) taps.shift();
+  if (taps.length >= 3) {
+    const bpm = 60000 * (taps.length - 1) / (taps[taps.length - 1] - taps[0]);
+    $("rmBpm").value = bpm.toFixed(2);
+    const a = $("aprev");
+    if (!a.paused) $("rmOffset").value = (a.currentTime % (60 / bpm)).toFixed(3);
+    $("rmBpmNote").textContent = `タップで ${bpm.toFixed(1)} BPM（${taps.length} 回）`;
+  } else {
+    $("rmBpmNote").textContent = "拍に合わせて続けて押してください…";
+  }
+  refresh();
+});
+$("rmDice").addEventListener("click", () => { $("rmSeed").value = 1 + Math.floor(Math.random() * 99999); refresh(); });
+document.querySelectorAll("input[name=mode]").forEach((el) => el.addEventListener("change", () => { if (opt("mode") === "remix") findTempo(); renderVideos(); }));
 
 // ── 歌詞 ──
 let lyToken = 0;
@@ -533,14 +643,22 @@ function renderVideos() {
     list.append(li);
   });
   const total = vs.reduce((t, it) => t + it.dur, 0);
-  $("vtotal").textContent = n > 1 ? `${n} 本をこの順につなげます（合計 ${fmtT(total)}）` : `${fmtMB(vs[0]?.file.size || 0)}・${fmtT(total)}`;
+  $("vtotal").textContent = n > 1 ? (opt("mode") === "remix" ? `${n} 本を素材に使います（合計 ${fmtT(total)}）` : `${n} 本をこの順につなげます（合計 ${fmtT(total)}）`) : `${fmtMB(vs[0]?.file.size || 0)}・${fmtT(total)}`;
   $("vclear").disabled = busy;
   if (!$("vprev").src && n) showPreview();
   refresh();
 }
 
 function refresh() {
-  $("go").disabled = busy || !state.videos.length || !state.audio;
+  const remix = opt("mode") === "remix";
+  document.body.classList.toggle("remix", remix);
+  $("rmPanel").hidden = !remix;
+  $("optTitle").textContent = remix ? "仕上げ" : "くっつけ方";
+  $("go").textContent = remix ? "リミックスする" : "ガッちゃんこする";
+  $("go").disabled = busy || !state.videos.length || !state.audio || (remix && !(num("rmBpm") > 0));
+  $("rmTry").disabled = $("go").disabled;
+  $("rmChaosv").textContent = $("rmChaos").value;
+  if (remix) rmRefresh();
   $("vvolrow").hidden = opt("orig") !== "mix";
   $("vlooprow").hidden = opt("len") !== "audio";
   $("bounceNote").hidden = opt("vloop") !== "bounce";
@@ -632,7 +750,8 @@ function ext(name, def) { const m = name.match(/\.([A-Za-z0-9]{1,5})$/); return 
 // 音声に合わせて動画をループさせるか。ループのしかた（loop）は
 //   repeat: 元の動画をそのまま繰り返す / xloop: 折り返しを重ねた部品の並び（xl。concat の一覧）を読む / bounce: 往復の動画（bounce）を作っておいて繰り返す
 // subs があれば、その ASS 字幕を焼き込む（絵は必ず作り直す）
-function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, vvol, askip, adelay, fade, fadesec, bounce, xl, subs }) {
+// vconcat なら vpath は concat の一覧（リミックスの区間を並べたもの）
+function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, vvol, askip, adelay, fade, fadesec, bounce, xl, subs, vconcat }) {
   const vdur = vinfo.dur;
   const adur = Math.max(0, ainfo.dur - askip);
   const mix = orig === "mix" && !!vinfo.acodec;
@@ -642,7 +761,7 @@ function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, 
   const args = ["-hide_banner", "-y"];
   // 0: 絵（と元の音）。xl は足りる回数を並べた一覧なので繰り返さない
   if (loop === "repeat" || loop === "bounce") args.push("-stream_loop", "-1");
-  if (loop === "xloop") args.push("-f", "concat", "-safe", "0");
+  if (loop === "xloop" || vconcat) args.push("-f", "concat", "-safe", "0");
   args.push("-i", loop === "bounce" ? bounce : loop === "xloop" ? xl : vpath);
   // 1: 音声
   if (askip > 0) args.push("-ss", askip.toFixed(3));
@@ -927,6 +1046,98 @@ async function run() {
       done += span;
       return r;
     };
+    // 歌詞の字幕を作る（できあがりの W×H・長さ T に合わせて）。何回出すかを返す
+    const prepLyrics = async (T, W, H) => {
+      const lyTimed = $("lyOn").checked ? lyLines().timed : [];
+      if (!lyTimed.some((l) => l.text)) return 0;
+      if (!fontBytes) {
+        setStatus("歌詞の字の形を読み込み中…（はじめの1回だけ）");
+        const res = await fetch(FONT_URL);
+        if (!res.ok) throw new Error(`歌詞の字の形を読めませんでした (${res.status})`);
+        fontBytes = new Uint8Array(await res.arrayBuffer());
+      }
+      if (cancelled) throw new Error("cancelled");
+      await f.createDir("/fonts").catch(() => {});
+      await f.writeFile("/fonts/lyrics.ttf", fontBytes.slice());
+      const ass = buildAss(lyTimed, {
+        W, H, T, shift: opts.adelay - opts.askip, period: opts.len === "loop" ? Math.max(0, ainfo.dur - opts.askip) : 0,
+        size: opt("lysize"), pos: opt("lypos"), font: FONT_NAME,
+      });
+      const count = (ass.match(/^Dialogue:/gm) || []).length;
+      await f.createDir("/work").catch(() => {});
+      await f.writeFile("/work/lyrics.ass", new TextEncoder().encode(ass));
+      log(`[歌詞] ${count} 回表示（${W}×${H}）`);
+      if (count) opts.subs = "/work/lyrics.ass";
+      return count;
+    };
+    const showResult = (data, notes, name) => {
+      const blob = new Blob([data.buffer], { type: "video/mp4" });
+      if (state.outURL) URL.revokeObjectURL(state.outURL);
+      state.outURL = URL.createObjectURL(blob);
+      $("rvideo").src = state.outURL;
+      $("dl").href = state.outURL;
+      $("dl").download = name;
+      $("rinfo").textContent = [`${fmtMB(blob.size)}`, ...notes].join("　");
+      $("result").hidden = false;
+      $("work").hidden = true;
+      $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+
+    if (opt("mode") === "remix") {
+      // ── ぐちゃぐちゃリミックス ──
+      // 区間をいくつかずつまとめて作り直し（/work/rb*.mp4）、作り直さずに並べて、曲をそのまま載せる
+      const R = rmSettings();
+      if (!(R.bpm > 0)) throw new Error("テンポ（BPM）が決まっていません。");
+      const trying = runKind === "try";
+      const fullT = Math.max(0.1, ainfo.dur - opts.askip);
+      const T = trying ? Math.min(15, fullT) : fullT;
+      const v0 = vinfos[0], turned = Math.abs(v0.rot) % 180 === 90;
+      const even = (x) => Math.max(2, Math.round(x / 2) * 2);
+      const W0 = even((turned ? v0.h : v0.w) || 1280), H0 = even((turned ? v0.w : v0.h) || 720);
+      const [W, H] = smallDims({ w: W0, h: H0, rot: 0 }, trying ? 480 : size.short || 1080) || [W0, H0];
+      const F = Math.min(30, Math.round(fpsOf(v0))) || 30;
+      const beat = 60 / R.bpm;
+      // 設計図は曲全体で作り、試しはその頭だけ使う（試しと本番の頭が同じになるように）
+      let segs = makePlan({ ...R, offset: ((R.offset - opts.askip) % beat + beat) % beat, T: fullT, F, clips: vinfos.map((i) => ({ dur: i.dur })) });
+      const want = Math.round(T * F);
+      let got = 0;
+      segs = segs.filter((sg) => got < want && (sg.frames = Math.min(sg.frames, want - got), got += sg.frames, true));
+      const sum = planSummary(segs);
+      log(`[リミックス] ${JSON.stringify({ ...R, W, H, F, T, ...sum })}`);
+      total = T * ($("lyOn").checked ? 2 : 1);   // 歌詞を入れるなら最後にもう一度作り直す
+      done = 0;
+      await f.createDir("/work").catch(() => {});
+      const B = 12, parts = [];
+      for (let i = 0; i < segs.length; i += B) {
+        const group = segs.slice(i, i + B);
+        const a = ["-hide_banner", "-y"];
+        group.forEach((sg) => {
+          const len = vinfos[sg.src].dur;
+          a.push("-ss", sg.at.toFixed(3), "-t", Math.min(sg.need + 0.1, Math.max(0.05, len - sg.at)).toFixed(3), "-i", `/in/${vnames[sg.src]}`);
+        });
+        const g = group.map((sg, k) => `[${k}:v:0]${segFilter(sg, { W, H, F })}[v${k}]`);
+        g.push(`${group.map((_, k) => `[v${k}]`).join("")}concat=n=${group.length}:v=1:a=0[out]`);
+        const name = `rb${parts.length}.mp4`;
+        a.push("-filter_complex", g.join(";"), "-map", "[out]", "-an", ...X264, `/work/${name}`);
+        const span = group.reduce((t, sg) => t + sg.frames, 0) / F;
+        if (await step(a, `リミックスを作っています（${Math.floor(i / B) + 1}/${Math.ceil(segs.length / B)}）`, span) !== 0)
+          throw new Error("リミックスの区間が作れませんでした。下の「処理の記録」を見てください。");
+        parts.push(name);
+      }
+      await f.writeFile("/work/rlist.txt", parts.map((p) => `file '/work/${p}'`).join("\n"));
+      const lyCount = await prepLyrics(T, W, H);
+      const fin = buildArgs({ ...opts, vpath: "/work/rlist.txt", vconcat: true, vinfo: { dur: T, vcodec: "h264", acodec: null, w: W, h: H, rot: 0 },
+        orig: "replace", len: "video", avol: 100, adelay: 0 });
+      if (await step(fin.args, opts.subs ? "歌詞を入れながら曲を載せています" : "曲を載せています", opts.subs ? T : 0) !== 0)
+        throw new Error("曲を載せられませんでした。");
+      const data = await f.readFile("/out.mp4");
+      for (const p of parts) await f.deleteFile(`/work/${p}`).catch(() => {});
+      const base = state.videos[0].file.name.replace(/\.[^.]+$/, "");
+      showResult(data, [`${fmtT(T)}・${W}×${H}`, `${sum.segments} 区間（番号 ${R.seed}・ぐちゃぐちゃ度 ${Math.round(R.chaos * 100)}）`, ...(trying ? ["試し書き出し"] : []), ...(lyCount ? [`歌詞を ${lyCount} 回出しました`] : [])],
+        `${base}_リミックス${R.seed}${trying ? "_試し" : ""}.mp4`);
+      return;
+    }
+
     if (many) {
       const cat = await makeConcat(f, vnames.map((n) => `/in/${n}`), vinfos, step, opts.xfade, size.short);
       plan.X = cat.X;
@@ -952,30 +1163,9 @@ async function run() {
     if (bounce) await makeBounce(f, opts.vpath, opts.vinfo, step);
     if (loop === "xloop") await makeXLoop(f, opts.vpath, opts.vinfo, XL, T, step);
     // 歌詞: 曲の中の時刻を、頭出し・入れ始めのぶんずらしてできあがりの時刻にする
-    const lyTimed = $("lyOn").checked ? lyLines().timed : [];
-    let lyCount = 0;
-    if (lyTimed.some((l) => l.text)) {
-      if (!fontBytes) {
-        setStatus("歌詞の字の形を読み込み中…（はじめの1回だけ）");
-        const res = await fetch(FONT_URL);
-        if (!res.ok) throw new Error(`歌詞の字の形を読めませんでした (${res.status})`);
-        fontBytes = new Uint8Array(await res.arrayBuffer());
-      }
-      if (cancelled) throw new Error("cancelled");
-      await f.createDir("/fonts").catch(() => {});
-      await f.writeFile("/fonts/lyrics.ttf", fontBytes.slice());
-      const vi = opts.vinfo, turned = Math.abs(vi.rot) % 180 === 90;
-      const W = (turned ? vi.h : vi.w) || 1280, H = (turned ? vi.w : vi.h) || 720;
-      const ass = buildAss(lyTimed, {
-        W, H, T, shift: opts.adelay - opts.askip, period: opts.len === "loop" ? Math.max(0, ainfo.dur - opts.askip) : 0,
-        size: opt("lysize"), pos: opt("lypos"), font: FONT_NAME,
-      });
-      lyCount = (ass.match(/^Dialogue:/gm) || []).length;
-      await f.createDir("/work").catch(() => {});
-      await f.writeFile("/work/lyrics.ass", new TextEncoder().encode(ass));
-      log(`[歌詞] ${lyCount} 回表示（${W}×${H}）`);
-      if (lyCount) { opts.subs = "/work/lyrics.ass"; built = buildArgs(opts); }
-    }
+    const vi = opts.vinfo, turned = Math.abs(vi.rot) % 180 === 90;
+    const lyCount = await prepLyrics(T, (turned ? vi.h : vi.w) || 1280, (turned ? vi.w : vi.h) || 720);
+    if (lyCount) built = buildArgs(opts);
     ({ args, copy } = built);
     const what = copy ? "くっつけています" : opts.subs ? "歌詞を入れながら動画を作り直しています（時間がかかります）" : `動画を H.264 に作り直しながらくっつけています（${opts.vinfo.vcodec} のため。時間がかかります）`;
     const ret = await step(args, what, T);
@@ -987,24 +1177,15 @@ async function run() {
     if (loop === "xloop") for (const p of ["x_head.mp4", "x_blend.mp4", "x_mid.mp4"]) await f.deleteFile(`/work/${p}`).catch(() => {});
     if (many) await f.deleteFile("/work/cat.mp4").catch(() => {});
     if (shrink) await f.deleteFile("/work/small.mp4").catch(() => {});
-    const blob = new Blob([data.buffer], { type: "video/mp4" });
-    if (state.outURL) URL.revokeObjectURL(state.outURL);
-    state.outURL = URL.createObjectURL(blob);
-    $("rvideo").src = state.outURL;
     const base = state.videos[0].file.name.replace(/\.[^.]+$/, "") + (many ? `_ほか${vinfos.length - 1}本` : "");
-    $("dl").href = state.outURL;
-    $("dl").download = `${base}_ガッちゃんこ.mp4`;
-    const notes = [`${fmtT(T)}・${fmtMB(blob.size)}`];
+    const notes = [fmtT(T)];
     const shortened = (x) => x > 0 && x < opts.xfade - 0.01 ? `（短い動画に合わせて ${opts.xfade} 秒から縮めました）` : "";
     if (many) notes.push(`${vinfos.length} 本を${plan.same ? "そのまま" : "作り直して"}つなげました` + (plan.X > 0 ? `（つなぎ目を ${plan.X} 秒重ねて）${shortened(plan.X)}` : ""));
     if (loopV) notes.push(bounce ? "動画を逆回しで往復させました" : loop === "xloop" ? `動画を繰り返しました（折り返しを ${XL} 秒重ねて）${shortened(XL)}` : "動画を繰り返しました");
     if (light) notes.push(`${opts.vinfo.w}×${opts.vinfo.h} に軽くしました`);
     if (lyCount) notes.push(`歌詞を ${lyCount} 回出しました`);
     if (opts.orig === "mix" && !mix) notes.push("動画に元の音が無かったので差し替えにしました");
-    $("rinfo").textContent = notes.join("　");
-    $("result").hidden = false;
-    $("work").hidden = true;
-    $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+    showResult(data, notes, `${base}_ガッちゃんこ.mp4`);
   } catch (e) {
     if (!cancelled) {
       setStatus(String(e.message || e), true);
@@ -1017,7 +1198,10 @@ async function run() {
   }
 }
 
-$("go").addEventListener("click", run);
+// 試し書き出しか本番か（リミックスで使う）
+let runKind = "full";
+$("go").addEventListener("click", () => { runKind = "full"; run(); });
+$("rmTry").addEventListener("click", () => { runKind = "try"; run(); });
 $("cancel").addEventListener("click", () => {
   if (!busy) { $("work").hidden = true; return; }
   cancelled = true;
