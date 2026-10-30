@@ -223,6 +223,12 @@ for (const [i, c] of cases.entries()) {
     if (c.remix.diffFrom !== undefined && cases[c.remix.diffFrom].vmd5 === c.vmd5) probs.push("番号を変えたのに絵が同じ");
     if (c.remix.shot) execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", out, "-vf", "fps=4,scale=160:-1,tile=8x4", "-frames:v", "1", S(`shot_remix_${i}.png`)]);
   }
+  // できあがりを受け取る時に、途中の動画・音声が残っていないこと（終わり際にメモリを何倍も使って落ちないように）
+  const left = (log.match(/\[残り\][^\n]*/) || [""])[0];
+  if (!left) probs.push("[残り] の記録が無い");
+  else if (/\.(mp4|m4a)\b/.test(left)) probs.push(`途中のファイルが残っている: ${left}`);
+  // ちゃんと終わったら「落ちた控え」は消えている
+  if (await page.evaluate(() => localStorage.getItem("avmerge.run"))) probs.push("終わったのに落ちた控えが残っている");
   if (c.bright) {
     // 黒い動画の明るさ（region: bottom＝下の 1/3、all＝全体）で、グラフィックスが出ているか
     for (const [t, lit, region] of c.bright) {
@@ -305,6 +311,32 @@ if (!process.env.ONLY || "崩し方".includes(process.env.ONLY)) {
   console.log(`${bad.length ? "NG" : "OK"} 崩し方を全部ブラウザの ffmpeg で（${res.length} 通り）${bad.length ? " " + JSON.stringify(bad) : ""}`);
   if (bad.length) fail++;
   await p4.close();
+}
+// 落ちたあと: 途中の控えが残っていれば、開き直した時に知らせ、設定と歌詞を戻す。同じ音声を入れ直してもタグで上書きしない
+if (!process.env.ONLY || "落ちた".includes(process.env.ONLY)) {
+  const p5 = await browser.newPage();
+  await p5.goto(base);
+  await p5.evaluate(() => localStorage.setItem("avmerge.run", JSON.stringify({
+    at: Date.now() - 180000, stage: "グラフィックスを描いています（3/10）", audio: "a_lrc.mp3",
+    settings: { lyText: "[00:01.00]戻った歌詞", lyOn: true, mgOn: true, "radio:mgStyle": "retro", mgTitleText: "直した曲名" },
+  })));
+  await p5.reload();
+  const shown = await p5.isVisible("#crashNote");
+  const text = await p5.$eval("#crashText", (e) => e.textContent);
+  const st = await p5.evaluate(() => ({ mgOn: document.getElementById("mgOn").checked, retro: document.querySelector("input[name=mgStyle][value=retro]").checked, key: localStorage.getItem("avmerge.run") }));
+  await p5.setInputFiles("#afile", S("a_lrc.mp3"));
+  await p5.waitForFunction(() => !/探しています/.test(document.getElementById("lyStatus").textContent), null, { timeout: 5000 });
+  const ly = await p5.$eval("#lyText", (e) => e.value), title = await p5.$eval("#mgTitleText", (e) => e.value);
+  // 別の音声なら、ふつうにタグから読む
+  await p5.setInputFiles("#afile", S("a_plain.mp3"));
+  await p5.waitForFunction(() => /時刻の無い一行目/.test(document.getElementById("lyText").value), null, { timeout: 5000 }).catch(() => {});
+  const ly2 = await p5.$eval("#lyText", (e) => e.value);
+  const ok = shown && /グラフィックスを描いています（3\/10）/.test(text) && /3 分前/.test(text) && st.mgOn && st.retro && st.key === null
+    && ly === "[00:01.00]戻った歌詞" && title === "直した曲名" && /時刻の無い一行目/.test(ly2);
+  console.log(`${ok ? "OK" : "NG"} 落ちたあとの知らせと設定の戻し ${ok ? "" : JSON.stringify({ shown, text, st, ly, title, ly2 })}`);
+  if (!ok) fail++;
+  await p5.screenshot({ path: S("shot_crash.png") });
+  await p5.close();
 }
 // メモリの警告: 境目を下げたページで、大きすぎる見込みなら警告が出るか
 if (!process.env.ONLY || "メモリの警告".includes(process.env.ONLY)) {

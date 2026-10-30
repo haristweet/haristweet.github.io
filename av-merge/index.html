@@ -137,6 +137,12 @@
     <p class="lede">動画と音声を入れると、音をくっつけた動画ができます。動画を何本か入れると、並べた順につなげてから音をくっつけます。ファイルはどこにも送らず、このブラウザの中だけで処理します。</p>
   </header>
 
+  <section class="panel" id="crashNote" hidden role="alert" style="border-color:var(--accent)">
+    <h2>前回は途中で止まってしまいました</h2>
+    <p class="note" id="crashText" style="color:var(--ink)"></p>
+    <div class="row"><button class="ghost small" id="crashClose" type="button" style="margin-left:0">閉じる</button></div>
+  </section>
+
   <div class="pair">
     <div class="vcol">
       <label class="drop" id="vdrop">
@@ -380,6 +386,7 @@
   <section class="panel" id="work" hidden>
     <div class="status" id="status"></div>
     <div class="bar"><i id="barfill"></i></div>
+    <p class="note">終わるまで、この画面を開いたままにしてください。ほかのアプリに切りかえたり画面を消したりすると、ブラウザが止めて最初からになることがあります。</p>
     <div class="row"><button class="ghost" id="cancel">やめる</button></div>
   </section>
 
@@ -673,6 +680,11 @@ async function loadLyrics(file) {
   $("lyText").value = r.text.replace(/\r\n?/g, "\n").trim();
   $("mgTitleText").value = r.title || file.name.replace(/\.[^.]+$/, "");
   $("mgArtist").value = r.artist || "";
+  if (restored && restored.audio === file.name) {
+    // 落ちる前と同じ音声: タップで付けた時刻や直した曲名を残す
+    for (const id of ["lyText", "lyOn", "mgTitleText", "mgArtist"]) if (id in restored.settings) restoreSettings({ [id]: restored.settings[id] });
+    restored = null;
+  }
   $("lyOn").checked = !!r.text.trim();
   lyRefresh(r.source);
 }
@@ -1127,9 +1139,61 @@ async function makeBounce(f, vpath, vinfo, step) {
   return "/work/pp.mp4";
 }
 
+// 処理中は画面を消さない（スマホが眠ると、ブラウザがページを止めて開き直すことがある）
+let wakeLock = null;
+async function holdScreen() { try { if (busy && !wakeLock && navigator.wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch { /* 使えないブラウザ */ } }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") holdScreen(); });
+window.addEventListener("beforeunload", (e) => { if (busy) { e.preventDefault(); e.returnValue = ""; } });
+
+// 落ちたときのための控え。処理を始めるときに設定と歌詞を、進むたびに今の段階を残し、ちゃんと終わったら消す。
+// 次に開いたときに残っていれば、途中でページが読み込み直されたということ
+const RUN_KEY = "avmerge.run";
+function saveSettings() {
+  const v = {};
+  document.querySelectorAll("input[id], textarea[id], input[type=radio]:checked").forEach((e) => {
+    if (e.type === "file") return;
+    if (e.type === "radio") v[`radio:${e.name}`] = e.value;
+    else if (e.type === "checkbox") v[e.id] = e.checked;
+    else v[e.id] = e.value;
+  });
+  return v;
+}
+function restoreSettings(v) {
+  for (const [k, val] of Object.entries(v || {})) {
+    if (k.startsWith("radio:")) { const e = document.querySelector(`input[name="${k.slice(6)}"][value="${val}"]`); if (e) e.checked = true; continue; }
+    const e = document.getElementById(k);
+    if (!e) continue;
+    if (e.type === "checkbox") e.checked = !!val; else e.value = val;
+  }
+}
+const runMark = (o) => { try { if (o) localStorage.setItem(RUN_KEY, JSON.stringify(o)); else localStorage.removeItem(RUN_KEY); } catch { /* 保存できない */ } };
+let runInfo = null;
+function markStage(label) { if (runInfo && runInfo.stage !== label) { runInfo.stage = label; runMark(runInfo); } }
+// 入れ直した音声が前回と同じなら、戻した歌詞・曲名をタグで上書きしない
+let restored = null;
+(() => {
+  let prev = null;
+  try { prev = JSON.parse(localStorage.getItem(RUN_KEY) || "null"); } catch { /* 読めない */ }
+  runMark(null);
+  if (!prev || Date.now() - prev.at > 2 * 864e5) return;
+  restoreSettings(prev.settings);
+  restored = { audio: prev.audio, settings: prev.settings };
+  const mins = Math.round((Date.now() - prev.at) / 60000);
+  $("crashText").textContent =
+    `前回（${mins < 60 ? mins + " 分前" : Math.round(mins / 60) + " 時間前"}）は「${prev.stage || "準備"}」のところでページが読み込み直されて、最初の画面に戻りました。` +
+    "ブラウザのメモリが足りなくなったか、処理中にほかのアプリへ切りかえたり画面を消したりしたためだと思います。" +
+    "設定と歌詞は前回のものに戻しました。動画と音声を入れ直してください。" +
+    "「大きさ」で軽くする・音声や動画を短くする・グラフィックスや歌詞を減らすと、メモリが少なくて済みます。処理中は画面を開いたままにしてください。";
+  $("crashNote").hidden = false;
+})();
+$("crashClose").addEventListener("click", () => { $("crashNote").hidden = true; });
+
 async function run() {
   if (busy) return;
   busy = true; cancelled = false; renderVideos();
+  holdScreen();
+  runInfo = { at: Date.now(), stage: "準備", audio: state.audio?.name || "", settings: saveSettings() };
+  runMark(runInfo);
   $("work").hidden = false; $("result").hidden = true;
   setBar(0);
   logLines = [];
@@ -1187,6 +1251,7 @@ async function run() {
     let total = (many && !plan.same ? plan.sum : 0) + (shrink ? opts.vinfo.dur : 0) + prepWork(built) + built.T;
     let done = 0;
     const step = async (a, label, span) => {
+      markStage(label);
       log("[命令] ffmpeg " + a.join(" "));
       setStatus(label + "…");
       onLog = (m) => {
@@ -1241,6 +1306,9 @@ async function run() {
       await f.createDir("/work").catch(() => {});
       await f.rename("/out.mp4", "/work/base.mp4");
       await f.createDir("/mg").catch(() => {});
+      const hasA = !!info.acodec;
+      if (hasA && await step(["-hide_banner", "-y", "-i", "/work/base.mp4", "-vn", "-c:a", "copy", "/work/base_a.m4a"], "音を取り分けています", 0) !== 0)
+        throw new Error("音を取り分けられませんでした。");
       const cv = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(W, H) : Object.assign(document.createElement("canvas"), { width: W, height: H });
       const g = cv.getContext("2d");
       const toPng = (c) => c.convertToBlob ? c.convertToBlob({ type: "image/png" }) : new Promise((r) => c.toBlob(r, "image/png"));
@@ -1249,6 +1317,7 @@ async function run() {
         const n = Math.min(C, NT - s0);
         for (let j = 0; j < n; j++) {
           if (j % 15 === 0) setStatus(`グラフィックスを描いています… ${fmtT((s0 + j) / F)} / ${fmtT(T)}`);
+          if (j === 0) markStage(`グラフィックスを描いています（${k + 1}/${Math.ceil(NT / C)}）`);
           drawFrame(g, sc, (s0 + j) / F);
           await f.writeFile(`/mg/f${String(j).padStart(5, "0")}.png`, new Uint8Array(await (await toPng(cv)).arrayBuffer()));
           if (cancelled) throw new Error("cancelled");
@@ -1260,14 +1329,25 @@ async function run() {
         for (let j = 0; j < n; j++) await f.deleteFile(`/mg/f${String(j).padStart(5, "0")}.png`).catch(() => {});
         parts.push(`mg${k}.mp4`);
       }
+      await sweep(["base.mp4"]);
       await f.writeFile("/work/mglist.txt", parts.map((p) => `file '/work/${p}'`).join("\n"));
-      if (await step(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", "/work/mglist.txt", "-i", "/work/base.mp4", "-map", "0:v", "-map", "1:a?", "-c", "copy", "-movflags", "+faststart", "/out.mp4"], "まとめています", 0) !== 0)
+      if (await step(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", "/work/mglist.txt", ...(hasA ? ["-i", "/work/base_a.m4a", "-map", "0:v", "-map", "1:a"] : ["-map", "0:v"]), "-c", "copy", "-movflags", "+faststart", "/out.mp4"], "まとめています", 0) !== 0)
         throw new Error("グラフィックスを重ねた動画をまとめられませんでした。");
-      for (const p of [...parts, "base.mp4"]) await f.deleteFile(`/work/${p}`).catch(() => {});
+      await sweep([...parts, "base_a.m4a", "mglist.txt"]);
       return NT;
     };
+    // できあがりを受け取ったら、すぐ ffmpeg を止めて、使っていたメモリを丸ごと返す（保存用のデータを作る前に）
+    const takeOutput = async () => {
+      const list = await f.listDir("/work").catch(() => []);
+      log(`[残り] ${list.filter((e) => !e.isDir).map((e) => e.name).join(" ")}`);
+      const data = await f.readFile("/out.mp4");
+      f.terminate(); if (ffmpeg === f) ffmpeg = null;
+      mounted = false;
+      return data;
+    };
+    const sweep = async (names) => { for (const n of names) await f.deleteFile(n.startsWith("/") ? n : `/work/${n}`).catch(() => {}); };
     const showResult = (data, notes, name) => {
-      const blob = new Blob([data.buffer], { type: "video/mp4" });
+      const blob = new Blob([data], { type: "video/mp4" });
       if (state.outURL) URL.revokeObjectURL(state.outURL);
       state.outURL = URL.createObjectURL(blob);
       $("rvideo").src = state.outURL;
@@ -1326,12 +1406,12 @@ async function run() {
         orig: "replace", len: "video", avol: 100, adelay: 0 });
       if (await step(fin.args, opts.subs ? "歌詞を入れながら曲を載せています" : "曲を載せています", opts.subs ? T : 0) !== 0)
         throw new Error("曲を載せられませんでした。");
+      await sweep([...parts, "rlist.txt"]);
       // 切り替わりの時刻（区間の境目）
       const rcuts = []; let acc = 0;
       for (const sg of segs.slice(0, -1)) { acc += sg.frames; rcuts.push(acc / F); }
       const mgFrames = await mgPass(T, rcuts, -opts.askip);
-      const data = await f.readFile("/out.mp4");
-      for (const p of parts) await f.deleteFile(`/work/${p}`).catch(() => {});
+      const data = await takeOutput();
       const base = state.videos[0].file.name.replace(/\.[^.]+$/, "");
       showResult(data, [`${fmtT(T)}・${W}×${H}`, `${sum.segments} 区間・崩し ${sum.timeFx + sum.lookFx} 回（番号 ${R.seed}・ぐちゃぐちゃ度 ${Math.round(R.chaos * 100)}・効果の量 ${Math.round(R.amount * 100)}）`, ...(trying ? ["試し書き出し"] : []), ...(lyCount ? [`歌詞を ${lyCount} 回出しました`] : []), ...(mgFrames ? ["グラフィックスを重ねました"] : [])],
         `${base}_リミックス${R.seed}${trying ? "_試し" : ""}.mp4`);
@@ -1371,17 +1451,13 @@ async function run() {
     const ret = await step(args, what, T);
     if (cancelled) return;
     if (ret !== 0) throw new Error("ffmpeg が失敗しました。下の「処理の記録」を見てください。");
+    await sweep(["pp.mp4", "x_head.mp4", "x_blend.mp4", "x_mid.mp4", "xlist.txt", "cat.mp4", "small.mp4"]);
     // 切り替わりの時刻: 何本かつないだ所と、ループの折り返し
     const mcuts = [];
     if (many) { let acc = 0; for (const v of vinfos.slice(0, -1)) { acc += v.dur - (plan.X || 0); mcuts.push(acc); } }
     if (loopV) { const per = loop === "xloop" ? opts.vinfo.dur - XL : loop === "bounce" ? opts.vinfo.dur * 2 : opts.vinfo.dur; for (let t = per; t < T; t += per) mcuts.push(t); }
     const mgFrames = await mgPass(T, mcuts.sort((a, b) => a - b), opts.adelay - opts.askip);
-    const data = await f.readFile("/out.mp4");
-    await f.deleteFile("/out.mp4").catch(() => {});
-    if (bounce) await f.deleteFile("/work/pp.mp4").catch(() => {});
-    if (loop === "xloop") for (const p of ["x_head.mp4", "x_blend.mp4", "x_mid.mp4"]) await f.deleteFile(`/work/${p}`).catch(() => {});
-    if (many) await f.deleteFile("/work/cat.mp4").catch(() => {});
-    if (shrink) await f.deleteFile("/work/small.mp4").catch(() => {});
+    const data = await takeOutput();
     const base = state.videos[0].file.name.replace(/\.[^.]+$/, "") + (many ? `_ほか${vinfos.length - 1}本` : "");
     const notes = [fmtT(T)];
     const shortened = (x) => x > 0 && x < opts.xfade - 0.01 ? `（短い動画に合わせて ${opts.xfade} 秒から縮めました）` : "";
@@ -1401,6 +1477,8 @@ async function run() {
     onLog = null;
     if (mounted && ffmpeg) await ffmpeg.unmount("/in").catch(() => {});
     busy = false; renderVideos(); flushLog();
+    runInfo = null; runMark(null);
+    if (wakeLock) wakeLock.release().catch(() => {});
   }
 }
 
@@ -1414,6 +1492,7 @@ $("cancel").addEventListener("click", () => {
   // 走っている ffmpeg は止められないので、作業ごと捨てて次に作り直す（読み込んだ道具は使い回す）
   ffmpeg?.terminate(); ffmpeg = null;
   busy = false; renderVideos();
+  runInfo = null; runMark(null);
   setStatus("やめました。"); setBar(0);
 });
 refresh();
