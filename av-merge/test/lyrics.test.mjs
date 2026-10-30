@@ -27,9 +27,10 @@ const made = [
   ["opus", "l.opus", ["-c:a", "libopus"]],
 ];
 for (const [name, file, codec] of made) {
-  ff(...tone, ...codec, "-metadata", `lyrics=${LY}`, S(file));
+  ff(...tone, ...codec, "-metadata", `lyrics=${LY}`, "-metadata", "title=曲の名前", "-metadata", "artist=歌う人 Band", S(file));
   const r = await read(S(file));
   check(`${name} の歌詞`, r.text.trim() === LY, JSON.stringify(r));
+  check(`${name} の曲名・アーティスト`, r.title === "曲の名前" && r.artist === "歌う人 Band", JSON.stringify([r.title, r.artist]));
 }
 ff(...tone, "-c:a", "libmp3lame", S("none.mp3"));
 check("歌詞の無い mp3", (await read(S("none.mp3"))).text === "");

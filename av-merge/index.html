@@ -123,6 +123,10 @@
   .foot a { color: inherit; }
   [hidden] { display: none !important; }
   .modebar { padding: 0 2px; }
+  .chk { display: inline-flex; flex-wrap: wrap; gap: 4px 14px; }
+  .chk label { white-space: nowrap; }
+  #mgPrev { width: 100%; border-radius: 10px; background: #111; display: block; }
+  .mgtext { padding: 4px 8px; font: inherit; border: 1px solid var(--rule); border-radius: 8px; background: var(--ground); color: var(--ink); min-width: 0; flex: 1 1 10em; }
   body.remix .only-merge { display: none !important; }
 </style>
 </head>
@@ -267,6 +271,63 @@
     <p class="note only-merge" id="sizeNote"></p>
   </section>
 
+  <section class="panel" id="mgPanel">
+    <h2>モーショングラフィックス</h2>
+    <label><input type="checkbox" id="mgOn"> 映像の上に、曲に合わせて動くグラフィックスを重ねる</label>
+    <div id="mgBody" hidden>
+      <div class="row">
+        <span class="lab">スタイル</span>
+        <span class="seg">
+          <label><input type="radio" name="mgStyle" value="neon" checked>ネオン</label>
+          <label><input type="radio" name="mgStyle" value="retro">レトロ</label>
+          <label><input type="radio" name="mgStyle" value="pop">ポップ</label>
+          <label><input type="radio" name="mgStyle" value="minimal">ミニマル</label>
+          <label><input type="radio" name="mgStyle" value="cyber">サイバー</label>
+        </span>
+      </div>
+      <div class="row">
+        <span class="lab">音の図形</span>
+        <span class="chk">
+          <label><input type="checkbox" id="mgL_bars" checked> バー</label>
+          <label><input type="checkbox" id="mgL_ring"> リング</label>
+          <label><input type="checkbox" id="mgL_wave"> 波形</label>
+          <label><input type="checkbox" id="mgL_pulse" checked> 拍の図形</label>
+          <label><input type="checkbox" id="mgL_particles" checked> パーティクル</label>
+        </span>
+      </div>
+      <div class="row">
+        <span class="lab">ワイプ</span>
+        <span class="seg">
+          <label><input type="radio" name="mgWipe" value="none">なし</label>
+          <label><input type="radio" name="mgWipe" value="4">4拍ごと</label>
+          <label><input type="radio" name="mgWipe" value="8" checked>8拍ごと</label>
+          <label><input type="radio" name="mgWipe" value="cut">切り替わりで</label>
+        </span>
+      </div>
+      <div class="row">
+        <span class="lab">枠</span>
+        <span class="seg">
+          <label><input type="radio" name="mgFrame" value="none" checked>なし</label>
+          <label><input type="radio" name="mgFrame" value="hud">レトロゲーム</label>
+          <label><input type="radio" name="mgFrame" value="vhs">VHS</label>
+          <label><input type="radio" name="mgFrame" value="rec">REC</label>
+        </span>
+      </div>
+      <div class="row">
+        <span class="lab">タイトル</span>
+        <label><input type="checkbox" id="mgTitle" checked> 頭に出す</label>
+        <input class="mgtext" id="mgTitleText" placeholder="曲名" aria-label="曲名">
+        <input class="mgtext" id="mgArtist" placeholder="アーティスト" aria-label="アーティスト">
+      </div>
+      <canvas id="mgPrev" width="480" height="270" aria-label="プレビュー"></canvas>
+      <div class="row">
+        <button class="ghost small" id="mgPlay" type="button" style="margin-left:0">▶ 曲を流して見る</button>
+        <span class="note" id="mgTempo"></span>
+      </div>
+      <p class="note">図形は曲の大きさ・低い音・高い音・拍に合わせて動きます（テンポは自動で調べます。リミックスの「テンポ」で直せます）。書き出すときに 1 コマずつ描いて重ねるので、そのぶん時間がかかります（3 分の曲で数分ほど）。</p>
+    </div>
+  </section>
+
   <section class="panel" id="lyPanel" hidden>
     <h2>歌詞</h2>
     <p class="note" id="lyStatus"></p>
@@ -291,6 +352,17 @@
           <label><input type="radio" name="lysize" value="m" checked>中</label>
           <label><input type="radio" name="lysize" value="l">大</label>
         </span>
+      </div>
+      <div class="row">
+        <span class="lab">見せ方</span>
+        <span class="seg">
+          <label><input type="radio" name="lyStyle" value="sub" checked>字幕</label>
+          <label><input type="radio" name="lyStyle" value="bounce">跳ねる</label>
+          <label><input type="radio" name="lyStyle" value="pop">ポン</label>
+          <label><input type="radio" name="lyStyle" value="type">タイプ</label>
+          <label><input type="radio" name="lyStyle" value="glitch">グリッチ</label>
+        </span>
+        <span class="note">「字幕」以外は 1 文字ずつ動いて出ます（色はモーショングラフィックスのスタイル）</span>
       </div>
       <div class="row">
         <span class="lab">位置</span>
@@ -338,6 +410,7 @@
 import { FFmpeg } from "./vendor/ffmpeg/index.js";
 import { readEmbeddedLyrics, parseLrc, buildAss, fmtLrc } from "./lyrics.js";
 import { detectBeats, makePlan, planSummary, segFilter } from "./remix.js";
+import { analyzeAudio, makeScene, drawFrame, LAYERS as MG_LAYERS } from "./mograph.js";
 
 // 試験のときは ?core=<フォルダのURL> で読み込み先を差し替える
 const PARAMS = new URLSearchParams(location.search);
@@ -446,8 +519,8 @@ function setAudio(file) {
   $("aname").textContent = `${file.name}（${fmtMB(file.size)}）`;
   prev.onloadedmetadata = refresh;
   loadLyrics(file);
-  state.beats = null;
-  if (opt("mode") === "remix") findTempo();
+  state.beats = null; state.an = null;
+  if (needSong()) findTempo();
   refresh();
 }
 
@@ -456,7 +529,7 @@ function setAudio(file) {
 let tempoToken = 0;
 async function findTempo() {
   const file = state.audio;
-  if (!file || state.beats) return;
+  if (!file || state.an) return;
   const my = ++tempoToken;
   $("rmBpmNote").textContent = "曲を調べています…";
   try {
@@ -472,10 +545,12 @@ async function findTempo() {
     }
     await new Promise((r) => setTimeout(r, 0));
     const r = detectBeats(mono, 22050);
+    state.an = analyzeAudio(mono, 22050);      // モーショングラフィックス用（大きさ・帯・波形）
     if (my !== tempoToken) return;
     if (!r) { $("rmBpmNote").textContent = "曲が短すぎてテンポを決められませんでした。手で入れてください。"; return; }
     state.beats = r;
     $("rmBpm").value = r.bpm; $("rmOffset").value = r.offset;
+    $("mgTempo").textContent = `テンポ ${r.bpm} BPM`;
     $("rmBpmNote").textContent = `自動で調べた値: ${r.bpm} BPM・1拍目 ${r.offset} 秒（${r.confidence > 3 ? "はっきり" : r.confidence > 2 ? "たぶん" : "自信なし。タップで直してください"}）`;
   } catch (e) {
     if (my === tempoToken) $("rmBpmNote").textContent = "この形式の曲はブラウザで読めないので、テンポを手で入れるか、タップで合わせてください。";
@@ -516,7 +591,76 @@ $("rmTap").addEventListener("click", () => {
   refresh();
 });
 $("rmDice").addEventListener("click", () => { $("rmSeed").value = 1 + Math.floor(Math.random() * 99999); refresh(); });
-document.querySelectorAll("input[name=mode]").forEach((el) => el.addEventListener("change", () => { if (opt("mode") === "remix") findTempo(); renderVideos(); }));
+document.querySelectorAll("input[name=mode]").forEach((el) => el.addEventListener("change", () => { if (needSong()) findTempo(); renderVideos(); }));
+
+// ── モーショングラフィックス ──
+// 曲の解析が要るのは、リミックス・グラフィックス・動く歌詞のとき
+const kineticLyrics = () => $("lyOn").checked && opt("lyStyle") !== "sub" && lyLines().timed.some((l) => l.text);
+const mgNeeded = () => $("mgOn").checked || kineticLyrics();
+function needSong() { return opt("mode") === "remix" || $("mgOn").checked || ($("lyOn").checked && opt("lyStyle") !== "sub"); }
+
+let mgFontReady = null;
+function ensureMgFont() {
+  if (!mgFontReady) mgFontReady = (async () => {
+    if (!fontBytes) { const res = await fetch(FONT_URL); if (!res.ok) throw new Error(`字の形を読めませんでした (${res.status})`); fontBytes = new Uint8Array(await res.arrayBuffer()); }
+    const ff = new FontFace("MG", fontBytes.slice().buffer);
+    await ff.load(); document.fonts.add(ff);
+  })().catch((e) => { mgFontReady = null; throw e; });
+  return mgFontReady;
+}
+
+// shift: 曲の時刻→できあがりの時刻のずれ。cuts: できあがりで映像が切り替わる時刻
+function buildMgScene(W, H, T, shift, cuts) {
+  const on = $("mgOn").checked;
+  return makeScene({
+    W, H, T, shift, cuts, an: state.an, bpm: num("rmBpm") || 120, offset: num("rmOffset"),
+    style: opt("mgStyle"), layers: on ? MG_LAYERS.filter((l) => $(`mgL_${l}`).checked) : [],
+    wipe: on ? opt("mgWipe") : "none", frame: on ? opt("mgFrame") : "none",
+    title: { on: on && $("mgTitle").checked, title: $("mgTitleText").value.trim(), artist: $("mgArtist").value.trim() },
+    lyrics: kineticLyrics() ? { anim: opt("lyStyle"), pos: opt("lypos"), lines: lyLines().timed } : null,
+    seed: Math.max(1, Math.round(num("rmSeed", 1))), font: "MG",
+  });
+}
+// 今の設定での「曲→できあがり」のずれと、切り替わりの見込み（プレビュー用）
+const previewShift = () => (opt("mode") === "remix" ? 0 : num("adelay")) - num("askip");
+function previewCuts() {
+  const cuts = []; let t = 0;
+  for (const v of state.videos.slice(0, -1)) { t += (v.dur || 0) - (opt("mode") === "remix" ? 0 : num("xfade")); cuts.push(t); }
+  return cuts;
+}
+
+// プレビュー: 動画の今のコマの上に、曲の今の時刻のグラフィックスを描く
+const mgCanvas = document.createElement("canvas");
+let mgRaf = 0;
+function mgPreview() {
+  const cv = $("mgPrev");
+  if ($("mgBody").hidden && !kineticLyrics()) return;
+  const v = $("vprev");
+  const ar = v.videoWidth && v.videoHeight ? v.videoHeight / v.videoWidth : 9 / 16;
+  const W = 480, H = Math.round(W * ar);
+  if (cv.height !== H) cv.height = H;
+  if (mgCanvas.width !== W || mgCanvas.height !== H) { mgCanvas.width = W; mgCanvas.height = H; }
+  const g = cv.getContext("2d");
+  g.fillStyle = "#1a1a1a"; g.fillRect(0, 0, W, H);
+  if (v.readyState >= 2) g.drawImage(v, 0, 0, W, H);
+  const a = $("aprev"), shift = previewShift();
+  const T = isFinite(a.duration) ? a.duration + shift : 60;
+  drawFrame(mgCanvas.getContext("2d"), buildMgScene(W, H, T, shift, previewCuts()), a.currentTime + shift);
+  g.drawImage(mgCanvas, 0, 0);
+}
+function mgLoop() { mgPreview(); if (!$("aprev").paused) mgRaf = requestAnimationFrame(mgLoop); else mgRaf = 0; }
+$("aprev").addEventListener("play", () => { if (!mgRaf) mgRaf = requestAnimationFrame(mgLoop); if (!v_playing()) $("vprev").play().catch(() => {}); });
+$("aprev").addEventListener("pause", () => { $("vprev").pause(); mgPreview(); });
+$("aprev").addEventListener("seeked", mgPreview);
+const v_playing = () => !$("vprev").paused;
+$("mgPlay").addEventListener("click", () => {
+  const a = $("aprev");
+  if (!a.src) return;
+  if (a.paused) { if (a.currentTime < num("askip")) a.currentTime = num("askip"); ensureMgFont().catch(() => {}).finally(() => { $("vprev").loop = true; a.play(); }); }
+  else a.pause();
+});
+$("mgOn").addEventListener("change", () => { if (needSong()) findTempo(); if ($("mgOn").checked) ensureMgFont().then(mgPreview).catch(() => {}); });
+document.querySelectorAll("input[name=lyStyle]").forEach((el) => el.addEventListener("change", () => { if (needSong()) findTempo(); ensureMgFont().then(mgPreview).catch(() => {}); }));
 
 // ── 歌詞 ──
 let lyToken = 0;
@@ -527,6 +671,8 @@ async function loadLyrics(file) {
   const r = await readEmbeddedLyrics(file);
   if (my !== lyToken) return;
   $("lyText").value = r.text.replace(/\r\n?/g, "\n").trim();
+  $("mgTitleText").value = r.title || file.name.replace(/\.[^.]+$/, "");
+  $("mgArtist").value = r.artist || "";
   $("lyOn").checked = !!r.text.trim();
   lyRefresh(r.source);
 }
@@ -667,6 +813,8 @@ function refresh() {
   $("rmChaosv").textContent = $("rmChaos").value;
   $("rmAmountv").textContent = $("rmAmount").value;
   if (remix) rmRefresh();
+  $("mgBody").hidden = !$("mgOn").checked;
+  if (!$("aprev").paused) { /* 再生中は rAF が描く */ } else mgPreview();
   $("vvolrow").hidden = opt("orig") !== "mix";
   $("vlooprow").hidden = opt("len") !== "audio";
   $("bounceNote").hidden = opt("vloop") !== "bounce";
@@ -1056,7 +1204,7 @@ async function run() {
     };
     // 歌詞の字幕を作る（できあがりの W×H・長さ T に合わせて）。何回出すかを返す
     const prepLyrics = async (T, W, H) => {
-      const lyTimed = $("lyOn").checked ? lyLines().timed : [];
+      const lyTimed = $("lyOn").checked && opt("lyStyle") === "sub" ? lyLines().timed : [];
       if (!lyTimed.some((l) => l.text)) return 0;
       if (!fontBytes) {
         setStatus("歌詞の字の形を読み込み中…（はじめの1回だけ）");
@@ -1077,6 +1225,46 @@ async function run() {
       log(`[歌詞] ${count} 回表示（${W}×${H}）`);
       if (count) opts.subs = "/work/lyrics.ass";
       return count;
+    };
+    // モーショングラフィックスを /out.mp4 に重ねる。3 秒ずつ「描く→透明 PNG→重ねる→捨てる」で、メモリを増やさない
+    const mgPass = async (T, cuts, shift) => {
+      if (!mgNeeded()) return 0;
+      setStatus("字の形を用意しています…");
+      await ensureMgFont();
+      if (!state.an) await findTempo();
+      const info = await probe(f, "/out.mp4");
+      const turned = Math.abs(info.rot) % 180 === 90;
+      const W = (turned ? info.h : info.w) || 1280, H = (turned ? info.w : info.h) || 720;
+      const F = Math.min(30, Math.round(info.fps)) || 30;
+      const sc = buildMgScene(W, H, T, shift, cuts);
+      log(`[グラフィックス] ${JSON.stringify({ W, H, F, T, style: sc.style, layers: [...sc.layers], wipe: sc.wipe, wipes: sc.wipeTimes.length, frame: sc.frame, title: sc.title.on, lyrics: !!sc.lines })}`);
+      await f.createDir("/work").catch(() => {});
+      await f.rename("/out.mp4", "/work/base.mp4");
+      await f.createDir("/mg").catch(() => {});
+      const cv = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(W, H) : Object.assign(document.createElement("canvas"), { width: W, height: H });
+      const g = cv.getContext("2d");
+      const toPng = (c) => c.convertToBlob ? c.convertToBlob({ type: "image/png" }) : new Promise((r) => c.toBlob(r, "image/png"));
+      const NT = Math.round(T * F), C = 3 * F, parts = [];
+      for (let s0 = 0, k = 0; s0 < NT; s0 += C, k++) {
+        const n = Math.min(C, NT - s0);
+        for (let j = 0; j < n; j++) {
+          if (j % 15 === 0) setStatus(`グラフィックスを描いています… ${fmtT((s0 + j) / F)} / ${fmtT(T)}`);
+          drawFrame(g, sc, (s0 + j) / F);
+          await f.writeFile(`/mg/f${String(j).padStart(5, "0")}.png`, new Uint8Array(await (await toPng(cv)).arrayBuffer()));
+          if (cancelled) throw new Error("cancelled");
+        }
+        const a = ["-hide_banner", "-y", "-ss", (s0 / F).toFixed(3), "-t", (n / F + 0.2).toFixed(3), "-i", "/work/base.mp4", "-framerate", String(F), "-i", "/mg/f%05d.png",
+          "-filter_complex", `[0:v:0]fps=${F},format=yuv420p,setpts=PTS-STARTPTS[b];[b][1:v]overlay=0:0:format=auto:eof_action=pass,format=yuv420p[v]`,
+          "-map", "[v]", "-an", "-frames:v", String(n), ...X264, `/work/mg${k}.mp4`];
+        if (await step(a, `グラフィックスを重ねています（${k + 1}/${Math.ceil(NT / C)}）`, n / F) !== 0) throw new Error("グラフィックスを重ねられませんでした。下の「処理の記録」を見てください。");
+        for (let j = 0; j < n; j++) await f.deleteFile(`/mg/f${String(j).padStart(5, "0")}.png`).catch(() => {});
+        parts.push(`mg${k}.mp4`);
+      }
+      await f.writeFile("/work/mglist.txt", parts.map((p) => `file '/work/${p}'`).join("\n"));
+      if (await step(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", "/work/mglist.txt", "-i", "/work/base.mp4", "-map", "0:v", "-map", "1:a?", "-c", "copy", "-movflags", "+faststart", "/out.mp4"], "まとめています", 0) !== 0)
+        throw new Error("グラフィックスを重ねた動画をまとめられませんでした。");
+      for (const p of [...parts, "base.mp4"]) await f.deleteFile(`/work/${p}`).catch(() => {});
+      return NT;
     };
     const showResult = (data, notes, name) => {
       const blob = new Blob([data.buffer], { type: "video/mp4" });
@@ -1112,7 +1300,7 @@ async function run() {
       segs = segs.filter((sg) => got < want && (sg.frames = Math.min(sg.frames, want - got), got += sg.frames, true));
       const sum = planSummary(segs);
       log(`[リミックス] ${JSON.stringify({ ...R, W, H, F, T, ...sum })}`);
-      total = T * ($("lyOn").checked ? 2 : 1);   // 歌詞を入れるなら最後にもう一度作り直す
+      total = T * ($("lyOn").checked && opt("lyStyle") === "sub" ? 2 : 1) + (mgNeeded() ? T : 0);   // 歌詞の字幕・グラフィックスは最後にもう一度作り直す
       done = 0;
       await f.createDir("/work").catch(() => {});
       const B = 12, parts = [];
@@ -1138,10 +1326,14 @@ async function run() {
         orig: "replace", len: "video", avol: 100, adelay: 0 });
       if (await step(fin.args, opts.subs ? "歌詞を入れながら曲を載せています" : "曲を載せています", opts.subs ? T : 0) !== 0)
         throw new Error("曲を載せられませんでした。");
+      // 切り替わりの時刻（区間の境目）
+      const rcuts = []; let acc = 0;
+      for (const sg of segs.slice(0, -1)) { acc += sg.frames; rcuts.push(acc / F); }
+      const mgFrames = await mgPass(T, rcuts, -opts.askip);
       const data = await f.readFile("/out.mp4");
       for (const p of parts) await f.deleteFile(`/work/${p}`).catch(() => {});
       const base = state.videos[0].file.name.replace(/\.[^.]+$/, "");
-      showResult(data, [`${fmtT(T)}・${W}×${H}`, `${sum.segments} 区間・崩し ${sum.timeFx + sum.lookFx} 回（番号 ${R.seed}・ぐちゃぐちゃ度 ${Math.round(R.chaos * 100)}・効果の量 ${Math.round(R.amount * 100)}）`, ...(trying ? ["試し書き出し"] : []), ...(lyCount ? [`歌詞を ${lyCount} 回出しました`] : [])],
+      showResult(data, [`${fmtT(T)}・${W}×${H}`, `${sum.segments} 区間・崩し ${sum.timeFx + sum.lookFx} 回（番号 ${R.seed}・ぐちゃぐちゃ度 ${Math.round(R.chaos * 100)}・効果の量 ${Math.round(R.amount * 100)}）`, ...(trying ? ["試し書き出し"] : []), ...(lyCount ? [`歌詞を ${lyCount} 回出しました`] : []), ...(mgFrames ? ["グラフィックスを重ねました"] : [])],
         `${base}_リミックス${R.seed}${trying ? "_試し" : ""}.mp4`);
       return;
     }
@@ -1167,7 +1359,7 @@ async function run() {
     let { args, T, copy, mix, loopV, loop } = built;
     const bounce = loop === "bounce";
     const XL = loopFade(opts.xfade, opts.vinfo.dur);
-    total = done + prepWork(built) + T;
+    total = done + prepWork(built) + T + (mgNeeded() ? T : 0);
     if (bounce) await makeBounce(f, opts.vpath, opts.vinfo, step);
     if (loop === "xloop") await makeXLoop(f, opts.vpath, opts.vinfo, XL, T, step);
     // 歌詞: 曲の中の時刻を、頭出し・入れ始めのぶんずらしてできあがりの時刻にする
@@ -1179,6 +1371,11 @@ async function run() {
     const ret = await step(args, what, T);
     if (cancelled) return;
     if (ret !== 0) throw new Error("ffmpeg が失敗しました。下の「処理の記録」を見てください。");
+    // 切り替わりの時刻: 何本かつないだ所と、ループの折り返し
+    const mcuts = [];
+    if (many) { let acc = 0; for (const v of vinfos.slice(0, -1)) { acc += v.dur - (plan.X || 0); mcuts.push(acc); } }
+    if (loopV) { const per = loop === "xloop" ? opts.vinfo.dur - XL : loop === "bounce" ? opts.vinfo.dur * 2 : opts.vinfo.dur; for (let t = per; t < T; t += per) mcuts.push(t); }
+    const mgFrames = await mgPass(T, mcuts.sort((a, b) => a - b), opts.adelay - opts.askip);
     const data = await f.readFile("/out.mp4");
     await f.deleteFile("/out.mp4").catch(() => {});
     if (bounce) await f.deleteFile("/work/pp.mp4").catch(() => {});
@@ -1192,6 +1389,7 @@ async function run() {
     if (loopV) notes.push(bounce ? "動画を逆回しで往復させました" : loop === "xloop" ? `動画を繰り返しました（折り返しを ${XL} 秒重ねて）${shortened(XL)}` : "動画を繰り返しました");
     if (light) notes.push(`${opts.vinfo.w}×${opts.vinfo.h} に軽くしました`);
     if (lyCount) notes.push(`歌詞を ${lyCount} 回出しました`);
+    if (mgFrames) notes.push("グラフィックスを重ねました");
     if (opts.orig === "mix" && !mix) notes.push("動画に元の音が無かったので差し替えにしました");
     showResult(data, notes, `${base}_ガッちゃんこ.mp4`);
   } catch (e) {

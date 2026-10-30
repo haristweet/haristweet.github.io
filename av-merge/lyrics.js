@@ -1,7 +1,8 @@
 // 音声ファイルに入っている歌詞を読む。ffmpeg を読み込む前に、ファイルを選んだその場で読めるよう JS だけで書く。
 //   mp3（ID3v2.2〜2.4 の USLT・SYLT）／ m4a・mp4（©lyr）／ flac・ogg・opus（LYRICS などのコメント）
 //   mp3 は TXXX（自由な欄）の LYRICS・UNSYNCEDLYRICS・USLT も読む
-// 返すのは { text, synced, source }。synced は SYLT のような時刻付き（[{ t, text }]）。text は LRC 形式（[mm:ss.xx]）のこともある
+// 曲名・アーティスト（title・artist）も一緒に読む（モーショングラフィックスのタイトル用）。
+// 返すのは { text, synced, source, title, artist }。synced は SYLT のような時刻付き（[{ t, text }]）。text は LRC 形式（[mm:ss.xx]）のこともある
 
 const td = (enc) => new TextDecoder(enc);
 const readBytes = async (blob, start, len) => new Uint8Array(await blob.slice(start, start + len).arrayBuffer());
@@ -63,7 +64,7 @@ async function readId3(blob) {
   let p = 0;
   if (flags & 0x40) p = ver === 4 ? syncsafe(b, 0) : be32(b, 0) + 4;
   const idLen = ver === 2 ? 3 : 4, hdrLen = ver === 2 ? 6 : 10;
-  const uslt = [], sylt = [];
+  const uslt = [], sylt = [], tags = { title: "", artist: "" };
   while (p + hdrLen <= b.length) {
     const id = String.fromCharCode(...b.subarray(p, p + idLen));
     if (!/^[A-Z0-9]+$/.test(id)) break;           // 詰め物（00）に来たら終わり
@@ -76,6 +77,8 @@ async function readId3(blob) {
       if (fflags & 0x02) data = unsync(data);
     }
     if (id === "USLT" || id === "ULT") uslt.push(parseUslt(data));
+    if ((id === "TIT2" || id === "TT2") && !tags.title) tags.title = decodeText(data.subarray(1), data[0]).replace(/\0[\s\S]*$/, "").trim();
+    if ((id === "TPE1" || id === "TP1") && !tags.artist) tags.artist = decodeText(data.subarray(1), data[0]).replace(/\0[\s\S]*$/, "").trim();
     if (id === "SYLT" || id === "SLT") sylt.push(parseSylt(data));
     // TXXX（自由な欄）に歌詞を入れる道具もある。ffmpeg は「USLT」という名前で入れる
     if (id === "TXXX" || id === "TXX") {
@@ -85,9 +88,9 @@ async function readId3(blob) {
     }
   }
   const synced = sylt.find((s) => s && s.length);
-  if (synced) return { text: synced.map((l) => `[${fmtLrc(l.t)}]${l.text}`).join("\n"), synced, source: "mp3（SYLT・時刻付き）" };
+  if (synced) return { text: synced.map((l) => `[${fmtLrc(l.t)}]${l.text}`).join("\n"), synced, source: "mp3（SYLT・時刻付き）", ...tags };
   const text = uslt.find((t) => t && t.trim());
-  return { text: text || "", synced: null, source: text ? "mp3（歌詞）" : "" };
+  return { text: text || "", synced: null, source: text ? "mp3（歌詞）" : "", ...tags };
 }
 
 function parseUslt(d) {
@@ -141,9 +144,9 @@ async function readMp4(blob) {
     }
     return null;
   };
-  const data = find(moov, ["udta", "meta", "ilst", "\xa9lyr", "data"]);
-  const text = data ? td("utf-8").decode(data.subarray(8)) : "";   // 8 = 種類 4 ＋ 地域 4
-  return { text, synced: null, source: text ? "m4a（©lyr）" : "" };
+  const str = (key) => { const d = find(moov, ["udta", "meta", "ilst", key, "data"]); return d ? td("utf-8").decode(d.subarray(8)) : ""; };   // 8 = 種類 4 ＋ 地域 4
+  const text = str("\xa9lyr");
+  return { text, synced: null, source: text ? "m4a（©lyr）" : "", title: str("\xa9nam").trim(), artist: str("\xa9ART").trim() };
 }
 
 // ── Vorbis コメント（flac・ogg・opus） ──
@@ -159,7 +162,7 @@ function lyricsFromComments(b, p, source) {
     if (eq > 0) found[kv.slice(0, eq).toUpperCase()] = kv.slice(eq + 1);
   }
   const text = found.SYNCEDLYRICS || found.LYRICS || found.UNSYNCEDLYRICS || "";
-  return { text, synced: null, source: text ? source : "" };
+  return { text, synced: null, source: text ? source : "", title: (found.TITLE || "").trim(), artist: (found.ARTIST || "").trim() };
 }
 
 async function readFlac(blob) {
