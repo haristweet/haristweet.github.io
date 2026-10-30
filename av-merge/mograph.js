@@ -91,6 +91,13 @@ export const STYLES = {
   pop:     { name: "ポップ", colors: ["#ffde00", "#ff4f9a", "#2bb3ff", "#ffffff"], outline: "#111111", line: 0.012, font: "900", fill: true },
   minimal: { name: "ミニマル", colors: ["#ffffff"], line: 0.003, alpha: 0.85, font: "400", fill: false },
   cyber:   { name: "サイバー", colors: ["#00ff66", "#00c8ff", "#e8ff00"], glow: 10, line: 0.005, font: "800", fill: false, mono: true, scan: true },
+  // ここから下は描き方そのものが違う: grad＝上から下へのグラデーションで塗る、sketch＝線がふるえる（手描き）、
+  // rainbow＝色が時間で流れる、split＝赤と水色にずれて重なる、serif＝明朝体
+  vapor:   { name: "ヴェイパー", colors: ["#ff71ce", "#01cdfe", "#b967ff", "#fffb96"], grad: "#5b00d6", glow: 8, line: 0.007, font: "800", fill: true },
+  sketch:  { name: "手描き", colors: ["#ffffff", "#f2f2f2"], outline: "#111111", line: 0.011, font: "900", fill: true, sketch: true },
+  gaming:  { name: "ゲーミング", colors: ["#ff0000"], rainbow: true, glow: 14, line: 0.007, add: true, font: "900", fill: true },
+  glitch:  { name: "グリッチ", colors: ["#ffffff", "#e6e6e6"], split: true, line: 0.008, font: "900", fill: true, mono: true },
+  gold:    { name: "ゴールド", colors: ["#ffe9a8", "#f5c542", "#fff8e1"], grad: "#8a5a00", glow: 6, line: 0.006, font: "700", fill: true, serif: true },
 };
 export const LAYERS = ["bars", "ring", "wave", "pulse", "particles"];
 export const FRAMES = ["none", "hud", "vhs", "rec"];
@@ -146,10 +153,10 @@ const back = (x) => { x = Math.max(0, Math.min(1, x)); const c = 1.9; return 1 +
 export function drawFrame(ctx, sc, t) {
   const { W, H, st } = sc;
   ctx.clearRect(0, 0, W, H);
-  // レトロは小さく描いてから粗く引きのばす（ドットの見た目）
+  // 図形は、そのまま描くか、いったん別の canvas に描いてから重ねる（レトロ＝粗く引きのばす、手描き＝ずらして二重、グリッチ＝色をずらして三重）
   let g = ctx, sw = W, sh = H;
-  if (st.pixel) {
-    sw = Math.max(32, Math.round(W / st.pixel)); sh = Math.max(18, Math.round(H / st.pixel));
+  if (st.pixel || st.sketch || st.split) {
+    if (st.pixel) { sw = Math.max(32, Math.round(W / st.pixel)); sh = Math.max(18, Math.round(H / st.pixel)); }
     if (!sc._buf || sc._buf.width !== sw) {
       sc._buf = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(sw, sh) : Object.assign(document.createElement("canvas"), { width: sw, height: sh });
     }
@@ -158,13 +165,18 @@ export function drawFrame(ctx, sc, t) {
   }
   const u = Math.min(sw, sh);   // 大きさの基準
   const f = feat(sc, t), b = beatAt(sc, t);
-  const col = (i) => st.colors[((i % st.colors.length) + st.colors.length) % st.colors.length];
+  const col = st.rainbow
+    ? (i) => `hsl(${Math.round((t * 120 + i * 47) % 360)}, 100%, 60%)`
+    : (i) => st.colors[((i % st.colors.length) + st.colors.length) % st.colors.length];
   g.save();
   g.lineJoin = "round"; g.lineCap = "round";
   if (st.add) g.globalCompositeOperation = "lighter";
   if (st.glow) { g.shadowBlur = st.glow * (u / 360); }
   const stroke = (c, w) => { g.strokeStyle = c; g.lineWidth = Math.max(1, w * u); if (st.glow) g.shadowColor = c; g.globalAlpha = st.alpha ?? 1; };
-  const fill = (c) => { g.fillStyle = c; if (st.glow) g.shadowColor = c; g.globalAlpha = st.alpha ?? 1; };
+  const fill = (c) => {
+    if (st.grad) { const gr = g.createLinearGradient(0, 0, 0, sh); gr.addColorStop(0, c); gr.addColorStop(1, st.grad); g.fillStyle = gr; } else g.fillStyle = c;
+    if (st.glow) g.shadowColor = c; g.globalAlpha = st.alpha ?? 1;
+  };
   const outline = () => { if (st.outline) { g.strokeStyle = st.outline; g.lineWidth = Math.max(1, st.line * u * 0.8); g.stroke(); } };
 
   const L = sc.layers;
@@ -176,6 +188,26 @@ export function drawFrame(ctx, sc, t) {
   g.restore();
   if (st.pixel) {
     ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(sc._buf, 0, 0, W, H); ctx.restore();
+  } else if (st.sketch) {
+    // 1/8 秒ごとに少しずつずらして二重に（線がふるえて見える）
+    const R = rng(Math.floor(t * 8) + 11), j = Math.max(1, u * 0.004);
+    ctx.save();
+    ctx.globalAlpha = 0.45; ctx.drawImage(sc._buf, (R() - 0.5) * j * 2, (R() - 0.5) * j * 2);
+    ctx.globalAlpha = 1; ctx.drawImage(sc._buf, (R() - 0.5) * j, (R() - 0.5) * j);
+    ctx.restore();
+  } else if (st.split) {
+    // 赤と水色に染めた写しを左右にずらす。ずれは低い音の強さで大きく、拍の頭でさらに跳ねる
+    if (!sc._tint || sc._tint.width !== W || sc._tint.height !== H) sc._tint = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(W, H) : Object.assign(document.createElement("canvas"), { width: W, height: H });
+    const tc = sc._tint.getContext("2d");
+    const d = u * (0.006 + 0.02 * f.low + (b.since < 0.06 ? 0.02 : 0));
+    ctx.save();
+    for (const [c, dx] of [["#ff0040", -d], ["#00e5ff", d]]) {
+      tc.globalCompositeOperation = "source-over"; tc.clearRect(0, 0, W, H); tc.drawImage(sc._buf, 0, 0);
+      tc.globalCompositeOperation = "source-in"; tc.fillStyle = c; tc.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = "lighter"; ctx.drawImage(sc._tint, dx, 0);
+    }
+    ctx.globalCompositeOperation = "source-over"; ctx.drawImage(sc._buf, 0, 0);
+    ctx.restore();
   }
   // 文字（枠・タイトル・歌詞）とワイプは細かいまま上に描く（レトロでも読めるように）
   const U = Math.min(W, H);
@@ -218,7 +250,7 @@ function drawRing(g, sc, t, f, W, H, u, col, stroke, fill, outline) {
     const bi = i < BANDS ? i : n - 1 - i;
     const v = an.bands[f.i * BANDS + bi];
     const a = rot + (i / n) * Math.PI * 2, len = u * (0.02 + 0.17 * v);
-    stroke(col(1 + (i % 2)), sc.st.line * 1.6);
+    stroke(col(sc.st.rainbow ? i : 1 + (i % 2)), sc.st.line * 1.6);
     g.beginPath();
     g.moveTo(cx + Math.cos(a) * (r0 + u * 0.015), cy + Math.sin(a) * (r0 + u * 0.015));
     g.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len));
@@ -247,7 +279,7 @@ function drawBars(g, sc, f, W, H, u, col, fill, outline, stroke) {
     const v = Math.min(1, an.bands[f.i * BANDS + i]), h = Math.max(u * 0.01, H * 0.28 * v);
     const x = x0 + i * (bw + gap), y = H * 0.97 - h;
     if (sc.st.fill || sc.st.glow) {
-      fill(col(Math.floor((i / n) * sc.st.colors.length)));
+      fill(col(sc.st.rainbow ? i : Math.floor((i / n) * sc.st.colors.length)));   // ゲーミングは 1 本ずつ色相をずらして虹に
       g.beginPath(); g.rect(x, y, bw, h); g.fill(); outline();
     } else {
       stroke(col(0), sc.st.line); g.beginPath(); g.rect(x, y, bw, h); g.stroke();
@@ -316,7 +348,8 @@ function drawWipe(g, sc, t, W, H, u, col) {
 
 // ── 文字 ──
 function font(sc, px, weight) {
-  const fam = sc.st.mono ? `"${sc.font || "sans-serif"}", ui-monospace, monospace` : `"${sc.font || "sans-serif"}", sans-serif`;
+  const fam = sc.st.serif ? `"Hiragino Mincho ProN", "Yu Mincho", YuMincho, "Noto Serif JP", "Noto Serif CJK JP", serif`
+    : sc.st.mono ? `"${sc.font || "sans-serif"}", ui-monospace, monospace` : `"${sc.font || "sans-serif"}", sans-serif`;
   return `${weight || sc.st.font} ${Math.round(px)}px ${fam}`;
 }
 function textStyle(g, sc, c, u) {

@@ -73,7 +73,10 @@ const cases = [
   // モーショングラフィックス（sameAs は並びの番号）
   { name: "グラフィックス・全部入りを黒い動画に重ねる", v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264", mg: MGALL, note: /グラフィックス/,
     bright: [[1.5, true, "all"], [5, true, "all"]], mgLog: /"layers":\["bars","ring","wave","pulse","particles"\].*"wipes":[1-9]/, mgShot: true },
-  { name: "グラフィックス・同じ設定なら同じ絵", v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264", mg: MGALL, sameAs: 0 },
+  // 描き方が違うスタイル（いったん別の canvas に描いて重ねる・グラデーション・明朝体）を 1 つずつ書き出す
+  ...[["vapor", "hud"], ["sketch", "vhs"], ["gaming", "hud"], ["glitch", "rec"], ["gold", "vhs"]].map(([style, frame]) => (
+    { name: `グラフィックス・スタイル ${style}`, v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264", mg: { ...MGALL, style, frame }, bright: [[1.5, true, "all"]], mgLog: new RegExp(`"style":"${style}"`), mgShot: true })),
+  { name: "グラフィックス・同じ設定なら同じ絵", v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264", mg: MGALL, sameAs: "グラフィックス・全部入りを黒い動画に重ねる" },
   { name: "グラフィックス・動く歌詞だけ", v: "v_black.mp4", a: "a_lrc.mp3", set: {}, dur: 8, vcodec: "h264", lyStyle: "bounce", noAss: true,
     bright: [[0.2, false, "bottom"], [1.5, true, "bottom"], [4, true, "bottom"], [7, false, "bottom"]], mgLog: /"lyrics":true/, mgShot: true },
   { name: "グラフィックス・リミックス＋レトロ＋VHS（試し）", v: ["v_big.mp4", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 15, vcodec: "h264", size: "854x480",
@@ -81,8 +84,8 @@ const cases = [
   // リミックス（並びを変えるとき sameAs / diffFrom の番号も直す）
   { name: "リミックス・試し書き出し（1080p → 480p・頭 15 秒）", v: ["v_big.mp4", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 15, vcodec: "h264", size: "854x480", note: /試し書き出し/,
     remix: { chaos: 80, seed: 7, try: true, shot: true } },
-  { name: "リミックス・同じ番号なら同じ絵", v: ["v_big.mp4", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 15, vcodec: "h264", remix: { chaos: 80, seed: 7, try: true, sameAs: 4 } },
-  { name: "リミックス・番号を変えると別の絵", v: ["v_big.mp4", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 15, vcodec: "h264", remix: { chaos: 80, seed: 8, try: true, diffFrom: 4 } },
+  { name: "リミックス・同じ番号なら同じ絵", v: ["v_big.mp4", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 15, vcodec: "h264", remix: { chaos: 80, seed: 7, try: true, sameAs: "リミックス・試し書き出し（1080p → 480p・頭 15 秒）" } },
+  { name: "リミックス・番号を変えると別の絵", v: ["v_big.mp4", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 15, vcodec: "h264", remix: { chaos: 80, seed: 8, try: true, diffFrom: "リミックス・試し書き出し（1080p → 480p・頭 15 秒）" } },
   { name: "リミックス・本番（曲の長さ 20 秒・形の違う 3 本）", v: ["v_h264.mp4", "v_vp9.webm", "v_tall.mp4"], a: "a_drum.mp3", set: {}, dur: 20, vcodec: "h264", size: "320x240", note: /区間/,
     remix: { chaos: 100, seed: 3, shot: true } },
   ...(FONT ? [
@@ -121,6 +124,8 @@ const cases = [
   { name: "VP9・軽く 720p（小さいので縮めない）", v: "v_vp9.webm", a: "a_10s.mp3", set: { size: "720", len: "audio" }, dur: 10, vcodec: "h264", size: "320x240", est: true },
 ];
 let fail = 0;
+// 比べる相手（sameAs・diffFrom）は名前で指す。並びを変えてもずれないように
+const byName = (n) => { const c = cases.find((x) => x.name === n); if (!c) throw new Error(`試験の名前が見つからない: ${n}`); return c; };
 // ONLY=名前の一部 で、その試験だけ回す
 for (const [i, c] of cases.entries()) {
   if (process.env.ONLY && !c.name.includes(process.env.ONLY)) continue;
@@ -219,8 +224,8 @@ for (const [i, c] of cases.entries()) {
     if (Math.abs(c.gotBpm - 128) > 0.5) probs.push(`テンポの自動検出 ${c.gotBpm}`);
     // 絵の中身の指紋（同じ番号なら同じ絵になるか）
     c.vmd5 = execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", out, "-map", "0:v", "-f", "md5", "-"]).toString().trim();
-    if (c.remix.sameAs !== undefined && cases[c.remix.sameAs].vmd5 !== c.vmd5) probs.push("同じ番号なのに絵が違う");
-    if (c.remix.diffFrom !== undefined && cases[c.remix.diffFrom].vmd5 === c.vmd5) probs.push("番号を変えたのに絵が同じ");
+    if (c.remix.sameAs !== undefined && byName(c.remix.sameAs).vmd5 !== c.vmd5) probs.push("同じ番号なのに絵が違う");
+    if (c.remix.diffFrom !== undefined && byName(c.remix.diffFrom).vmd5 === c.vmd5) probs.push("番号を変えたのに絵が同じ");
     if (c.remix.shot) execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", out, "-vf", "fps=4,scale=160:-1,tile=8x4", "-frames:v", "1", S(`shot_remix_${i}.png`)]);
   }
   // できあがりを受け取る時に、途中の動画・音声が残っていないこと（終わり際にメモリを何倍も使って落ちないように）
@@ -241,7 +246,7 @@ for (const [i, c] of cases.entries()) {
   if (c.noAss && /lyrics\.ass/.test(log)) probs.push("字幕（ASS）を使ってしまった");
   if (c.mgShot) execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", out, "-vf", "fps=2,scale=320:-1,tile=4x4", "-frames:v", "1", S(`shot_mg_${i}.png`)]);
   if (c.sameAs !== undefined || c.remix || c.mgShot) c.vmd5 = c.vmd5 || execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", out, "-map", "0:v", "-f", "md5", "-"]).toString().trim();
-  if (c.sameAs !== undefined && cases[c.sameAs].vmd5 !== c.vmd5) probs.push("同じ設定なのに絵が違う");
+  if (c.sameAs !== undefined && byName(c.sameAs).vmd5 !== c.vmd5) probs.push("同じ設定なのに絵が違う");
   if (c.catCopy !== undefined && /-f concat -safe 0 -i \/work\/vlist/.test(log) !== c.catCopy) probs.push("つなぎ方（そのまま／作り直し）が期待と違う");
   if (c.size && `${v?.width}x${v?.height}` !== c.size) probs.push(`大きさ ${v?.width}x${v?.height}`);
   if (c.rot && !JSON.stringify(v?.side_data_list || []).includes("rotation")) probs.push("回す印が消えた");
