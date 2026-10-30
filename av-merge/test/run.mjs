@@ -76,6 +76,9 @@ const cases = [
   // 描き方が違うスタイル（いったん別の canvas に描いて重ねる・グラデーション・明朝体）を 1 つずつ書き出す
   ...[["vapor", "hud"], ["sketch", "vhs"], ["gaming", "hud"], ["glitch", "rec"], ["gold", "vhs"]].map(([style, frame]) => (
     { name: `グラフィックス・スタイル ${style}`, v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264", mg: { ...MGALL, style, frame }, bright: [[1.5, true, "all"]], mgLog: new RegExp(`"style":"${style}"`), mgShot: true })),
+  { name: "グラフィックス・新しい音の図形 7 種", v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264",
+    mg: { style: "vapor", layers: ["center", "mountain", "rays", "tunnel", "grid", "stars", "scope"], wipe: "none", frame: "none", title: false },
+    bright: [[1.5, true, "all"], [6, true, "all"]], mgLog: /"layers":\["center","mountain","rays","tunnel","grid","stars","scope"\]/, mgShot: true },
   { name: "グラフィックス・同じ設定なら同じ絵", v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264", mg: MGALL, sameAs: "グラフィックス・全部入りを黒い動画に重ねる" },
   { name: "グラフィックス・動く歌詞だけ", v: "v_black.mp4", a: "a_lrc.mp3", set: {}, dur: 8, vcodec: "h264", lyStyle: "bounce", noAss: true,
     bright: [[0.2, false, "bottom"], [1.5, true, "bottom"], [4, true, "bottom"], [7, false, "bottom"]], mgLog: /"lyrics":true/, mgShot: true },
@@ -159,7 +162,7 @@ for (const [i, c] of cases.entries()) {
     set("#mgOn", !!mg);
     if (mg) {
       set(`input[name=mgStyle][value=${mg.style}]`, true);
-      for (const l of ["bars", "ring", "wave", "pulse", "particles"]) set(`#mgL_${l}`, mg.layers.includes(l));
+      for (const e of document.querySelectorAll("[id^=mgL_]")) set(`#${e.id}`, mg.layers.includes(e.id.slice(4)));
       set(`input[name=mgWipe][value="${mg.wipe}"]`, true);
       set(`input[name=mgFrame][value=${mg.frame}]`, true);
       set("#mgTitle", !!mg.title);

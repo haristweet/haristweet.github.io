@@ -99,7 +99,7 @@ export const STYLES = {
   glitch:  { name: "グリッチ", colors: ["#ffffff", "#e6e6e6"], split: true, line: 0.008, font: "900", fill: true, mono: true },
   gold:    { name: "ゴールド", colors: ["#ffe9a8", "#f5c542", "#fff8e1"], grad: "#8a5a00", glow: 6, line: 0.006, font: "700", fill: true, serif: true },
 };
-export const LAYERS = ["bars", "ring", "wave", "pulse", "particles"];
+export const LAYERS = ["bars", "ring", "wave", "pulse", "particles", "center", "mountain", "rays", "tunnel", "grid", "stars", "scope"];
 export const FRAMES = ["none", "hud", "vhs", "rec"];
 export const WIPES = ["none", "4", "8", "cut"];
 export const LYRIC_ANIMS = ["bounce", "pop", "type", "glitch"];
@@ -180,6 +180,14 @@ export function drawFrame(ctx, sc, t) {
   const outline = () => { if (st.outline) { g.strokeStyle = st.outline; g.lineWidth = Math.max(1, st.line * u * 0.8); g.stroke(); } };
 
   const L = sc.layers;
+  // 奥にあるもの → 手前のもの の順に描く
+  if (L.has("grid")) drawGrid(g, sc, t, f, sw, sh, u, col, stroke);
+  if (L.has("stars")) drawStars(g, sc, t, f, sw, sh, u, col, fill);
+  if (L.has("tunnel")) drawTunnel(g, sc, t, f, b, sw, sh, u, col, stroke);
+  if (L.has("mountain")) drawMountain(g, sc, f, sw, sh, u, col, fill, outline);
+  if (L.has("rays")) drawRays(g, sc, t, f, sw, sh, u, col, stroke);
+  if (L.has("scope")) drawScope(g, sc, t, f, sw, sh, u, col, stroke);
+  if (L.has("center")) drawCenter(g, sc, f, sw, sh, u, col, fill, outline, stroke);
   if (L.has("pulse")) drawPulse(g, sc, t, b, sw, sh, u, col, stroke, fill, outline);
   if (L.has("ring")) drawRing(g, sc, t, f, sw, sh, u, col, stroke, fill, outline);
   if (L.has("wave")) drawWave(g, sc, f, sw, sh, u, col, stroke);
@@ -269,6 +277,124 @@ function drawWave(g, sc, f, W, H, u, col, stroke) {
     g[j ? "lineTo" : "moveTo"]((j / (WAVE - 1)) * W, y0 + v * amp);
   }
   g.stroke();
+}
+
+// 曲の大きさを足し合わせた「進んだ距離」（盛り上がるほど速く進む。前のコマに頼らず時刻だけで決まる）
+function travel(sc, f) {
+  const an = sc.an;
+  return an && f.i >= 0 ? an.acc[f.i] / an.rate : 0;
+}
+
+// シンセウェイブの地平線グリッド: 奥へのびる線と、手前へ流れる横線。低い音で明るく
+function drawGrid(g, sc, t, f, W, H, u, col, stroke) {
+  const hy = H * 0.58, vx = W / 2;
+  const a0 = sc.st.alpha ?? 1;
+  stroke(col(1), sc.st.line * 0.9);
+  g.globalAlpha = a0 * (0.35 + 0.65 * f.low);
+  g.beginPath(); g.moveTo(0, hy); g.lineTo(W, hy); g.stroke();
+  for (let i = -12; i <= 12; i++) { g.beginPath(); g.moveTo(vx + i * u * 0.03, hy); g.lineTo(vx + i * W * 0.16, H); g.stroke(); }
+  const ph = (travel(sc, f) * 1.6) % 1;
+  for (let k = 0; k < 10; k++) {
+    const z = (k + 1 - ph) / 10, y = hy + (H - hy) * z * z;
+    g.globalAlpha = a0 * (0.35 + 0.65 * f.low) * z;
+    g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+  }
+  g.globalAlpha = a0;
+}
+
+// 星のワープ: 番号から決めた向きへ、中心から飛び出す。進み具合は「進んだ距離」で、音が大きいほど速い
+function drawStars(g, sc, t, f, W, H, u, col, fill) {
+  const R = rng(sc.seed * 101 + 7), d = travel(sc, f) * 0.5 + t * 0.05;
+  const diag = Math.hypot(W, H) / 2;
+  for (let i = 0; i < 140; i++) {
+    const a = R() * Math.PI * 2, off = R(), sp = 0.6 + R() * 0.8, c = Math.floor(R() * 4);
+    const z = (off + d * sp) % 1, r = diag * z * z;
+    const x = W / 2 + Math.cos(a) * r, y = H / 2 + Math.sin(a) * r;
+    const s = Math.max(0.8, u * 0.01 * z * (1 + f.high));
+    fill(col(c)); g.globalAlpha = (sc.st.alpha ?? 1) * Math.min(1, z * 3);
+    g.fillRect(x - s, y - s, s * 2, s * 2);
+  }
+  g.globalAlpha = sc.st.alpha ?? 1;
+}
+
+// トンネル: 四角い輪が奥から手前へ。拍のたびに少し回る
+function drawTunnel(g, sc, t, f, b, W, H, u, col, stroke) {
+  const n = 9, ph = (travel(sc, f) * 0.9) % 1;
+  for (let k = 0; k < n; k++) {
+    const z = (k + ph) / n, s = Math.pow(z, 2.2) * Math.hypot(W, H) * 0.75;
+    if (s < u * 0.02) continue;
+    const rot = (b.k + Math.floor(k - ph)) * 0.035;
+    stroke(col(k), sc.st.line * (0.6 + 1.6 * z));
+    g.globalAlpha = (sc.st.alpha ?? 1) * Math.min(1, z * 2.5) * (0.6 + 0.4 * f.mid);
+    g.save(); g.translate(W / 2, H / 2); g.rotate(rot);
+    g.beginPath(); g.rect(-s / 2, -s * 0.31, s, s * 0.62); g.stroke();
+    g.restore();
+  }
+  g.globalAlpha = sc.st.alpha ?? 1;
+}
+
+// 山並み: スペクトラムを塗った稜線。奥（中・高音を強め）と手前（そのまま）の 2 重
+function drawMountain(g, sc, f, W, H, u, col, fill, outline) {
+  if (f.i < 0) return;
+  const an = sc.an;
+  for (const [layer, base, amp, c] of [[0, H * 0.84, H * 0.2, 1], [1, H, H * 0.26, 0]]) {
+    fill(col(c));
+    g.globalAlpha = (sc.st.alpha ?? 1) * (layer ? 0.95 : 0.55);
+    g.beginPath(); g.moveTo(0, H);
+    for (let j = 0; j <= BANDS * 2; j++) {
+      const bi = Math.min(BANDS - 1, Math.floor(j / 2) + (layer ? 0 : 4));
+      const v = Math.min(1, an.bands[f.i * BANDS + (layer ? bi : BANDS - 1 - Math.min(BANDS - 1, bi))]);
+      g.lineTo((j / (BANDS * 2)) * W, base - amp * v * (0.35 + 0.65 * Math.abs(Math.sin(j * 1.7))));
+    }
+    g.lineTo(W, H); g.closePath(); g.fill(); outline();
+  }
+  g.globalAlpha = sc.st.alpha ?? 1;
+}
+
+// 放射: 中心から光の筋。高い音で長く、ゆっくり回る
+function drawRays(g, sc, t, f, W, H, u, col, stroke) {
+  if (f.i < 0) return;
+  const an = sc.an, n = 48, rot = -t * 0.25;
+  for (let i = 0; i < n; i++) {
+    const v = Math.min(1, an.bands[f.i * BANDS + ((i * 5) % BANDS)]);
+    const a = rot + (i / n) * Math.PI * 2, r0 = u * 0.08, r1 = r0 + Math.hypot(W, H) * 0.45 * v * (0.4 + 0.6 * f.high);
+    stroke(col(i), sc.st.line * 0.8);
+    g.globalAlpha = (sc.st.alpha ?? 1) * (0.25 + 0.6 * v);
+    g.beginPath(); g.moveTo(W / 2 + Math.cos(a) * r0, H / 2 + Math.sin(a) * r0); g.lineTo(W / 2 + Math.cos(a) * r1, H / 2 + Math.sin(a) * r1); g.stroke();
+  }
+  g.globalAlpha = sc.st.alpha ?? 1;
+}
+
+// リサージュ: 波形を横（x）と少し遅れた写し（y）に使う。低い音でふくらむ
+function drawScope(g, sc, t, f, W, H, u, col, stroke) {
+  if (f.i < 0) return;
+  const an = sc.an, s = u * (0.22 + 0.12 * f.low), cx = W / 2, cy = H / 2;
+  // 3 コマぶんの波形をつないで線を長く
+  stroke(col(2), sc.st.line * 1.1);
+  g.beginPath();
+  let first = true;
+  for (let back = 2; back >= 0; back--) {
+    const i = Math.max(0, f.i - back);
+    for (let j = 0; j < WAVE; j++) {
+      const x = an.wave[i * WAVE + j], y = an.wave[i * WAVE + ((j + WAVE / 4) % WAVE)];
+      const px = cx + x * s * 1.3, py = cy + y * s;
+      if (first) { g.moveTo(px, py); first = false; } else g.lineTo(px, py);
+    }
+  }
+  g.stroke();
+}
+
+// 上下バー: 真ん中の線から上下対称にのびる
+function drawCenter(g, sc, f, W, H, u, col, fill, outline, stroke) {
+  if (f.i < 0) return;
+  const an = sc.an, n = BANDS * 2, gap = W * 0.003, bw = (W * 0.94 - gap * (n - 1)) / n, x0 = W * 0.03, cy = H / 2;
+  for (let i = 0; i < n; i++) {
+    const bi = i < BANDS ? BANDS - 1 - i : i - BANDS;     // 真ん中が低い音、外へ行くほど高い音
+    const v = Math.min(1, an.bands[f.i * BANDS + bi]), h = Math.max(u * 0.006, H * 0.15 * v);
+    const x = x0 + i * (bw + gap);
+    if (sc.st.fill || sc.st.glow) { fill(col(sc.st.rainbow ? i : Math.floor(i / 8))); g.beginPath(); g.rect(x, cy - h, bw, h * 2); g.fill(); outline(); }
+    else { stroke(col(0), sc.st.line); g.beginPath(); g.rect(x, cy - h, bw, h * 2); g.stroke(); }
+  }
 }
 
 // 下に並ぶスペクトラムのバー
