@@ -70,6 +70,14 @@ await page.screenshot({ path: S("shot_empty.png"), fullPage: true });
 
 const MGALL = { style: "neon", layers: ["bars", "ring", "wave", "pulse", "particles"], wipe: "4", frame: "hud", title: true };
 const cases = [
+  // 仕上げ（形・色）
+  { name: "仕上げ・縦 9:16 で真ん中を切る", v: "v_h264.mp4", a: "a_10s.mp3", set: {}, dur: 6, vcodec: "h264", size: "240x426", fx: { aspect: "9:16" }, fxLog: /"aspect":"9:16".*"fit":"crop"/ },
+  { name: "仕上げ・正方形で余白をぼかす＋軽く 720p", v: "v_big.mp4", a: "a_10s.mp3", set: { size: "720" }, dur: 2, vcodec: "h264", size: "720x720", fx: { aspect: "1:1", fit: "blur" }, fxLog: /"fit":"blur"/ },
+  { name: "仕上げ・モノクロ", v: "v_h264.mp4", a: "a_10s.mp3", set: {}, dur: 6, vcodec: "h264", size: "320x240", fx: { grade: "mono" }, satBelow: 2, fxLog: /"grade":"mono"/ },
+  { name: "仕上げ・縦 9:16 ＋字幕の歌詞（切ったあとに焼く）", v: "v_black.mp4", a: "a_lrc.mp3", set: {}, dur: 8, vcodec: "h264", size: "360x640", fx: { aspect: "9:16" },
+    bright: [[0.2, false, "bottom"], [1.5, true, "bottom"], [7, false, "bottom"]], fxLog: /"lyCount":2/, mgShot: true },
+  { name: "仕上げ・縦 9:16 ＋グラフィックス＋あざやか", v: "v_h264.mp4", a: "a_drum.mp3", set: {}, dur: 6, vcodec: "h264", size: "240x426", fx: { aspect: "9:16", grade: "vivid" },
+    mg: { style: "pop", layers: ["bars", "pulse"], wipe: "none", frame: "rec", title: true }, fxLog: /"mg":true/, mgShot: true },
   // モーショングラフィックス（sameAs は並びの番号）
   { name: "グラフィックス・全部入りを黒い動画に重ねる", v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264", mg: MGALL, note: /グラフィックス/,
     bright: [[1.5, true, "all"], [5, true, "all"]], mgLog: /"layers":\["bars","ring","wave","pulse","particles"\].*"wipes":[1-9]/, mgShot: true },
@@ -168,7 +176,10 @@ for (const [i, c] of cases.entries()) {
       set("#mgTitle", !!mg.title);
     }
     set(`input[name=lyStyle][value=${o.lyStyle || "sub"}]`, true);
-  }, { mg: c.mg, lyStyle: c.lyStyle });
+    set(`input[name=aspect][value="${o.fx.aspect || "orig"}"]`, true);
+    set(`input[name=fit][value=${o.fx.fit || "crop"}]`, true);
+    set(`input[name=grade][value=${o.fx.grade || "none"}]`, true);
+  }, { mg: c.mg, lyStyle: c.lyStyle, fx: c.fx || {} });
   if (c.remix) {
     // リミックスに切りかえ、テンポを自動で調べ終わるのを待つ
     await page.check("input[name=mode][value=remix]", { force: true });
@@ -245,6 +256,11 @@ for (const [i, c] of cases.entries()) {
       if (lit ? yy < 17.5 : yy > 16.8) probs.push(`${t} 秒の明るさ ${yy.toFixed(1)}（${lit ? "描かれているはず" : "何も無いはず"}）`);
     }
   }
+  if (c.satBelow !== undefined) {
+    const sat = parseFloat((execFileSync("sh", ["-c", `ffmpeg -hide_banner -ss 2 -i '${out}' -frames:v 1 -vf "signalstats,metadata=print:key=lavfi.signalstats.SATAVG" -f null - 2>&1 | grep -o 'SATAVG=[0-9.]*' | head -1`]).toString().split("=")[1]) || "99");
+    if (sat > c.satBelow) probs.push(`色の濃さ ${sat.toFixed(1)}（${c.satBelow} 以下のはず）`);
+  }
+  if (c.fxLog && !c.fxLog.test(log)) probs.push(`仕上げの記録が期待と違う: ${(log.match(/\[仕上げ\][^\n]*/) || ["（無い）"])[0]}`);
   if (c.mgLog && !c.mgLog.test(log)) probs.push(`グラフィックスの記録が期待と違う: ${(log.match(/\[グラフィックス\][^\n]*/) || [""])[0]}`);
   if (c.noAss && /lyrics\.ass/.test(log)) probs.push("字幕（ASS）を使ってしまった");
   if (c.mgShot) execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", out, "-vf", "fps=2,scale=320:-1,tile=4x4", "-frames:v", "1", S(`shot_mg_${i}.png`)]);

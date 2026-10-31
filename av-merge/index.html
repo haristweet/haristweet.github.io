@@ -277,6 +277,46 @@
     <p class="note only-merge" id="sizeNote"></p>
   </section>
 
+  <section class="panel" id="fxPanel">
+    <h2>仕上げ（形・色）</h2>
+    <div class="row">
+      <span class="lab">形</span>
+      <span class="seg">
+        <label><input type="radio" name="aspect" value="orig" checked>そのまま</label>
+        <label><input type="radio" name="aspect" value="9:16">縦 9:16</label>
+        <label><input type="radio" name="aspect" value="1:1">正方形 1:1</label>
+        <label><input type="radio" name="aspect" value="4:5">縦 4:5</label>
+      </span>
+    </div>
+    <div class="row" id="fitRow" hidden>
+      <span class="lab">入れ方</span>
+      <span class="seg">
+        <label><input type="radio" name="fit" value="crop" checked>真ん中で切る</label>
+        <label><input type="radio" name="fit" value="blur">全体を入れて余白をぼかす</label>
+      </span>
+    </div>
+    <div class="row">
+      <span class="lab">色</span>
+      <span class="seg">
+        <label><input type="radio" name="grade" value="none" checked>そのまま</label>
+        <label><input type="radio" name="grade" value="film">フィルム</label>
+        <label><input type="radio" name="grade" value="mono">モノクロ</label>
+        <label><input type="radio" name="grade" value="cinema">シネマ</label>
+        <label><input type="radio" name="grade" value="vhs">VHS</label>
+        <label><input type="radio" name="grade" value="vivid">あざやか</label>
+        <label><input type="radio" name="grade" value="pastel">パステル</label>
+        <label><input type="radio" name="grade" value="sepia">セピア</label>
+        <label><input type="radio" name="grade" value="night">夜</label>
+      </span>
+    </div>
+    <canvas id="mgPrev" width="480" height="270" aria-label="プレビュー"></canvas>
+    <div class="row">
+      <button class="ghost small" id="mgPlay" type="button" style="margin-left:0">▶ 曲を流して見る</button>
+      <span class="note" id="mgTempo"></span>
+    </div>
+    <p class="note">プレビューは形・色・グラフィックス・動く歌詞の見当です（色はだいたい）。形や色を変えると、最後に動画を全部作り直すので時間がかかります。</p>
+  </section>
+
   <section class="panel" id="mgPanel">
     <h2>モーショングラフィックス</h2>
     <label><input type="checkbox" id="mgOn"> 映像の上に、曲に合わせて動くグラフィックスを重ねる</label>
@@ -336,11 +376,6 @@
         <label><input type="checkbox" id="mgTitle" checked> 頭に出す</label>
         <input class="mgtext" id="mgTitleText" placeholder="曲名" aria-label="曲名">
         <input class="mgtext" id="mgArtist" placeholder="アーティスト" aria-label="アーティスト">
-      </div>
-      <canvas id="mgPrev" width="480" height="270" aria-label="プレビュー"></canvas>
-      <div class="row">
-        <button class="ghost small" id="mgPlay" type="button" style="margin-left:0">▶ 曲を流して見る</button>
-        <span class="note" id="mgTempo"></span>
       </div>
       <p class="note">図形は曲の大きさ・低い音・高い音・拍に合わせて動きます（テンポは自動で調べます。リミックスの「テンポ」で直せます）。書き出すときに 1 コマずつ描いて重ねるので、そのぶん時間がかかります（3 分の曲で数分ほど）。</p>
     </div>
@@ -630,6 +665,32 @@ document.querySelectorAll("input[name=mode]").forEach((el) => el.addEventListene
 // 曲の解析が要るのは、リミックス・グラフィックス・動く歌詞のとき
 const kineticLyrics = () => $("lyOn").checked && opt("lyStyle") !== "sub" && lyLines().timed.some((l) => l.text);
 const mgNeeded = () => $("mgOn").checked || kineticLyrics();
+// 仕上げの作り直しが要るか（形・色・グラフィックス・動く歌詞）
+const finishNeeded = () => mgNeeded() || opt("aspect") !== "orig" || opt("grade") !== "none";
+// 色の仕上げ: ffmpeg のフィルタと、プレビュー用の canvas の filter（だいたい）
+const GRADES = {
+  none:   ["", "none"],
+  film:   ["curves=preset=vintage,noise=alls=8:allf=t,vignette=PI/5", "sepia(0.25) contrast(1.05) saturate(0.85)"],
+  mono:   ["hue=s=0,eq=contrast=1.15", "grayscale(1) contrast(1.15)"],
+  cinema: ["colorbalance=rs=-0.08:bs=0.1:rh=0.1:bh=-0.08,eq=contrast=1.1:saturation=1.1", "contrast(1.1) saturate(1.1) hue-rotate(-8deg)"],
+  vhs:    ["eq=saturation=1.4:contrast=1.1,chromashift=cbh=3:crh=-3,noise=alls=12:allf=t", "saturate(1.4) contrast(1.1) blur(0.4px)"],
+  vivid:  ["eq=saturation=1.6:contrast=1.15", "saturate(1.6) contrast(1.15)"],
+  pastel: ["curves=all='0/0.12 1/0.92',eq=saturation=0.8", "contrast(0.82) brightness(1.08) saturate(0.8)"],
+  sepia:  ["colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131", "sepia(1)"],
+  night:  ["colorbalance=bs=0.15:bm=0.1,eq=brightness=-0.03:saturation=0.9", "brightness(0.92) saturate(0.9) hue-rotate(15deg)"],
+};
+// できあがりの大きさ: 形を変えるなら、短い辺は元のまま（「大きさ」で軽くしていればその短い辺）
+function targetDims(W0, H0, aspect, short) {
+  if (aspect === "orig") return [W0, H0];
+  const [a, b] = aspect.split(":").map(Number);
+  const s = Math.min(W0, H0, short || Infinity), even = (x) => Math.max(2, Math.round(x / 2) * 2);
+  return a <= b ? [even(s), even((s * b) / a)] : [even((s * a) / b), even(s)];
+}
+// 形を変えるフィルタ（id は枝の名前の頭）
+function aspectFilter(W, H, fit, id) {
+  if (fit === "blur") return `split[${id}a][${id}b];[${id}a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=20:2[${id}bg];[${id}b]scale=${W}:${H}:force_original_aspect_ratio=decrease[${id}fg];[${id}bg][${id}fg]overlay=(W-w)/2:(H-h)/2,setsar=1`;
+  return `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`;
+}
 function needSong() { return opt("mode") === "remix" || $("mgOn").checked || ($("lyOn").checked && opt("lyStyle") !== "sub"); }
 
 let mgFontReady = null;
@@ -667,15 +728,31 @@ const mgCanvas = document.createElement("canvas");
 let mgRaf = 0;
 function mgPreview() {
   const cv = $("mgPrev");
-  if ($("mgBody").hidden && !kineticLyrics()) return;
   const v = $("vprev");
-  const ar = v.videoWidth && v.videoHeight ? v.videoHeight / v.videoWidth : 9 / 16;
-  const W = 480, H = Math.round(W * ar);
-  if (cv.height !== H) cv.height = H;
+  const vw = v.videoWidth || 16, vh = v.videoHeight || 9;
+  const [tw, th] = targetDims(vw, vh, opt("aspect"), 0);
+  const H = 300, W = Math.round((H * tw) / th);
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  cv.style.maxWidth = `${Math.min(100, (W / 480) * 100)}%`;
   if (mgCanvas.width !== W || mgCanvas.height !== H) { mgCanvas.width = W; mgCanvas.height = H; }
   const g = cv.getContext("2d");
   g.fillStyle = "#1a1a1a"; g.fillRect(0, 0, W, H);
-  if (v.readyState >= 2) g.drawImage(v, 0, 0, W, H);
+  if (v.readyState >= 2) {
+    // 形: 真ん中で切る＝大きく描いてはみ出させる、ぼかし＝大きくぼかした上に全体を置く
+    const cover = Math.max(W / vw, H / vh), fit = Math.min(W / vw, H / vh);
+    g.save();
+    if ("filter" in g) g.filter = GRADES[opt("grade")][1];
+    if (opt("aspect") !== "orig" && opt("fit") === "blur") {
+      g.save(); if ("filter" in g) g.filter = `${GRADES[opt("grade")][1] === "none" ? "" : GRADES[opt("grade")][1] + " "}blur(8px)`;
+      g.drawImage(v, (W - vw * cover) / 2, (H - vh * cover) / 2, vw * cover, vh * cover); g.restore();
+      if ("filter" in g) g.filter = GRADES[opt("grade")][1];
+      g.drawImage(v, (W - vw * fit) / 2, (H - vh * fit) / 2, vw * fit, vh * fit);
+    } else {
+      const k = opt("aspect") === "orig" ? fit : cover;
+      g.drawImage(v, (W - vw * k) / 2, (H - vh * k) / 2, vw * k, vh * k);
+    }
+    g.restore();
+  }
   const a = $("aprev"), shift = previewShift();
   const T = isFinite(a.duration) ? a.duration + shift : 60;
   drawFrame(mgCanvas.getContext("2d"), buildMgScene(W, H, T, shift, previewCuts()), a.currentTime + shift);
@@ -851,6 +928,7 @@ function refresh() {
   $("rmChaosv").textContent = $("rmChaos").value;
   $("rmAmountv").textContent = $("rmAmount").value;
   if (remix) rmRefresh();
+  $("fitRow").hidden = opt("aspect") === "orig";
   $("mgBody").hidden = !$("mgOn").checked;
   if (!$("aprev").paused) { /* 再生中は rAF が描く */ } else mgPreview();
   $("vvolrow").hidden = opt("orig") !== "mix";
@@ -1355,18 +1433,32 @@ async function run() {
       return count;
     };
     // モーショングラフィックスを /out.mp4 に重ねる。3 秒ずつ「描く→透明 PNG→重ねる→捨てる」で、メモリを増やさない
-    const mgPass = async (T, cuts, shift) => {
-      if (!mgNeeded()) return 0;
-      setStatus("字の形を用意しています…");
-      await ensureMgFont();
-      if (!state.an) await findTempo();
+    // 仕上げ: 形を変える → 色 → 字幕の歌詞 → グラフィックス、を 1 回の作り直しで。
+    // グラフィックスがあれば 3 秒ずつ「描く→透明 PNG→重ねる→捨てる」（メモリを増やさない）、無ければ 1 回で
+    const finishPass = async (T, cuts, shift) => {
+      if (!finishNeeded()) return null;
+      const useMg = mgNeeded();
+      if (useMg) { setStatus("字の形を用意しています…"); await ensureMgFont(); if (!state.an) await findTempo(); }
       const info = await probe(f, "/out.mp4");
       const turned = Math.abs(info.rot) % 180 === 90;
-      const W = (turned ? info.h : info.w) || 1280, H = (turned ? info.w : info.h) || 720;
+      const W0 = (turned ? info.h : info.w) || 1280, H0 = (turned ? info.w : info.h) || 720;
+      const [W, H] = targetDims(W0, H0, opt("aspect"), (SIZES[opt("size")] || SIZES.orig).short);
       const F = Math.min(30, Math.round(info.fps)) || 30;
-      const sc = buildMgScene(W, H, T, shift, cuts);
-      log(`[グラフィックス] ${JSON.stringify({ W, H, F, T, style: sc.style, layers: [...sc.layers], wipe: sc.wipe, wipes: sc.wipeTimes.length, frame: sc.frame, title: sc.title.on, lyrics: !!sc.lines })}`);
+      const lyCount = await prepLyrics(T, W, H);    // 字幕の歌詞は切ったあとの大きさで
+      const chain = [`fps=${F}`, opt("aspect") !== "orig" ? aspectFilter(W, H, opt("fit"), "as") : "", GRADES[opt("grade")][0], opts.subs ? `subtitles=filename=${opts.subs}:fontsdir=/fonts` : "", "format=yuv420p"].filter(Boolean).join(",");
+      const what = { W, H, aspect: opt("aspect"), fit: opt("fit"), grade: opt("grade"), lyCount, mg: useMg };
       await f.createDir("/work").catch(() => {});
+      if (!useMg) {
+        log(`[仕上げ] ${JSON.stringify(what)}`);
+        await f.rename("/out.mp4", "/work/base.mp4");
+        if (await step(["-hide_banner", "-y", "-i", "/work/base.mp4", "-filter_complex", `[0:v:0]${chain}[v]`, "-map", "[v]", "-map", "0:a?", ...X264, "-c:a", "copy", "-movflags", "+faststart", "/out.mp4"], "仕上げています", T) !== 0)
+          throw new Error("仕上げの作り直しができませんでした。下の「処理の記録」を見てください。");
+        await sweep(["base.mp4"]);
+        return what;
+      }
+      const sc = buildMgScene(W, H, T, shift, cuts);
+      log(`[仕上げ] ${JSON.stringify(what)}`);
+      log(`[グラフィックス] ${JSON.stringify({ W, H, F, T, style: sc.style, layers: [...sc.layers], wipe: sc.wipe, wipes: sc.wipeTimes.length, frame: sc.frame, title: sc.title.on, lyrics: !!sc.lines })}`);
       await f.rename("/out.mp4", "/work/base.mp4");
       await f.createDir("/mg").catch(() => {});
       const hasA = !!info.acodec;
@@ -1386,7 +1478,7 @@ async function run() {
           if (cancelled) throw new Error("cancelled");
         }
         const a = ["-hide_banner", "-y", "-ss", (s0 / F).toFixed(3), "-t", (n / F + 0.2).toFixed(3), "-i", "/work/base.mp4", "-framerate", String(F), "-i", "/mg/f%05d.png",
-          "-filter_complex", `[0:v:0]fps=${F},format=yuv420p,setpts=PTS-STARTPTS[b];[b][1:v]overlay=0:0:format=auto:eof_action=pass,format=yuv420p[v]`,
+          "-filter_complex", `[0:v:0]${chain},setpts=PTS-STARTPTS[b];[b][1:v]overlay=0:0:format=auto:eof_action=pass,format=yuv420p[v]`,
           "-map", "[v]", "-an", "-frames:v", String(n), ...X264, `/work/mg${k}.mp4`];
         if (await step(a, `グラフィックスを重ねています（${k + 1}/${Math.ceil(NT / C)}）`, n / F) !== 0) throw new Error("グラフィックスを重ねられませんでした。下の「処理の記録」を見てください。");
         for (let j = 0; j < n; j++) await f.deleteFile(`/mg/f${String(j).padStart(5, "0")}.png`).catch(() => {});
@@ -1397,7 +1489,7 @@ async function run() {
       if (await step(["-hide_banner", "-y", "-f", "concat", "-safe", "0", "-i", "/work/mglist.txt", ...(hasA ? ["-i", "/work/base_a.m4a", "-map", "0:v", "-map", "1:a"] : ["-map", "0:v"]), "-c", "copy", "-movflags", "+faststart", "/out.mp4"], "まとめています", 0) !== 0)
         throw new Error("グラフィックスを重ねた動画をまとめられませんでした。");
       await sweep([...parts, "base_a.m4a", "mglist.txt"]);
-      return NT;
+      return what;
     };
     // できあがりを受け取ったら、すぐ ffmpeg を止めて、使っていたメモリを丸ごと返す（保存用のデータを作る前に）
     const takeOutput = async () => {
@@ -1409,6 +1501,11 @@ async function run() {
       return data;
     };
     const sweep = async (names) => { for (const n of names) await f.deleteFile(n.startsWith("/") ? n : `/work/${n}`).catch(() => {}); };
+    const finishNotes = (r) => !r ? [] : [
+      ...(r.aspect !== "orig" ? [`${r.aspect}（${r.W}×${r.H}・${r.fit === "blur" ? "余白をぼかして" : "真ん中で切って"}）にしました`] : []),
+      ...(r.grade !== "none" ? [`色を「${document.querySelector(`input[name=grade][value=${r.grade}]`).parentElement.textContent}」にしました`] : []),
+      ...(r.mg ? ["グラフィックスを重ねました"] : []),
+    ];
     const showResult = (data, notes, name) => {
       const blob = new Blob([data], { type: "video/mp4" });
       if (state.outURL) URL.revokeObjectURL(state.outURL);
@@ -1443,7 +1540,7 @@ async function run() {
       segs = segs.filter((sg) => got < want && (sg.frames = Math.min(sg.frames, want - got), got += sg.frames, true));
       const sum = planSummary(segs);
       log(`[リミックス] ${JSON.stringify({ ...R, W, H, F, T, ...sum })}`);
-      total = T * ($("lyOn").checked && opt("lyStyle") === "sub" ? 2 : 1) + (mgNeeded() ? T : 0);   // 歌詞の字幕・グラフィックスは最後にもう一度作り直す
+      total = T * ($("lyOn").checked && opt("lyStyle") === "sub" && !finishNeeded() ? 2 : 1) + (finishNeeded() ? T : 0);   // 歌詞の字幕・仕上げは最後にもう一度作り直す
       done = 0;
       await f.createDir("/work").catch(() => {});
       const B = 12, parts = [];
@@ -1464,7 +1561,7 @@ async function run() {
         parts.push(name);
       }
       await f.writeFile("/work/rlist.txt", parts.map((p) => `file '/work/${p}'`).join("\n"));
-      const lyCount = await prepLyrics(T, W, H);
+      let lyCount = finishNeeded() ? 0 : await prepLyrics(T, W, H);
       const fin = buildArgs({ ...opts, vpath: "/work/rlist.txt", vconcat: true, vinfo: { dur: T, vcodec: "h264", acodec: null, w: W, h: H, rot: 0 },
         orig: "replace", len: "video", avol: 100, adelay: 0 });
       if (await step(fin.args, opts.subs ? "歌詞を入れながら曲を載せています" : "曲を載せています", opts.subs ? T : 0) !== 0)
@@ -1473,10 +1570,11 @@ async function run() {
       // 切り替わりの時刻（区間の境目）
       const rcuts = []; let acc = 0;
       for (const sg of segs.slice(0, -1)) { acc += sg.frames; rcuts.push(acc / F); }
-      const mgFrames = await mgPass(T, rcuts, -opts.askip);
+      const fin2 = await finishPass(T, rcuts, -opts.askip);
+      if (fin2) lyCount = fin2.lyCount;
       const data = await takeOutput();
       const base = state.videos[0].file.name.replace(/\.[^.]+$/, "");
-      showResult(data, [`${fmtT(T)}・${W}×${H}`, `${sum.segments} 区間・崩し ${sum.timeFx + sum.lookFx} 回（番号 ${R.seed}・ぐちゃぐちゃ度 ${Math.round(R.chaos * 100)}・効果の量 ${Math.round(R.amount * 100)}）`, ...(trying ? ["試し書き出し"] : []), ...(lyCount ? [`歌詞を ${lyCount} 回出しました`] : []), ...(mgFrames ? ["グラフィックスを重ねました"] : [])],
+      showResult(data, [`${fmtT(T)}・${W}×${H}`, `${sum.segments} 区間・崩し ${sum.timeFx + sum.lookFx} 回（番号 ${R.seed}・ぐちゃぐちゃ度 ${Math.round(R.chaos * 100)}・効果の量 ${Math.round(R.amount * 100)}）`, ...(trying ? ["試し書き出し"] : []), ...(lyCount ? [`歌詞を ${lyCount} 回出しました`] : []), ...finishNotes(fin2)],
         `${base}_リミックス${R.seed}${trying ? "_試し" : ""}.mp4`);
       return;
     }
@@ -1502,12 +1600,12 @@ async function run() {
     let { args, T, copy, mix, loopV, loop } = built;
     const bounce = loop === "bounce";
     const XL = loopFade(opts.xfade, opts.vinfo.dur);
-    total = done + prepWork(built) + T + (mgNeeded() ? T : 0);
+    total = done + prepWork(built) + T + (finishNeeded() ? T : 0);
     if (bounce) await makeBounce(f, opts.vpath, opts.vinfo, step);
     if (loop === "xloop") await makeXLoop(f, opts.vpath, opts.vinfo, XL, T, step);
     // 歌詞: 曲の中の時刻を、頭出し・入れ始めのぶんずらしてできあがりの時刻にする
     const vi = opts.vinfo, turned = Math.abs(vi.rot) % 180 === 90;
-    const lyCount = await prepLyrics(T, (turned ? vi.h : vi.w) || 1280, (turned ? vi.w : vi.h) || 720);
+    let lyCount = finishNeeded() ? 0 : await prepLyrics(T, (turned ? vi.h : vi.w) || 1280, (turned ? vi.w : vi.h) || 720);
     if (lyCount) built = buildArgs(opts);
     ({ args, copy } = built);
     const what = copy ? "くっつけています" : opts.subs ? "歌詞を入れながら動画を作り直しています（時間がかかります）" : `動画を H.264 に作り直しながらくっつけています（${opts.vinfo.vcodec} のため。時間がかかります）`;
@@ -1519,7 +1617,8 @@ async function run() {
     const mcuts = [];
     if (many) { let acc = 0; for (const v of vinfos.slice(0, -1)) { acc += v.dur - (plan.X || 0); mcuts.push(acc); } }
     if (loopV) { const per = loop === "xloop" ? opts.vinfo.dur - XL : loop === "bounce" ? opts.vinfo.dur * 2 : opts.vinfo.dur; for (let t = per; t < T; t += per) mcuts.push(t); }
-    const mgFrames = await mgPass(T, mcuts.sort((a, b) => a - b), opts.adelay - opts.askip);
+    const fin2 = await finishPass(T, mcuts.sort((a, b) => a - b), opts.adelay - opts.askip);
+    if (fin2) lyCount = fin2.lyCount;
     const data = await takeOutput();
     const base = state.videos[0].file.name.replace(/\.[^.]+$/, "") + (many ? `_ほか${vinfos.length - 1}本` : "");
     const notes = [fmtT(T)];
@@ -1528,7 +1627,7 @@ async function run() {
     if (loopV) notes.push(bounce ? "動画を逆回しで往復させました" : loop === "xloop" ? `動画を繰り返しました（折り返しを ${XL} 秒重ねて）${shortened(XL)}` : "動画を繰り返しました");
     if (light) notes.push(`${opts.vinfo.w}×${opts.vinfo.h} に軽くしました`);
     if (lyCount) notes.push(`歌詞を ${lyCount} 回出しました`);
-    if (mgFrames) notes.push("グラフィックスを重ねました");
+    notes.push(...finishNotes(fin2));
     if (opts.orig === "mix" && !mix) notes.push("動画に元の音が無かったので差し替えにしました");
     showResult(data, notes, `${base}_ガッちゃんこ.mp4`);
   } catch (e) {
