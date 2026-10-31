@@ -125,6 +125,10 @@
   .modebar { padding: 0 2px; }
   .chk { display: inline-flex; flex-wrap: wrap; gap: 4px 14px; }
   .chk label { white-space: nowrap; }
+  .ctrow { display: grid; grid-template-columns: 2em 8.5em 1fr 4.6em 1fr 1fr; gap: 6px; align-items: center; margin-bottom: 6px; font-size: 13px; }
+  .ctrow select, .ctrow input { min-width: 0; padding: 3px 4px; font: inherit; border: 1px solid var(--rule); border-radius: 8px; background: var(--ground); color: var(--ink); }
+  .ctrow .no { font-weight: 700; text-align: center; border-radius: 6px; color: #111; }
+  @media (max-width: 560px) { .ctrow { grid-template-columns: 2em 1fr 1fr 4.6em; } .ctrow .t { grid-column: 2 / -1; } }
   .tprow { display: grid; grid-template-columns: 4.6em 4.2em 1fr auto auto; gap: 6px; align-items: center; margin-bottom: 6px; }
   .tprow input, .tprow select { min-width: 0; padding: 4px 6px; font: inherit; border: 1px solid var(--rule); border-radius: 8px; background: var(--ground); color: var(--ink); }
   @media (max-width: 560px) { .tprow { grid-template-columns: 4.6em 4.2em 1fr auto; } .tprow .tptext { grid-column: 1 / -1; grid-row: 2; } }
@@ -177,8 +181,32 @@
     <span class="seg">
       <label><input type="radio" name="mode" value="merge" checked>くっつける</label>
       <label><input type="radio" name="mode" value="remix">ぐちゃぐちゃリミックス</label>
+      <label><input type="radio" name="mode" value="cut">音ハメ</label>
     </span>
   </div>
+
+  <section class="panel" id="ctPanel" hidden>
+    <h2>音ハメ</h2>
+    <p class="note">曲の波形の上に区切りを打ち、区間ごとに「どの映像のどこを、どう見せるか」を決めます。曲には手を加えません。</p>
+    <canvas id="ctWave" height="140" aria-label="曲の波形と区切り（タップでその位置へ、線をドラッグで動かす、ダブルクリックで消す）" style="width:100%;height:140px;border-radius:10px;background:var(--ground);touch-action:none;cursor:crosshair"></canvas>
+    <div class="row">
+      <button class="ghost small" id="ctPlay" type="button" style="margin-left:0">▶ 流す</button>
+      <button class="ghost small" id="ctCut" type="button" style="margin-left:0">✂ ここで区切る（スペース）</button>
+      <button class="ghost small" id="ctDel" type="button" style="margin-left:0">近くの区切りを消す</button>
+      <span class="note" id="ctNow"></span>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="ctSnap" checked> 拍に合わせる（半拍に吸いつく）</label>
+      <button class="ghost small" id="ctAuto" type="button" style="margin-left:0">一気に区切る</button>
+      <label class="note"><input type="number" id="ctEvery" min="1" max="64" step="1" value="4"> 拍ごと</label>
+      <button class="ghost small" id="ctClear" type="button" style="margin-left:0">区切りを全部消す</button>
+    </div>
+    <p class="note" id="ctInfo"></p>
+    <div id="ctList"></div>
+    <textarea id="ctData" hidden aria-hidden="true"></textarea>
+    <button class="ghost" id="ctTry" type="button">試し書き出し（頭 15 秒・480p）</button>
+    <p class="note">波形をタップするとその位置へ飛び、区切りの線はドラッグで動かせます（ダブルクリックで消す）。逆回し・行って戻るは 1.2 秒までの区間で効きます。</p>
+  </section>
 
   <section class="panel" id="rmPanel" hidden>
     <h2>リミックス</h2>
@@ -507,7 +535,7 @@
 <script type="module">
 import { FFmpeg } from "./vendor/ffmpeg/index.js";
 import { readEmbeddedLyrics, parseLrc, buildAss, fmtLrc } from "./lyrics.js";
-import { detectBeats, makePlan, planSummary, segFilter, findHighlights, hypeAt } from "./remix.js";
+import { detectBeats, makePlan, planSummary, segFilter, findHighlights, hypeAt, cutPlan, TIME_FX, LOOK_FX } from "./remix.js";
 import { analyzeAudio, makeScene, drawFrame, LAYERS as MG_LAYERS } from "./mograph.js";
 
 // 試験のときは ?core=<フォルダのURL> で読み込み先を差し替える
@@ -723,7 +751,7 @@ function aspectFilter(W, H, fit, id) {
   if (fit === "blur") return `split[${id}a][${id}b];[${id}a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=20:2[${id}bg];[${id}b]scale=${W}:${H}:force_original_aspect_ratio=decrease[${id}fg];[${id}bg][${id}fg]overlay=(W-w)/2:(H-h)/2,setsar=1`;
   return `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`;
 }
-function needSong() { return opt("mode") === "remix" || $("mgOn").checked || $("hypeOn").checked || ($("lyOn").checked && opt("lyStyle") !== "sub"); }
+function needSong() { return opt("mode") !== "merge" || $("mgOn").checked || $("hypeOn").checked || ($("lyOn").checked && opt("lyStyle") !== "sub"); }
 // 見つけたサビ（曲の中の時刻）。曲を調べ終わるまでは空
 const highlights = () => ($("hypeOn").checked && state.an ? findHighlights(state.an, num("rmBpm") || 120, num("rmOffset")) : []);
 
@@ -976,7 +1004,7 @@ function renderVideos() {
   $("photoRow").hidden = !vs.some((it) => it.photo);
   const bad = vs.find((it) => it.bad);
   const total = vs.reduce((t, it) => t + it.dur, 0);
-  $("vtotal").textContent = n > 1 ? (opt("mode") === "remix" ? `${n} 本を素材に使います（合計 ${fmtT(total)}）` : `${n} 本をこの順につなげます（合計 ${fmtT(total)}）`) : `${fmtMB(vs[0]?.file.size || 0)}・${fmtT(total)}`;
+  $("vtotal").textContent = n > 1 ? (opt("mode") !== "merge" ? `${n} 本を素材に使います（合計 ${fmtT(total)}）` : `${n} 本をこの順につなげます（合計 ${fmtT(total)}）`) : `${fmtMB(vs[0]?.file.size || 0)}・${fmtT(total)}`;
   $("vclear").disabled = busy;
   if (bad) $("vtotal").textContent = `${bad.file.name}: ${bad.bad}`;
   if (!$("vprev").src && n) showPreview();
@@ -984,13 +1012,16 @@ function renderVideos() {
 }
 
 function refresh() {
-  const remix = opt("mode") === "remix";
-  document.body.classList.toggle("remix", remix);
+  const remix = opt("mode") === "remix", cut = opt("mode") === "cut";
+  document.body.classList.toggle("remix", remix || cut);   // くっつける専用の行を隠す
   $("rmPanel").hidden = !remix;
-  $("optTitle").textContent = remix ? "仕上げ" : "くっつけ方";
-  $("go").textContent = remix ? "リミックスする" : "ガッちゃんこする";
-  $("go").disabled = busy || !state.videos.length || !state.audio || (remix && !(num("rmBpm") > 0));
-  $("rmTry").disabled = $("go").disabled;
+  $("ctPanel").hidden = !cut;
+  $("optTitle").textContent = remix || cut ? "音声と大きさ" : "くっつけ方";
+  $("go").textContent = remix ? "リミックスする" : cut ? "音ハメする" : "ガッちゃんこする";
+  $("go").disabled = busy || !state.videos.length || !state.audio || (remix && !(num("rmBpm") > 0)) || state.videos.some((v) => v.bad);
+  $("rmTry").disabled = $("ctTry").disabled = $("go").disabled;
+  // 一覧は区切り・素材・曲の長さが変わったときだけ作り直す（打っている途中の入力欄を消さないように）
+  if (cut) { if (ctKey() !== ctShown) ctRender(); else ctDraw(); }
   $("rmChaosv").textContent = $("rmChaos").value;
   $("rmAmountv").textContent = $("rmAmount").value;
   if (remix) rmRefresh();
@@ -1355,7 +1386,7 @@ let restored = null;
   if (!prev || Date.now() - prev.at > 2 * 864e5) return;
   restoreSettings(prev.settings);
   restored = { audio: prev.audio, settings: prev.settings };
-  setTimeout(() => tpRender(), 0);
+  setTimeout(() => { tpRender(); refresh(); }, 0);
   const mins = Math.round((Date.now() - prev.at) / 60000);
   $("crashText").textContent =
     `前回（${mins < 60 ? mins + " 分前" : Math.round(mins / 60) + " 時間前"}）は「${prev.stage || "準備"}」のところでページが読み込み直されて、最初の画面に戻りました。` +
@@ -1365,6 +1396,159 @@ let restored = null;
   $("crashNote").hidden = false;
 })();
 $("crashClose").addEventListener("click", () => { $("crashNote").hidden = true; });
+
+// ── 音ハメ ──
+// 区切り（曲の時刻）と区間ごとの割り当てを、隠した textarea に JSON で持つ（落ちたときの控えに入る。プリセットには入れない）
+const TIME_JA = { normal: "そのまま", stutter: "くり返し", reverse: "逆回し", fast: "2倍速", slow: "ゆっくり", freeze: "止め", pingpong: "行って戻る", choppy: "カクカク", warp: "4倍速", skip: "つっかえ" };
+const LOOK_JA = { "": "見た目そのまま", hflip: "左右反転", vflip: "上下反転", negate: "色の反転", mono: "白黒", flash: "白フラッシュ", blackflash: "黒フラッシュ", zoom: "寄る", zoomin: "どんどん寄る", shake: "揺れ", lens: "魚眼", mirror: "鏡写し", kaleido: "万華鏡", grid4: "4分割", rgb: "色ずれ", rgbx: "色ずれ強", chroma: "色にじみ", pixel: "モザイク", blur: "ぼかし", posterize: "ポスタリゼーション", edge: "輪郭線", huespin: "色相回し", saturate: "ど派手", xpro: "クロスプロセス", swap: "色入れかえ", contrast: "高コントラスト", vignette: "周辺を暗く", noise: "ザラザラ", strobe: "ストロボ", trail: "残像" };
+const CT_COLORS = ["#ff7a5c", "#5cc8ff", "#ffd25c", "#9cff5c", "#d08cff", "#ff5ca8", "#5cffd6", "#c8c8c8"];
+const ctGet = () => { try { const o = JSON.parse($("ctData").value || "{}"); return { cuts: o.cuts || [], assign: o.assign || [] }; } catch { return { cuts: [], assign: [] }; } };
+const songLen = () => (isFinite($("aprev").duration) ? $("aprev").duration : state.an ? state.an.n / state.an.rate : 0);
+const ctBounds = (cuts, L) => [0, ...cuts.filter((c) => c > 0 && c < L), L];
+// 区間の割り当ての初期値: 素材を順に回し、それぞれ続きから使う（素材の終わりまで来たら頭へ）
+function ctDefaults(bounds, assign) {
+  const n = Math.max(1, state.videos.length), cursor = new Array(n).fill(0);
+  return bounds.slice(0, -1).map((s, i) => {
+    const d = bounds[i + 1] - s;
+    if (assign[i]) { cursor[assign[i].src] = (assign[i].at || 0) + d; return assign[i]; }
+    const src = i % n, len = state.videos[src]?.dur || 0;
+    let at = cursor[src]; if (!isFinite(len) || at + d > len) at = 0;
+    cursor[src] = at + d;
+    return { src, at: Math.round(at * 10) / 10, time: "normal", look: "" };
+  });
+}
+// 区切りを変えたら、新しい区間の割り当ては「その頭が入っていた前の区間」から引き継ぐ（使い始めはずれた分だけ進める）。
+// 引き継ぐのは自分で選んだ区間だけ。選んでいない区間は空のままにして、素材を順に回す初めの割り当てにまかせる
+function ctSetCuts(newCuts) {
+  const L = songLen(), old = ctGet();
+  const ob = ctBounds(old.cuts, L), oa = old.assign;
+  const cuts = [...new Set(newCuts.map((c) => Math.round(c * 1000) / 1000))].filter((c) => c > 0.05 && c < L - 0.05).sort((a, b) => a - b);
+  const nb = ctBounds(cuts, L);
+  const assign = nb.slice(0, -1).map((s) => {
+    const j = Math.max(0, ob.findIndex((x, k) => k + 1 < ob.length && s >= x - 1e-6 && s < ob[k + 1] - 1e-6));
+    const a = oa[j]; if (!a) return null;
+    return { ...a, at: Math.round(((a.at || 0) + (s - ob[j])) * 1000) / 1000 };
+  });
+  $("ctData").value = JSON.stringify({ cuts, assign });
+  ctRender();
+}
+// 選んだ区間だけを「自分で選んだ」ものとして残す（ほかの区間は初めの割り当てのまま）
+function ctSetAssign(i, patch) {
+  const o = ctGet(), b = ctBounds(o.cuts, songLen()), a = ctDefaults(b, o.assign);
+  const raw = [...o.assign]; raw.length = Math.max(raw.length, i + 1);
+  raw[i] = { ...a[i], ...patch };
+  $("ctData").value = JSON.stringify({ cuts: o.cuts, assign: raw });
+  ctDraw();
+}
+// 拍に合わせる: 近い半拍へ
+function ctSnap(t) {
+  const bpm = num("rmBpm");
+  if (!$("ctSnap").checked || !(bpm > 0)) return t;
+  const st = 30 / bpm, o = num("rmOffset");
+  return Math.max(0, o + Math.round((t - o) / st) * st);
+}
+// 波形・区間・拍の目盛り・区切り・今の位置
+function ctDraw() {
+  const cv = $("ctWave"), dpr = Math.min(2, window.devicePixelRatio || 1), W = Math.max(200, Math.round(cv.clientWidth * dpr)), H = Math.round(140 * dpr);
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const g = cv.getContext("2d"), L = songLen();
+  g.clearRect(0, 0, W, H);
+  if (!(L > 0)) { g.fillStyle = "#888"; g.font = `${13 * dpr}px sans-serif`; g.fillText("音声を入れると波形が出ます", 10 * dpr, H / 2); return; }
+  const X = (t) => (t / L) * W, o = ctGet(), b = ctBounds(o.cuts, L), a = ctDefaults(b, o.assign);
+  b.slice(0, -1).forEach((s, i) => {
+    g.fillStyle = CT_COLORS[a[i].src % CT_COLORS.length]; g.globalAlpha = 0.28;
+    g.fillRect(X(s), 0, X(b[i + 1]) - X(s), H);
+    g.globalAlpha = 1;
+    if (X(b[i + 1]) - X(s) > 22 * dpr) { g.fillStyle = "#111"; g.font = `bold ${11 * dpr}px sans-serif`; g.fillText(`${i + 1}`, X(s) + 4 * dpr, 13 * dpr); }
+  });
+  const bpm = num("rmBpm");
+  if (bpm > 0 && (L * bpm) / 60 < W / (3 * dpr)) {
+    g.fillStyle = "rgba(128,128,128,0.35)";
+    for (let t = num("rmOffset"), k = 0; t < L; t += 60 / bpm, k++) g.fillRect(X(t), k % 4 ? H - 8 * dpr : H - 16 * dpr, Math.max(1, dpr), H);
+  }
+  g.fillStyle = "rgba(60,60,60,0.85)";
+  if (state.an) {
+    const an = state.an;
+    for (let x = 0; x < W; x += Math.max(1, Math.round(dpr))) {
+      const i0 = Math.floor((x / W) * L * an.rate), i1 = Math.max(i0 + 1, Math.floor(((x + dpr) / W) * L * an.rate));
+      let m = 0; for (let i = i0; i < i1 && i < an.n; i++) m = Math.max(m, an.rms[i]);
+      const h = m * H * 0.8; g.fillRect(x, H / 2 - h / 2, Math.max(1, dpr), h);
+    }
+  }
+  g.fillStyle = "#111";
+  for (const c of o.cuts) { g.fillRect(X(c) - dpr, 0, 2 * dpr, H); g.beginPath(); g.arc(X(c), H - 6 * dpr, 5 * dpr, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = "#e5322d"; g.fillRect(X($("aprev").currentTime || 0) - dpr / 2, 0, 1.5 * dpr, H);
+  $("ctNow").textContent = `${fmtT($("aprev").currentTime || 0)} / ${fmtT(L)}`;
+}
+let ctShown = "";
+const ctKey = () => JSON.stringify([ctGet().cuts, state.videos.map((v) => [v.file.name, v.dur]), songLen()]);
+function ctRender() {
+  ctShown = ctKey();
+  const L = songLen(), o = ctGet(), b = ctBounds(o.cuts, L), a = ctDefaults(b, o.assign), list = $("ctList");
+  list.textContent = "";
+  $("ctInfo").textContent = L > 0 ? `${b.length - 1} 区間（区切り ${o.cuts.length} 個）。区間ごとに映像と見せ方を選べます。` : "";
+  const opts = (sel, pairs, val) => { for (const [v, l] of pairs) { const op = document.createElement("option"); op.value = v; op.textContent = l; sel.append(op); } sel.value = val; return sel; };
+  if (L > 0 && b.length - 1 <= 400) b.slice(0, -1).forEach((s, i) => {
+    const row = document.createElement("div"); row.className = "ctrow";
+    const no = document.createElement("span"); no.className = "no"; no.textContent = i + 1; no.style.background = CT_COLORS[a[i].src % CT_COLORS.length];
+    const t = document.createElement("span"); t.className = "t"; t.textContent = `${fmtT(s)}〜${fmtT(b[i + 1])}`;
+    const src = opts(document.createElement("select"), state.videos.map((v, k) => [k, `${k + 1}: ${v.file.name}`]), a[i].src);
+    src.setAttribute("aria-label", `区間 ${i + 1} の映像`); src.onchange = () => { ctSetAssign(i, { src: +src.value }); ctRender(); };
+    const at = document.createElement("input"); at.type = "number"; at.min = "0"; at.step = "0.1"; at.value = a[i].at; at.title = "映像の何秒目から使う"; at.setAttribute("aria-label", `区間 ${i + 1} の使い始め（秒）`);
+    at.oninput = () => ctSetAssign(i, { at: Math.max(0, parseFloat(at.value) || 0) });
+    const tm = opts(document.createElement("select"), TIME_FX.map((k) => [k, TIME_JA[k] || k]), a[i].time || "normal");
+    tm.setAttribute("aria-label", `区間 ${i + 1} の時間の崩し`); tm.onchange = () => ctSetAssign(i, { time: tm.value });
+    const lk = opts(document.createElement("select"), [["", LOOK_JA[""]], ...LOOK_FX.map((k) => [k, LOOK_JA[k] || k])], a[i].look || "");
+    lk.setAttribute("aria-label", `区間 ${i + 1} の見た目`); lk.onchange = () => ctSetAssign(i, { look: lk.value });
+    row.append(no, t, src, at, tm, lk);
+    list.append(row);
+  });
+  ctDraw();
+}
+// 波形の操作: タップ＝その位置へ、区切りの線の近く＝つかんで動かす、ダブルクリック＝消す
+let ctDrag = null;
+const ctTimeAt = (e) => { const r = $("ctWave").getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * songLen(); };
+const ctNear = (e) => { const r = $("ctWave").getBoundingClientRect(), L = songLen(); return ctGet().cuts.findIndex((c) => Math.abs(r.left + (c / L) * r.width - e.clientX) < 9); };
+$("ctWave").addEventListener("pointerdown", (e) => {
+  if (!(songLen() > 0)) return;
+  const k = ctNear(e);
+  if (k >= 0) { ctDrag = k; $("ctWave").setPointerCapture(e.pointerId); return; }
+  $("aprev").currentTime = ctTimeAt(e); ctDraw();
+});
+$("ctWave").addEventListener("pointermove", (e) => {
+  if (ctDrag === null) return;
+  const o = ctGet(); o.cuts[ctDrag] = ctSnap(ctTimeAt(e));
+  $("ctData").value = JSON.stringify(o); ctDraw();
+});
+$("ctWave").addEventListener("pointerup", () => { if (ctDrag !== null) { ctDrag = null; ctSetCuts(ctGet().cuts); } });
+$("ctWave").addEventListener("dblclick", (e) => { const k = ctNear(e); if (k >= 0) { const c = ctGet().cuts; c.splice(k, 1); ctSetCuts(c); } });
+$("ctPlay").addEventListener("click", () => { const a = $("aprev"); if (!a.src) return; if (a.paused) a.play(); else a.pause(); });
+const ctAddHere = () => { if (songLen() > 0) ctSetCuts([...ctGet().cuts, ctSnap($("aprev").currentTime || 0)]); };
+$("ctCut").addEventListener("click", ctAddHere);
+$("ctDel").addEventListener("click", () => {
+  const t = $("aprev").currentTime || 0, c = ctGet().cuts;
+  const k = c.reduce((best, x, i) => (Math.abs(x - t) < Math.abs((c[best] ?? 1e9) - t) ? i : best), -1);
+  if (k >= 0 && Math.abs(c[k] - t) < 2) { c.splice(k, 1); ctSetCuts(c); }
+});
+$("ctAuto").addEventListener("click", () => {
+  const bpm = num("rmBpm"), L = songLen();
+  if (!(bpm > 0) || !(L > 0)) { $("ctInfo").textContent = "テンポがまだ分かりません（曲を調べ終わるまで待つか、リミックスの「テンポ」で入れてください）。"; return; }
+  const every = Math.max(1, Math.round(num("ctEvery", 4))) * (60 / bpm), cuts = [];
+  for (let t = num("rmOffset"); t < L; t += every) if (t > 0.05) cuts.push(t);
+  ctSetCuts(cuts);
+});
+$("ctClear").addEventListener("click", () => { $("ctData").value = JSON.stringify({ cuts: [], assign: [] }); ctRender(); });
+document.addEventListener("keydown", (e) => {
+  if (opt("mode") !== "cut" || e.code !== "Space" || tap) return;
+  if (["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(document.activeElement?.tagName)) return;
+  e.preventDefault(); ctAddHere();
+});
+let ctRaf = 0;
+function ctLoop() { if (opt("mode") === "cut") ctDraw(); ctRaf = $("aprev").paused ? 0 : requestAnimationFrame(ctLoop); }
+$("aprev").addEventListener("play", () => { if (!ctRaf) ctRaf = requestAnimationFrame(ctLoop); $("ctPlay").textContent = "⏸ 止める"; });
+$("aprev").addEventListener("pause", () => { $("ctPlay").textContent = "▶ 流す"; ctDraw(); });
+$("aprev").addEventListener("seeked", () => { if (opt("mode") === "cut") ctDraw(); });
+window.addEventListener("resize", () => { if (opt("mode") === "cut") ctDraw(); });
 
 // ── テロップの一覧 ──
 function tpData() { try { return JSON.parse($("telopText").value || "[]") || []; } catch { return []; } }
@@ -1397,7 +1581,7 @@ $("tpAdd").addEventListener("click", () => {
 tpRender();
 
 // ── 設定の保存（プリセット）。曲ごとに変わるものは入れない ──
-const PS_KEY = "avmerge.presets", PS_SKIP = ["lyText", "mgTitleText", "mgArtist", "rmBpm", "rmOffset", "psName", "telopText"];
+const PS_KEY = "avmerge.presets", PS_SKIP = ["lyText", "mgTitleText", "mgArtist", "rmBpm", "rmOffset", "psName", "telopText", "ctData"];
 const psRead = () => { try { return JSON.parse(localStorage.getItem(PS_KEY) || "{}"); } catch { return {}; } };
 const psWrite = (o) => { try { localStorage.setItem(PS_KEY, JSON.stringify(o)); return true; } catch { return false; } };
 function psRender(sel) {
@@ -1655,11 +1839,13 @@ async function run() {
       $("result").scrollIntoView({ behavior: "smooth", block: "start" });
     };
 
-    if (opt("mode") === "remix") {
-      // ── ぐちゃぐちゃリミックス ──
+    if (opt("mode") === "remix" || opt("mode") === "cut") {
+      // ── ぐちゃぐちゃリミックス／音ハメ ──
       // 区間をいくつかずつまとめて作り直し（/work/rb*.mp4）、作り直さずに並べて、曲をそのまま載せる
+      const cutMode = opt("mode") === "cut";
       const R = rmSettings();
-      if (!(R.bpm > 0)) throw new Error("テンポ（BPM）が決まっていません。");
+      if (!cutMode && !(R.bpm > 0)) throw new Error("テンポ（BPM）が決まっていません。");
+      if (cutMode && !(R.bpm > 0)) R.bpm = 120;   // 音ハメは拍を使わない（グラフィックスの拍だけ）
       const trying = runKind === "try";
       const fullT = Math.max(0.1, ainfo.dur - opts.askip);
       const T = trying ? Math.min(15, fullT) : fullT;
@@ -1674,13 +1860,16 @@ async function run() {
       const hl = highlights();
       if ($("hypeOn").checked) log(`[サビ] ${JSON.stringify(hl)}`);
       // 設計図はできあがりの時刻。曲の時刻は頭出しのぶん後ろ
-      let segs = makePlan({ ...R, offset: ((R.offset - opts.askip) % beat + beat) % beat, T: fullT, F, clips: vinfos.map((i) => ({ dur: i.dur })),
-        boost: hl.length ? (t) => hypeAt(hl, t + opts.askip) : null });
+      const ct = ctGet();
+      let segs = cutMode
+        ? cutPlan({ cuts: ct.cuts, assign: ctDefaults(ctBounds(ct.cuts, ainfo.dur), ct.assign), askip: opts.askip, T: fullT, F, clips: vinfos.map((i) => ({ dur: i.dur })) })
+        : makePlan({ ...R, offset: ((R.offset - opts.askip) % beat + beat) % beat, T: fullT, F, clips: vinfos.map((i) => ({ dur: i.dur })),
+          boost: hl.length ? (t) => hypeAt(hl, t + opts.askip) : null });
       const want = Math.round(T * F);
       let got = 0;
       segs = segs.filter((sg) => got < want && (sg.frames = Math.min(sg.frames, want - got), got += sg.frames, true));
       const sum = planSummary(segs);
-      log(`[リミックス] ${JSON.stringify({ ...R, W, H, F, T, ...sum })}`);
+      log(cutMode ? `[音ハメ] ${JSON.stringify({ cuts: ct.cuts.length, W, H, F, T, ...sum, srcs: segs.map((x) => x.src).join("") })}` : `[リミックス] ${JSON.stringify({ ...R, W, H, F, T, ...sum })}`);
       total = T * ($("lyOn").checked && opt("lyStyle") === "sub" && !finishNeeded() ? 2 : 1) + (finishNeeded() ? T : 0);   // 歌詞の字幕・仕上げは最後にもう一度作り直す
       done = 0;
       await f.createDir("/work").catch(() => {});
@@ -1715,8 +1904,8 @@ async function run() {
       if (fin2) lyCount = fin2.lyCount;
       const data = await takeOutput();
       const base = state.videos[0].file.name.replace(/\.[^.]+$/, "");
-      showResult(data, [`${fmtT(T)}・${W}×${H}`, `${sum.segments} 区間・崩し ${sum.timeFx + sum.lookFx} 回（番号 ${R.seed}・ぐちゃぐちゃ度 ${Math.round(R.chaos * 100)}・効果の量 ${Math.round(R.amount * 100)}）`, ...(trying ? ["試し書き出し"] : []), ...(lyCount ? [`歌詞を ${lyCount} 回出しました`] : []), ...finishNotes(fin2)],
-        `${base}_リミックス${R.seed}${trying ? "_試し" : ""}.mp4`);
+      showResult(data, [`${fmtT(T)}・${W}×${H}`, cutMode ? `${sum.segments} 区間（音ハメ）` : `${sum.segments} 区間・崩し ${sum.timeFx + sum.lookFx} 回（番号 ${R.seed}・ぐちゃぐちゃ度 ${Math.round(R.chaos * 100)}・効果の量 ${Math.round(R.amount * 100)}）`, ...(trying ? ["試し書き出し"] : []), ...(lyCount ? [`歌詞を ${lyCount} 回出しました`] : []), ...finishNotes(fin2)],
+        `${base}_${cutMode ? "音ハメ" : `リミックス${R.seed}`}${trying ? "_試し" : ""}.mp4`);
       return;
     }
 
@@ -1833,6 +2022,7 @@ $("toWebm").addEventListener("click", () => convertOutput("webm"));
 let runKind = "full";
 $("go").addEventListener("click", () => { runKind = "full"; run(); });
 $("rmTry").addEventListener("click", () => { runKind = "try"; run(); });
+$("ctTry").addEventListener("click", () => { runKind = "try"; run(); });
 $("cancel").addEventListener("click", () => {
   if (!busy) { $("work").hidden = true; return; }
   cancelled = true;

@@ -183,6 +183,37 @@ export function makePlan({ seed, chaos, amount = chaos, bpm, offset, T, F, clips
   return segs;
 }
 
+// ── 音ハメ ──
+// cuts: 曲の時刻の区切り。assign[i]: 区間 i（曲の頭から数える）の { src, at, time, look }。
+// できあがりの時刻 ＝ 曲の時刻 − 頭出し（askip）。リミックスと同じ形の区間にして返す（区切りはコマで数える）
+export function cutPlan({ cuts, assign, askip = 0, T, F, clips }) {
+  const total = Math.round(T * F), songEnd = T + askip;
+  const bounds = [0, ...[...cuts].filter((c) => c > 0 && c < songEnd).sort((a, b) => a - b), songEnd];
+  const segs = [];
+  let prevF = 0;
+  for (let i = 0; i + 1 < bounds.length; i++) {
+    const s = bounds[i], e = bounds[i + 1];
+    const endF = Math.min(total, Math.round((e - askip) * F));
+    if (endF <= prevF) continue;
+    const frames = endF - prevF, dur = frames / F;
+    const a = assign[i] || { src: i % clips.length, at: 0, time: "normal", look: "" };
+    const src = Math.min(clips.length - 1, Math.max(0, a.src | 0));
+    let time = TIME_FX.includes(a.time) ? a.time : "normal";
+    if ((time === "reverse" || time === "pingpong") && dur > 1.2) time = "normal";   // コマを全部抱えるので短い区間だけ
+    if ((time === "stutter" || time === "skip" || time === "pingpong") && frames < 4) time = "normal";
+    const reps = time === "stutter" ? 3 : 1;
+    const need = time === "stutter" ? dur / reps : time === "freeze" ? 1 / F : dur * (NEED[time] || 1);
+    const len = clips[src].dur;
+    // 頭出しで区間の頭が切れたぶんは、素材も先へ進める。素材をはみ出すなら収まる所まで戻す
+    const at0 = (a.at || 0) + Math.max(0, askip - s);
+    const at = Math.max(0, Math.min(at0, len - Math.min(need, len)));
+    // 1/1000 秒にそろえるときは切り捨て（四捨五入だと素材をわずかにはみ出す）
+    segs.push({ src, at: Math.floor(at * 1000) / 1000, frames, time, reps, need: Math.min(need, len), look: LOOKS[a.look] ? [a.look] : [], p: { dir: 1, hue: (i * 67) % 360 } });
+    prevF = endF;
+  }
+  return segs;
+}
+
 export function planSummary(segs) {
   const n = (f) => segs.filter(f).length;
   const kinds = new Set(segs.flatMap((s) => s.look));

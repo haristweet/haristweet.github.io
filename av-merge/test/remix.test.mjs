@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { detectBeats, makePlan, segFilter, TIME_FX, LOOK_FX, LOOKS, findHighlights, hypeAt } from "../remix.js";
+import { detectBeats, makePlan, segFilter, TIME_FX, LOOK_FX, LOOKS, findHighlights, hypeAt, cutPlan } from "../remix.js";
 
 const OUT = resolve(process.argv[2] || "test-out");
 await mkdir(OUT, { recursive: true });
@@ -87,6 +87,21 @@ check("ぐちゃぐちゃ度が高いほど区切りが細かい", wild.length /
   for (const sg of boosted) { (hypeAt(h, tt / 30) === 1 ? inS : outS).push(sg); tt += sg.frames; }
   const fx = (arr) => arr.reduce((a, sg) => a + sg.look.length + (sg.time !== "normal"), 0) / Math.max(1, arr.length);
   check(`サビの間は崩しが多い（${fx(inS).toFixed(2)} vs ${fx(outS).toFixed(2)}／区間）`, fx(inS) > fx(outS) * 1.5);
+}
+
+// ── 音ハメ ──
+{
+  const clips2 = [{ dur: 10 }, { dur: 1 }];
+  const asg = [{ src: 0, at: 1, time: "normal", look: "" }, { src: 1, at: 0.5, time: "stutter", look: "negate" }, { src: 0, at: 9.5, time: "reverse", look: "" }, { src: 0, at: 2, time: "slow", look: "bogus" }];
+  const p1 = cutPlan({ cuts: [2, 4.5, 5], assign: asg, askip: 0, T: 8, F: 30, clips: clips2 });
+  check("音ハメ: 区切りどおりのコマ数", JSON.stringify(p1.map((x) => x.frames)) === "[60,75,15,90]", JSON.stringify(p1.map((x) => x.frames)));
+  check("音ハメ: 割り当てた素材・崩し・見た目", p1[1].src === 1 && p1[1].time === "stutter" && p1[1].look[0] === "negate" && p1[3].time === "slow" && p1[3].look.length === 0);
+  check("音ハメ: 素材をはみ出す使い始めは収まる所まで戻す", p1[1].at + p1[1].need <= 1 + 1e-9 && p1[2].at + p1[2].need <= 10 + 1e-9, JSON.stringify(p1.map((x) => [x.at, x.need])));
+  const asg2 = [{ src: 0, at: 0 }, { src: 0, at: 1 }, { src: 1, at: 0 }, { src: 0, at: 5 }];
+  const p2 = cutPlan({ cuts: [2, 4.5, 5], assign: asg2, askip: 3, T: 5, F: 30, clips: clips2 });
+  check("音ハメ: 頭出しで切れた区間は素材も先へ（3 秒飛ばすと、2 秒から始まる区間は 1 秒進む）", p2.length === 3 && p2[0].frames === 45 && p2[0].src === 0 && Math.abs(p2[0].at - 2) < 1e-9 && p2.reduce((t, x) => t + x.frames, 0) === 150, JSON.stringify(p2));
+  const p3 = cutPlan({ cuts: [3], assign: [{ src: 0, at: 0, time: "reverse", look: "" }], askip: 0, T: 4, F: 30, clips: clips2 });
+  check("音ハメ: 長い区間の逆回しはふつうにする", p3[0].time === "normal");
 }
 
 // ── 区間のフィルタを手元の ffmpeg で流す ──

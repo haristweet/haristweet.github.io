@@ -79,6 +79,10 @@ await page.screenshot({ path: S("shot_empty.png"), fullPage: true });
 
 const MGALL = { style: "neon", layers: ["bars", "ring", "wave", "pulse", "particles"], wipe: "4", frame: "hud", title: true };
 const cases = [
+  // 音ハメ: 素材 1（黒）と 2（テスト柄）を 2・4・6 秒の区切りで 1→2→1→2
+  { name: "音ハメ・区間ごとに映像を割り当てる", v: ["v_black.mp4", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 20, vcodec: "h264", size: "640x360",
+    cut: { cuts: [2, 4, 6], assign: [{ src: 0, at: 0, time: "normal", look: "" }, { src: 1, at: 0, time: "stutter", look: "" }, { src: 0, at: 1, time: "normal", look: "" }, { src: 1, at: 2, time: "normal", look: "mono" }] },
+    bright: [[1, false, "all"], [3, true, "all"], [5, false, "all"], [10, true, "all"]], cutLog: /"srcs":"0101"/, note: /4 区間（音ハメ）/ },
   { name: "GIF・WebM にする", v: "v_h264.mp4", a: "a_10s.mp3", set: {}, dur: 6, vcodec: "h264", conv: { gif: /^gif\/- 320x240 6\.\ds/, webm: /^vp8\/opus 320x240 6\.\ds/ } },
   // 写真
   { name: "写真・2 枚のスライドショー", v: ["p_land.png", "p_tall.jpg"], a: "a_10s.mp3", set: {}, dur: 8, vcodec: "h264", size: "1600x1200", moving: [0.3, 3.5], mgShot: true },
@@ -207,7 +211,12 @@ for (const [i, c] of cases.entries()) {
     set(`input[name=fit][value=${o.fx.fit || "crop"}]`, true);
     set(`input[name=grade][value=${o.fx.grade || "none"}]`, true);
   }, { mg: c.mg, lyStyle: c.lyStyle, fx: c.fx || {}, telops: c.telops, hype: c.hype });
-  if (c.remix) {
+  if (c.cut) {
+    // 音ハメ: 区切りと割り当てを直に入れて書き出す
+    await page.evaluate((d) => { const e = document.getElementById("ctData"); e.value = JSON.stringify(d); }, c.cut);
+    await page.check("input[name=mode][value=cut]", { force: true });
+    await page.click(c.cutTry ? "#ctTry" : "#go");
+  } else if (c.remix) {
     // リミックスに切りかえ、テンポを自動で調べ終わるのを待つ
     await page.check("input[name=mode][value=remix]", { force: true });
     await page.waitForFunction(() => document.getElementById("rmBpm").value !== "", null, { timeout: 15000 }).catch(() => {});
@@ -318,6 +327,7 @@ for (const [i, c] of cases.entries()) {
     const md = (t) => execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", String(t), "-i", out, "-frames:v", "1", "-f", "md5", "-"]).toString().trim();
     if (md(c.moving[0]) === md(c.moving[1])) probs.push(`${c.moving.join("・")} 秒の絵が同じ（写真が動いていない）`);
   }
+  if (c.cutLog && !c.cutLog.test(log)) probs.push(`音ハメの記録が期待と違う: ${(log.match(/\[音ハメ\][^\n]*/) || ["（無い）"])[0]}`);
   if (c.mgLog && !c.mgLog.test(log)) probs.push(`グラフィックスの記録が期待と違う: ${(log.match(/\[グラフィックス\][^\n]*/) || [""])[0]}`);
   if (c.noAss && /lyrics\.ass/.test(log)) probs.push("字幕（ASS）を使ってしまった");
   if (c.mgShot) execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", out, "-vf", "fps=2,scale=320:-1,tile=4x4", "-frames:v", "1", S(`shot_mg_${i}.png`)]);
@@ -432,6 +442,38 @@ if (!process.env.ONLY || "写真".includes(process.env.ONLY)) {
   console.log(`${ok ? "OK" : "NG"} 写真の一覧 ${ok ? "" : JSON.stringify({ a1, row, tot, a2 })}`);
   if (!ok) fail++;
   await p8.close();
+}
+// 音ハメの画面: 一気に区切る → 一覧の行数。使い始めに打っても入力欄が消えない。スペースで近い半拍に区切る
+if (!process.env.ONLY || "音ハメ".includes(process.env.ONLY)) {
+  const p9 = await browser.newPage();
+  await p9.goto(base);
+  await p9.setInputFiles("#vfile", [S("v_vp9.webm"), S("v_black.mp4")]);
+  await p9.setInputFiles("#afile", S("a_drum.mp3"));
+  await p9.check("input[name=mode][value=cut]", { force: true });
+  await p9.waitForFunction(() => +document.getElementById("rmBpm").value > 0, null, { timeout: 15000 });
+  await p9.fill("#ctEvery", "4");
+  await p9.click("#ctAuto");
+  const d1 = await p9.$eval("#ctData", (e) => JSON.parse(e.value)), rows = await p9.locator(".ctrow").count();
+  const at = p9.locator(".ctrow input[type=number]").nth(1);
+  await at.click(); await at.fill(""); await p9.keyboard.type("1.5");
+  const focused = await p9.evaluate(() => document.activeElement?.closest(".ctrow") !== null);
+  const d2 = await p9.$eval("#ctData", (e) => JSON.parse(e.value));
+  await p9.evaluate(() => { document.getElementById("aprev").currentTime = 5.1; document.activeElement.blur(); });
+  await p9.waitForTimeout(300);
+  await p9.keyboard.press("Space");
+  const d3 = await p9.$eval("#ctData", (e) => JSON.parse(e.value));
+  const bpm = +(await p9.$eval("#rmBpm", (e) => e.value)), off = +(await p9.$eval("#rmOffset", (e) => e.value)), half = 30 / bpm;
+  const added = d3.cuts.find((c) => !d1.cuts.some((x) => Math.abs(x - c) < 1e-6));
+  // 区切りは 1/1000 秒にそろえるので、半拍の位置から 2 ミリ秒以内なら吸いついている
+  const onHalf = added !== undefined && Math.abs(added - (off + Math.round((added - off) / half) * half)) < 0.002 && Math.abs(added - 5.1) < half;
+  // 一気に区切ったあと、素材は 1→2→1→2… と順に回る（選んでいない区間は前の区間を引き継がない）
+  const srcs = await p9.$$eval(".ctrow select:first-of-type", (es) => es.map((e) => e.value).join(""));
+  const alt = /^0101/.test(srcs);
+  const ok = d1.cuts.length >= 9 && rows === d1.cuts.length + 1 && focused && d2.assign[1].at === 1.5 && onHalf && alt && !d2.assign[0];
+  console.log(`${ok ? "OK" : "NG"} 音ハメの画面 ${ok ? "" : JSON.stringify({ cuts: d1.cuts.length, rows, focused, at1: d2.assign[1]?.at, added, bpm, off, srcs, a0: d2.assign[0] })}`);
+  if (!ok) fail++;
+  await p9.screenshot({ path: S("shot_cut.png"), fullPage: true });
+  await p9.close();
 }
 // テロップの一覧: 足す → 文字を打つ → データに入る → 消す
 if (!process.env.ONLY || "テロップ".includes(process.env.ONLY)) {
