@@ -393,6 +393,20 @@
     </div>
   </section>
 
+  <section class="panel" id="psPanel">
+    <h2>設定の保存</h2>
+    <div class="row">
+      <select id="psList" class="mgtext" aria-label="保存した設定"><option value="">（保存した設定はまだありません）</option></select>
+      <button class="ghost small" id="psLoad" type="button" style="margin-left:0">呼び出す</button>
+      <button class="ghost small" id="psDel" type="button" style="margin-left:0">消す</button>
+    </div>
+    <div class="row">
+      <input id="psName" class="mgtext" placeholder="名前（例: ネオンのリミックス）" aria-label="保存する名前">
+      <button class="ghost small" id="psSave" type="button" style="margin-left:0">今の設定を保存</button>
+    </div>
+    <p class="note" id="psNote">作り方・くっつけ方・リミックス・グラフィックス・歌詞の見せ方などをまとめて保存します（このブラウザの中だけ）。歌詞・曲名・テンポのような曲ごとのものは入れません。</p>
+  </section>
+
   <button class="go" id="go" disabled>ガッちゃんこする</button>
 
   <section class="panel" id="work" hidden>
@@ -1199,6 +1213,43 @@ let restored = null;
   $("crashNote").hidden = false;
 })();
 $("crashClose").addEventListener("click", () => { $("crashNote").hidden = true; });
+
+// ── 設定の保存（プリセット）。曲ごとに変わるものは入れない ──
+const PS_KEY = "avmerge.presets", PS_SKIP = ["lyText", "mgTitleText", "mgArtist", "rmBpm", "rmOffset", "psName", "telopText"];
+const psRead = () => { try { return JSON.parse(localStorage.getItem(PS_KEY) || "{}"); } catch { return {}; } };
+const psWrite = (o) => { try { localStorage.setItem(PS_KEY, JSON.stringify(o)); return true; } catch { return false; } };
+function psRender(sel) {
+  const all = psRead(), names = Object.keys(all);
+  $("psList").innerHTML = names.length ? names.map((n) => `<option></option>`).join("") : `<option value="">（保存した設定はまだありません）</option>`;
+  names.forEach((n, i) => { const o = $("psList").options[i]; o.value = n; o.textContent = n; });
+  if (sel) $("psList").value = sel;
+  $("psLoad").disabled = $("psDel").disabled = !names.length;
+}
+$("psSave").addEventListener("click", () => {
+  const name = $("psName").value.trim() || `設定 ${new Date().toLocaleString("ja-JP")}`;
+  const v = saveSettings();
+  for (const k of PS_SKIP) delete v[k];
+  const all = psRead(); all[name] = v;
+  $("psNote").textContent = psWrite(all) ? `「${name}」を保存しました。` : "保存できませんでした（ブラウザの設定で保存が止められているかもしれません）。";
+  psRender(name);
+});
+$("psLoad").addEventListener("click", () => {
+  const name = $("psList").value, v = psRead()[name];
+  if (!v) return;
+  restoreSettings(v);
+  if (needSong()) findTempo();
+  renderVideos(); lyRefresh();
+  ensureMgFont().then(mgPreview).catch(() => {});
+  $("psNote").textContent = `「${name}」を呼び出しました。`;
+});
+$("psDel").addEventListener("click", () => {
+  const name = $("psList").value, all = psRead();
+  if (!(name in all)) return;
+  delete all[name]; psWrite(all);
+  $("psNote").textContent = `「${name}」を消しました。`;
+  psRender();
+});
+psRender();
 
 async function run() {
   if (busy) return;

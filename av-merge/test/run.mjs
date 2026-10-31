@@ -346,6 +346,30 @@ if (!process.env.ONLY || "落ちた".includes(process.env.ONLY)) {
   await p5.screenshot({ path: S("shot_crash.png") });
   await p5.close();
 }
+// 設定の保存: 保存 → 変える → 呼び出すと戻る。曲ごとのもの（歌詞）は入れない。名前に記号が入っても文字のまま
+if (!process.env.ONLY || "プリセット".includes(process.env.ONLY)) {
+  const p6 = await browser.newPage();
+  await p6.goto(base);
+  await p6.evaluate(() => localStorage.removeItem("avmerge.presets"));
+  await p6.reload();
+  const set = (sel, v) => p6.evaluate(([sel, v]) => { const e = document.querySelector(sel); if (e.type === "checkbox" || e.type === "radio") e.checked = v; else e.value = v; e.dispatchEvent(new Event("change", { bubbles: true })); e.dispatchEvent(new Event("input", { bubbles: true })); }, [sel, v]);
+  await set("#mgOn", true); await set("input[name=mgStyle][value=glitch]", true); await set("#rmChaos", "30"); await set("input[name=mode][value=remix]", true);
+  await set("#lyText", "歌詞は入れない");
+  await set("#psName", "<b>私の設定</b>");
+  await p6.click("#psSave");
+  await set("#mgOn", false); await set("input[name=mgStyle][value=neon]", true); await set("#rmChaos", "90"); await set("input[name=mode][value=merge]", true); await set("#lyText", "別の歌詞");
+  await p6.click("#psLoad");
+  const r = await p6.evaluate(() => ({
+    mgOn: document.getElementById("mgOn").checked, glitch: document.querySelector("input[name=mgStyle][value=glitch]").checked,
+    chaos: document.getElementById("rmChaos").value, remix: document.querySelector("input[name=mode][value=remix]").checked,
+    ly: document.getElementById("lyText").value, opt: document.getElementById("psList").options[0].textContent, html: document.getElementById("psList").innerHTML,
+    stored: JSON.parse(localStorage.getItem("avmerge.presets")),
+  }));
+  const ok = r.mgOn && r.glitch && r.chaos === "30" && r.remix && r.ly === "別の歌詞" && r.opt === "<b>私の設定</b>" && !/<b>/.test(r.html) && !("lyText" in r.stored["<b>私の設定</b>"]);
+  console.log(`${ok ? "OK" : "NG"} 設定の保存と呼び出し ${ok ? "" : JSON.stringify(r).slice(0, 400)}`);
+  if (!ok) fail++;
+  await p6.close();
+}
 // メモリの警告: 境目を下げたページで、大きすぎる見込みなら警告が出るか
 if (!process.env.ONLY || "メモリの警告".includes(process.env.ONLY)) {
   const p2 = await browser.newPage();
