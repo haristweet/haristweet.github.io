@@ -87,7 +87,7 @@ const cases = [
   // 写真
   { name: "写真・2 枚のスライドショー", v: ["p_land.png", "p_tall.jpg"], a: "a_10s.mp3", set: {}, dur: 8, vcodec: "h264", size: "1600x1200", moving: [0.3, 3.5], mgShot: true },
   { name: "写真・動画とつなぐ", v: ["v_h264.mp4", "p_land.png"], a: "a_10s.mp3", set: {}, dur: 10, vcodec: "h264", size: "320x240" },
-  { name: "写真・読めない写真は分かる言葉で知らせる", v: ["p_fake.heic"], a: "a_10s.mp3", set: {}, expectError: /読めない写真/ },
+  { name: "写真・読めない写真があると作れず、理由を出す", v: ["p_fake.heic"], a: "a_10s.mp3", set: {}, expectDisabled: /読めない写真/ },
   { name: "写真・リミックスに混ぜる（試し）", v: ["p_land.png", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 15, vcodec: "h264", remix: { chaos: 60, seed: 3, try: true } },
   // サビ: 後半 12〜24 秒を見つけて強める
   { name: "サビ・グラフィックス", v: "v_black.mp4", a: "a_hype.mp3", set: { len: "audio" }, dur: 24, vcodec: "h264", hype: true,
@@ -211,6 +211,15 @@ for (const [i, c] of cases.entries()) {
     set(`input[name=fit][value=${o.fx.fit || "crop"}]`, true);
     set(`input[name=grade][value=${o.fx.grade || "none"}]`, true);
   }, { mg: c.mg, lyStyle: c.lyStyle, fx: c.fx || {}, telops: c.telops, hype: c.hype });
+  if (c.expectDisabled) {
+    // 押せないこと、一覧の下に理由が出ていること
+    await page.waitForFunction(() => /読めません/.test(document.getElementById("vlist").textContent), null, { timeout: 5000 }).catch(() => {});
+    const dis = await page.$eval("#go", (e) => e.disabled), why = await page.$eval("#vtotal", (e) => e.textContent);
+    const ok = dis && c.expectDisabled.test(why);
+    console.log(`${ok ? "OK" : "NG"} ${c.name}: ${dis ? "押せない" : "押せてしまう"}・${why}`);
+    if (!ok) fail++;
+    continue;
+  }
   if (c.cut) {
     // 音ハメ: 区切りと割り当てを直に入れて書き出す
     await page.evaluate((d) => { const e = document.getElementById("ctData"); e.value = JSON.stringify(d); }, c.cut);
