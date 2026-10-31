@@ -79,6 +79,7 @@ await page.screenshot({ path: S("shot_empty.png"), fullPage: true });
 
 const MGALL = { style: "neon", layers: ["bars", "ring", "wave", "pulse", "particles"], wipe: "4", frame: "hud", title: true };
 const cases = [
+  { name: "GIF・WebM にする", v: "v_h264.mp4", a: "a_10s.mp3", set: {}, dur: 6, vcodec: "h264", conv: { gif: /^gif\/- 320x240 6\.\ds/, webm: /^vp8\/opus 320x240 6\.\ds/ } },
   // 写真
   { name: "写真・2 枚のスライドショー", v: ["p_land.png", "p_tall.jpg"], a: "a_10s.mp3", set: {}, dur: 8, vcodec: "h264", size: "1600x1200", moving: [0.3, 3.5], mgShot: true },
   { name: "写真・動画とつなぐ", v: ["v_h264.mp4", "p_land.png"], a: "a_10s.mp3", set: {}, dur: 10, vcodec: "h264", size: "320x240" },
@@ -298,6 +299,19 @@ for (const [i, c] of cases.entries()) {
     const m = log.match(/\[サビ\] (\[[^\n]*\])/);
     const hl = m ? JSON.parse(m[1]) : null;
     if (!hl || !c.hypeLog(hl)) probs.push(`サビの見つけ方が期待と違う: ${m ? m[1] : "（記録が無い）"}`);
+  }
+  if (c.conv) {
+    // できあがりから GIF・WebM を作り、中身を調べる
+    for (const [kind, want] of Object.entries(c.conv)) {
+      await page.click(kind === "gif" ? "#toGif" : "#toWebm");
+      await page.waitForFunction(() => !document.getElementById("convDl").hidden || /できませんでした/.test(document.getElementById("convNote").textContent), null, { timeout: 180000 });
+      const [d2] = await Promise.all([page.waitForEvent("download"), page.click("#convDl")]);
+      const o2 = S(`out_${i}.${kind}`); await d2.saveAs(o2);
+      const pi = probe(o2), vs = pi.streams.find((x) => x.codec_type === "video"), as = pi.streams.find((x) => x.codec_type === "audio");
+      const got = `${vs?.codec_name}/${as?.codec_name || "-"} ${vs?.width}x${vs?.height} ${parseFloat(pi.format.duration).toFixed(1)}s`;
+      if (!want.test(got)) probs.push(`${kind}: ${got}`);
+      console.log(`   ${kind}: ${got}`);
+    }
   }
   if (c.moving) {
     // 同じ写真の中の 2 つの時刻で絵が違う（動いている）

@@ -476,6 +476,18 @@
       <a class="dl" id="dl" download>⬇ 保存する</a>
       <span class="note" id="rinfo"></span>
     </div>
+    <h2 style="margin-top:6px">ほかの形でも保存</h2>
+    <div class="row">
+      <button class="ghost small" id="toGif" type="button" style="margin-left:0">GIF にする</button>
+      <label class="note">頭から <input type="number" id="gifSec" min="1" max="60" step="1" value="10"> 秒・幅
+        <select id="gifW" class="mgtext" style="flex:none"><option value="480">480</option><option value="320">320</option></select></label>
+    </div>
+    <div class="row">
+      <button class="ghost small" id="toWebm" type="button" style="margin-left:0">WebM にする（軽い）</button>
+      <span class="note">短い辺 720 まで・VP8＋Opus</span>
+    </div>
+    <p class="note" id="convNote"></p>
+    <div class="row"><a class="dl" id="convDl" download hidden>⬇ 保存する</a></div>
   </section>
 
   <details id="logbox">
@@ -1632,6 +1644,8 @@ async function run() {
       const blob = new Blob([data], { type: "video/mp4" });
       if (state.outURL) URL.revokeObjectURL(state.outURL);
       state.outURL = URL.createObjectURL(blob);
+      state.outBlob = blob; state.outName = name;
+      $("convDl").hidden = true; $("convNote").textContent = "";
       $("rvideo").src = state.outURL;
       $("dl").href = state.outURL;
       $("dl").download = name;
@@ -1770,6 +1784,50 @@ async function run() {
     if (wakeLock) wakeLock.release().catch(() => {});
   }
 }
+
+// ── できあがりを GIF・WebM にする（まっさらな ffmpeg で。終わったら止めてメモリを返す） ──
+let convBusy = false;
+async function convertOutput(kind) {
+  if (!state.outBlob || convBusy || busy) return;
+  convBusy = true; $("toGif").disabled = $("toWebm").disabled = true; $("convDl").hidden = true;
+  const note = (t) => { $("convNote").textContent = t; };
+  let f = null;
+  try {
+    note("準備しています…");
+    if (ffmpeg) { ffmpeg.terminate(); ffmpeg = null; }
+    f = await getFFmpeg();
+    await f.writeFile("/r.mp4", new Uint8Array(await state.outBlob.arrayBuffer()));
+    const sec = Math.max(1, Math.min(60, num("gifSec", 10))), gw = +$("gifW").value || 480;
+    const outName = kind === "gif" ? "/r.gif" : "/r.webm";
+    const a = kind === "gif"
+      ? ["-hide_banner", "-y", "-t", String(sec), "-i", "/r.mp4", "-filter_complex", `[0:v]fps=12,scale='min(${gw},iw)':-2:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4`, "-loop", "0", outName]
+      : ["-hide_banner", "-y", "-i", "/r.mp4", "-vf", "scale='if(lt(iw,ih),min(720,iw),-2)':'if(lt(iw,ih),-2,min(720,ih))'", "-c:v", "libvpx", "-deadline", "realtime", "-cpu-used", "8", "-b:v", "1500k", "-c:a", "libopus", "-b:a", "128k", outName];
+    log("[命令] ffmpeg " + a.join(" "));
+    const total = kind === "gif" ? sec : (await new Promise((r) => { const v = document.createElement("video"); v.onloadedmetadata = () => r(v.duration); v.onerror = () => r(0); v.src = state.outURL; })) || 1;
+    onLog = (m) => { const t = m.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/); if (t) note(`${kind === "gif" ? "GIF" : "WebM"} にしています… ${fmtT((+t[1]) * 3600 + (+t[2]) * 60 + parseFloat(t[3]))} / ${fmtT(total)}`); };
+    note(`${kind === "gif" ? "GIF" : "WebM"} にしています…`);
+    if (await f.exec(a) !== 0) throw new Error(`${kind === "gif" ? "GIF" : "WebM"} にできませんでした。`);
+    const data = await f.readFile(outName);
+    f.terminate(); if (ffmpeg === f) ffmpeg = null; f = null;
+    const blob = new Blob([data], { type: kind === "gif" ? "image/gif" : "video/webm" });
+    if (state.convURL) URL.revokeObjectURL(state.convURL);
+    state.convURL = URL.createObjectURL(blob);
+    $("convDl").href = state.convURL;
+    $("convDl").download = state.outName.replace(/\.mp4$/, kind === "gif" ? ".gif" : ".webm");
+    $("convDl").textContent = `⬇ ${kind === "gif" ? "GIF" : "WebM"} を保存する（${fmtMB(blob.size)}）`;
+    $("convDl").hidden = false;
+    note(kind === "gif" ? `頭から ${sec} 秒・幅 ${gw} の GIF ができました。` : "WebM ができました。");
+  } catch (e) {
+    note(String(e.message || e));
+  } finally {
+    onLog = null;
+    if (f) { f.terminate(); if (ffmpeg === f) ffmpeg = null; }
+    convBusy = false; $("toGif").disabled = $("toWebm").disabled = false;
+    flushLog();
+  }
+}
+$("toGif").addEventListener("click", () => convertOutput("gif"));
+$("toWebm").addEventListener("click", () => convertOutput("webm"));
 
 // 試し書き出しか本番か（リミックスで使う）
 let runKind = "full";
