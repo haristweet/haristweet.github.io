@@ -1,7 +1,7 @@
 // モーショングラフィックス: 曲に合わせて動く図形・ワイプ・動く歌詞・タイトル・枠を、透明の canvas に 1 コマずつ描く。
 // drawFrame(ctx, scene, t) は時刻 t だけから描く（前のコマに頼らない）。パーティクルも拍の番号から乱数を決めて式で位置を出すので、
 // どのコマから描いても同じ絵になり、プレビューと書き出しが一致する
-import { rng } from "./remix.js";
+import { rng, hypeAt } from "./remix.js";
 
 // ── 曲の解析 ──
 // 10ms ごとに: 大きさ（rms）・低い音・中くらい・高い音・32 本のスペクトラム・64 点の波形。
@@ -123,6 +123,10 @@ export function makeScene(o) {
     let last = -9;
     for (const t of o.cuts || []) if (t > 0.3 && t < o.T - 0.2 && t - last > 1.2 && R() < 0.35) { wipes.push(t); last = t; }
   }
+  // サビ（曲の時刻）をできあがりの時刻に。サビの入りでもワイプ
+  sc.hl = (o.highlights || []).map(([a, b]) => [a + (o.shift || 0), b + (o.shift || 0)]);
+  for (const [a] of sc.hl) if (a > 0.3 && a < o.T - 0.3 && !wipes.some((w) => Math.abs(w - a) < 0.6)) wipes.push(a);
+  wipes.sort((a, b) => a - b);
   sc.wipeTimes = wipes;
   // 歌詞の行の終わり（次の行の始まり、最長 8 秒）
   if (o.lyrics && o.lyrics.lines) {
@@ -165,6 +169,7 @@ export function drawFrame(ctx, sc, t) {
   }
   const u = Math.min(sw, sh);   // 大きさの基準
   const f = feat(sc, t), b = beatAt(sc, t);
+  sc._hp = sc.hl && sc.hl.length ? hypeAt(sc.hl, t) : 0;   // サビの強め具合（0〜1）
   const col = st.rainbow
     ? (i) => `hsl(${Math.round((t * 120 + i * 47) % 360)}, 100%, 60%)`
     : (i) => st.colors[((i % st.colors.length) + st.colors.length) % st.colors.length];
@@ -217,6 +222,10 @@ export function drawFrame(ctx, sc, t) {
     ctx.globalCompositeOperation = "source-over"; ctx.drawImage(sc._buf, 0, 0);
     ctx.restore();
   }
+  // サビの間は 2 拍ごとにフラッシュ
+  if (sc._hp > 0 && b.k % 2 === 0 && b.since < 0.15) {
+    ctx.save(); ctx.globalAlpha = 0.22 * sc._hp * (1 - b.since / 0.15); ctx.fillStyle = col(0); ctx.fillRect(0, 0, W, H); ctx.restore();
+  }
   // 文字（枠・タイトル・歌詞）とワイプは細かいまま上に描く（レトロでも読めるように）
   const U = Math.min(W, H);
   if (sc.frame && sc.frame !== "none") { ctx.save(); drawFrameDeco(ctx, sc, t, f, b, W, H, U, col); ctx.restore(); }
@@ -233,7 +242,7 @@ function drawPulse(g, sc, t, b, W, H, u, col, stroke) {
     const life = 0.9;
     if (since < 0 || since > life || k < 0) continue;
     const R = rng(sc.seed * 1000 + k);
-    const big = k % 4 === 0;
+    const big = k % 4 === 0 || (sc._hp > 0.5 && k % 2 === 0);   // サビは 2 拍ごとに大きく
     const p = since / life, r = u * (big ? 0.55 : 0.32) * ease(p);
     const cx = big ? W / 2 : W * (0.2 + 0.6 * R()), cy = big ? H / 2 : H * (0.25 + 0.5 * R());
     const shape = Math.floor(R() * 3);
@@ -258,7 +267,7 @@ function drawRing(g, sc, t, f, W, H, u, col, stroke, fill, outline) {
   for (let i = 0; i < n; i++) {
     const bi = i < BANDS ? i : n - 1 - i;
     const v = an.bands[f.i * BANDS + bi];
-    const a = rot + (i / n) * Math.PI * 2, len = u * (0.02 + 0.17 * v);
+    const a = rot + (i / n) * Math.PI * 2, len = u * (0.02 + 0.17 * v * (1 + 0.3 * (sc._hp || 0)));
     stroke(col(sc.st.rainbow ? i : 1 + (i % 2)), sc.st.line * 1.6);
     g.beginPath();
     g.moveTo(cx + Math.cos(a) * (r0 + u * 0.015), cy + Math.sin(a) * (r0 + u * 0.015));
@@ -403,7 +412,7 @@ function drawBars(g, sc, f, W, H, u, col, fill, outline, stroke) {
   if (f.i < 0) return;
   const an = sc.an, n = BANDS, gap = W * 0.004, bw = (W * 0.9 - gap * (n - 1)) / n, x0 = W * 0.05;
   for (let i = 0; i < n; i++) {
-    const v = Math.min(1, an.bands[f.i * BANDS + i]), h = Math.max(u * 0.01, H * 0.28 * v);
+    const v = Math.min(1.2, an.bands[f.i * BANDS + i] * (1 + 0.25 * (sc._hp || 0))), h = Math.max(u * 0.01, H * 0.28 * v);
     const x = x0 + i * (bw + gap), y = H * 0.97 - h;
     if (sc.st.fill || sc.st.glow) {
       fill(col(sc.st.rainbow ? i : Math.floor((i / n) * sc.st.colors.length)));   // ゲーミングは 1 本ずつ色相をずらして虹に
@@ -422,10 +431,10 @@ function drawParticles(g, sc, t, b, W, H, u, col, fill, outline) {
     if (k < 0 || age < 0 || age > life) continue;
     const ta = b.t0 + k * sc.beat - (sc.shift || 0);
     const strength = sc.an && ta >= 0 ? sc.an.low[Math.min(sc.an.n - 1, Math.round(ta * sc.an.rate))] : 0.6;
-    if (strength < 0.35 && k % 2) continue;   // 弱い拍の半分はお休み
+    if (strength < 0.35 && k % 2 && sc._hp < 0.5) continue;   // 弱い拍の半分はお休み（サビは休まない）
     const R = rng(sc.seed * 7919 + k);
     const cx = W * (0.15 + 0.7 * R()), cy = H * (0.2 + 0.5 * R());
-    const count = 22 + Math.floor(R() * 20);
+    const count = Math.round((22 + Math.floor(R() * 20)) * (1 + (sc._hp || 0)));   // サビは倍
     for (let i = 0; i < count; i++) {
       const a = R() * Math.PI * 2, sp = u * (0.35 + R() * 0.9) * (0.6 + strength);
       const x = cx + Math.cos(a) * sp * age, y = cy + Math.sin(a) * sp * age + u * 0.9 * age * age;

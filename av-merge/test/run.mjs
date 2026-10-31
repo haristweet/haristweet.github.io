@@ -43,6 +43,11 @@ ff("-f", "lavfi", "-i", "sine=f=500:duration=8", "-c:a", "libmp3lame", "-metadat
   const P = 60 / 128, inb = "mod(t-0.3," + P + ")", off = "mod(t-0.3+" + P / 2 + "," + P + ")";
   ff("-f", "lavfi", "-i", `aevalsrc='if(gte(t,0.3), 0.9*sin(2*PI*55*${inb}*(1+3*exp(-40*${inb})))*exp(-12*${inb}) + 0.25*(random(0)-0.5)*exp(-60*${off}), 0) + 0.15*sin(2*PI*110*t)':s=44100:d=20`, "-c:a", "libmp3lame", S("a_drum.mp3"));
 }
+// サビの見本: 128 BPM で前半 12 秒は小さく、後半 12 秒は大きく（＋ざらざら）
+{
+  const P = 60 / 128, inb = "mod(t," + P + ")";
+  ff("-f", "lavfi", "-i", `aevalsrc='(if(lt(t,12),0.22,1))*(0.9*sin(2*PI*55*${inb}*(1+3*exp(-40*${inb})))*exp(-12*${inb})) + if(lt(t,12),0,0.3*(random(0)-0.5)) + 0.1*sin(2*PI*110*t)':s=44100:d=24`, "-c:a", "libmp3lame", S("a_hype.mp3"));
+}
 ff("-f", "lavfi", "-i", "sine=f=880:duration=10", "-c:a", "libmp3lame", S("a_10s.mp3"));
 ff("-f", "lavfi", "-i", "sine=f=660:duration=2", S("a_2s.wav"));
 
@@ -70,6 +75,12 @@ await page.screenshot({ path: S("shot_empty.png"), fullPage: true });
 
 const MGALL = { style: "neon", layers: ["bars", "ring", "wave", "pulse", "particles"], wipe: "4", frame: "hud", title: true };
 const cases = [
+  // サビ: 後半 12〜24 秒を見つけて強める
+  { name: "サビ・グラフィックス", v: "v_black.mp4", a: "a_hype.mp3", set: { len: "audio" }, dur: 24, vcodec: "h264", hype: true,
+    mg: { style: "neon", layers: ["pulse", "particles", "bars"], wipe: "none", frame: "none", title: false },
+    hypeLog: (hl) => hl.length === 1 && hl[0][0] >= 9 && hl[0][0] <= 14.5 && hl[0][1] >= 22, mgShot: true },
+  { name: "サビ・リミックス（試し）", v: ["v_h264.mp4", "v_big.mp4"], a: "a_hype.mp3", set: {}, dur: 15, vcodec: "h264", hype: true,
+    remix: { chaos: 30, seed: 4, try: true }, hypeLog: (hl) => hl.length === 1 && hl[0][0] >= 9 && hl[0][0] <= 14.5 },
   { name: "テロップ・上に 1〜3 秒", v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264", telops: [{ t: 1, dur: 2, text: "テロップです", pos: "top" }],
     bright: [[0.5, false, "top"], [2, true, "top"], [2, false, "bottom"], [4.5, false, "top"]], fxLog: /"mg":true/, mgShot: true },
   // 仕上げ（形・色）
@@ -179,10 +190,11 @@ for (const [i, c] of cases.entries()) {
     }
     set(`input[name=lyStyle][value=${o.lyStyle || "sub"}]`, true);
     set("#telopText", JSON.stringify(o.telops || []));
+    set("#hypeOn", !!o.hype);
     set(`input[name=aspect][value="${o.fx.aspect || "orig"}"]`, true);
     set(`input[name=fit][value=${o.fx.fit || "crop"}]`, true);
     set(`input[name=grade][value=${o.fx.grade || "none"}]`, true);
-  }, { mg: c.mg, lyStyle: c.lyStyle, fx: c.fx || {}, telops: c.telops });
+  }, { mg: c.mg, lyStyle: c.lyStyle, fx: c.fx || {}, telops: c.telops, hype: c.hype });
   if (c.remix) {
     // リミックスに切りかえ、テンポを自動で調べ終わるのを待つ
     await page.check("input[name=mode][value=remix]", { force: true });
@@ -264,6 +276,11 @@ for (const [i, c] of cases.entries()) {
     if (sat > c.satBelow) probs.push(`色の濃さ ${sat.toFixed(1)}（${c.satBelow} 以下のはず）`);
   }
   if (c.fxLog && !c.fxLog.test(log)) probs.push(`仕上げの記録が期待と違う: ${(log.match(/\[仕上げ\][^\n]*/) || ["（無い）"])[0]}`);
+  if (c.hypeLog) {
+    const m = log.match(/\[サビ\] (\[[^\n]*\])/);
+    const hl = m ? JSON.parse(m[1]) : null;
+    if (!hl || !c.hypeLog(hl)) probs.push(`サビの見つけ方が期待と違う: ${m ? m[1] : "（記録が無い）"}`);
+  }
   if (c.mgLog && !c.mgLog.test(log)) probs.push(`グラフィックスの記録が期待と違う: ${(log.match(/\[グラフィックス\][^\n]*/) || [""])[0]}`);
   if (c.noAss && /lyrics\.ass/.test(log)) probs.push("字幕（ASS）を使ってしまった");
   if (c.mgShot) execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", out, "-vf", "fps=2,scale=320:-1,tile=4x4", "-frames:v", "1", S(`shot_mg_${i}.png`)]);

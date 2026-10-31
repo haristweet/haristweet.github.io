@@ -312,6 +312,11 @@
         <label><input type="radio" name="grade" value="night">夜</label>
       </span>
     </div>
+    <div class="row">
+      <span class="lab">サビ</span>
+      <label><input type="checkbox" id="hypeOn"> 盛り上がる所で効果を強くする</label>
+      <p class="note" id="hypeNote">曲の中で目立って大きい所を自動で見つけ、グラフィックス（フラッシュ・パーティクル倍・入りでワイプ）とリミックス（崩しを多く）を強めます。</p>
+    </div>
     <canvas id="mgPrev" width="480" height="270" aria-label="プレビュー"></canvas>
     <div class="row">
       <button class="ghost small" id="mgPlay" type="button" style="margin-left:0">▶ 曲を流して見る</button>
@@ -488,7 +493,7 @@
 <script type="module">
 import { FFmpeg } from "./vendor/ffmpeg/index.js";
 import { readEmbeddedLyrics, parseLrc, buildAss, fmtLrc } from "./lyrics.js";
-import { detectBeats, makePlan, planSummary, segFilter } from "./remix.js";
+import { detectBeats, makePlan, planSummary, segFilter, findHighlights, hypeAt } from "./remix.js";
 import { analyzeAudio, makeScene, drawFrame, LAYERS as MG_LAYERS } from "./mograph.js";
 
 // 試験のときは ?core=<フォルダのURL> で読み込み先を差し替える
@@ -704,7 +709,9 @@ function aspectFilter(W, H, fit, id) {
   if (fit === "blur") return `split[${id}a][${id}b];[${id}a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=20:2[${id}bg];[${id}b]scale=${W}:${H}:force_original_aspect_ratio=decrease[${id}fg];[${id}bg][${id}fg]overlay=(W-w)/2:(H-h)/2,setsar=1`;
   return `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`;
 }
-function needSong() { return opt("mode") === "remix" || $("mgOn").checked || ($("lyOn").checked && opt("lyStyle") !== "sub"); }
+function needSong() { return opt("mode") === "remix" || $("mgOn").checked || $("hypeOn").checked || ($("lyOn").checked && opt("lyStyle") !== "sub"); }
+// 見つけたサビ（曲の中の時刻）。曲を調べ終わるまでは空
+const highlights = () => ($("hypeOn").checked && state.an ? findHighlights(state.an, num("rmBpm") || 120, num("rmOffset")) : []);
 
 let mgFontReady = null;
 function ensureMgFont() {
@@ -725,7 +732,7 @@ function buildMgScene(W, H, T, shift, cuts) {
     wipe: on ? opt("mgWipe") : "none", frame: on ? opt("mgFrame") : "none",
     title: { on: on && $("mgTitle").checked, title: $("mgTitleText").value.trim(), artist: $("mgArtist").value.trim() },
     lyrics: kineticLyrics() ? { anim: opt("lyStyle"), pos: opt("lypos"), lines: lyLines().timed } : null,
-    telops: telops(),
+    telops: telops(), highlights: highlights(),
     seed: Math.max(1, Math.round(num("rmSeed", 1))), font: "MG",
   });
 }
@@ -783,6 +790,7 @@ $("mgPlay").addEventListener("click", () => {
   if (a.paused) { if (a.currentTime < num("askip")) a.currentTime = num("askip"); ensureMgFont().catch(() => {}).finally(() => { $("vprev").loop = true; a.play(); }); }
   else a.pause();
 });
+$("hypeOn").addEventListener("change", () => { if (needSong()) findTempo(); });
 $("mgOn").addEventListener("change", () => { if (needSong()) findTempo(); if ($("mgOn").checked) ensureMgFont().then(mgPreview).catch(() => {}); });
 document.querySelectorAll("input[name=lyStyle]").forEach((el) => el.addEventListener("change", () => { if (needSong()) findTempo(); ensureMgFont().then(mgPreview).catch(() => {}); }));
 
@@ -943,6 +951,12 @@ function refresh() {
   $("rmAmountv").textContent = $("rmAmount").value;
   if (remix) rmRefresh();
   $("fitRow").hidden = opt("aspect") === "orig";
+  if ($("hypeOn").checked) {
+    const hl = highlights();
+    $("hypeNote").textContent = !state.an ? "曲を調べています…（グラフィックスとリミックスで効きます）"
+      : hl.length ? `見つけたサビ: ${hl.map(([a, b]) => `${fmtT(a)}〜${fmtT(b)}`).join("・")}（曲の中の時刻。グラフィックスとリミックスで効きます）`
+      : "目立って盛り上がる所が見つかりませんでした（曲の大きさがずっと同じくらいのようです）。";
+  }
   $("mgBody").hidden = !$("mgOn").checked;
   if (!$("aprev").paused) { /* 再生中は rAF が描く */ } else mgPreview();
   $("vvolrow").hidden = opt("orig") !== "mix";
@@ -1502,6 +1516,7 @@ async function run() {
         return what;
       }
       const sc = buildMgScene(W, H, T, shift, cuts);
+      if ($("hypeOn").checked) log(`[サビ] ${JSON.stringify(sc.hl)}`);
       log(`[仕上げ] ${JSON.stringify(what)}`);
       log(`[グラフィックス] ${JSON.stringify({ W, H, F, T, style: sc.style, layers: [...sc.layers], wipe: sc.wipe, wipes: sc.wipeTimes.length, frame: sc.frame, title: sc.title.on, lyrics: !!sc.lines })}`);
       await f.rename("/out.mp4", "/work/base.mp4");
@@ -1579,7 +1594,12 @@ async function run() {
       const F = Math.min(30, Math.round(fpsOf(v0))) || 30;
       const beat = 60 / R.bpm;
       // 設計図は曲全体で作り、試しはその頭だけ使う（試しと本番の頭が同じになるように）
-      let segs = makePlan({ ...R, offset: ((R.offset - opts.askip) % beat + beat) % beat, T: fullT, F, clips: vinfos.map((i) => ({ dur: i.dur })) });
+      if ($("hypeOn").checked && !state.an) await findTempo();
+      const hl = highlights();
+      if ($("hypeOn").checked) log(`[サビ] ${JSON.stringify(hl)}`);
+      // 設計図はできあがりの時刻。曲の時刻は頭出しのぶん後ろ
+      let segs = makePlan({ ...R, offset: ((R.offset - opts.askip) % beat + beat) % beat, T: fullT, F, clips: vinfos.map((i) => ({ dur: i.dur })),
+        boost: hl.length ? (t) => hypeAt(hl, t + opts.askip) : null });
       const want = Math.round(T * F);
       let got = 0;
       segs = segs.filter((sg) => got < want && (sg.frames = Math.min(sg.frames, want - got), got += sg.frames, true));

@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { detectBeats, makePlan, segFilter, TIME_FX, LOOK_FX, LOOKS } from "../remix.js";
+import { detectBeats, makePlan, segFilter, TIME_FX, LOOK_FX, LOOKS, findHighlights, hypeAt } from "../remix.js";
 
 const OUT = resolve(process.argv[2] || "test-out");
 await mkdir(OUT, { recursive: true });
@@ -62,6 +62,32 @@ check(`効果の量を上げると見た目の崩しが増える（${per(few).to
 const clash = lots.filter((sg) => sg.look.filter((fx) => LOOKS[fx].group === "layout").length > 1);
 check("画面の割り方を変える効果は 1 区間に 1 つまで", clash.length === 0, JSON.stringify(clash[0]));
 check("ぐちゃぐちゃ度が高いほど区切りが細かい", wild.length / 180 > calm.length / 60 * 1.3, `${wild.length / 180} vs ${calm.length / 60}`);
+
+// ── サビ ──
+// 120 BPM（1 小節 2 秒）: 0〜30 静か、30〜50 大きい、50〜80 静か、80〜100 大きい
+{
+  const rate = 100, n = 100 * rate, mk = () => new Float32Array(n);
+  const an = { rate, n, rms: mk(), low: mk() };
+  for (let i = 0; i < n; i++) { const t = i / rate, loud = (t >= 30 && t < 50) || (t >= 80 && t < 100); an.rms[i] = loud ? 0.9 : 0.3 + 0.05 * Math.sin(t); an.low[i] = loud ? 0.8 : 0.2; }
+  const h = findHighlights(an, 120, 0);
+  const near = (x, y) => Math.abs(x - y) <= 2.01;
+  check(`サビを見つける → ${JSON.stringify(h)}`, h.length === 2 && near(h[0][0], 30) && near(h[0][1], 50) && near(h[1][0], 80) && near(h[1][1], 100));
+  // 曲の半分以上が大きくても見つける（中央値で切ると取りこぼす）
+  const half = { rate, n, rms: mk(), low: mk() };
+  for (let i = 0; i < n; i++) { const loud = i / rate >= 30; half.rms[i] = loud ? 0.9 : 0.3; half.low[i] = loud ? 0.8 : 0.2; }
+  const h2 = findHighlights(half, 120, 0);
+  check(`曲の後ろ 7 割が大きい → ${JSON.stringify(h2)}`, h2.length === 1 && near(h2[0][0], 30) && h2[0][1] >= 99);
+  const flat = { rate, n, rms: mk().fill(0.5), low: mk().fill(0.5) };
+  check("ずっと同じ大きさならサビ無し", findHighlights(flat, 120, 0).length === 0, JSON.stringify(findHighlights(flat, 120, 0)));
+  check("サビの強め具合（中 1・外 0・出入りなめらか）", hypeAt(h, 40) === 1 && hypeAt(h, 10) === 0 && hypeAt(h, h[0][0]) > 0.4 && hypeAt(h, h[0][0]) < 0.6);
+  const plan0 = makePlan({ ...base, T: 100, chaos: 0.3, amount: 0.3 }), plain = makePlan({ ...base, T: 100, chaos: 0.3, amount: 0.3, boost: null });
+  check("強めないときは前と同じ設計図", JSON.stringify(plan0) === JSON.stringify(plain));
+  const boosted = makePlan({ ...base, T: 100, chaos: 0.3, amount: 0.3, boost: (t) => hypeAt(h, t) });
+  let tt = 0; const inS = [], outS = [];
+  for (const sg of boosted) { (hypeAt(h, tt / 30) === 1 ? inS : outS).push(sg); tt += sg.frames; }
+  const fx = (arr) => arr.reduce((a, sg) => a + sg.look.length + (sg.time !== "normal"), 0) / Math.max(1, arr.length);
+  check(`サビの間は崩しが多い（${fx(inS).toFixed(2)} vs ${fx(outS).toFixed(2)}／区間）`, fx(inS) > fx(outS) * 1.5);
+}
 
 // ── 区間のフィルタを手元の ffmpeg で流す ──
 ff("-f", "lavfi", "-i", "testsrc=size=480x270:rate=24:duration=6", "-c:v", "libx264", "-pix_fmt", "yuv420p", S("src.mp4"));

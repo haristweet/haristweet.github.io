@@ -98,17 +98,53 @@ export const LOOK_FX = Object.keys(LOOKS);
 // 時間の崩し方ごとに、出す長さ dur に対して素材を何秒使うか
 const NEED = { fast: 2, warp: 4, skip: 2, slow: 0.5, pingpong: 0.5 };
 
-// chaos（ぐちゃぐちゃ度）は切り方の細かさと時間の崩し、amount（効果の量）は見た目の崩しの多さ。どちらも 0〜1
-export function makePlan({ seed, chaos, amount = chaos, bpm, offset, T, F, clips }) {
+// ── サビ（盛り上がる所）を見つける ──
+// 1 小節（4 拍）ごとに、音の大きさ＋低音の強さを測って前後となじませ、全体の中で目立って大きい小節が
+// minBars 小節以上続く所を返す（曲の中の時刻 [始め, 終わり] の並び）。an は mograph.js の analyzeAudio の結果
+export function findHighlights(an, bpm, offset = 0, { minBars = 4 } = {}) {
+  if (!an || !(bpm > 0)) return [];
+  const bar = (4 * 60) / bpm, len = an.n / an.rate, starts = [];
+  for (let s = ((offset % bar) + bar) % bar; s + bar * 0.5 < len; s += bar) starts.push(s);
+  if (starts.length < minBars + 2) return [];
+  const mean = (arr, a, b) => { let t = 0, c = 0; for (let i = Math.max(0, Math.floor(a * an.rate)); i < Math.min(an.n, Math.floor(b * an.rate)); i++) { t += arr[i]; c++; } return c ? t / c : 0; };
+  const raw = starts.map((s) => mean(an.rms, s, s + bar) + 0.5 * mean(an.low, s, s + bar));
+  const e = raw.map((v, i) => (2 * v + (raw[i - 1] ?? v) + (raw[i + 1] ?? v)) / 4);
+  const sorted = [...e].sort((a, b) => a - b), q = (p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
+  // 静かな所（下から 15%）と大きい所（上から 10%）の間で切る。差がほとんど無い曲はサビ無し
+  const lo = q(0.15), hi = q(0.9);
+  if (hi < lo * 1.15) return [];
+  const thr = lo + 0.55 * (hi - lo);
+  const on = e.map((v) => v >= thr);
+  for (let i = 1; i + 1 < on.length; i++) if (!on[i] && on[i - 1] && on[i + 1]) on[i] = true;   // 1 小節だけの谷は埋める
+  const out = [];
+  for (let i = 0; i < on.length;) {
+    if (!on[i]) { i++; continue; }
+    let j = i; while (j < on.length && on[j]) j++;
+    if (j - i >= minBars) out.push([Math.round(starts[i] * 1000) / 1000, Math.round(Math.min(len, starts[j - 1] + bar) * 1000) / 1000]);
+    i = j;
+  }
+  return out;
+}
+// サビの中ほど 1、外 0、出入り ramp 秒でなめらかに（時刻 t は sections と同じ時刻の物差し）
+export function hypeAt(sections, t, ramp = 0.5) {
+  let h = 0;
+  for (const [a, b] of sections || []) h = Math.max(h, Math.min((t - a) / ramp + 0.5, (b - t) / ramp + 0.5));
+  return Math.max(0, Math.min(1, h));
+}
+
+// chaos（ぐちゃぐちゃ度）は切り方の細かさと時間の崩し、amount（効果の量）は見た目の崩しの多さ。どちらも 0〜1。
+// boost(t) があれば、その時刻だけ両方を強める（サビ）。無ければ乱数の引き方は前と同じ（同じ番号なら同じ結果）
+export function makePlan({ seed, chaos, amount = chaos, bpm, offset, T, F, clips, boost = null }) {
   const R = rng(seed), pick = (a) => a[Math.floor(R() * a.length)];
   const beat = 60 / bpm, total = Math.round(T * F);
-  const c = Math.max(0, Math.min(1, chaos)), am = Math.max(0, Math.min(1, amount));
+  const c0 = Math.max(0, Math.min(1, chaos)), am0 = Math.max(0, Math.min(1, amount));
   // 区切りの時刻（秒）: 頭〜1拍目、そのあと拍ごと。ぐちゃぐちゃ度が高いほど 1 拍・半拍・1/4 拍に細かく割る
   const cuts = [0];
   let t = offset % beat;
   if (t > 0.05) cuts.push(t);
+  const up = (x, tt) => (boost ? Math.min(1, x + 0.4 * boost(tt)) : x);
   while (t < T) {
-    const r = R();
+    const r = R(), c = up(c0, t);
     let len = r < 0.15 * c ? beat / 4 : r < 0.5 * c ? beat / 2 : r < 0.5 * c + (1 - c) * 0.3 ? beat : 2 * beat;
     if (len === beat / 4) { for (let i = 0; i < 2 && t < T; i++) { t += len; cuts.push(t); } continue; }
     t += len; cuts.push(t);
@@ -119,7 +155,7 @@ export function makePlan({ seed, chaos, amount = chaos, bpm, offset, T, F, clips
   for (let i = 0; i + 1 < frameCuts.length; i++) {
     const frames = frameCuts[i + 1] - frameCuts[i];
     if (frames <= 0) continue;
-    const dur = frames / F;
+    const dur = frames / F, ts = frameCuts[i] / F, c = up(c0, ts), am = up(am0, ts);
     let time = "normal";
     if (R() < 0.85 * c) time = pick(TIME_FX.slice(1));
     // 逆回し・行って戻るはコマを全部抱えるので短い区間だけ。くり返し・飛ばしは数コマないと形にならない
