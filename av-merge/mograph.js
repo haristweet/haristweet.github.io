@@ -412,7 +412,8 @@ function drawBars(g, sc, f, W, H, u, col, fill, outline, stroke) {
   if (f.i < 0) return;
   const an = sc.an, n = BANDS, gap = W * 0.004, bw = (W * 0.9 - gap * (n - 1)) / n, x0 = W * 0.05;
   for (let i = 0; i < n; i++) {
-    const v = Math.min(1.2, an.bands[f.i * BANDS + i] * (1 + 0.25 * (sc._hp || 0))), h = Math.max(u * 0.01, H * 0.28 * v);
+    // サビの間だけ上限を上げて大きく振れる（サビでないときは前と同じ）
+    const hp = sc._hp || 0, v = Math.min(1 + 0.2 * hp, an.bands[f.i * BANDS + i] * (1 + 0.25 * hp)), h = Math.max(u * 0.01, H * 0.28 * v);
     const x = x0 + i * (bw + gap), y = H * 0.97 - h;
     if (sc.st.fill || sc.st.glow) {
       fill(col(sc.st.rainbow ? i : Math.floor((i / n) * sc.st.colors.length)));   // ゲーミングは 1 本ずつ色相をずらして虹に

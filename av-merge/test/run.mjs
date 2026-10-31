@@ -107,7 +107,9 @@ const cases = [
     mg: { style: "pop", layers: ["bars", "pulse"], wipe: "none", frame: "rec", title: true }, fxLog: /"mg":true/, mgShot: true },
   // モーショングラフィックス（sameAs は並びの番号）
   { name: "グラフィックス・全部入りを黒い動画に重ねる", v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264", mg: MGALL, note: /グラフィックス/,
-    bright: [[1.5, true, "all"], [5, true, "all"]], mgLog: /"layers":\["bars","ring","wave","pulse","particles"\].*"wipes":[1-9]/, mgShot: true },
+    bright: [[1.5, true, "all"], [5, true, "all"]], mgLog: /"layers":\["bars","ring","wave","pulse","particles"\].*"wipes":[1-9]/, mgShot: true,
+    // 絵の指紋。前からの図形の見た目が知らないうちに変わったら落ちる（わざと変えたときはこの値を更新する）
+    vmd5Fixed: "dc0d18fd909cd0df2101f0e345960c25" },
   // 描き方が違うスタイル（いったん別の canvas に描いて重ねる・グラデーション・明朝体）を 1 つずつ書き出す
   ...[["vapor", "hud"], ["sketch", "vhs"], ["gaming", "hud"], ["glitch", "rec"], ["gold", "vhs"]].map(([style, frame]) => (
     { name: `グラフィックス・スタイル ${style}`, v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264", mg: { ...MGALL, style, frame }, bright: [[1.5, true, "all"]], mgLog: new RegExp(`"style":"${style}"`), mgShot: true })),
@@ -342,6 +344,10 @@ for (const [i, c] of cases.entries()) {
   if (c.mgShot) execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", out, "-vf", "fps=2,scale=320:-1,tile=4x4", "-frames:v", "1", S(`shot_mg_${i}.png`)]);
   if (c.sameAs !== undefined || c.remix || c.mgShot) c.vmd5 = c.vmd5 || execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", out, "-map", "0:v", "-f", "md5", "-"]).toString().trim();
   if (c.sameAs !== undefined && byName(c.sameAs).vmd5 !== c.vmd5) probs.push("同じ設定なのに絵が違う");
+  if (c.vmd5Fixed) {
+    const m = (c.vmd5 || execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", out, "-map", "0:v", "-f", "md5", "-"]).toString().trim()).replace("MD5=", "");
+    if (m !== c.vmd5Fixed) probs.push(`絵の指紋が前と違う（見た目が変わった）: ${m}`);
+  }
   if (c.catCopy !== undefined && /-f concat -safe 0 -i \/work\/vlist/.test(log) !== c.catCopy) probs.push("つなぎ方（そのまま／作り直し）が期待と違う");
   if (c.size && `${v?.width}x${v?.height}` !== c.size) probs.push(`大きさ ${v?.width}x${v?.height}`);
   if (c.rot && !JSON.stringify(v?.side_data_list || []).includes("rotation")) probs.push("回す印が消えた");
