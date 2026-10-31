@@ -48,6 +48,10 @@ ff("-f", "lavfi", "-i", "sine=f=500:duration=8", "-c:a", "libmp3lame", "-metadat
   const P = 60 / 128, inb = "mod(t," + P + ")";
   ff("-f", "lavfi", "-i", `aevalsrc='(if(lt(t,12),0.22,1))*(0.9*sin(2*PI*55*${inb}*(1+3*exp(-40*${inb})))*exp(-12*${inb})) + if(lt(t,12),0,0.3*(random(0)-0.5)) + 0.1*sin(2*PI*110*t)':s=44100:d=24`, "-c:a", "libmp3lame", S("a_hype.mp3"));
 }
+// 写真の見本: 横長の PNG・縦長の JPEG と、中身がでたらめな HEIC
+ff("-f", "lavfi", "-i", "testsrc2=size=1600x1200:rate=1:duration=1", "-frames:v", "1", S("p_land.png"));
+ff("-f", "lavfi", "-i", "mandelbrot=size=900x1600:rate=1", "-frames:v", "1", S("p_tall.jpg"));
+await writeFile(S("p_fake.heic"), Buffer.from("これは写真ではない".repeat(50)));
 ff("-f", "lavfi", "-i", "sine=f=880:duration=10", "-c:a", "libmp3lame", S("a_10s.mp3"));
 ff("-f", "lavfi", "-i", "sine=f=660:duration=2", S("a_2s.wav"));
 
@@ -75,6 +79,11 @@ await page.screenshot({ path: S("shot_empty.png"), fullPage: true });
 
 const MGALL = { style: "neon", layers: ["bars", "ring", "wave", "pulse", "particles"], wipe: "4", frame: "hud", title: true };
 const cases = [
+  // 写真
+  { name: "写真・2 枚のスライドショー", v: ["p_land.png", "p_tall.jpg"], a: "a_10s.mp3", set: {}, dur: 8, vcodec: "h264", size: "1600x1200", moving: [0.3, 3.5], mgShot: true },
+  { name: "写真・動画とつなぐ", v: ["v_h264.mp4", "p_land.png"], a: "a_10s.mp3", set: {}, dur: 10, vcodec: "h264", size: "320x240" },
+  { name: "写真・読めない写真は分かる言葉で知らせる", v: ["p_fake.heic"], a: "a_10s.mp3", set: {}, expectError: /読めない写真/ },
+  { name: "写真・リミックスに混ぜる（試し）", v: ["p_land.png", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 15, vcodec: "h264", remix: { chaos: 60, seed: 3, try: true } },
   // サビ: 後半 12〜24 秒を見つけて強める
   { name: "サビ・グラフィックス", v: "v_black.mp4", a: "a_hype.mp3", set: { len: "audio" }, dur: 24, vcodec: "h264", hype: true,
     mg: { style: "neon", layers: ["pulse", "particles", "bars"], wipe: "none", frame: "none", title: false },
@@ -153,6 +162,8 @@ const byName = (n) => { const c = cases.find((x) => x.name === n); if (!c) throw
 // ONLY=名前の一部 で、その試験だけ回す
 for (const [i, c] of cases.entries()) {
   if (process.env.ONLY && !c.name.includes(process.env.ONLY)) continue;
+  // 前の処理の後片付けが終わる（「全部外す」が押せる）まで待つ
+  await page.waitForFunction(() => document.getElementById("vlistbox").hidden || !document.getElementById("vclear").disabled, null, { timeout: 30000 });
   await page.check("input[name=mode][value=merge]", { force: true });
   if (await page.isVisible("#vclear")) await page.click("#vclear");
   await page.setInputFiles("#vfile", [c.v].flat().map(S));
@@ -213,6 +224,13 @@ for (const [i, c] of cases.entries()) {
     fail++; break;
   }
   const err = await page.$eval("#status", (e) => e.classList.contains("err") ? e.textContent : "");
+  if (c.expectError) {
+    const ok = c.expectError.test(err);
+    console.log(`${ok ? "OK" : "NG"} ${c.name}: ${err || "（エラーにならなかった）"}`);
+    if (!ok) fail++;
+    if (!err) await page.click("#dl").catch(() => {});
+    continue;
+  }
   if (err) { console.log(`NG ${c.name}: ${err}`); console.log(await page.$eval("#log", (e) => e.textContent.slice(-1500))); fail++; continue; }
   const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#dl")]);
   const out = S(`out_${i}.mp4`);
@@ -280,6 +298,11 @@ for (const [i, c] of cases.entries()) {
     const m = log.match(/\[サビ\] (\[[^\n]*\])/);
     const hl = m ? JSON.parse(m[1]) : null;
     if (!hl || !c.hypeLog(hl)) probs.push(`サビの見つけ方が期待と違う: ${m ? m[1] : "（記録が無い）"}`);
+  }
+  if (c.moving) {
+    // 同じ写真の中の 2 つの時刻で絵が違う（動いている）
+    const md = (t) => execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-ss", String(t), "-i", out, "-frames:v", "1", "-f", "md5", "-"]).toString().trim();
+    if (md(c.moving[0]) === md(c.moving[1])) probs.push(`${c.moving.join("・")} 秒の絵が同じ（写真が動いていない）`);
   }
   if (c.mgLog && !c.mgLog.test(log)) probs.push(`グラフィックスの記録が期待と違う: ${(log.match(/\[グラフィックス\][^\n]*/) || [""])[0]}`);
   if (c.noAss && /lyrics\.ass/.test(log)) probs.push("字幕（ASS）を使ってしまった");
@@ -381,6 +404,20 @@ if (!process.env.ONLY || "落ちた".includes(process.env.ONLY)) {
   if (!ok) fail++;
   await p5.screenshot({ path: S("shot_crash.png") });
   await p5.close();
+}
+// 写真の一覧: 長さは「1 枚の長さ」、変えると一覧も変わる。読めない写真は理由を出す
+if (!process.env.ONLY || "写真".includes(process.env.ONLY)) {
+  const p8 = await browser.newPage();
+  await p8.goto(base);
+  await p8.setInputFiles("#vfile", [S("p_land.png"), S("p_fake.heic")]);
+  await p8.waitForFunction(() => /読めません/.test(document.getElementById("vlist").textContent), null, { timeout: 5000 }).catch(() => {});
+  const a1 = await p8.$eval("#vlist", (e) => e.textContent), row = await p8.isVisible("#photoRow"), tot = await p8.$eval("#vtotal", (e) => e.textContent);
+  await p8.fill("#photoSec", "2.5");
+  const a2 = await p8.$eval("#vlist", (e) => e.textContent);
+  const ok = /写真 0:04\.0/.test(a1) && /読めません/.test(a1) && row && /読めない写真/.test(tot) && /写真 0:02\.5/.test(a2);
+  console.log(`${ok ? "OK" : "NG"} 写真の一覧 ${ok ? "" : JSON.stringify({ a1, row, tot, a2 })}`);
+  if (!ok) fail++;
+  await p8.close();
 }
 // テロップの一覧: 足す → 文字を打つ → データに入る → 消す
 if (!process.env.ONLY || "テロップ".includes(process.env.ONLY)) {

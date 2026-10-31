@@ -149,15 +149,17 @@
   <div class="pair">
     <div class="vcol">
       <label class="drop" id="vdrop">
-        <input type="file" id="vfile" multiple accept="video/*,.mp4,.mov,.m4v,.webm,.mkv">
-        <span class="kind">🎬 動画ファイル</span>
-        <span class="hint" data-empty>ここをタップして選ぶか、ファイルを落とす<br>（mp4・mov・webm など。何本でも。並べた順につなげます）</span>
+        <input type="file" id="vfile" multiple accept="video/*,image/*,.mp4,.mov,.m4v,.webm,.mkv,.jpg,.jpeg,.png,.webp,.heic,.heif">
+        <span class="kind">🎬 動画・写真</span>
+        <span class="hint" data-empty>ここをタップして選ぶか、ファイルを落とす<br>（mp4・mov・webm など。写真も使えます。何本でも。並べた順につなげます）</span>
         <video id="vprev" controls playsinline muted hidden></video>
+        <img id="iprev" alt="選んだ写真" hidden style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;background:#000">
         <span class="hint" id="vmore" hidden>タップか落とすで動画を足す（つなげる）</span>
       </label>
       <div id="vlistbox" hidden>
         <ol id="vlist"></ol>
         <div class="row"><span class="note" id="vtotal"></span><button class="ghost small" id="vclear">全部外す</button></div>
+        <div class="row" id="photoRow" hidden><span class="note">写真 1 枚の長さ</span><label><input type="number" id="photoSec" min="0.5" step="0.5" value="4"> 秒</label><span class="note">（ゆっくり寄る・引く・流れる動きを付けます）</span></div>
       </div>
     </div>
     <span class="plus" aria-hidden="true">＋</span>
@@ -749,8 +751,8 @@ const mgCanvas = document.createElement("canvas");
 let mgRaf = 0;
 function mgPreview() {
   const cv = $("mgPrev");
-  const v = $("vprev");
-  const vw = v.videoWidth || 16, vh = v.videoHeight || 9;
+  const v = !$("iprev").hidden && $("iprev").complete ? $("iprev") : $("vprev");
+  const vw = v.videoWidth || v.naturalWidth || 16, vh = v.videoHeight || v.naturalHeight || 9;
   const [tw, th] = targetDims(vw, vh, opt("aspect"), 0);
   const H = 300, W = Math.round((H * tw) / th);
   if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
@@ -758,7 +760,7 @@ function mgPreview() {
   if (mgCanvas.width !== W || mgCanvas.height !== H) { mgCanvas.width = W; mgCanvas.height = H; }
   const g = cv.getContext("2d");
   g.fillStyle = "#1a1a1a"; g.fillRect(0, 0, W, H);
-  if (v.readyState >= 2) {
+  if (v.readyState >= 2 || (v.naturalWidth && v.complete)) {
     // 形: 真ん中で切る＝大きく描いてはみ出させる、ぼかし＝大きくぼかした上に全体を置く
     const cover = Math.max(W / vw, H / vh), fit = Math.min(W / vw, H / vh);
     g.save();
@@ -881,11 +883,35 @@ $("aprev").addEventListener("timeupdate", () => {
   $("lyNow").textContent = cur ? cur.text : "";
 });
 
-// 長さは見えない <video> で読む（読めない形式なら NaN のまま。処理には ffmpeg で調べた長さを使う）
+// 写真か（種類が分からないファイルは拡張子で見る）
+const isPhoto = (f) => f.type.startsWith("image/") || /\.(jpe?g|png|webp|gif|heic|heif|avif|bmp)$/i.test(f.name);
+// 写真をブラウザで読む。スマホの「回す」印どおりに回し、長い辺 1920 までに縮める
+async function decodePhoto(file) {
+  const bm = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const k = Math.min(1, 1920 / Math.max(bm.width, bm.height)), even = (x) => Math.max(2, Math.round(x / 2) * 2);
+  const w = even(bm.width * k), h = even(bm.height * k);
+  return { bm, w, h };
+}
+async function photoToJpeg(file) {
+  const { bm, w, h } = await decodePhoto(file);
+  const cv = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : Object.assign(document.createElement("canvas"), { width: w, height: h });
+  cv.getContext("2d").drawImage(bm, 0, 0, w, h); bm.close();
+  const blob = cv.convertToBlob ? await cv.convertToBlob({ type: "image/jpeg", quality: 0.92 }) : await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.92));
+  return { blob, w, h };
+}
+const PHOTO_BAD = "このブラウザでは読めない写真です（iPhone の HEIC は Safari なら読めます。ほかのブラウザでは JPEG にしてから入れてください）";
+
+// 長さは見えない <video> で読む（読めない形式なら NaN のまま。処理には ffmpeg で調べた長さを使う）。写真は「1 枚の長さ」
 function addVideos(files) {
   for (const file of files) {
     const item = { file, dur: NaN };
     state.videos.push(item);
+    if (isPhoto(file)) {
+      item.photo = true; item.dur = num("photoSec", 4);
+      decodePhoto(file).then(({ bm, w, h }) => { bm.close(); item.w = w; item.h = h; renderVideos(); })
+        .catch(() => { item.bad = PHOTO_BAD; renderVideos(); });
+      continue;
+    }
     const v = document.createElement("video");
     v.preload = "metadata";
     v.src = URL.createObjectURL(file);
@@ -897,10 +923,12 @@ function addVideos(files) {
 }
 
 function showPreview() {
-  const prev = $("vprev"), item = state.videos[state.sel];
+  const prev = $("vprev"), img = $("iprev"), item = state.videos[state.sel];
   if (prev.src) { URL.revokeObjectURL(prev.src); prev.removeAttribute("src"); prev.load(); }
-  prev.hidden = !item;
-  if (item) prev.src = URL.createObjectURL(item.file);
+  if (img.src) { URL.revokeObjectURL(img.src); img.removeAttribute("src"); }
+  prev.hidden = !item || !!item.photo; img.hidden = !item || !item.photo;
+  if (item && item.photo) { img.src = URL.createObjectURL(item.file); img.onload = mgPreview; }
+  else if (item) prev.src = URL.createObjectURL(item.file);
 }
 
 function renderVideos() {
@@ -919,7 +947,8 @@ function renderVideos() {
     nm.className = "nm"; nm.textContent = it.file.name; nm.title = `${it.file.name}（${fmtMB(it.file.size)}）見る`;
     nm.onclick = () => { state.sel = i; renderVideos(); showPreview(); };
     const d = document.createElement("span");
-    d.className = "d"; d.textContent = fmtT(it.dur);
+    d.className = "d"; d.textContent = it.bad ? "読めません" : `${it.photo ? "写真 " : ""}${fmtT(it.dur)}`;
+    if (it.bad) { d.title = it.bad; d.style.color = "var(--accent)"; }
     const btn = (label, title, dis, fn) => {
       const b = document.createElement("button");
       b.textContent = label; b.title = title; b.setAttribute("aria-label", title); b.disabled = dis || busy;
@@ -932,9 +961,12 @@ function renderVideos() {
       btn("✕", "外す", false, () => { const was = state.sel; vs.splice(i, 1); if (was >= i && was > 0) state.sel--; renderVideos(); showPreview(); }));
     list.append(li);
   });
+  $("photoRow").hidden = !vs.some((it) => it.photo);
+  const bad = vs.find((it) => it.bad);
   const total = vs.reduce((t, it) => t + it.dur, 0);
   $("vtotal").textContent = n > 1 ? (opt("mode") === "remix" ? `${n} 本を素材に使います（合計 ${fmtT(total)}）` : `${n} 本をこの順につなげます（合計 ${fmtT(total)}）`) : `${fmtMB(vs[0]?.file.size || 0)}・${fmtT(total)}`;
   $("vclear").disabled = busy;
+  if (bad) $("vtotal").textContent = `${bad.file.name}: ${bad.bad}`;
   if (!$("vprev").src && n) showPreview();
   refresh();
 }
@@ -1035,10 +1067,11 @@ window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => {
   e.preventDefault();
   const fs = [...e.dataTransfer.files];
-  addVideos(fs.filter((f) => f.type.startsWith("video/")));
+  addVideos(fs.filter((f) => f.type.startsWith("video/") || isPhoto(f)));
   const a = fs.find((f) => f.type.startsWith("audio/"));
   if (a) setAudio(a);
 });
+$("photoSec").addEventListener("input", () => { for (const it of state.videos) if (it.photo) it.dur = num("photoSec", 4); renderVideos(); });
 $("vclear").addEventListener("click", () => { state.videos = []; state.sel = 0; renderVideos(); showPreview(); });
 document.querySelectorAll("input").forEach((el) => el.addEventListener("input", refresh));
 
@@ -1395,7 +1428,7 @@ async function run() {
   runInfo = { at: Date.now(), stage: "準備", audio: state.audio?.name || "", settings: saveSettings() };
   runMark(runInfo);
   $("work").hidden = false; $("result").hidden = true;
-  setBar(0);
+  setStatus("準備しています…"); setBar(0);   // 前の回のエラー表示を残さない
   logLines = [];
   let mounted = false;
   try {
@@ -1407,17 +1440,46 @@ async function run() {
     const f = await getFFmpeg();
     if (cancelled) return;
     setStatus("ファイルを調べています…"); setBar(0);
-    // 同じ名前でもぶつからないように、中では決まった名前にする（中身はコピーしない）
-    const vnames = state.videos.map((it, i) => `video${i}.${ext(it.file.name, "mp4")}`);
+    // 同じ名前でもぶつからないように、中では決まった名前にする（中身はコピーしない）。写真はブラウザで JPEG にしてから
+    const photos = [];
+    for (const [i, it] of state.videos.entries()) {
+      if (!it.photo) continue;
+      setStatus(`写真を読んでいます（${photos.length + 1}）…`);
+      try { photos[i] = await photoToJpeg(it.file); } catch { throw new Error(`${it.file.name}: ${PHOTO_BAD}`); }
+    }
+    const vnames = state.videos.map((it, i) => it.photo ? `photo${i}.jpg` : `video${i}.${ext(it.file.name, "mp4")}`);
     const aname = `audio.${ext(state.audio.name, "mp3")}`;
     await f.createDir("/in").catch(() => {});
     await f.mount("WORKERFS", {
-      files: [...state.videos.map((it, i) => new File([it.file], vnames[i])), new File([state.audio], aname)],
+      files: [...state.videos.map((it, i) => new File([it.photo ? photos[i].blob : it.file], vnames[i])), new File([state.audio], aname)],
     }, "/in");
     mounted = true;
+    // 写真は、ゆっくり寄る・引く・左右に流れる動画にする（ケン・バーンズ）。動きは順番に変える
+    const vpaths = vnames.map((n) => `/in/${n}`);
+    await f.createDir("/work").catch(() => {});
+    let pk = 0;
+    for (const [i, it] of state.videos.entries()) {
+      if (!it.photo) continue;
+      const { w, h } = photos[i], D = Math.max(0.5, num("photoSec", 4)), N = Math.round(D * 30);
+      const zs = 0.15, kinds = [
+        [`1+${zs}*on/${N}`, "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"],
+        [`${1 + zs}-${zs}*on/${N}`, "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"],
+        [`${1 + zs}`, `(iw-iw/zoom)*on/${N}`, "ih/2-(ih/zoom/2)"],
+        [`${1 + zs}`, `(iw-iw/zoom)*(1-on/${N})`, "ih/2-(ih/zoom/2)"],
+      ];
+      const [z, x, y] = kinds[pk++ % kinds.length];
+      setStatus(`写真を動く動画にしています（${pk}）…`);
+      const a = ["-hide_banner", "-y", "-loop", "1", "-framerate", "30", "-t", D.toFixed(3), "-i", vpaths[i],
+        "-vf", `scale=${Math.round(w * 1.25 / 2) * 2}:-2,zoompan=z='${z}':x='${x}':y='${y}':d=1:s=${w}x${h}:fps=30,setsar=1,format=yuv420p`,
+        "-frames:v", String(N), "-an", ...X264, `/work/photo${i}.mp4`];
+      log("[命令] ffmpeg " + a.join(" "));
+      if (await f.exec(a) !== 0) throw new Error(`${it.file.name} を動画にできませんでした。`);
+      if (cancelled) throw new Error("cancelled");
+      vpaths[i] = `/work/photo${i}.mp4`;
+    }
     const vinfos = [];
-    for (const [i, name] of vnames.entries()) {
-      const info = await probe(f, `/in/${name}`);
+    for (const [i, path] of vpaths.entries()) {
+      const info = await probe(f, path);
       log(`[調べた結果] 動画${i + 1} ${JSON.stringify(info)}`);
       const who = vnames.length > 1 ? `${i + 1} 本目の動画（${state.videos[i].file.name}）` : "動画ファイル";
       if (!info.vcodec) throw new Error(`${who}から絵が見つかりませんでした。動画ファイルの枠には動画を入れてください。`);
@@ -1430,7 +1492,7 @@ async function run() {
     if (!isFinite(ainfo.dur)) throw new Error("ファイルの長さが読めませんでした。");
 
     const opts = {
-      vpath: `/in/${vnames[0]}`, apath: `/in/${aname}`, vinfo: vinfos[0], ainfo,
+      vpath: vpaths[0], apath: `/in/${aname}`, vinfo: vinfos[0], ainfo,
       orig: opt("orig"), len: opt("len"), vloop: opt("vloop"), xfade: num("xfade"),
       avol: +$("avol").value, vvol: +$("vvol").value,
       askip: num("askip"), adelay: num("adelay"),
@@ -1614,7 +1676,7 @@ async function run() {
         const a = ["-hide_banner", "-y"];
         group.forEach((sg) => {
           const len = vinfos[sg.src].dur;
-          a.push("-ss", sg.at.toFixed(3), "-t", Math.min(sg.need + 0.1, Math.max(0.05, len - sg.at)).toFixed(3), "-i", `/in/${vnames[sg.src]}`);
+          a.push("-ss", sg.at.toFixed(3), "-t", Math.min(sg.need + 0.1, Math.max(0.05, len - sg.at)).toFixed(3), "-i", vpaths[sg.src]);
         });
         const g = group.map((sg, k) => `[${k}:v:0]${segFilter(sg, { W, H, F }, `x${k}`)}[v${k}]`);
         g.push(`${group.map((_, k) => `[v${k}]`).join("")}concat=n=${group.length}:v=1:a=0[out]`);
@@ -1631,7 +1693,7 @@ async function run() {
         orig: "replace", len: "video", avol: 100, adelay: 0 });
       if (await step(fin.args, opts.subs ? "歌詞を入れながら曲を載せています" : "曲を載せています", opts.subs ? T : 0) !== 0)
         throw new Error("曲を載せられませんでした。");
-      await sweep([...parts, "rlist.txt"]);
+      await sweep([...parts, "rlist.txt", ...vpaths.filter((p) => p.startsWith("/work/"))]);
       // 切り替わりの時刻（区間の境目）
       const rcuts = []; let acc = 0;
       for (const sg of segs.slice(0, -1)) { acc += sg.frames; rcuts.push(acc / F); }
@@ -1645,7 +1707,7 @@ async function run() {
     }
 
     if (many) {
-      const cat = await makeConcat(f, vnames.map((n) => `/in/${n}`), vinfos, step, opts.xfade, size.short);
+      const cat = await makeConcat(f, vpaths, vinfos, step, opts.xfade, size.short);
       plan.X = cat.X;
       opts.vpath = cat.path;
       opts.vinfo = await probe(f, cat.path);
@@ -1677,7 +1739,7 @@ async function run() {
     const ret = await step(args, what, T);
     if (cancelled) return;
     if (ret !== 0) throw new Error("ffmpeg が失敗しました。下の「処理の記録」を見てください。");
-    await sweep(["pp.mp4", "x_head.mp4", "x_blend.mp4", "x_mid.mp4", "xlist.txt", "cat.mp4", "small.mp4"]);
+    await sweep(["pp.mp4", "x_head.mp4", "x_blend.mp4", "x_mid.mp4", "xlist.txt", "cat.mp4", "small.mp4", ...vpaths.filter((p) => p.startsWith("/work/"))]);
     // 切り替わりの時刻: 何本かつないだ所と、ループの折り返し
     const mcuts = [];
     if (many) { let acc = 0; for (const v of vinfos.slice(0, -1)) { acc += v.dur - (plan.X || 0); mcuts.push(acc); } }
