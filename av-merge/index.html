@@ -125,6 +125,9 @@
   .modebar { padding: 0 2px; }
   .chk { display: inline-flex; flex-wrap: wrap; gap: 4px 14px; }
   .chk label { white-space: nowrap; }
+  .tprow { display: grid; grid-template-columns: 4.6em 4.2em 1fr auto auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .tprow input, .tprow select { min-width: 0; padding: 4px 6px; font: inherit; border: 1px solid var(--rule); border-radius: 8px; background: var(--ground); color: var(--ink); }
+  @media (max-width: 560px) { .tprow { grid-template-columns: 4.6em 4.2em 1fr auto; } .tprow .tptext { grid-column: 1 / -1; grid-row: 2; } }
   #mgPrev { width: 100%; border-radius: 10px; background: #111; display: block; }
   .mgtext { padding: 4px 8px; font: inherit; border: 1px solid var(--rule); border-radius: 8px; background: var(--ground); color: var(--ink); min-width: 0; flex: 1 1 10em; }
   body.remix .only-merge { display: none !important; }
@@ -428,6 +431,14 @@
     </div>
   </section>
 
+  <section class="panel" id="tpPanel">
+    <h2>テロップ</h2>
+    <p class="note">好きな文字を、動画の好きな時刻に出します。出かたはモーショングラフィックスのスタイルに合わせます（グラフィックスを切っていても出ます）。</p>
+    <div id="tpList"></div>
+    <div class="row"><button class="ghost small" id="tpAdd" type="button" style="margin-left:0">＋ 今の時刻に足す</button><span class="note">プレビューで流している所に足します</span></div>
+    <textarea id="telopText" hidden aria-hidden="true"></textarea>
+  </section>
+
   <section class="panel" id="psPanel">
     <h2>設定の保存</h2>
     <div class="row">
@@ -664,7 +675,9 @@ document.querySelectorAll("input[name=mode]").forEach((el) => el.addEventListene
 // ── モーショングラフィックス ──
 // 曲の解析が要るのは、リミックス・グラフィックス・動く歌詞のとき
 const kineticLyrics = () => $("lyOn").checked && opt("lyStyle") !== "sub" && lyLines().timed.some((l) => l.text);
-const mgNeeded = () => $("mgOn").checked || kineticLyrics();
+// テロップは隠した textarea に JSON で持つ（落ちたときの控えに入るように。プリセットには入れない）
+const telops = () => { try { return (JSON.parse($("telopText").value || "[]") || []).filter((x) => x && x.text && x.dur > 0); } catch { return []; } };
+const mgNeeded = () => $("mgOn").checked || kineticLyrics() || telops().length > 0;
 // 仕上げの作り直しが要るか（形・色・グラフィックス・動く歌詞）
 const finishNeeded = () => mgNeeded() || opt("aspect") !== "orig" || opt("grade") !== "none";
 // 色の仕上げ: ffmpeg のフィルタと、プレビュー用の canvas の filter（だいたい）
@@ -712,6 +725,7 @@ function buildMgScene(W, H, T, shift, cuts) {
     wipe: on ? opt("mgWipe") : "none", frame: on ? opt("mgFrame") : "none",
     title: { on: on && $("mgTitle").checked, title: $("mgTitleText").value.trim(), artist: $("mgArtist").value.trim() },
     lyrics: kineticLyrics() ? { anim: opt("lyStyle"), pos: opt("lypos"), lines: lyLines().timed } : null,
+    telops: telops(),
     seed: Math.max(1, Math.round(num("rmSeed", 1))), font: "MG",
   });
 }
@@ -1282,6 +1296,7 @@ let restored = null;
   if (!prev || Date.now() - prev.at > 2 * 864e5) return;
   restoreSettings(prev.settings);
   restored = { audio: prev.audio, settings: prev.settings };
+  setTimeout(() => tpRender(), 0);
   const mins = Math.round((Date.now() - prev.at) / 60000);
   $("crashText").textContent =
     `前回（${mins < 60 ? mins + " 分前" : Math.round(mins / 60) + " 時間前"}）は「${prev.stage || "準備"}」のところでページが読み込み直されて、最初の画面に戻りました。` +
@@ -1291,6 +1306,36 @@ let restored = null;
   $("crashNote").hidden = false;
 })();
 $("crashClose").addEventListener("click", () => { $("crashNote").hidden = true; });
+
+// ── テロップの一覧 ──
+function tpData() { try { return JSON.parse($("telopText").value || "[]") || []; } catch { return []; } }
+function tpSave(list) { $("telopText").value = JSON.stringify(list); mgPreview(); }
+function tpRender() {
+  const list = tpData(), box = $("tpList");
+  box.textContent = "";
+  list.forEach((tp, i) => {
+    const row = document.createElement("div"); row.className = "tprow";
+    const num = (key, step, label) => { const e = document.createElement("input"); e.type = "number"; e.min = "0"; e.step = step; e.value = tp[key]; e.title = label; e.setAttribute("aria-label", label); e.oninput = () => { const L = tpData(); L[i][key] = Math.max(0, parseFloat(e.value) || 0); tpSave(L); }; return e; };
+    const txt = document.createElement("input"); txt.className = "tptext"; txt.value = tp.text; txt.placeholder = "文字"; txt.setAttribute("aria-label", "テロップの文字");
+    txt.oninput = () => { const L = tpData(); L[i].text = txt.value; tpSave(L); };
+    const pos = document.createElement("select"); pos.setAttribute("aria-label", "位置");
+    for (const [v, l] of [["top", "上"], ["middle", "まん中"], ["bottom", "下"]]) { const o = document.createElement("option"); o.value = v; o.textContent = l; pos.append(o); }
+    pos.value = tp.pos || "bottom"; pos.onchange = () => { const L = tpData(); L[i].pos = pos.value; tpSave(L); };
+    const del = document.createElement("button"); del.className = "ghost small"; del.type = "button"; del.textContent = "✕"; del.setAttribute("aria-label", "このテロップを消す"); del.style.marginLeft = "0";
+    del.onclick = () => { const L = tpData(); L.splice(i, 1); tpSave(L); tpRender(); };
+    row.append(num("t", "0.1", "開始（動画の何秒目）"), num("dur", "0.1", "長さ（秒）"), txt, pos, del);
+    box.append(row);
+  });
+  if (list.length) { const h = document.createElement("p"); h.className = "note"; h.textContent = "左から: 開始（動画の何秒目）・長さ（秒）・文字・位置"; box.prepend(h); }
+}
+$("tpAdd").addEventListener("click", () => {
+  const a = $("aprev"), t0 = Math.max(0, (a.currentTime || 0) + previewShift());
+  const L = tpData(); L.push({ t: Math.round(t0 * 10) / 10, dur: 3, text: "", pos: "bottom" });
+  L.sort((x, y) => x.t - y.t); tpSave(L); tpRender();
+  ensureMgFont().then(mgPreview).catch(() => {});
+  const inputs = $("tpList").querySelectorAll(".tptext"); inputs[L.findIndex((x) => !x.text)]?.focus();
+});
+tpRender();
 
 // ── 設定の保存（プリセット）。曲ごとに変わるものは入れない ──
 const PS_KEY = "avmerge.presets", PS_SKIP = ["lyText", "mgTitleText", "mgArtist", "rmBpm", "rmOffset", "psName", "telopText"];

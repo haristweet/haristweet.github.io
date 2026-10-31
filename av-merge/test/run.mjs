@@ -70,6 +70,8 @@ await page.screenshot({ path: S("shot_empty.png"), fullPage: true });
 
 const MGALL = { style: "neon", layers: ["bars", "ring", "wave", "pulse", "particles"], wipe: "4", frame: "hud", title: true };
 const cases = [
+  { name: "テロップ・上に 1〜3 秒", v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264", telops: [{ t: 1, dur: 2, text: "テロップです", pos: "top" }],
+    bright: [[0.5, false, "top"], [2, true, "top"], [2, false, "bottom"], [4.5, false, "top"]], fxLog: /"mg":true/, mgShot: true },
   // 仕上げ（形・色）
   { name: "仕上げ・縦 9:16 で真ん中を切る", v: "v_h264.mp4", a: "a_10s.mp3", set: {}, dur: 6, vcodec: "h264", size: "240x426", fx: { aspect: "9:16" }, fxLog: /"aspect":"9:16".*"fit":"crop"/ },
   { name: "仕上げ・正方形で余白をぼかす＋軽く 720p", v: "v_big.mp4", a: "a_10s.mp3", set: { size: "720" }, dur: 2, vcodec: "h264", size: "720x720", fx: { aspect: "1:1", fit: "blur" }, fxLog: /"fit":"blur"/ },
@@ -176,10 +178,11 @@ for (const [i, c] of cases.entries()) {
       set("#mgTitle", !!mg.title);
     }
     set(`input[name=lyStyle][value=${o.lyStyle || "sub"}]`, true);
+    set("#telopText", JSON.stringify(o.telops || []));
     set(`input[name=aspect][value="${o.fx.aspect || "orig"}"]`, true);
     set(`input[name=fit][value=${o.fx.fit || "crop"}]`, true);
     set(`input[name=grade][value=${o.fx.grade || "none"}]`, true);
-  }, { mg: c.mg, lyStyle: c.lyStyle, fx: c.fx || {} });
+  }, { mg: c.mg, lyStyle: c.lyStyle, fx: c.fx || {}, telops: c.telops });
   if (c.remix) {
     // リミックスに切りかえ、テンポを自動で調べ終わるのを待つ
     await page.check("input[name=mode][value=remix]", { force: true });
@@ -251,7 +254,7 @@ for (const [i, c] of cases.entries()) {
   if (c.bright) {
     // 黒い動画の明るさ（region: bottom＝下の 1/3、all＝全体）で、グラフィックスが出ているか
     for (const [t, lit, region] of c.bright) {
-      const crop = region === "bottom" ? "crop=iw:ih/3:0:ih*2/3," : "";
+      const crop = region === "bottom" ? "crop=iw:ih/3:0:ih*2/3," : region === "top" ? "crop=iw:ih/3:0:0," : "";
       const yy = parseFloat((execFileSync("sh", ["-c", `ffmpeg -hide_banner -ss ${t} -i '${out}' -frames:v 1 -vf "${crop}signalstats,metadata=print:key=lavfi.signalstats.YAVG" -f null - 2>&1 | grep -o 'YAVG=[0-9.]*' | head -1`]).toString().split("=")[1]) || "0");
       if (lit ? yy < 17.5 : yy > 16.8) probs.push(`${t} 秒の明るさ ${yy.toFixed(1)}（${lit ? "描かれているはず" : "何も無いはず"}）`);
     }
@@ -361,6 +364,21 @@ if (!process.env.ONLY || "落ちた".includes(process.env.ONLY)) {
   if (!ok) fail++;
   await p5.screenshot({ path: S("shot_crash.png") });
   await p5.close();
+}
+// テロップの一覧: 足す → 文字を打つ → データに入る → 消す
+if (!process.env.ONLY || "テロップ".includes(process.env.ONLY)) {
+  const p7 = await browser.newPage();
+  await p7.goto(base);
+  await p7.click("#tpAdd"); await p7.click("#tpAdd");
+  await p7.locator(".tprow .tptext").first().fill("ひとつめ");
+  const d1 = await p7.$eval("#telopText", (e) => JSON.parse(e.value));
+  await p7.locator(".tprow button").nth(1).click();
+  const d2 = await p7.$eval("#telopText", (e) => JSON.parse(e.value));
+  const rows = await p7.locator(".tprow").count();
+  const ok = d1.length === 2 && d1[0].text === "ひとつめ" && d1[0].dur === 3 && d2.length === 1 && d2[0].text === "ひとつめ" && rows === 1;
+  console.log(`${ok ? "OK" : "NG"} テロップの一覧の操作 ${ok ? "" : JSON.stringify({ d1, d2, rows })}`);
+  if (!ok) fail++;
+  await p7.close();
 }
 // 設定の保存: 保存 → 変える → 呼び出すと戻る。曲ごとのもの（歌詞）は入れない。名前に記号が入っても文字のまま
 if (!process.env.ONLY || "プリセット".includes(process.env.ONLY)) {

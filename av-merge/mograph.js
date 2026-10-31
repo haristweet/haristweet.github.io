@@ -222,6 +222,7 @@ export function drawFrame(ctx, sc, t) {
   if (sc.frame && sc.frame !== "none") { ctx.save(); drawFrameDeco(ctx, sc, t, f, b, W, H, U, col); ctx.restore(); }
   if (sc.title && sc.title.on) { ctx.save(); drawTitle(ctx, sc, t, b, W, H, U, col); ctx.restore(); }
   if (sc.lines) { ctx.save(); drawLyrics(ctx, sc, t, b, W, H, U, col); ctx.restore(); }
+  if (sc.telops && sc.telops.length) { ctx.save(); drawTelops(ctx, sc, t, W, H, U, col); ctx.restore(); }
   if (sc.wipeTimes && sc.wipeTimes.length) { ctx.save(); drawWipe(ctx, sc, t, W, H, U, col); ctx.restore(); }
 }
 
@@ -575,6 +576,32 @@ function drawLyrics(g, sc, t, b, W, H, u, col) {
     const shownW = widths.reduce((a, w, i) => a + (age - i * per >= 0 ? w : 0), 0);
     g.fillStyle = col(1); g.globalAlpha = fadeOut;
     g.fillRect((W - total) / 2 + shownW + px * 0.05, y - px * 0.45, px * 0.08, px * 0.9);
+  }
+}
+
+// テロップ: 決めた時刻に決めた文字。出入りは 0.3 秒。帯の色と出かたはスタイルに合わせる
+function drawTelops(g, sc, t, W, H, u, col) {
+  for (const tp of sc.telops) {
+    if (!tp.text || t < tp.t || t > tp.t + tp.dur) continue;
+    const age = t - tp.t, left = tp.t + tp.dur - t;
+    const inP = ease(age / 0.3), outP = ease(left / 0.3), vis = Math.min(inP, outP);
+    const px = fitSize(g, sc, tp.text, u * 0.075, W * 0.84);
+    g.font = font(sc, px);
+    g.textAlign = "center"; g.textBaseline = "middle";
+    const tw = g.measureText(tp.text).width, y = tp.pos === "top" ? H * 0.14 : tp.pos === "middle" ? H * 0.5 : H * 0.72;
+    let shown = tp.text;
+    if (sc.style === "retro" || sc.style === "cyber") shown = tp.text.slice(0, Math.ceil(Math.min(1, age / 0.5) * [...tp.text].length));
+    const slide = (1 - vis) * u * 0.06;
+    g.globalAlpha = vis;
+    const bw = (tw + px * 1.2) * (sc.style === "minimal" ? 1 : Math.max(0.05, inP)), bh = px * 1.5;
+    if (sc.style === "pop") { g.fillStyle = col(0); g.fillRect(W / 2 - bw / 2, y - bh / 2, bw, bh); g.strokeStyle = "#111"; g.lineWidth = Math.max(2, u * 0.008); g.strokeRect(W / 2 - bw / 2, y - bh / 2, bw, bh); }
+    else if (sc.style === "retro") { g.fillStyle = "#000"; g.fillRect(W / 2 - bw / 2, y - bh / 2, bw, bh); g.strokeStyle = col(0); g.lineWidth = Math.max(2, u * 0.006); g.strokeRect(W / 2 - bw / 2, y - bh / 2, bw, bh); }
+    else if (sc.style === "minimal") { g.fillStyle = "#fff"; g.fillRect(W / 2 - (tw / 2) * inP, y + px * 0.62, tw * inP, Math.max(1, u * 0.004)); }
+    else { g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(W / 2 - bw / 2, y - bh / 2, bw, bh); }   // 光るスタイルも暗い帯の上に（明るい背景で読めるように）
+    textStyle(g, sc, sc.style === "pop" ? "#111111" : col(0), u);
+    if (sc.style === "pop") { g.fillText(shown, W / 2, y + slide); continue; }
+    if (!sc.st.glow || sc.st.outline) g.strokeText(shown, W / 2, y + slide);
+    g.fillText(shown, W / 2, y + slide);
   }
 }
 
