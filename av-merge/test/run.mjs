@@ -79,6 +79,12 @@ await page.screenshot({ path: S("shot_empty.png"), fullPage: true });
 
 const MGALL = { style: "neon", layers: ["bars", "ring", "wave", "pulse", "particles"], wipe: "4", frame: "hud", title: true };
 const cases = [
+  // 使う範囲（ショート動画）
+  { name: "範囲・くっつける（2〜5 秒）", v: "v_h264.mp4", a: "a_10s.mp3", set: { askip: 2, aend: 5 }, dur: 3, vcodec: "h264", copy: true },
+  { name: "範囲・リミックス（5〜13 秒）", v: ["v_h264.mp4", "v_big.mp4"], a: "a_drum.mp3", set: { askip: 5, aend: 13 }, dur: 8, vcodec: "h264", remix: { chaos: 40, seed: 2 } },
+  { name: "範囲・音ハメ（5〜11 秒、区切り 6・8 秒）", v: ["v_black.mp4", "v_h264.mp4"], a: "a_drum.mp3", set: { askip: 5, aend: 11 }, dur: 6, vcodec: "h264",
+    cut: { cuts: [6, 8], assign: [{ src: 0, at: 0, time: "normal", look: "" }, { src: 1, at: 0, time: "normal", look: "" }, { src: 0, at: 0, time: "normal", look: "" }] },
+    bright: [[0.5, false, "all"], [2, true, "all"], [4.5, false, "all"]] },
   // 音ハメ: 素材 1（黒）と 2（テスト柄）を 2・4・6 秒の区切りで 1→2→1→2
   { name: "音ハメ・区間ごとに映像を割り当てる", v: ["v_black.mp4", "v_h264.mp4"], a: "a_drum.mp3", set: {}, dur: 20, vcodec: "h264", size: "640x360",
     cut: { cuts: [2, 4, 6], assign: [{ src: 0, at: 0, time: "normal", look: "" }, { src: 1, at: 0, time: "stutter", look: "" }, { src: 0, at: 1, time: "normal", look: "" }, { src: 1, at: 2, time: "normal", look: "mono" }] },
@@ -185,6 +191,7 @@ for (const [i, c] of cases.entries()) {
   await page.check(`input[name=len][value=${c.set.len || "video"}]`, { force: true });
   if (c.set.len === "audio") await page.check(`input[name=vloop][value=${c.set.vloop || "repeat"}]`, { force: true });
   await page.fill("#askip", String(c.set.askip || 0));
+  await page.fill("#aend", c.set.aend ? String(c.set.aend) : "");
   await page.fill("#adelay", String(c.set.adelay || 0));
   await page.check(`input[name=size][value="${c.set.size || "orig"}"]`, { force: true });
   // つなぎ目の欄は出ていないこともあるので、値は直に入れる
@@ -489,6 +496,31 @@ if (!process.env.ONLY || "音ハメ".includes(process.env.ONLY)) {
   if (!ok) fail++;
   await p9.screenshot({ path: S("shot_cut.png"), fullPage: true });
   await p9.close();
+}
+// 使う範囲のボタン
+if (!process.env.ONLY || "範囲のボタン".includes(process.env.ONLY)) {
+  const pr = await browser.newPage();
+  await pr.goto(base);
+  await pr.setInputFiles("#afile", S("a_hype.mp3"));
+  await pr.waitForFunction(() => isFinite(document.getElementById("aprev").duration), null, { timeout: 5000 });
+  const val = () => pr.evaluate(() => [document.getElementById("askip").value, document.getElementById("aend").value]);
+  await pr.evaluate(() => { document.getElementById("aprev").currentTime = 4; });
+  await pr.waitForTimeout(200);
+  await pr.click("#rgFrom"); const v1 = await val();
+  await pr.click("#rg15"); const v2 = await val();
+  await pr.click("#rg60"); const v3 = await val();          // 曲は 24 秒なので終わりで止まる
+  await pr.click("#rgClear"); const v4 = await val();
+  await pr.click("#rgShort"); const v5 = await val();      // 30 秒にしたいが、曲は 24 秒なので終わりで止まる
+  const tall = await pr.$eval('input[name=aspect][value="9:16"]', (e) => e.checked);
+  await pr.check("#hypeOn");
+  await pr.click("#rgHype");
+  await pr.waitForFunction(() => +document.getElementById("askip").value > 6, null, { timeout: 15000 }).catch(() => {});
+  const v6 = await val(), note = await pr.$eval("#rangeNote", (e) => e.textContent);
+  const ok = v1[0] === "4.0" && v2[1] === "19.0" && v3[1] === "24.0" && v4[1] === "" && v5[1] === "24.0" && tall
+    && +v6[0] >= 9 && +v6[0] <= 14.5 && +v6[1] > +v6[0] && /〜/.test(note);
+  console.log(`${ok ? "OK" : "NG"} 使う範囲のボタン ${ok ? "" : JSON.stringify({ v1, v2, v3, v4, v5, tall, v6, note })}`);
+  if (!ok) fail++;
+  await pr.close();
 }
 // テロップの一覧: 足す → 文字を打つ → データに入る → 消す
 if (!process.env.ONLY || "テロップ".includes(process.env.ONLY)) {

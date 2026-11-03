@@ -282,8 +282,20 @@
       <span class="vol" id="vvolv">60%</span>
     </div>
     <div class="row">
-      <span class="lab">音声の頭出し</span>
-      <label><input type="number" id="askip" min="0" step="0.1" value="0"> 秒目から使う</label>
+      <span class="lab">使う範囲</span>
+      <label>曲の <input type="number" id="askip" min="0" step="0.1" value="0"> 秒目から</label>
+      <label><input type="number" id="aend" min="0" step="0.1" placeholder="最後"> 秒目まで</label>
+      <span class="note" id="rangeNote"></span>
+    </div>
+    <div class="row">
+      <button class="ghost small" id="rgFrom" type="button" style="margin-left:0">今の位置を開始に</button>
+      <button class="ghost small" id="rgTo" type="button" style="margin-left:0">今の位置を終了に</button>
+      <button class="ghost small" id="rg15" type="button" style="margin-left:0">15 秒</button>
+      <button class="ghost small" id="rg30" type="button" style="margin-left:0">30 秒</button>
+      <button class="ghost small" id="rg60" type="button" style="margin-left:0">60 秒</button>
+      <button class="ghost small" id="rgHype" type="button" style="margin-left:0">サビから</button>
+      <button class="ghost small" id="rgClear" type="button" style="margin-left:0">最後まで</button>
+      <button class="ghost small" id="rgShort" type="button" style="margin-left:0">📱 ショート用（縦・30 秒）</button>
     </div>
     <div class="row only-merge">
       <span class="lab">入れ始め</span>
@@ -692,7 +704,7 @@ function rmSettings() {
 function rmRefresh() {
   const vs = state.videos, ad = $("aprev").duration, R = rmSettings();
   if (!vs.length || !isFinite(ad) || !(R.bpm > 0) || vs.some((v) => !isFinite(v.dur))) { $("rmSummary").textContent = ""; return; }
-  const T = Math.max(0, ad - num("askip")), beat = 60 / R.bpm;
+  const T = rangeLenOf(ad), beat = 60 / R.bpm;
   const segs = makePlan({ ...R, offset: ((R.offset - num("askip")) % beat + beat) % beat, T, F: 30, clips: vs.map((v) => ({ dur: v.dur })) });
   const c = planSummary(segs);
   $("rmSummary").textContent = `${fmtT(T)} を ${c.segments} 区間に切ります（時間の崩し ${c.timeFx} 回・見た目の崩し ${c.lookFx} 回・使う崩し方 ${c.kinds} 種類）`;
@@ -1026,6 +1038,10 @@ function refresh() {
   $("rmAmountv").textContent = $("rmAmount").value;
   if (remix) rmRefresh();
   $("fitRow").hidden = opt("aspect") === "orig";
+  {
+    const ad = $("aprev").duration, e = rangeEnd();
+    $("rangeNote").textContent = e === Infinity ? "" : `→ ${fmtT(num("askip"))}〜${fmtT(e)}（${fmtT(isFinite(ad) ? rangeLenOf(ad) : e - num("askip"))}）`;
+  }
   if ($("hypeOn").checked) {
     const hl = highlights();
     $("hypeNote").textContent = !state.an ? "曲を調べています…（グラフィックスとリミックスで効きます）"
@@ -1050,9 +1066,10 @@ function refresh() {
   const vd = state.videos.reduce((t, it) => t + it.dur, 0) - (state.videos.length - 1) * num("xfade"), ad = $("aprev").duration;
   let note = "";
   if (state.videos.length && state.audio && isFinite(vd) && isFinite(ad)) {
-    const eff = Math.max(0, ad - num("askip")) + num("adelay");
+    const eff = rangeLenOf(ad) + num("adelay");
     const len = opt("len");
-    const out = len === "shortest" ? Math.min(vd, eff) : len === "audio" ? eff : vd;
+    const cap = rangeEnd() === Infinity ? Infinity : rangeLenOf(ad) + num("adelay");
+    const out = Math.min(cap, len === "shortest" ? Math.min(vd, eff) : len === "audio" ? eff : vd);
     note = `動画${state.videos.length > 1 ? `（${state.videos.length} 本つなげて）` : ""} ${fmtT(vd)} ・ 音声 ${fmtT(ad)} → できあがり ${fmtT(out)}`;
     if (len === "audio" && eff > vd + 0.05) {
       const unit = opt("vloop") === "repeat" ? Math.max(0.1, vd - num("xfade")) : vd;
@@ -1074,8 +1091,8 @@ function sizeEstimate() {
   const sum = vs.reduce((t, it) => t + it.dur, 0), bytes = vs.reduce((t, it) => t + it.file.size, 0);
   if (!vs.length || !state.audio || !isFinite(sum) || !isFinite(ad) || sum <= 0) return;
   const n = vs.length, X = num("xfade"), vd = sum - (n - 1) * X;
-  const eff = Math.max(0, ad - num("askip")) + num("adelay"), len = opt("len");
-  const T = len === "shortest" ? Math.min(vd, eff) : len === "audio" ? eff : vd;
+  const eff = rangeLenOf(ad) + num("adelay"), len = opt("len");
+  const T = Math.min(rangeEnd() === Infinity ? Infinity : eff, len === "shortest" ? Math.min(vd, eff) : len === "audio" ? eff : vd);
   const size = SIZES[opt("size")] || SIZES.orig;
   const short = Math.min(vs[0].w || 0, vs[0].h || 0);
   const px = size.short && short > size.short ? (size.short / short) ** 2 : 1;
@@ -1127,11 +1144,13 @@ function ext(name, def) { const m = name.match(/\.([A-Za-z0-9]{1,5})$/); return 
 //   repeat: 元の動画をそのまま繰り返す / xloop: 折り返しを重ねた部品の並び（xl。concat の一覧）を読む / bounce: 往復の動画（bounce）を作っておいて繰り返す
 // subs があれば、その ASS 字幕を焼き込む（絵は必ず作り直す）
 // vconcat なら vpath は concat の一覧（リミックスの区間を並べたもの）
-function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, vvol, askip, adelay, fade, fadesec, bounce, xl, subs, vconcat }) {
+// rangeLen があれば、音声は頭出しからその長さだけ読み、できあがりもその長さ（＋入れ始め）まで（ショート動画用）
+function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, vvol, askip, adelay, fade, fadesec, bounce, xl, subs, vconcat, rangeLen }) {
   const vdur = vinfo.dur;
   const adur = Math.max(0, ainfo.dur - askip);
   const mix = orig === "mix" && !!vinfo.acodec;
-  const T = len === "shortest" || len === "audio" ? Math.min(len === "audio" ? Infinity : vdur, adur + adelay) : vdur;
+  const T0 = len === "shortest" || len === "audio" ? Math.min(len === "audio" ? Infinity : vdur, adur + adelay) : vdur;
+  const T = rangeLen ? Math.min(T0, rangeLen + adelay) : T0;
   const loopV = len === "audio" && T > vdur;
   const loop = !loopV ? "" : vloop === "bounce" ? "bounce" : loopFade(xfade, vdur) > 0 ? "xloop" : "repeat";
   const args = ["-hide_banner", "-y"];
@@ -1141,7 +1160,8 @@ function buildArgs({ vpath, apath, vinfo, ainfo, orig, len, vloop, xfade, avol, 
   args.push("-i", loop === "bounce" ? bounce : loop === "xloop" ? xl : vpath);
   // 1: 音声
   if (askip > 0) args.push("-ss", askip.toFixed(3));
-  if (len === "loop") args.push("-stream_loop", "-1");
+  if (rangeLen) args.push("-t", rangeLen.toFixed(3));                 // 範囲があれば長さは範囲で決まるので、くり返さない
+  else if (len === "loop") args.push("-stream_loop", "-1");
   args.push("-i", apath);
   // 2: 往復の動画には音が無いので、元の音は元の動画から前向きに繰り返す
   let oi = 0;
@@ -1477,6 +1497,10 @@ function ctDraw() {
   }
   g.fillStyle = "#111";
   for (const c of o.cuts) { g.fillRect(X(c) - dpr, 0, 2 * dpr, H); g.beginPath(); g.arc(X(c), H - 6 * dpr, 5 * dpr, 0, Math.PI * 2); g.fill(); }
+  // 使う範囲の外は暗く
+  g.fillStyle = "rgba(0,0,0,0.45)";
+  if (num("askip") > 0) g.fillRect(0, 0, X(num("askip")), H);
+  if (rangeEnd() < L) g.fillRect(X(rangeEnd()), 0, W - X(rangeEnd()), H);
   g.fillStyle = "#e5322d"; g.fillRect(X($("aprev").currentTime || 0) - dpr / 2, 0, 1.5 * dpr, H);
   $("ctNow").textContent = `${fmtT($("aprev").currentTime || 0)} / ${fmtT(L)}`;
 }
@@ -1581,7 +1605,7 @@ $("tpAdd").addEventListener("click", () => {
 tpRender();
 
 // ── 設定の保存（プリセット）。曲ごとに変わるものは入れない ──
-const PS_KEY = "avmerge.presets", PS_SKIP = ["lyText", "mgTitleText", "mgArtist", "rmBpm", "rmOffset", "psName", "telopText", "ctData"];
+const PS_KEY = "avmerge.presets", PS_SKIP = ["lyText", "mgTitleText", "mgArtist", "rmBpm", "rmOffset", "psName", "telopText", "ctData", "askip", "aend"];
 const psRead = () => { try { return JSON.parse(localStorage.getItem(PS_KEY) || "{}"); } catch { return {}; } };
 const psWrite = (o) => { try { localStorage.setItem(PS_KEY, JSON.stringify(o)); return true; } catch { return false; } };
 function psRender(sel) {
@@ -1684,6 +1708,9 @@ async function run() {
     }
     const ainfo = await probe(f, `/in/${aname}`);
     log(`[調べた結果] 音声 ${JSON.stringify(ainfo)}`);
+    // 使う範囲: 曲の長さを終了までとして扱う（リミックスの長さ・音ハメの区間・歌詞もこれに従う）
+    let rangeLen = 0;
+    if (rangeEnd() < ainfo.dur) { ainfo.dur = rangeEnd(); rangeLen = Math.max(0.1, ainfo.dur - num("askip")); log(`[範囲] ${num("askip")}〜${ainfo.dur} 秒（${rangeLen.toFixed(2)} 秒）`); }
     if (!ainfo.acodec) throw new Error("音声ファイルから音が見つかりませんでした。");
     if (!isFinite(ainfo.dur)) throw new Error("ファイルの長さが読めませんでした。");
 
@@ -1691,7 +1718,7 @@ async function run() {
       vpath: vpaths[0], apath: `/in/${aname}`, vinfo: vinfos[0], ainfo,
       orig: opt("orig"), len: opt("len"), vloop: opt("vloop"), xfade: num("xfade"),
       avol: +$("avol").value, vvol: +$("vvol").value,
-      askip: num("askip"), adelay: num("adelay"),
+      askip: num("askip"), adelay: num("adelay"), rangeLen,
       fade: $("fade").checked, fadesec: num("fadesec", 2),
       bounce: "/work/pp.mp4", xl: "/work/xlist.txt",
     };
@@ -2017,6 +2044,34 @@ async function convertOutput(kind) {
 }
 $("toGif").addEventListener("click", () => convertOutput("gif"));
 $("toWebm").addEventListener("click", () => convertOutput("webm"));
+
+// ── 使う範囲（ショート動画用） ──
+// 終了が空・開始より前なら最後まで。曲の長さ ad のうち、使う長さ
+const rangeEnd = () => { const e = parseFloat($("aend").value); return isFinite(e) && e > num("askip") ? e : Infinity; };
+const rangeLenOf = (ad) => Math.max(0, Math.min(ad, rangeEnd()) - num("askip"));
+function setRange(from, to) {
+  const L = songLen() || Infinity;
+  if (from !== undefined) $("askip").value = Math.max(0, Math.min(from, L - 0.5)).toFixed(1);
+  if (to !== undefined) $("aend").value = to === null ? "" : Math.min(to, L).toFixed(1);
+  refresh(); ctShown = ""; if (opt("mode") === "cut") ctRender();
+}
+$("rgFrom").addEventListener("click", () => { const t = $("aprev").currentTime || 0; setRange(t, rangeEnd() <= t ? null : undefined); });
+$("rgTo").addEventListener("click", () => { const t = $("aprev").currentTime || 0; if (t > num("askip")) setRange(undefined, t); });
+for (const n of [15, 30, 60]) $(`rg${n}`).addEventListener("click", () => setRange(undefined, num("askip") + n));
+$("rgClear").addEventListener("click", () => setRange(undefined, null));
+$("rgHype").addEventListener("click", async () => {
+  if (!state.an) { $("rangeNote").textContent = "曲を調べています…"; await findTempo(); }
+  const hl = state.an ? findHighlights(state.an, num("rmBpm") || 120, num("rmOffset")) : [];
+  if (!hl.length) { $("rangeNote").textContent = "サビが見つかりませんでした"; return; }
+  const len = Math.max(15, rangeEnd() === Infinity ? 30 : rangeEnd() - num("askip"));
+  setRange(hl[0][0], hl[0][0] + len);
+});
+$("rgShort").addEventListener("click", () => {
+  document.querySelector('input[name=aspect][value="9:16"]').checked = true;
+  if (rangeEnd() === Infinity) setRange(undefined, num("askip") + 30); else refresh();
+});
+// 範囲を決めたら、曲を流したときも終了で止める
+$("aprev").addEventListener("timeupdate", () => { const a = $("aprev"); if (!a.paused && a.currentTime >= rangeEnd()) { a.pause(); a.currentTime = rangeEnd(); } });
 
 // 試し書き出しか本番か（リミックスで使う）
 let runKind = "full";
