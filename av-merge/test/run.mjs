@@ -216,6 +216,7 @@ for (const [i, c] of cases.entries()) {
     set(`input[name=lyStyle][value=${o.lyStyle || "sub"}]`, true);
     set("#telopText", JSON.stringify(o.telops || []));
     set("#hypeOn", !!o.hype);
+    set("#rmSeed", "1");   // 番号はグラフィックスの乱数にも使うので、前のケースの番号を持ちこさない（リミックスのケースはあとで入れ直す）
     set(`input[name=aspect][value="${o.fx.aspect || "orig"}"]`, true);
     set(`input[name=fit][value=${o.fx.fit || "crop"}]`, true);
     set(`input[name=grade][value=${o.fx.grade || "none"}]`, true);
