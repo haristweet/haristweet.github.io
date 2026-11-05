@@ -73,6 +73,7 @@ textarea{font-family:var(--f-body);font-size:15px;line-height:1.7;min-height:220
 .memo{background:var(--surface);border:1px solid var(--line);border-radius:12px}
 .memo>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;font-weight:700;min-height:44px}
 .memo>summary::-webkit-details-marker{display:none}
+.memo>summary>span:first-child{white-space:nowrap;flex-shrink:0}
 .memo>summary .sub{font-weight:500;font-size:12px;color:var(--muted)}
 .memo[open]>summary{border-bottom:1px solid var(--line)}
 .memo-body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px}
@@ -99,7 +100,38 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
 .livehint code{font-family:var(--f-mono);font-size:12px;background:var(--sunk);padding:0 4px;border-radius:4px;color:var(--ink)}
 .lv{font-size:10px;font-weight:700;letter-spacing:.06em;padding:1px 5px;border-radius:4px;margin-left:6px;background:var(--on-accent);color:var(--accent);vertical-align:1px}
 .btn:not(.primary) .lv{background:var(--accent);color:var(--on-accent)}
-@media (max-width:620px){.card-head{grid-template-columns:1fr}.quick{justify-content:flex-start}}
+.tools{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:13px}
+.seg{display:inline-flex;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px}
+.seg button{appearance:none;border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:700;padding:6px 12px;border-radius:7px;cursor:pointer;min-height:34px}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgb(0 0 0/.08)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.tools select{width:auto;min-height:38px;padding:6px 10px;font-size:13px}
+.tools .lbl2{color:var(--muted);font-weight:700}
+.sec-h{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:8px 2px 0}
+.sec-h:first-child{margin-top:0}
+.vtabs{display:flex;flex-wrap:wrap;gap:4px;padding:0 12px 10px 16px}
+.vtab{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--muted);font:inherit;font-size:12px;font-weight:500;padding:3px 10px;border-radius:999px;cursor:pointer;min-height:30px;max-width:100%;text-align:left}
+.vtab[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+.vtab:focus-visible,.star:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.star{appearance:none;border:0;background:none;font-size:20px;line-height:1;cursor:pointer;color:var(--line);padding:4px;min-width:36px;min-height:36px;border-radius:8px}
+.star[aria-pressed="true"]{color:#e0a100}
+.star:hover{color:#e0a100}
+.recent{font-size:11px;padding:1px 8px;border-radius:999px;background:var(--sunk);color:var(--muted);font-weight:700}
+.card-head{grid-template-columns:auto minmax(0,1fr) auto}
+.sub-genre{font-size:13px;color:var(--muted);font-weight:500}
+/* 1行表示 */
+.list.compact{gap:4px}
+.list.compact .card{border-radius:8px}
+.list.compact .card-head{padding:4px 8px 4px 6px;gap:6px}
+.list.compact .genre{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list.compact .song{display:none}
+.list.compact .sub-genre{display:none}
+.list.compact .toggle{flex-direction:row;align-items:baseline;gap:8px;overflow:hidden}
+.list.compact .ctag{display:inline}
+.ctag{display:none;font-size:11px;color:var(--muted);white-space:nowrap}
+.list.compact .btn{min-height:32px;padding:4px 9px;font-size:12px}
+.list.compact .star{font-size:17px;min-width:30px;min-height:30px}
+@media (max-width:620px){.card-head{grid-template-columns:auto minmax(0,1fr)}.quick{grid-column:1/-1;justify-content:flex-start}.list.compact .quick{grid-column:auto}.list.compact .card-head{grid-template-columns:auto minmax(0,1fr) auto}.list.compact .btn[data-copy="exclude"]{display:none}.list.compact .ctag{display:none}}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 </style>
 <style>body{margin:0}[hidden]{display:none!important}</style>
@@ -117,6 +149,19 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
     <div class="search">
       <input id="q" type="search" placeholder="曲名・ジャンル・楽器で検索（例：ブーンバップ、303、ヴォコーダー、猫）" autocomplete="off" aria-label="検索">
       <span class="count" id="count"></span>
+    </div>
+    <div class="tools">
+      <span class="seg" id="kindSeg" role="group" aria-label="種類">
+        <button data-kind="all">すべて</button><button data-kind="song">作った曲</button><button data-kind="tmpl">ひな形</button>
+      </span>
+      <label><span class="lbl2">並び順 </span><select id="sort" aria-label="並び順">
+        <option value="std">★と最近コピーが上</option>
+        <option value="new">新しく追加した順</option>
+        <option value="name">名前順</option>
+      </select></label>
+      <span class="seg" id="viewSeg" role="group" aria-label="表示">
+        <button data-view="card">カード</button><button data-view="compact">1行</button>
+      </span>
     </div>
     <div class="chips" id="chips" aria-label="ジャンルで絞り込む"></div>
     <div class="liverow">
@@ -143,8 +188,9 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   </section>
   <!-- 版はここ1か所（VERSION）。上げたら更新履歴の先頭に1行足す -->
   <footer class="foot">
-    <div><span id="verFoot"></span> ・ 更新 2026.11.04 ・ <span id="total"></span></div>
+    <div><span id="verFoot"></span> ・ 更新 2026.11.05 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v2.0.0</b>（2026-11-05）見やすく整理。同じ曲の版（案A・B・C や別ジャンルの版）を1枚のカードにまとめて、カードの中のボタンで切り替えるように。「すべて／作った曲／ひな形」の切り替え、★のお気に入り（上にまとめる）と「最近コピーした」、並び順（★と最近コピーが上／新しく追加した順／名前順）、1行表示を追加。ライブ版・EXTEND MIX のカードは一覧から外した（チェックボックスはそのまま）。</li>
       <li><b>v1.16.0</b>（2026-11-04）シンセウェーブのひな形5件を追加（アウトラン、ダークシンセ、ドリームウェーブ、80年代 SF 映画の劇伴風、歌もの）。</li>
       <li><b>v1.15.0</b>（2026-11-03）トラップのひな形6件を追加（アトランタ、クラウド、フェスティバル、UK ドリル、ドリフト・フォンク、レイジ）。</li>
       <li><b>v1.14.0</b>（2026-11-03）「ワールド」の分類を新設。最近作った15件を追加（すきさ このまちが のフィルター・ディスコ・ハウス3案、Meethe Meethe、Dhadaam Dhadaam 4案、Bourbon Zindabad 2案、ブルボン音頭3案、ベガルタ仙台のチャント2案〈スタジオ録音版を含む〉）。</li>
@@ -175,7 +221,7 @@ const CATS = ['すべて','ヒップホップ','ブレイクコア／DnB','ビ�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v1.16.0';
+const VERSION = 'v2.0.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
@@ -213,8 +259,28 @@ function excludeOf(e){
 }
 function badgeOf(e){ return (isLiveOn(e)?'<span class="lv">LIVE</span>':'') + (isExtOn(e)?'<span class="lv">EXT</span>':''); }
 function labelOf(e){ const t=[]; if(isLiveOn(e)) t.push('ライブ版'); if(isExtOn(e)) t.push('EXTEND MIX'); return t.length?'（'+t.join('＋')+'）':''; }
+/* ---------- cards: 同じ曲の版は1枚にまとめる。ひな形は1件ずつ。「〜追加」は一覧に出さない ---------- */
+const isTmpl = e => e.song==='汎用テンプレート';
+const idNum = e => parseInt(String(e.id).replace(/\D/g,''),10)||0;
+const CARDS = []; const cardByKey = new Map();
+DATA.forEach(e=>{
+  if(isAddon(e)) return;
+  const key = isTmpl(e) ? 'T:'+e.id : 'S:'+e.song;
+  let c = cardByKey.get(key);
+  if(!c){ c={key, cid:'c'+CARDS.length, tmpl:isTmpl(e), title:isTmpl(e)?e.genre:e.song, items:[], order:CARDS.length}; cardByKey.set(key,c); CARDS.push(c); }
+  c.items.push(e);
+});
+CARDS.forEach(c=>{ c.newest=Math.max(...c.items.map(idNum)); });
+let kind = store.get('kind','all'); if(!['all','song','tmpl'].includes(kind)) kind='all';
+let sortMode = store.get('sort','std'); if(!['std','new','name'].includes(sortMode)) sortMode='std';
+let view = store.get('view','card'); if(!['card','compact'].includes(view)) view='card';
+let favs = new Set(store.get('favs',[])||[]);
+let recent = store.get('recent',[])||[]; if(!Array.isArray(recent)) recent=[];
+const sel = new Map(Object.entries(store.get('sel',{})||{}));
 const open = new Set();
-
+function saveSel(){ store.set('sel',Object.fromEntries(sel)); }
+function touchRecent(key){ recent=[key].concat(recent.filter(k=>k!==key)).slice(0,20); store.set('recent',recent); }
+const RECENT_N = 5;
 /* ---------- copy ---------- */
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1600)}
 function fallbackCopy(text){const ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();let ok=false;try{ok=document.execCommand('copy')}catch(e){}document.body.removeChild(ta);return ok}
@@ -234,29 +300,48 @@ function matches(e,q){ if(!q) return true; return q.split(/\s+/).filter(Boolean)
 /* ---------- render ---------- */
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function noteHTML(n){return esc(n).replace(/`([^`]+)`/g,'<code>$1</code>')}
+function kindOk(c){ return kind==='all' || (kind==='tmpl')===c.tmpl; }
+/* その絞り込み・検索に合う版だけを出す */
+function visibleItems(c,q){ return c.items.filter(x=>(cat==='すべて'||x.cat===cat)&&matches(x,q)); }
 function renderChips(){
+  const base = CARDS.filter(kindOk);
   $('#chips').innerHTML = CATS.map(c=>{
-    const n = c==='すべて'?DATA.length:DATA.filter(e=>e.cat===c).length;
+    const n = c==='すべて'?base.length:base.filter(k=>k.items.some(x=>x.cat===c)).length;
     if(!n) return '';
     return `<button class="chip" data-cat="${esc(c)}" aria-pressed="${c===cat}">${esc(c)} <span style="opacity:.6">${n}</span></button>`;
   }).join('');
 }
-function card(e,isGen){
+function shortLabel(c,e){ return e.genre; }
+function card(c,vis){
+  let cur = vis.find(x=>x.id===sel.get(c.key)) || vis[0];
+  const e = cur;
   const mix = e.mix ? `<span class="mix ${e.mixStatus==='候補'?'cand':''}" title="ミックス名（${esc(e.mixStatus)}）">${esc(e.mix)}</span>` : '';
-  const isOpen = open.has(e.id);
+  const isOpen = open.has(c.key);
   const lv = badgeOf(e);
-  return `<article class="card ${isGen?'gen':''}" data-id="${e.id}">
+  const fav = favs.has(c.key);
+  const rec = recent.slice(0,RECENT_N).includes(c.key) ? '<span class="recent">最近コピー</span>' : '';
+  const multi = c.items.length>1;
+  const tabs = multi ? `<div class="vtabs" role="tablist" aria-label="版">${vis.map(x=>`<button class="vtab" role="tab" data-v="${x.id}" aria-selected="${x.id===e.id}">${esc(shortLabel(c,x))}</button>`).join('')}${vis.length<c.items.length?`<span class="sub-genre" style="align-self:center">ほか ${c.items.length-vis.length} 版</span>`:''}</div>` : '';
+  const title = c.tmpl ? e.genre : c.title;
+  const sub = c.tmpl ? `<span class="song">ひな形 <span class="tag">${esc(e.cat)}</span>${rec}</span>` : `<span class="song"><span class="tag">${esc(e.cat)}</span>${mix}${multi?`<span>${c.items.length} 版</span>`:''}${rec}</span>`;
+  return `<article class="card" data-key="${esc(c.key)}" data-id="${e.id}">
     <div class="card-head">
-      <button class="toggle" aria-expanded="${isOpen}" aria-controls="b-${e.id}">
-        <span class="song">${esc(e.song)} <span class="tag">${esc(e.cat)}</span>${mix}</span>
-        <span class="genre">${esc(e.genre)}</span>
+      <button class="star" data-star aria-pressed="${fav}" aria-label="${fav?'★を外す':'★を付ける'}" title="${fav?'★を外す':'★を付ける'}">${fav?'★':'☆'}</button>
+      <button class="toggle" aria-expanded="${isOpen}" aria-controls="b-${c.cid}">
+        ${sub}
+        <span class="genre">${esc(title)}${multi||!c.tmpl?'':''}</span>
+        ${!c.tmpl&&!multi?`<span class="sub-genre">${esc(e.genre)}</span>`:''}
+        <span class="ctag">${esc(multi?e.genre+'（'+c.items.length+' 版）':(c.tmpl?e.cat:e.genre))}</span>
       </button>
       <div class="quick">
         <button class="btn primary" data-copy="style">Style をコピー${lv}</button>
         <button class="btn" data-copy="exclude">Exclude をコピー${lv}</button>
       </div>
     </div>
-    <div class="body" id="b-${e.id}" ${isOpen?'':'hidden'}>
+    ${view==='card'?tabs:''}
+    <div class="body" id="b-${c.cid}" ${isOpen?'':'hidden'}>
+      ${view==='compact'&&multi?tabs.replace('class="vtabs"','class="vtabs" style="padding:0"'):''}
+      ${multi&&!c.tmpl?`<div class="genre" style="font-size:15px">${esc(e.genre)}</div>`:''}
       <div><div class="field-label"><span>Style of Music</span><span class="btns"><button class="btn" data-memo="style">メモ帳へ</button><button class="btn" data-copy="style">コピー</button></span></div><pre class="code" style="margin-top:6px">${esc(styleOf(e))}</pre></div>
       <div><div class="field-label"><span>Exclude Styles</span><span class="btns"><button class="btn" data-memo="exclude">メモ帳へ</button><button class="btn" data-copy="exclude">コピー</button></span></div><pre class="code" style="margin-top:6px">${esc(excludeOf(e))}</pre></div>
       ${(e.notes&&e.notes.length)?`<ul class="notes">${e.notes.map(n=>`<li>${noteHTML(n)}</li>`).join('')}</ul>`:''}
@@ -265,32 +350,56 @@ function card(e,isGen){
 }
 function render(){
   const q = $('#q').value.trim();
-  const items = DATA.filter(e=>(cat==='すべて'||e.cat===cat)&&matches(e,q));
-  const gens = generated.filter(e=>matches(e,q)||true);
-  $('#count').textContent = items.length+' 件';
-  let html = gens.map(e=>card(e,true)).join('') + items.map(e=>card(e,false)).join('');
-  if(!items.length){
+  const rows = [];
+  CARDS.forEach(c=>{ if(!kindOk(c)) return; const vis=visibleItems(c,q); if(vis.length) rows.push({c,vis}); });
+  const byOrder=(a,b)=>a.c.order-b.c.order;
+  if(sortMode==='new') rows.sort((a,b)=>b.c.newest-a.c.newest||byOrder(a,b));
+  else if(sortMode==='name') rows.sort((a,b)=>a.c.title.localeCompare(b.c.title,'ja')||byOrder(a,b));
+  else rows.sort(byOrder);
+  $('#count').textContent = rows.length+' 件';
+  const list=$('#list'); list.classList.toggle('compact',view==='compact');
+  let html='';
+  if(sortMode==='std'){
+    const top5 = recent.slice(0,RECENT_N);
+    const F=rows.filter(r=>favs.has(r.c.key));
+    const R=rows.filter(r=>!favs.has(r.c.key)&&top5.includes(r.c.key)).sort((a,b)=>top5.indexOf(a.c.key)-top5.indexOf(b.c.key));
+    const O=rows.filter(r=>!favs.has(r.c.key)&&!top5.includes(r.c.key));
+    const sec=(t,arr)=>arr.length?`<div class="sec-h">${t}（${arr.length}）</div>`+arr.map(r=>card(r.c,r.vis)).join(''):'';
+    html = (F.length||R.length) ? sec('★ お気に入り',F)+sec('最近コピーした',R)+sec('ほかの曲調',O) : O.map(r=>card(r.c,r.vis)).join('');
+  } else html = rows.map(r=>card(r.c,r.vis)).join('');
+  if(!rows.length){
     html += `<div class="empty"><p>${q?`「${esc(q)}」に合う曲調はまだ作っていません。`:'この絞り込みに合う曲調はありません。'}</p></div>`;
   }
-  $('#list').innerHTML = html;
+  list.innerHTML = html;
 }
-function byId(id){return DATA.find(e=>e.id===id)||generated.find(e=>e.id===id)}
-
+function byId(id){return DATA.find(e=>e.id===id)}
+function syncTools(){
+  document.querySelectorAll('#kindSeg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.kind===kind));
+  document.querySelectorAll('#viewSeg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.view===view));
+  $('#sort').value=sortMode;
+}
+$('#kindSeg').addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b)return;kind=b.dataset.kind;store.set('kind',kind);syncTools();renderChips();render()});
+$('#viewSeg').addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b)return;view=b.dataset.view;store.set('view',view);syncTools();render()});
+$('#sort').addEventListener('change',ev=>{sortMode=ev.target.value;store.set('sort',sortMode);render()});
 $('#chips').addEventListener('click',ev=>{const b=ev.target.closest('.chip');if(!b)return;cat=b.dataset.cat;store.set('cat',cat);renderChips();render()});
 $('#q').addEventListener('input',render);
 $('#list').addEventListener('click',ev=>{
-  const art = ev.target.closest('.card');
+  const art = ev.target.closest('.card'); if(!art) return;
+  const key = art.dataset.key;
+  const st = ev.target.closest('[data-star]');
+  if(st){ favs.has(key)?favs.delete(key):favs.add(key); store.set('favs',[...favs]); toast(favs.has(key)?'★を付けました':'★を外しました'); render(); return; }
+  const vt = ev.target.closest('.vtab');
+  if(vt){ sel.set(key,vt.dataset.v); saveSel(); render(); return; }
   const cp = ev.target.closest('[data-copy]');
-  if(cp&&art){const e=byId(art.dataset.id);const isS=cp.dataset.copy==='style';copy(isS?styleOf(e):excludeOf(e),(isS?'Style':'Exclude')+labelOf(e));return}
+  if(cp){const e=byId(art.dataset.id);const isS=cp.dataset.copy==='style';copy(isS?styleOf(e):excludeOf(e),(isS?'Style':'Exclude')+labelOf(e));touchRecent(key);return}
   const mm = ev.target.closest('[data-memo]');
-  if(mm&&art){const e=byId(art.dataset.id);const isS=mm.dataset.memo==='style';
+  if(mm){const e=byId(art.dataset.id);const isS=mm.dataset.memo==='style';
     const ta=$('#memoText');const add=isS?styleOf(e):excludeOf(e);
     ta.value = ta.value ? ta.value.replace(/\s+$/,'')+'\n\n'+add : add; saveMemo();
     $('#memo').open=true; store.set('memoOpen',true); toast((isS?'Style':'Exclude')+labelOf(e)+'をメモ帳に入れました'); return}
   const tg = ev.target.closest('.toggle');
-  if(tg&&art){const id=art.dataset.id;open.has(id)?open.delete(id):open.add(id);const body=art.querySelector('.body');body.hidden=!open.has(id);tg.setAttribute('aria-expanded',open.has(id));return}
+  if(tg){open.has(key)?open.delete(key):open.add(key);const body=art.querySelector('.body');body.hidden=!open.has(key);tg.setAttribute('aria-expanded',open.has(key));return}
 });
-
 function syncLive(){ $('#live').checked=live; $('#liveKind').value=liveKind; $('#liveKind').hidden=!live; $('#liveHint').hidden=!live; }
 function syncExt(){ $('#ext').checked=ext; $('#extHint').hidden=!ext; }
 $('#ext').addEventListener('change',ev=>{ext=ev.target.checked;store.set('ext',ext);syncExt();render()});
@@ -310,8 +419,8 @@ saveMemo();
 
 /* ---------- boot ---------- */
 if(!['auto','band','club','hiphop','quiet'].includes(liveKind)) liveKind='auto';
-$('#ver').textContent=VERSION; $('#verFoot').textContent=VERSION; $('#total').textContent=DATA.length+' 件';
-syncLive(); syncExt(); renderChips(); render();
+$('#ver').textContent=VERSION; $('#verFoot').textContent=VERSION; $('#total').textContent=DATA.filter(e=>!isAddon(e)).length+' 件（'+CARDS.length+' 枚）';
+syncLive(); syncExt(); syncTools(); renderChips(); render();
 })();
 </script>
 
