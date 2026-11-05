@@ -524,6 +524,23 @@ if (!process.env.ONLY || "パターン".includes(process.env.ONLY)) {
   if (!ok) fail++;
   await pp.close();
 }
+// 曲を入れかえたら前の曲のテンポを残さない（調べ終わるまで空、そのあと新しい曲のテンポ）
+if (!process.env.ONLY || "テンポを残さない".includes(process.env.ONLY)) {
+  const pt = await browser.newPage();
+  await pt.goto(base);
+  await pt.check("input[name=mode][value=remix]", { force: true });
+  await pt.setInputFiles("#afile", S("a_10s.mp3"));
+  await pt.waitForFunction(() => document.getElementById("rmBpm").value !== "", null, { timeout: 15000 });
+  const before = await pt.$eval("#rmBpm", (e) => e.value);
+  await pt.setInputFiles("#afile", S("a_drum.mp3"));
+  const right = await pt.$eval("#rmBpm", (e) => e.value);
+  await pt.waitForFunction(() => document.getElementById("rmBpm").value !== "", null, { timeout: 15000 });
+  const after = +(await pt.$eval("#rmBpm", (e) => e.value));
+  const ok = before !== "" && right === "" && Math.abs(after - 128) < 0.5;
+  console.log(`${ok ? "OK" : "NG"} 曲を入れかえたら前の曲のテンポを残さない ${ok ? "" : JSON.stringify({ before, right, after })}`);
+  if (!ok) fail++;
+  await pt.close();
+}
 // 使う範囲のボタン
 if (!process.env.ONLY || "範囲のボタン".includes(process.env.ONLY)) {
   const pr = await browser.newPage();

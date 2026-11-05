@@ -663,6 +663,8 @@ function setAudio(file) {
   prev.onloadedmetadata = refresh;
   loadLyrics(file);
   state.beats = null; state.an = null;
+  // 前の曲のテンポを残さない（調べ終わるまで、前の曲の拍で区切ってしまわないように）
+  $("rmBpm").value = ""; $("rmOffset").value = "0"; $("rmBpmNote").textContent = ""; $("mgTempo").textContent = "";
   if (needSong()) findTempo();
   refresh();
 }
