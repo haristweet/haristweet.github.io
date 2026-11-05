@@ -46,6 +46,8 @@ const png = await page.evaluate(async () => {
     ["rays+tunnel", bt.offset + beat * 8 + 0.06, { layers: ["rays", "tunnel"] }],
     ["grid+stars", 6.3, { layers: ["grid", "stars"] }],
     ["scope", bt.offset + beat * 8 + 0.05, { layers: ["scope"] }],
+    ["yinyang (bar A)", bt.offset + beat * 8 + 0.4, { layers: ["yinyang", "center"] }],
+    ["yinyang (bar B)", bt.offset + beat * 12 + 0.4, { layers: ["yinyang", "center"] }],
     ["lyric bounce", 0.5, { lyrics: { anim: "bounce", lines } }],
     ["lyric pop", 0.5, { lyrics: { anim: "pop", lines } }],
     ["lyric type", 0.45, { lyrics: { anim: "type", lines } }],

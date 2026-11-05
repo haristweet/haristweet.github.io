@@ -352,6 +352,8 @@
         <label><input type="radio" name="grade" value="pastel">パステル</label>
         <label><input type="radio" name="grade" value="sepia">セピア</label>
         <label><input type="radio" name="grade" value="night">夜</label>
+        <label><input type="radio" name="grade" value="drill">ドリル</label>
+        <label><input type="radio" name="grade" value="yinyang">陰陽（小節ごとに白黒反転）</label>
       </span>
     </div>
     <div class="row">
@@ -384,6 +386,8 @@
           <label><input type="radio" name="mgStyle" value="gaming">ゲーミング</label>
           <label><input type="radio" name="mgStyle" value="glitch">グリッチ</label>
           <label><input type="radio" name="mgStyle" value="gold">ゴールド</label>
+          <label><input type="radio" name="mgStyle" value="yinyang">陰陽</label>
+          <label><input type="radio" name="mgStyle" value="drill">ドリル</label>
         </span>
       </div>
       <div class="row">
@@ -401,6 +405,7 @@
           <label><input type="checkbox" id="mgL_grid"> 地平線グリッド</label>
           <label><input type="checkbox" id="mgL_stars"> 星のワープ</label>
           <label><input type="checkbox" id="mgL_scope"> リサージュ</label>
+          <label><input type="checkbox" id="mgL_yinyang"> 陰陽マーク</label>
         </span>
       </div>
       <div class="row">
@@ -750,7 +755,17 @@ const GRADES = {
   pastel: ["curves=all='0/0.12 1/0.92',eq=saturation=0.8", "contrast(0.82) brightness(1.08) saturate(0.8)"],
   sepia:  ["colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131", "sepia(1)"],
   night:  ["colorbalance=bs=0.15:bm=0.1,eq=brightness=-0.03:saturation=0.9", "brightness(0.92) saturate(0.9) hue-rotate(15deg)"],
+  drill:  ["eq=saturation=0.35:contrast=1.35:brightness=-0.06,colorbalance=bs=0.06:bm=0.04,noise=alls=18:allf=t,vignette=PI/4", "saturate(0.35) contrast(1.35) brightness(0.9)"],
+  // 陰陽: モノクロの強いコントラストで、1 小節おきに白黒を反転（拍は曲から読む。グラフィックスの陰陽と同じ小節で裏返る）
+  yinyang: [
+    ({ t0, bar }) => `hue=s=0,eq=contrast=1.5:brightness=-0.04,negate=enable='gte(mod(t-${t0.toFixed(3)}+${(bar * 64).toFixed(3)},${(2 * bar).toFixed(3)}),${bar.toFixed(3)})'`,
+    ({ t, t0, bar }) => `grayscale(1) contrast(1.5) brightness(0.95)${Math.floor((t - t0) / bar) & 1 ? " invert(1)" : ""}`,
+  ],
 };
+// 小節の長さと、できあがりの時刻での 1 拍目（色の「陰陽」用）
+const barCtx = (shift) => { const bpm = num("rmBpm") || 120; return { bar: (4 * 60) / bpm, t0: num("rmOffset") + shift }; };
+const gradeFF = (name, shift) => { const v = GRADES[name][0]; return typeof v === "function" ? v(barCtx(shift)) : v; };
+const gradeCss = (name, t, shift) => { const v = GRADES[name][1]; return typeof v === "function" ? v({ t, ...barCtx(shift) }) : v; };
 // できあがりの大きさ: 形を変えるなら、短い辺は元のまま（「大きさ」で軽くしていればその短い辺）
 function targetDims(W0, H0, aspect, short) {
   if (aspect === "orig") return [W0, H0];
@@ -763,7 +778,7 @@ function aspectFilter(W, H, fit, id) {
   if (fit === "blur") return `split[${id}a][${id}b];[${id}a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=20:2[${id}bg];[${id}b]scale=${W}:${H}:force_original_aspect_ratio=decrease[${id}fg];[${id}bg][${id}fg]overlay=(W-w)/2:(H-h)/2,setsar=1`;
   return `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1`;
 }
-function needSong() { return opt("mode") !== "merge" || $("mgOn").checked || $("hypeOn").checked || ($("lyOn").checked && opt("lyStyle") !== "sub"); }
+function needSong() { return opt("mode") !== "merge" || $("mgOn").checked || $("hypeOn").checked || opt("grade") === "yinyang" || ($("lyOn").checked && opt("lyStyle") !== "sub"); }
 // 見つけたサビ（曲の中の時刻）。曲を調べ終わるまでは空
 const highlights = () => ($("hypeOn").checked && state.an ? findHighlights(state.an, num("rmBpm") || 120, num("rmOffset")) : []);
 
@@ -816,11 +831,12 @@ function mgPreview() {
     // 形: 真ん中で切る＝大きく描いてはみ出させる、ぼかし＝大きくぼかした上に全体を置く
     const cover = Math.max(W / vw, H / vh), fit = Math.min(W / vw, H / vh);
     g.save();
-    if ("filter" in g) g.filter = GRADES[opt("grade")][1];
+    const css = gradeCss(opt("grade"), ($("aprev").currentTime || 0) + previewShift(), previewShift());
+    if ("filter" in g) g.filter = css;
     if (opt("aspect") !== "orig" && opt("fit") === "blur") {
-      g.save(); if ("filter" in g) g.filter = `${GRADES[opt("grade")][1] === "none" ? "" : GRADES[opt("grade")][1] + " "}blur(8px)`;
+      g.save(); if ("filter" in g) g.filter = `${css === "none" ? "" : css + " "}blur(8px)`;
       g.drawImage(v, (W - vw * cover) / 2, (H - vh * cover) / 2, vw * cover, vh * cover); g.restore();
-      if ("filter" in g) g.filter = GRADES[opt("grade")][1];
+      if ("filter" in g) g.filter = css;
       g.drawImage(v, (W - vw * fit) / 2, (H - vh * fit) / 2, vw * fit, vh * fit);
     } else {
       const k = opt("aspect") === "orig" ? fit : cover;
@@ -845,6 +861,7 @@ $("mgPlay").addEventListener("click", () => {
   else a.pause();
 });
 $("hypeOn").addEventListener("change", () => { if (needSong()) findTempo(); });
+document.querySelectorAll("input[name=grade]").forEach((el) => el.addEventListener("change", () => { if (needSong()) findTempo(); }));
 $("mgOn").addEventListener("change", () => { if (needSong()) findTempo(); if ($("mgOn").checked) ensureMgFont().then(mgPreview).catch(() => {}); });
 document.querySelectorAll("input[name=lyStyle]").forEach((el) => el.addEventListener("change", () => { if (needSong()) findTempo(); ensureMgFont().then(mgPreview).catch(() => {}); }));
 
@@ -1608,13 +1625,28 @@ tpRender();
 const PS_KEY = "avmerge.presets", PS_SKIP = ["lyText", "mgTitleText", "mgArtist", "rmBpm", "rmOffset", "psName", "telopText", "ctData", "askip", "aend"];
 const psRead = () => { try { return JSON.parse(localStorage.getItem(PS_KEY) || "{}"); } catch { return {}; } };
 const psWrite = (o) => { try { localStorage.setItem(PS_KEY, JSON.stringify(o)); return true; } catch { return false; } };
+// 組み込みのパターン（★）。見た目と崩し加減だけ（作り方・曲ごとのものは変えない）。消せない
+const LAYER_IDS = ["bars", "ring", "wave", "pulse", "particles", "center", "mountain", "rays", "tunnel", "grid", "stars", "scope", "yinyang"];
+const layersOn = (on) => Object.fromEntries(LAYER_IDS.map((l) => [`mgL_${l}`, on.includes(l)]));
+const BUILTIN = {
+  "★ UKドリル・陰陽（白黒が小節ごとに裏返る）": {
+    mgOn: true, "radio:mgStyle": "yinyang", ...layersOn(["yinyang", "center", "pulse"]), "radio:mgWipe": "8", "radio:mgFrame": "none", mgTitle: true,
+    "radio:grade": "yinyang", hypeOn: true, "radio:lyStyle": "glitch", rmChaos: "45", rmAmount: "35",
+  },
+  "★ ダーク・ドリル（黒と赤・ざらつき）": {
+    mgOn: true, "radio:mgStyle": "drill", ...layersOn(["center", "rays", "particles"]), "radio:mgWipe": "cut", "radio:mgFrame": "vhs", mgTitle: true,
+    "radio:grade": "drill", hypeOn: true, "radio:lyStyle": "glitch", rmChaos: "55", rmAmount: "45",
+  },
+};
 function psRender(sel) {
-  const all = psRead(), names = Object.keys(all);
+  const all = { ...BUILTIN, ...psRead() }, names = Object.keys(all);
   $("psList").innerHTML = names.length ? names.map((n) => `<option></option>`).join("") : `<option value="">（保存した設定はまだありません）</option>`;
   names.forEach((n, i) => { const o = $("psList").options[i]; o.value = n; o.textContent = n; });
   if (sel) $("psList").value = sel;
-  $("psLoad").disabled = $("psDel").disabled = !names.length;
+  $("psLoad").disabled = !names.length;
+  $("psDel").disabled = !names.length || $("psList").value in BUILTIN;
 }
+$("psList").addEventListener("change", () => { $("psDel").disabled = $("psList").value in BUILTIN; });
 $("psSave").addEventListener("click", () => {
   const name = $("psName").value.trim() || `設定 ${new Date().toLocaleString("ja-JP")}`;
   const v = saveSettings();
@@ -1624,7 +1656,7 @@ $("psSave").addEventListener("click", () => {
   psRender(name);
 });
 $("psLoad").addEventListener("click", () => {
-  const name = $("psList").value, v = psRead()[name];
+  const name = $("psList").value, v = BUILTIN[name] || psRead()[name];
   if (!v) return;
   restoreSettings(v);
   if (needSong()) findTempo();
@@ -1634,7 +1666,7 @@ $("psLoad").addEventListener("click", () => {
 });
 $("psDel").addEventListener("click", () => {
   const name = $("psList").value, all = psRead();
-  if (!(name in all)) return;
+  if (name in BUILTIN || !(name in all)) return;
   delete all[name]; psWrite(all);
   $("psNote").textContent = `「${name}」を消しました。`;
   psRender();
@@ -1783,13 +1815,14 @@ async function run() {
       if (!finishNeeded()) return null;
       const useMg = mgNeeded();
       if (useMg) { setStatus("字の形を用意しています…"); await ensureMgFont(); if (!state.an) await findTempo(); }
+      if (opt("grade") === "yinyang" && !state.an) await findTempo();   // 白黒の反転を小節に合わせるため
       const info = await probe(f, "/out.mp4");
       const turned = Math.abs(info.rot) % 180 === 90;
       const W0 = (turned ? info.h : info.w) || 1280, H0 = (turned ? info.w : info.h) || 720;
       const [W, H] = targetDims(W0, H0, opt("aspect"), (SIZES[opt("size")] || SIZES.orig).short);
       const F = Math.min(30, Math.round(info.fps)) || 30;
       const lyCount = await prepLyrics(T, W, H);    // 字幕の歌詞は切ったあとの大きさで
-      const chain = [`fps=${F}`, opt("aspect") !== "orig" ? aspectFilter(W, H, opt("fit"), "as") : "", GRADES[opt("grade")][0], opts.subs ? `subtitles=filename=${opts.subs}:fontsdir=/fonts` : "", "format=yuv420p"].filter(Boolean).join(",");
+      const chain = [`fps=${F}`, opt("aspect") !== "orig" ? aspectFilter(W, H, opt("fit"), "as") : "", gradeFF(opt("grade"), shift), opts.subs ? `subtitles=filename=${opts.subs}:fontsdir=/fonts` : "", "format=yuv420p"].filter(Boolean).join(",");
       const what = { W, H, aspect: opt("aspect"), fit: opt("fit"), grade: opt("grade"), lyCount, mg: useMg };
       await f.createDir("/work").catch(() => {});
       if (!useMg) {

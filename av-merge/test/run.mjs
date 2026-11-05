@@ -79,6 +79,13 @@ await page.screenshot({ path: S("shot_empty.png"), fullPage: true });
 
 const MGALL = { style: "neon", layers: ["bars", "ring", "wave", "pulse", "particles"], wipe: "4", frame: "hud", title: true };
 const cases = [
+  // ダーク系: 陰陽（小節ごとに白黒反転。128 BPM・1 拍目 0.3 秒 → 0.3〜2.175 そのまま、2.175〜4.05 反転…）とドリル
+  { name: "陰陽・色が小節ごとに白黒反転", v: "v_black.mp4", a: "a_drum.mp3", set: {}, dur: 8, vcodec: "h264", fx: { grade: "yinyang" },
+    bright: [[1, false, "all"], [3, true, "all"], [5, false, "all"], [6.5, true, "all"]], fxLog: /"grade":"yinyang"/ },
+  { name: "陰陽・グラフィックスと色をそろえる", v: "v_h264.mp4", a: "a_drum.mp3", set: {}, dur: 6, vcodec: "h264", fx: { grade: "yinyang" },
+    mg: { style: "yinyang", layers: ["yinyang", "center"], wipe: "none", frame: "none", title: false }, mgLog: /"style":"yinyang"/, mgShot: true },
+  { name: "ドリル・色とスタイル", v: "v_h264.mp4", a: "a_drum.mp3", set: {}, dur: 6, vcodec: "h264", fx: { grade: "drill" },
+    mg: { style: "drill", layers: ["center", "yinyang"], wipe: "none", frame: "vhs", title: true }, fxLog: /"grade":"drill"/, mgLog: /"style":"drill"/, mgShot: true },
   // 使う範囲（ショート動画）
   { name: "範囲・くっつける（2〜5 秒）", v: "v_h264.mp4", a: "a_10s.mp3", set: { askip: 2, aend: 5 }, dur: 3, vcodec: "h264", copy: true },
   { name: "範囲・リミックス（5〜13 秒）", v: ["v_h264.mp4", "v_big.mp4"], a: "a_drum.mp3", set: { askip: 5, aend: 13 }, dur: 8, vcodec: "h264", remix: { chaos: 40, seed: 2 } },
@@ -498,6 +505,25 @@ if (!process.env.ONLY || "音ハメ".includes(process.env.ONLY)) {
   await p9.screenshot({ path: S("shot_cut.png"), fullPage: true });
   await p9.close();
 }
+// 組み込みのパターン（★）: 呼び出すと見た目がそろい、作り方は変えない。★は消せない
+if (!process.env.ONLY || "パターン".includes(process.env.ONLY)) {
+  const pp = await browser.newPage();
+  await pp.goto(base);
+  await pp.check("input[name=mode][value=cut]", { force: true });
+  const name = await pp.$$eval("#psList option", (os) => os.map((o) => o.value).find((v) => v.startsWith("★ UKドリル")));
+  await pp.selectOption("#psList", name);
+  const delDis = await pp.$eval("#psDel", (e) => e.disabled);
+  await pp.click("#psLoad");
+  const r = await pp.evaluate(() => ({
+    style: document.querySelector("input[name=mgStyle]:checked").value, grade: document.querySelector("input[name=grade]:checked").value,
+    yy: document.getElementById("mgL_yinyang").checked, bars: document.getElementById("mgL_bars").checked, mgOn: document.getElementById("mgOn").checked,
+    mode: document.querySelector("input[name=mode]:checked").value,
+  }));
+  const ok = !!name && delDis && r.style === "yinyang" && r.grade === "yinyang" && r.yy && !r.bars && r.mgOn && r.mode === "cut";
+  console.log(`${ok ? "OK" : "NG"} 組み込みのパターン ${ok ? "" : JSON.stringify({ name, delDis, ...r })}`);
+  if (!ok) fail++;
+  await pp.close();
+}
 // 使う範囲のボタン
 if (!process.env.ONLY || "範囲のボタン".includes(process.env.ONLY)) {
   const pr = await browser.newPage();
@@ -554,7 +580,7 @@ if (!process.env.ONLY || "プリセット".includes(process.env.ONLY)) {
   const r = await p6.evaluate(() => ({
     mgOn: document.getElementById("mgOn").checked, glitch: document.querySelector("input[name=mgStyle][value=glitch]").checked,
     chaos: document.getElementById("rmChaos").value, remix: document.querySelector("input[name=mode][value=remix]").checked,
-    ly: document.getElementById("lyText").value, opt: document.getElementById("psList").options[0].textContent, html: document.getElementById("psList").innerHTML,
+    ly: document.getElementById("lyText").value, opt: [...document.getElementById("psList").options].find((o) => o.value === "<b>私の設定</b>")?.textContent, html: document.getElementById("psList").innerHTML,
     stored: JSON.parse(localStorage.getItem("avmerge.presets")),
   }));
   const ok = r.mgOn && r.glitch && r.chaos === "30" && r.remix && r.ly === "別の歌詞" && r.opt === "<b>私の設定</b>" && !/<b>/.test(r.html) && !("lyText" in r.stored["<b>私の設定</b>"]);

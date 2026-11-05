@@ -97,9 +97,13 @@ export const STYLES = {
   sketch:  { name: "手描き", colors: ["#ffffff", "#f2f2f2"], outline: "#111111", line: 0.011, font: "900", fill: true, sketch: true },
   gaming:  { name: "ゲーミング", colors: ["#ff0000"], rainbow: true, glow: 14, line: 0.007, add: true, font: "900", fill: true },
   glitch:  { name: "グリッチ", colors: ["#ffffff", "#e6e6e6"], split: true, line: 0.008, font: "900", fill: true, mono: true },
+  // 陰陽: 白と黒だけ。yy＝小節ごとに白と黒が入れ替わる（色の「陰陽」と同じ小節で裏返る）
+  yinyang: { name: "陰陽", colors: ["#ffffff", "#0a0a0a"], yy: true, line: 0.012, font: "900", fill: true },
+  // ドリル: 黒と血のような赤と白。ざらついた等幅の字
+  drill:   { name: "ドリル", colors: ["#e10600", "#f2f2f2", "#5a0000"], glow: 6, line: 0.007, font: "900", fill: true, mono: true },
   gold:    { name: "ゴールド", colors: ["#ffe9a8", "#f5c542", "#fff8e1"], grad: "#8a5a00", glow: 6, line: 0.006, font: "700", fill: true, serif: true },
 };
-export const LAYERS = ["bars", "ring", "wave", "pulse", "particles", "center", "mountain", "rays", "tunnel", "grid", "stars", "scope"];
+export const LAYERS = ["bars", "ring", "wave", "pulse", "particles", "center", "mountain", "rays", "tunnel", "grid", "stars", "scope", "yinyang"];
 export const FRAMES = ["none", "hud", "vhs", "rec"];
 export const WIPES = ["none", "4", "8", "cut"];
 export const LYRIC_ANIMS = ["bounce", "pop", "type", "glitch"];
@@ -170,8 +174,11 @@ export function drawFrame(ctx, sc, t) {
   const u = Math.min(sw, sh);   // 大きさの基準
   const f = feat(sc, t), b = beatAt(sc, t);
   sc._hp = sc.hl && sc.hl.length ? hypeAt(sc.hl, t) : 0;   // サビの強め具合（0〜1）
+  const yyFlip = Math.floor(b.k / 4) & 1;   // 小節の奇数・偶数（陰陽の入れ替わり）
+  sc._yy = yyFlip;
   const col = st.rainbow
     ? (i) => `hsl(${Math.round((t * 120 + i * 47) % 360)}, 100%, 60%)`
+    : st.yy ? (i) => st.colors[(((i + yyFlip) % 2) + 2) % 2]
     : (i) => st.colors[((i % st.colors.length) + st.colors.length) % st.colors.length];
   g.save();
   g.lineJoin = "round"; g.lineCap = "round";
@@ -193,6 +200,7 @@ export function drawFrame(ctx, sc, t) {
   if (L.has("rays")) drawRays(g, sc, t, f, sw, sh, u, col, stroke);
   if (L.has("scope")) drawScope(g, sc, t, f, sw, sh, u, col, stroke);
   if (L.has("center")) drawCenter(g, sc, f, sw, sh, u, col, fill, outline, stroke);
+  if (L.has("yinyang")) drawTaijitu(g, sc, t, f, b, sw, sh, u, col);
   if (L.has("pulse")) drawPulse(g, sc, t, b, sw, sh, u, col, stroke, fill, outline);
   if (L.has("ring")) drawRing(g, sc, t, f, sw, sh, u, col, stroke, fill, outline);
   if (L.has("wave")) drawWave(g, sc, f, sw, sh, u, col, stroke);
@@ -394,6 +402,27 @@ function drawScope(g, sc, t, f, W, H, u, col, stroke) {
   g.stroke();
 }
 
+// 陰陽マーク（太極図）: 低い音でふくらみ、ゆっくり回る。小節の頭で 0.3 秒かけて半回転して白黒が入れ替わる
+function drawTaijitu(g, sc, t, f, b, W, H, u, col) {
+  const R = u * (0.2 + 0.06 * f.low + 0.03 * Math.max(0, 1 - b.since / 0.2) * (b.k % 4 === 0 ? 1 : 0.4));
+  const barT = b.since + ((b.k % 4) + 4) % 4 * sc.beat, flip = Math.min(1, barT / 0.3);
+  const rot = t * 0.35 + (Math.floor(b.k / 4) + (1 - Math.pow(1 - flip, 3))) * Math.PI;
+  const light = col(0), dark = sc.st.yy ? col(1) : "#050505";
+  g.save();
+  g.translate(W / 2, H / 2); g.rotate(rot);
+  g.globalAlpha = sc.st.alpha ?? 1;
+  g.shadowBlur = 0;
+  const circle = (x, y, r, c) => { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
+  circle(0, 0, R, dark);
+  g.fillStyle = light; g.beginPath(); g.arc(0, 0, R, -Math.PI / 2, Math.PI / 2); g.fill();
+  circle(0, -R / 2, R / 2, light);
+  circle(0, R / 2, R / 2, dark);
+  circle(0, -R / 2, R / 7, dark);
+  circle(0, R / 2, R / 7, light);
+  g.strokeStyle = light; g.lineWidth = Math.max(1, u * 0.006); g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.stroke();
+  g.restore();
+}
+
 // 上下バー: 真ん中の線から上下対称にのびる
 function drawCenter(g, sc, f, W, H, u, col, fill, outline, stroke) {
   if (f.i < 0) return;
@@ -493,7 +522,7 @@ function textStyle(g, sc, c, u) {
   g.fillStyle = c;
   if (sc.st.glow) { g.shadowColor = c; g.shadowBlur = sc.st.glow * (u / 360); }
   g.lineJoin = "round";
-  g.strokeStyle = sc.st.outline || "rgba(0,0,0,0.85)";
+  g.strokeStyle = sc.st.yy ? (c === sc.st.colors[0] ? sc.st.colors[1] : sc.st.colors[0]) : (sc.st.outline || "rgba(0,0,0,0.85)");
   g.lineWidth = Math.max(2, u * (sc.st.outline ? 0.016 : 0.01));
 }
 function fitSize(g, sc, text, px, maxW, weight) {
