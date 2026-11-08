@@ -1,0 +1,3764 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VJ DOCK - Control</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { font-size: 20px; }
+
+/* --- Light Mode Overrides --- */
+body.light {
+  background: #e0e0e0;
+  color: #222;
+}
+body.light #header,
+body.light .dock-tab { background: #ccc; }
+body.light .dock-tab { color: #888; }
+body.light .dock-tab:hover { background: #bbb; color: #555; }
+body.light #preview-panel { background: #d0d0d0; }
+body.light #preview-header { border-bottom-color: #aaa; }
+body.light #preview-header { color: #888; }
+body.light #preview-header .info { color: #666; }
+body.light #controls-bar { background: #c0d0e0; }
+body.light #text-panel { background: #c0e0c0; }
+body.light #logo-panel { background: #e0d0c0; }
+body.light #audio-panel { background: #d0c0e0; }
+body.light #header,
+body.light #dock-tabs,
+body.light #controls-bar,
+body.light #text-panel,
+body.light #bottom-row { border-color: #aaa; }
+body.light .slot { background: #ccc; border-color: #aaa; }
+body.light .slot:hover { border-color: #888; }
+body.light .slot.has-media { border-color: #999; }
+body.light .slot.has-media:hover { border-color: #666; }
+body.light .slot-label { color: rgba(0,0,0,0.3); }
+body.light .slot-name { color: rgba(0,0,0,0.5); }
+body.light .fx-btn,
+body.light .beat-btn,
+body.light .scope-btn,
+body.light .src-btn,
+body.light .motion-btn,
+body.light .look-btn,
+body.light .logo-pos-btn,
+body.light #text-toggle,
+body.light #logo-toggle,
+body.light #auto-btn,
+body.light #audio-load-btn,
+body.light #audio-play-btn,
+body.light #audio-reactive-btn,
+body.light #logo-load-btn,
+body.light #logo-remove-btn,
+body.light .slot-empty-btn,
+body.light #help-btn { background: #bbb; border-color: #999; color: #555; }
+body.light .fx-btn:hover,
+body.light .beat-btn:hover,
+body.light .scope-btn:hover,
+body.light .src-btn:hover,
+body.light .motion-btn:hover,
+body.light .look-btn:hover,
+body.light .logo-pos-btn:hover,
+body.light #auto-btn:hover,
+body.light #audio-load-btn:hover,
+body.light #audio-play-btn:hover,
+body.light #audio-reactive-btn:hover,
+body.light #logo-load-btn:hover,
+body.light #help-btn:hover,
+body.light .slot-empty-btn:hover { background: #aaa; color: #222; }
+body.light #text-input,
+body.light #help-tooltip,
+body.light #aspect-select { background: #d0d0d0; border-color: #999; color: #333; }
+body.light #text-input:focus { border-color: #0aa; }
+body.light #help-tooltip { box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+body.light #help-tooltip kbd { background: #bbb; border-color: #999; }
+body.light .control-row label,
+body.light .auto-row label,
+body.light #text-options label,
+body.light .logo-opt-row label,
+body.light #audio-vol-row label { color: #666; }
+body.light #gamepad-status { color: #999; }
+body.light #font-size-ctrl label { color: #888; }
+body.light #font-size-ctrl button { background: #ccc; border-color: #999; color: #555; }
+body.light #font-size-ctrl button:hover { background: #bbb; color: #222; }
+body.light #rec-btn { background: #bbb; color: #555; }
+body.light #rec-btn:hover { background: #aaa; color: #333; }
+body.light #logo-preview-wrap { background: #ccc; border-color: #aaa; }
+body.light #audio-level-indicator { background: #ccc; border-color: #aaa; }
+body.light #mic-meter-bg { background: #ccc; border-color: #aaa; }
+body.light #beat-indicator { background: #aaa; }
+body.light #audio-name,
+body.light #logo-name { color: #555; }
+body.light #text-options select,
+body.light #text-options input[type="color"] { background: #d0d0d0; border-color: #999; color: #333; }
+body.light .slot-remove { color: rgba(0,0,0,0.3); }
+body.light .slot-remove:hover { color: #f44; }
+body.light #auto-panel-label,
+body.light #fx-panel-label,
+body.light #text-panel-header span,
+body.light #audio-panel-header span,
+body.light #logo-panel-header span,
+body.light #help-tooltip .section { color: #888; }
+body.light #drop-overlay { background: rgba(0,150,150,0.1); }
+body.light ::-webkit-scrollbar-track { background: #d0d0d0; }
+body.light ::-webkit-scrollbar-thumb { background: #aaa; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'Courier New', monospace;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 1rem;
+}
+
+/* --- Header --- */
+#header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: #111;
+  border-bottom: 1px solid #333;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+#header h1 { font-size: 1.15rem; color: #0ff; letter-spacing: 4px; }
+
+#header-right { display: flex; align-items: center; gap: 12px; }
+
+#gamepad-status { font-size: 0.8rem; color: #666; }
+#gamepad-status.connected { color: #0f0; }
+
+#font-size-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#font-size-ctrl label {
+  font-size: 0.7rem;
+  color: #666;
+}
+
+#font-size-ctrl input[type="range"] {
+  width: 80px;
+  accent-color: #0ff;
+  height: 3px;
+}
+
+#font-size-ctrl .value {
+  font-size: 0.7rem;
+  color: #0ff;
+  min-width: 2.5rem;
+  text-align: center;
+}
+
+#font-size-ctrl button {
+  background: #222;
+  border: 1px solid #444;
+  color: #aaa;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#font-size-ctrl button:hover {
+  background: #333;
+  color: #fff;
+}
+
+#aspect-select {
+  background: #222;
+  border: 1px solid #444;
+  color: #0ff;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.75rem;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  border-radius: 3px;
+  cursor: pointer;
+  outline: none;
+}
+#aspect-select:hover { border-color: #0ff; }
+
+#output-btn {
+  padding: 0.35rem 1rem;
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  letter-spacing: 2px;
+  border: none;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+
+#output-btn.closed {
+  background: #0ff;
+  color: #000;
+}
+
+#output-btn.closed:hover {
+  background: #5ff;
+}
+
+#output-btn.open {
+  background: #f44;
+  color: #fff;
+}
+
+#output-btn.open:hover {
+  background: #f66;
+}
+
+#help-wrap {
+  position: relative;
+  display: inline-block;
+}
+#help-btn {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  border: 1px solid #444;
+  cursor: pointer;
+  border-radius: 3px;
+  background: #222;
+  color: #888;
+  transition: all 0.15s;
+}
+#help-btn:hover { background: #333; color: #fff; }
+#help-tooltip {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 6px;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 10px 14px;
+  font-size: 0.6rem;
+  color: #aaa;
+  line-height: 1.6;
+  white-space: nowrap;
+  z-index: 300;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  pointer-events: none;
+}
+#help-tooltip kbd {
+  background: #222;
+  border: 1px solid #444;
+  border-radius: 2px;
+  padding: 0 0.3rem;
+  color: #0ff;
+  font-size: 0.55rem;
+}
+#help-tooltip .section { color: #666; margin-top: 4px; }
+#help-wrap:hover #help-tooltip { display: block; }
+
+#theme-btn {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  border: 1px solid #444;
+  cursor: pointer;
+  border-radius: 3px;
+  background: #222;
+  color: #ff0;
+  transition: all 0.15s;
+}
+#theme-btn:hover { background: #333; }
+body.light #theme-btn { background: #ccc; border-color: #999; color: #333; }
+body.light #theme-btn:hover { background: #bbb; }
+
+#folder-btn {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  letter-spacing: 2px;
+  border: none;
+  cursor: pointer;
+  border-radius: 3px;
+  background: #0f0;
+  color: #000;
+  transition: all 0.15s;
+}
+#folder-btn:hover { background: #4f4; }
+
+#refresh-btn {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  letter-spacing: 2px;
+  border: none;
+  cursor: pointer;
+  border-radius: 3px;
+  background: #ff0;
+  color: #000;
+  transition: all 0.15s;
+}
+#refresh-btn:hover { background: #ff6; }
+#refresh-btn.flashing { animation: refresh-flash 0.3s; }
+@keyframes refresh-flash {
+  0% { background: #fff; }
+  100% { background: #ff0; }
+}
+
+/* --- Main Layout --- */
+#main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- Top Area (Dock + Preview side by side) --- */
+#top-area {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+#slots-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* --- Preview (compact, right side) --- */
+#preview-panel {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  background: #0d0d0d;
+  border-left: 1px solid #333;
+  flex-shrink: 0;
+}
+
+#preview-header {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.65rem;
+  color: #555;
+  letter-spacing: 2px;
+  border-bottom: 1px solid #222;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#preview-header .info { color: #888; font-size: 0.6rem; }
+
+#preview-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  position: relative;
+  min-height: 0;
+}
+
+#preview-canvas {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+#blackout-indicator {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  color: #f44;
+  letter-spacing: 4px;
+  pointer-events: none;
+}
+
+#blackout-indicator.visible {
+  display: flex;
+}
+
+/* --- Right Panel (Controls below dock area) --- */
+#right-panel {
+  flex-shrink: 0;
+  overflow-y: auto;
+  max-height: 50vh;
+}
+
+/* --- Dock Tabs --- */
+#dock-tabs {
+  display: flex;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+}
+
+.dock-tab {
+  flex: 1;
+  padding: 0.4rem 0;
+  text-align: center;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: bold;
+  letter-spacing: 2px;
+  border: none;
+  background: #111;
+  color: #555;
+  transition: all 0.15s;
+}
+
+.dock-tab:hover { background: #1a1a1a; color: #aaa; }
+
+.dock-tab.active { border-bottom: 2px solid; }
+.dock-tab:nth-child(1).active { color: #0ff; border-bottom-color: #0ff; background: #0a1a1a; }
+.dock-tab:nth-child(2).active { color: #f0f; border-bottom-color: #f0f; background: #1a0a1a; }
+.dock-tab:nth-child(3).active { color: #ff0; border-bottom-color: #ff0; background: #1a1a0a; }
+.dock-tab:nth-child(4).active { color: #0f0; border-bottom-color: #0f0; background: #0a1a0a; }
+
+/* --- Slots Grid --- */
+#slots-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+#slots-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.slot {
+  aspect-ratio: 16/9;
+  background: #1a1a1a;
+  border: 2px solid #333;
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.slot:hover { border-color: #666; }
+.slot.active { border-color: #0ff; box-shadow: 0 0 12px rgba(0,255,255,0.3); }
+.slot.has-media { border-color: #444; }
+.slot.has-media:hover { border-color: #888; }
+
+.slot-label {
+  position: absolute; top: 3px; left: 5px;
+  font-size: 0.75rem; color: rgba(255,255,255,0.3);
+  z-index: 2; pointer-events: none;
+}
+
+.slot-name {
+  position: absolute; bottom: 3px; left: 5px; right: 5px;
+  font-size: 0.65rem; color: rgba(255,255,255,0.5);
+  z-index: 2; pointer-events: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.slot-empty {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.slot-empty-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 28px;
+  background: #222; border: 1px solid #444;
+  color: #666; font-size: 0.75rem;
+  font-family: 'Courier New', monospace; font-weight: bold;
+  border-radius: 3px; cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.15s;
+}
+
+.slot-empty-btn:hover { background: #333; color: #fff; border-color: #0ff; }
+.slot-empty-btn.cam-btn:hover { border-color: #f0f; color: #f0f; }
+.slot-empty-btn.html-btn:hover { border-color: #ff0; color: #ff0; }
+
+.slot-cam-indicator, .slot-html-indicator {
+  position: absolute; top: 3px; right: 22px;
+  font-size: 0.6rem;
+  z-index: 2; pointer-events: none;
+  letter-spacing: 1px;
+}
+.slot-cam-indicator { color: #f0f; }
+.slot-html-indicator { color: #ff0; }
+
+.slot-fps {
+  position: absolute; bottom: 3px; right: 5px;
+  font-size: 0.55rem;
+  z-index: 2; pointer-events: none;
+  letter-spacing: 1px;
+  padding: 1px 3px;
+  border-radius: 2px;
+  background: rgba(0,0,0,0.6);
+}
+.slot-fps.heavy { color: #f44; }
+.slot-fps.mid    { color: #ff0; }
+.slot-fps.light  { color: #0f0; }
+
+.slot video, .slot img {
+  width: 100%; height: 100%; object-fit: cover; pointer-events: none;
+}
+
+.slot-remove {
+  position: absolute; top: 2px; right: 4px;
+  font-size: 0.85rem; color: rgba(255,255,255,0.3);
+  cursor: pointer; z-index: 3; display: none;
+}
+.slot:hover .slot-remove { display: block; }
+.slot-remove:hover { color: #f44; }
+
+/* --- Controls Bar --- */
+#controls-bar {
+  padding: 5px 10px;
+  border-top: 1px solid #333;
+  background: #081828;
+  flex-shrink: 0;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+#sliders { flex: 1; }
+
+.control-row {
+  display: flex; align-items: center; margin-bottom: 2px; gap: 6px;
+}
+
+.control-row label {
+  font-size: 0.7rem; color: #888; width: 4rem; flex-shrink: 0;
+}
+
+.control-row input[type="range"] {
+  flex: 1; accent-color: #0ff; height: 3px;
+}
+
+.control-row .value {
+  font-size: 0.7rem; color: #0ff; width: 2.5rem; text-align: right;
+}
+
+#fx-panel { display: flex; flex-direction: column; gap: 2px; }
+#fx-panel-label { font-size: 0.65rem; color: #555; letter-spacing: 2px; margin-bottom: 1px; }
+
+#fx-buttons { display: flex; gap: 3px; flex-wrap: wrap; max-width: 260px; }
+
+.fx-btn {
+  padding: 0.2rem 0.5rem; font-size: 0.65rem;
+  font-family: 'Courier New', monospace;
+  background: #1a1a1a; border: 1px solid #444;
+  color: #888; cursor: pointer; border-radius: 3px;
+  transition: all 0.1s;
+}
+.fx-btn:hover { background: #222; color: #ccc; }
+.fx-btn.active { background: #0a2a2a; border-color: #0ff; color: #0ff; }
+
+/* --- Auto Mode --- */
+#auto-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+}
+#auto-panel-label { font-size: 0.65rem; color: #555; letter-spacing: 2px; margin-bottom: 1px; }
+
+#auto-btn {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  letter-spacing: 2px;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+#auto-btn:hover { background: #222; color: #ccc; }
+#auto-btn.active {
+  background: #2a0a0a;
+  border-color: #f44;
+  color: #f44;
+  animation: auto-pulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes auto-pulse {
+  from { box-shadow: 0 0 4px rgba(255,68,68,0.3); }
+  to { box-shadow: 0 0 12px rgba(255,68,68,0.6); }
+}
+
+.auto-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.auto-row label {
+  font-size: 0.7rem;
+  color: #666;
+  width: 2.5rem;
+  flex-shrink: 0;
+}
+.auto-row input[type="range"] {
+  flex: 1;
+  accent-color: #f44;
+  height: 4px;
+}
+.auto-row .value {
+  font-size: 0.75rem;
+  color: #f44;
+  width: 3.5rem;
+  text-align: right;
+}
+
+.beat-btn {
+  padding: 0.2rem 0.45rem;
+  font-size: 0.65rem;
+  font-family: 'Courier New', monospace;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.1s;
+}
+.beat-btn:hover { background: #222; color: #ccc; }
+.beat-btn.active { background: #2a1a1a; border-color: #f44; color: #f44; }
+
+.scope-btn {
+  padding: 0.2rem 0.45rem;
+  font-size: 0.65rem;
+  font-family: 'Courier New', monospace;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.1s;
+}
+.scope-btn:hover { background: #222; color: #ccc; }
+.scope-btn.active { background: #2a1a1a; border-color: #f44; color: #f44; }
+
+#beat-indicator {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #333;
+  transition: background 0.05s;
+  flex-shrink: 0;
+}
+#beat-indicator.flash { background: #f44; }
+
+.src-btn {
+  padding: 0.2rem 0.45rem;
+  font-size: 0.65rem;
+  font-family: 'Courier New', monospace;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.1s;
+}
+.src-btn:hover { background: #222; color: #ccc; }
+.src-btn.active { background: #2a1a1a; border-color: #f44; color: #f44; }
+
+#mic-meter-bg {
+  flex: 1;
+  height: 8px;
+  background: #222;
+  border: 1px solid #444;
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+#mic-meter-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #0f0, #ff0 60%, #f00);
+  transition: width 0.05s;
+}
+#mic-meter-thresh {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: #fff;
+  left: 50%;
+}
+
+/* --- Gamepad Help --- */
+
+/* --- Text Overlay Panel --- */
+#text-panel {
+  padding: 4px 10px;
+  border-top: 1px solid #333;
+  background: #0a200a;
+  flex-shrink: 0;
+}
+
+#text-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+
+#text-panel-header span {
+  font-size: 0.65rem;
+  color: #555;
+  letter-spacing: 2px;
+}
+
+#text-toggle {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.7rem;
+  font-family: 'Courier New', monospace;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+#text-toggle.active {
+  background: #0a2a2a;
+  border-color: #0ff;
+  color: #0ff;
+}
+
+#text-input-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 3px;
+}
+
+#text-input {
+  flex: 1;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #fff;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.75rem;
+  font-family: 'Courier New', monospace;
+  border-radius: 3px;
+  outline: none;
+}
+
+#text-input:focus {
+  border-color: #0ff;
+}
+
+#text-send {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  font-family: 'Courier New', monospace;
+  background: #0ff;
+  color: #000;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+#text-send:hover { background: #5ff; }
+
+#text-options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+#text-options label {
+  font-size: 0.7rem;
+  color: #666;
+}
+
+#text-options select, #text-options input[type="color"] {
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #ccc;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.7rem;
+  font-family: 'Courier New', monospace;
+  border-radius: 3px;
+  outline: none;
+}
+
+#text-options input[type="color"] {
+  width: 1.8rem;
+  height: 1.5rem;
+  padding: 1px;
+  cursor: pointer;
+}
+
+.text-opt-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 2px;
+}
+
+.text-opt-row:last-child { margin-bottom: 0; }
+
+.motion-btn, .look-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.65rem;
+  font-family: 'Courier New', monospace;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.1s;
+}
+
+.motion-btn:hover, .look-btn:hover { background: #222; color: #ccc; }
+.motion-btn.active { background: #1a1a0a; border-color: #ff0; color: #ff0; }
+.look-btn.active { background: #2a1a2a; border-color: #f0f; color: #f0f; }
+
+/* --- REC Button --- */
+#rec-btn {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  letter-spacing: 2px;
+  border: none;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+  background: #333;
+  color: #888;
+}
+#rec-btn:hover { background: #444; color: #ccc; }
+#rec-btn.recording {
+  background: #f00;
+  color: #fff;
+  animation: rec-blink 1s ease-in-out infinite;
+}
+@keyframes rec-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+#rec-time {
+  font-size: 0.7rem;
+  color: #f44;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 1px;
+  min-width: 4rem;
+  display: none;
+}
+#rec-time.visible { display: inline; }
+
+/* --- Audio Player --- */
+#audio-panel {
+  padding: 4px 10px;
+  background: #180820;
+  flex: 1;
+}
+#audio-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+#audio-panel-header span {
+  font-size: 0.65rem;
+  color: #555;
+  letter-spacing: 2px;
+}
+#audio-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#audio-load-btn, #audio-play-btn {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+#audio-load-btn:hover, #audio-play-btn:hover { background: #222; color: #ccc; }
+#audio-play-btn.playing { background: #0a2a0a; border-color: #0f0; color: #0f0; }
+#audio-name {
+  font-size: 0.7rem;
+  color: #888;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#audio-time {
+  font-size: 0.7rem;
+  color: #0ff;
+  font-family: 'Courier New', monospace;
+  min-width: 7rem;
+}
+#audio-vol-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+#audio-vol-row label {
+  font-size: 0.65rem;
+  color: #666;
+}
+#audio-vol {
+  width: 60px;
+  accent-color: #0f0;
+  height: 3px;
+}
+#audio-reactive-btn {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.65rem;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+#audio-reactive-btn:hover { background: #222; color: #ccc; }
+#audio-reactive-btn.active { background: #2a2a0a; border-color: #ff0; color: #ff0; }
+
+#audio-level-indicator {
+  width: 6px; height: 24px;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+#audio-level-indicator::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: var(--level, 0%);
+  background: linear-gradient(0deg, #0f0, #ff0 60%, #f00);
+  transition: height 0.05s;
+}
+
+#audio-seek {
+  flex: 1;
+  accent-color: #0ff;
+  height: 4px;
+  min-width: 100px;
+}
+
+/* --- Logo Overlay Panel --- */
+#bottom-row {
+  display: flex;
+  border-top: 1px solid #333;
+  flex-shrink: 0;
+}
+#logo-panel {
+  padding: 4px 10px;
+  background: #201008;
+  flex: 1;
+  border-right: 1px solid #333;
+}
+#logo-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+#logo-panel-header span {
+  font-size: 0.65rem;
+  color: #555;
+  letter-spacing: 2px;
+}
+#logo-toggle {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.7rem;
+  font-family: 'Courier New', monospace;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+}
+#logo-toggle.active {
+  background: #0a2a2a;
+  border-color: #0ff;
+  color: #0ff;
+}
+#logo-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+#logo-load-btn, #logo-remove-btn {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+#logo-load-btn:hover { background: #222; color: #ccc; }
+#logo-remove-btn:hover { background: #222; color: #f44; }
+#logo-remove-btn:disabled { opacity: 0.3; cursor: default; }
+#logo-name {
+  font-size: 0.7rem;
+  color: #888;
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#logo-preview-wrap {
+  width: 40px; height: 40px;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+#logo-preview-img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: none;
+}
+#logo-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.logo-opt-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.logo-opt-row label {
+  font-size: 0.7rem;
+  color: #666;
+}
+.logo-opt-row input[type="range"] {
+  width: 60px;
+  accent-color: #0ff;
+  height: 3px;
+}
+.logo-opt-row .value {
+  font-size: 0.7rem;
+  color: #0ff;
+  min-width: 2.5rem;
+  text-align: right;
+}
+.logo-pos-btn {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.6rem;
+  font-family: 'Courier New', monospace;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #888;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.1s;
+}
+.logo-pos-btn:hover { background: #222; color: #ccc; }
+.logo-pos-btn.active { background: #0a2a2a; border-color: #0ff; color: #0ff; }
+
+/* --- Drop Overlay --- */
+#drop-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,255,255,0.08); border: 3px dashed #0ff;
+  z-index: 100; align-items: center; justify-content: center;
+  font-size: 24px; color: #0ff; letter-spacing: 4px;
+  pointer-events: none;
+}
+
+/* Scrollbar */
+#slots-container::-webkit-scrollbar { width: 4px; }
+#slots-container::-webkit-scrollbar-track { background: #111; }
+#slots-container::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>VJ DOCK</h1>
+  <div id="header-right">
+    <div id="font-size-ctrl">
+      <label>SIZE</label>
+      <button id="font-down">-</button>
+      <input type="range" id="font-size-slider" min="10" max="28" step="1" value="20">
+      <button id="font-up">+</button>
+      <span class="value" id="font-size-val">20px</span>
+    </div>
+    <span id="gamepad-status">GAMEPAD: NOT CONNECTED</span>
+    <button id="rec-btn">⏺ REC</button>
+    <span id="rec-time">00:00</span>
+    <select id="aspect-select">
+      <option value="16:9" selected>16:9</option>
+      <option value="4:3">4:3</option>
+    </select>
+    <div id="help-wrap">
+      <button id="help-btn">?</button>
+      <div id="help-tooltip">
+        <kbd>1</kbd>-<kbd>8</kbd> Slot選択 &nbsp; <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd> Dock切替 &nbsp; <kbd>Space</kbd> Blackout<br>
+        <kbd>T</kbd> Text ON/OFF &nbsp; <kbd>F</kbd> Output Fullscreen &nbsp; <kbd>A</kbd> Auto ON/OFF &nbsp; <kbd>L</kbd> Light/Dark<br>
+        <div class="section">GAMEPAD</div>
+        A/B/X/Y=Slot1-4 | LB/RB=Slot5-6 | LT/RT=Dock切替<br>
+        L-Stick=Speed/Opacity | R-Stick=MIX | D-Pad=FX | Start=Blackout
+      </div>
+    </div>
+    <button id="theme-btn">☀</button>
+    <button id="folder-btn">FOLDER</button>
+    <button id="refresh-btn">REFRESH</button>
+    <button id="output-btn" class="closed">OPEN OUTPUT</button>
+  </div>
+</div>
+
+<div id="main">
+  <div id="top-area">
+    <div id="slots-panel">
+      <div id="dock-tabs"></div>
+      <div id="slots-container">
+        <div id="slots-grid"></div>
+      </div>
+    </div>
+    <div id="preview-panel">
+      <div id="preview-header">
+        <span>PREVIEW</span>
+        <span class="info" id="output-info">NO SIGNAL</span>
+      </div>
+      <div id="preview-wrap">
+        <canvas id="preview-canvas"></canvas>
+        <div id="blackout-indicator">BLACKOUT</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="right-panel">
+    <div id="controls-bar">
+      <div id="sliders">
+        <div class="control-row">
+          <label>SPEED</label>
+          <input type="range" id="ctrl-speed" min="0.1" max="3" step="0.1" value="1">
+          <span class="value" id="val-speed">1.0x</span>
+        </div>
+        <div class="control-row">
+          <label>OPACITY</label>
+          <input type="range" id="ctrl-opacity" min="0" max="1" step="0.01" value="1">
+          <span class="value" id="val-opacity">100%</span>
+        </div>
+        <div class="control-row">
+          <label>MIX</label>
+          <input type="range" id="ctrl-mix" min="0" max="1" step="0.01" value="0">
+          <span class="value" id="val-mix">0%</span>
+        </div>
+      </div>
+      <div id="fx-panel">
+        <div id="fx-panel-label">EFFECTS</div>
+        <div id="fx-buttons">
+          <button class="fx-btn" data-fx="invert">INVERT</button>
+          <button class="fx-btn" data-fx="grayscale">GRAY</button>
+          <button class="fx-btn" data-fx="mirror">MIRROR</button>
+          <button class="fx-btn" data-fx="kaleidoscope">KALEIDO</button>
+          <button class="fx-btn" data-fx="strobe">STROBE</button>
+          <button class="fx-btn" data-fx="feedback">FEEDBACK</button>
+          <button class="fx-btn" data-fx="hueRotate">HUE ROT</button>
+          <button class="fx-btn" data-fx="pixelate">PIXEL</button>
+          <button class="fx-btn" data-fx="rgbShift">RGB SHIFT</button>
+          <button class="fx-btn" data-fx="kenburns">KENBURNS</button>
+        </div>
+      </div>
+      <div id="auto-panel">
+        <div id="auto-panel-label">AUTO MODE</div>
+        <button id="auto-btn">AUTO OFF</button>
+        <div class="auto-row">
+          <label>BPM</label>
+          <input type="range" id="auto-bpm" min="60" max="300" step="1" value="120">
+          <span class="value" id="auto-bpm-val">120</span>
+          <div id="beat-indicator"></div>
+        </div>
+        <div class="auto-row">
+          <label>BEAT</label>
+          <button class="beat-btn active" data-div="1">1</button>
+          <button class="beat-btn" data-div="2">1/2</button>
+          <button class="beat-btn" data-div="4">1/4</button>
+          <button class="beat-btn" data-div="8">1/8</button>
+        </div>
+        <div class="auto-row">
+          <label>SCOPE</label>
+          <button class="scope-btn active" data-scope="dock">DOCK</button>
+          <button class="scope-btn" data-scope="all">ALL</button>
+        </div>
+        <div class="auto-row">
+          <label>SRC</label>
+          <button class="src-btn active" data-src="bpm">BPM</button>
+          <button class="src-btn" data-src="mic">MIC</button>
+        </div>
+        <div class="auto-row" id="mic-row" style="display:none;">
+          <label>SENS</label>
+          <input type="range" id="mic-sens" min="0" max="100" step="1" value="50">
+          <span class="value" id="mic-sens-val">50</span>
+        </div>
+        <div class="auto-row" id="mic-meter-row" style="display:none;">
+          <label>VOL</label>
+          <div id="mic-meter-bg"><div id="mic-meter-bar"></div><div id="mic-meter-thresh"></div></div>
+        </div>
+        <div class="auto-row">
+          <label>FX</label>
+          <button id="auto-fx-btn" class="beat-btn">OFF</button>
+          <label>MAX</label>
+          <input type="range" id="auto-fx-max" min="1" max="5" step="1" value="2">
+          <span class="value" id="auto-fx-max-val">2</span>
+          <label>PROB</label>
+          <input type="range" id="auto-fx-prob" min="0" max="100" step="5" value="50">
+          <span class="value" id="auto-fx-prob-val">50%</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="text-panel">
+      <div id="text-panel-header">
+        <span>TEXT OVERLAY</span>
+        <button id="text-toggle">OFF</button>
+      </div>
+      <div id="text-input-row">
+        <input type="text" id="text-input" placeholder="Type text here..." maxlength="100">
+        <button id="text-send">SEND</button>
+      </div>
+      <div id="text-options">
+        <div class="text-opt-row">
+          <label>Motion:</label>
+          <button class="motion-btn active" data-motion="static">STATIC</button>
+          <button class="motion-btn" data-motion="dvd">DVD</button>
+          <button class="motion-btn" data-motion="scroll">SCROLL</button>
+          <button class="motion-btn" data-motion="rain">RAIN</button>
+          <label>Pos:</label>
+          <select id="text-pos">
+            <option value="center">CENTER</option>
+            <option value="top">TOP</option>
+            <option value="bottom">BOTTOM</option>
+          </select>
+          <label>Size:</label>
+          <select id="text-size">
+            <option value="small">S</option>
+            <option value="medium" selected>M</option>
+            <option value="large">L</option>
+            <option value="xlarge">XL</option>
+          </select>
+          <label>Color:</label>
+          <input type="color" id="text-color" value="#ffffff">
+        </div>
+        <div class="text-opt-row">
+          <label>Look:</label>
+          <button class="look-btn active" data-look="solid">SOLID</button>
+          <button class="look-btn" data-look="outline">OUTLINE</button>
+          <button class="look-btn" data-look="neon">NEON</button>
+          <button class="look-btn" data-look="glitch">GLITCH</button>
+          <button class="look-btn" data-look="wave">WAVE</button>
+          <button class="look-btn" data-look="typewriter">TYPEWR</button>
+          <button class="look-btn" data-look="zoom">ZOOM</button>
+          <button class="look-btn" data-look="rotate">ROTATE</button>
+          <button class="look-btn" data-look="shake">SHAKE</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="bottom-row">
+      <div id="logo-panel">
+        <div id="logo-panel-header">
+          <span>LOGO OVERLAY</span>
+          <button id="logo-toggle">OFF</button>
+        </div>
+        <div id="logo-controls">
+          <button id="logo-load-btn">LOAD</button>
+          <button id="logo-remove-btn" disabled>✕</button>
+          <span id="logo-name">No file</span>
+          <div id="logo-preview-wrap"><img id="logo-preview-img"></div>
+        </div>
+        <div id="logo-options">
+          <div class="logo-opt-row">
+            <label>Pos:</label>
+            <button class="logo-pos-btn" data-pos="tl">TL</button>
+            <button class="logo-pos-btn" data-pos="tc">TC</button>
+            <button class="logo-pos-btn" data-pos="tr">TR</button>
+            <button class="logo-pos-btn active" data-pos="br">BR</button>
+            <button class="logo-pos-btn" data-pos="bl">BL</button>
+            <button class="logo-pos-btn" data-pos="bc">BC</button>
+            <button class="logo-pos-btn" data-pos="c">C</button>
+          </div>
+          <div class="logo-opt-row">
+            <label>Size:</label>
+            <input type="range" id="logo-size" min="3" max="50" step="1" value="15">
+            <span class="value" id="logo-size-val">15%</span>
+            <label>Alpha:</label>
+            <input type="range" id="logo-alpha" min="0" max="1" step="0.05" value="0.8">
+            <span class="value" id="logo-alpha-val">80%</span>
+          </div>
+          <div class="logo-opt-row">
+            <label>Margin:</label>
+            <input type="range" id="logo-margin" min="0" max="10" step="0.5" value="2">
+            <span class="value" id="logo-margin-val">2%</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="audio-panel">
+        <div id="audio-panel-header">
+          <span>AUDIO</span>
+        </div>
+        <div id="audio-controls">
+          <button id="audio-load-btn">LOAD</button>
+          <button id="audio-play-btn" disabled>▶</button>
+          <span id="audio-name">No file</span>
+          <input type="range" id="audio-seek" min="0" max="100" step="0.1" value="0" disabled>
+          <span id="audio-time">00:00 / 00:00</span>
+          <div id="audio-vol-row">
+            <label>VOL</label>
+            <input type="range" id="audio-vol" min="0" max="1" step="0.01" value="0.8">
+          </div>
+          <button id="audio-reactive-btn">REACTIVE OFF</button>
+          <div id="audio-level-indicator"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="drop-overlay">DROP MEDIA HERE</div>
+
+<script>
+// ============================================================
+// VJ DOCK - Dual Window Engine
+// ============================================================
+
+const NUM_DOCKS = 4;
+const SLOTS_PER_DOCK = 8;
+const DOCK_COLORS = ['#0ff', '#f0f', '#ff0', '#0f0'];
+
+// --- State ---
+const state = {
+  currentDock: 0,
+  activeDock: -1,
+  activeSlot: -1,
+  previousDock: -1,
+  previousSlot: -1,
+  docks: [],
+  effects: {
+    invert: false, grayscale: false, mirror: false,
+    kaleidoscope: false, strobe: false, feedback: false,
+    hueRotate: false, pixelate: false, rgbShift: false,
+    kenburns: false,
+  },
+  speed: 1.0,
+  opacity: 1.0,
+  mix: 0.0,
+  blackout: false,
+  hueAngle: 0,
+  strobeOn: true,
+  strobeCounter: 0,
+  gamepadIndex: null,
+  // Auto mode
+  auto: {
+    enabled: false,
+    bpm: 120,
+    beatDiv: 1,      // 1 = every beat, 2 = every 2 beats, 4 = 1/4 note etc
+    scope: 'dock',   // 'dock' = current dock only, 'all' = all docks
+    source: 'bpm',   // 'bpm' = timer, 'mic' = audio reactive
+    lastBeatTime: 0,
+    beatCount: 0,
+    // FX randomization
+    fxRandom: false,       // toggle
+    fxMaxActive: 2,        // max simultaneous effects
+    fxChangeProb: 0.5,     // probability of changing FX on each beat
+    fxLastChangeTime: 0,
+    // Mic beat detection
+    mic: {
+      stream: null,
+      analyser: null,
+      audioCtx: null,
+      sensitivity: 50,
+      volume: 0,
+      lastTriggerTime: 0,
+      cooldown: 200,  // ms between triggers to avoid double-fire
+    },
+  },
+  // Logo overlay
+  logo: {
+    visible: false,
+    image: null,
+    position: 'br',
+    size: 15,
+    alpha: 0.8,
+    margin: 2,
+  },
+  // Text overlay
+  text: {
+    visible: false,
+    content: '',
+    motion: 'static',  // static, dvd, scroll, rain
+    looks: { solid: true, outline: false, neon: false, glitch: false, wave: false, typewriter: false, zoom: false, rotate: false, shake: false },
+    color: '#ffffff',
+    position: 'center',
+    size: 'medium',
+    scrollX: 0,
+    typewriterLen: 0,
+    typewriterTimer: 0,
+    glitchOffset: 0,
+    wavePhase: 0,
+    dvdX: -1, dvdY: -1, dvdVx: 3, dvdVy: 2, dvdColor: '#ffffff',
+    zoomPhase: 0,
+    rotateAngle: 0,
+    rainDrops: [],
+    shakeTimer: 0,
+  },
+};
+
+for (let d = 0; d < NUM_DOCKS; d++) {
+  const dock = [];
+  for (let s = 0; s < SLOTS_PER_DOCK; s++) {
+    dock.push({ media: null, type: null, name: '', url: null, element: null, stream: null, iframe: null, captureCanvas: null, captureInterval: null });
+  }
+  state.docks.push(dock);
+}
+
+// --- DOM Refs ---
+const previewCanvas = document.getElementById('preview-canvas');
+const previewCtx = previewCanvas.getContext('2d');
+
+// Internal render canvas (high resolution, render once, copy to both outputs)
+const renderCanvas = document.createElement('canvas');
+const renderCtx = renderCanvas.getContext('2d', { willReadFrequently: true });
+renderCanvas.width = 1920;
+renderCanvas.height = 1080;
+
+// Aspect ratio control
+const aspectSelect = document.getElementById('aspect-select');
+const ASPECT_SIZES = {
+  '16:9': { w: 1920, h: 1080 },
+  '4:3':  { w: 1440, h: 1080 },
+};
+
+function setAspectRatio(ratio) {
+  const size = ASPECT_SIZES[ratio] || ASPECT_SIZES['16:9'];
+  renderCanvas.width = size.w;
+  renderCanvas.height = size.h;
+  // Reset effect buffers for new resolution
+  feedbackReady = false;
+  rgbShiftBuffer = null;
+  rgbShiftBufferSize = 0;
+  // Notify output window (send both aspect ratio and render resolution)
+  const parts = ratio.split(':');
+  if (outputWin && !outputWin.closed) {
+    outputWin.postMessage({ type: 'vj-aspect', w: parseInt(parts[0]), h: parseInt(parts[1]), rw: size.w, rh: size.h }, '*');
+  }
+  // Resize preview to match new aspect
+  resizePreview();
+}
+
+aspectSelect.addEventListener('change', () => setAspectRatio(aspectSelect.value));
+
+// Cached canvases for effects (avoid per-frame allocation)
+const pixelateCanvas = document.createElement('canvas');
+const pixelateCtx = pixelateCanvas.getContext('2d');
+const feedbackCanvas = document.createElement('canvas');
+const feedbackCtx = feedbackCanvas.getContext('2d', { willReadFrequently: true });
+let feedbackReady = false;
+// Pre-allocated buffer for RGB shift
+let rgbShiftBuffer = null;
+let rgbShiftBufferSize = 0;
+let rgbShiftFrame = 0;
+const rgbShiftCache = document.createElement('canvas');
+const rgbShiftCacheCtx = rgbShiftCache.getContext('2d');
+const outputInfo = document.getElementById('output-info');
+const dockTabsEl = document.getElementById('dock-tabs');
+const slotsGrid = document.getElementById('slots-grid');
+const gamepadStatusEl = document.getElementById('gamepad-status');
+const outputBtn = document.getElementById('output-btn');
+const dropOverlay = document.getElementById('drop-overlay');
+const blackoutIndicator = document.getElementById('blackout-indicator');
+
+// --- Font Size Control ---
+const fontSlider = document.getElementById('font-size-slider');
+const fontSizeVal = document.getElementById('font-size-val');
+const fontDown = document.getElementById('font-down');
+const fontUp = document.getElementById('font-up');
+
+function setFontSize(px) {
+  px = Math.max(10, Math.min(28, px));
+  document.documentElement.style.fontSize = px + 'px';
+  fontSlider.value = px;
+  fontSizeVal.textContent = px + 'px';
+}
+
+fontSlider.addEventListener('input', () => setFontSize(parseInt(fontSlider.value)));
+fontDown.addEventListener('click', () => setFontSize(parseInt(fontSlider.value) - 2));
+fontUp.addEventListener('click', () => setFontSize(parseInt(fontSlider.value) + 2));
+
+// --- Output Window ---
+let outputWin = null;
+let outputCanvas = null;
+let outputCtx = null;
+
+function openOutputWindow() {
+  if (outputWin && !outputWin.closed) {
+    outputWin.focus();
+    return;
+  }
+
+  outputWin = window.open('', 'vj-output', 'width=960,height=540');
+  outputWin.document.write(`<!DOCTYPE html>
+<html><head><title>VJ OUTPUT</title>
+<style>
+* { margin: 0; padding: 0; }
+body { background: #000; overflow: hidden; cursor: none; display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; }
+canvas { display: block; }
+</style></head>
+<body>
+<canvas id="out"></canvas>
+<script>
+  const c = document.getElementById('out');
+  // Canvas resolution is fixed to renderCanvas size (sent via postMessage)
+  // Display size is always 100vw/100vh via CSS — GPU scales, no extra drawImage cost
+  c.width = 1920; c.height = 1080;
+  c.style.width = '100vw'; c.style.height = '100vh';
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'vj-aspect') {
+      c.width = e.data.rw; c.height = e.data.rh;
+      // Resize window to match aspect ratio
+      const curW = window.outerWidth;
+      const newH = Math.round(curW * (e.data.h / e.data.w));
+      window.resizeTo(curW, newH);
+    }
+  });
+  document.addEventListener('dblclick', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  });
+<\/script>
+</body></html>`);
+  outputWin.document.close();
+
+  // Wait for the window to be ready
+  setTimeout(() => {
+    outputCanvas = outputWin.document.getElementById('out');
+    outputCtx = outputCanvas.getContext('2d');
+    // Sync render resolution to output canvas
+    const ratio = aspectSelect.value;
+    const parts = ratio.split(':');
+    const size = ASPECT_SIZES[ratio] || ASPECT_SIZES['16:9'];
+    outputWin.postMessage({ type: 'vj-aspect', w: parseInt(parts[0]), h: parseInt(parts[1]), rw: size.w, rh: size.h }, '*');
+    outputBtn.textContent = 'CLOSE OUTPUT';
+    outputBtn.className = 'open';
+  }, 100);
+
+  // Detect close
+  const checkClosed = setInterval(() => {
+    if (outputWin.closed) {
+      clearInterval(checkClosed);
+      outputWin = null;
+      outputCanvas = null;
+      outputCtx = null;
+      outputBtn.textContent = 'OPEN OUTPUT';
+      outputBtn.className = 'closed';
+    }
+  }, 500);
+}
+
+function closeOutputWindow() {
+  if (outputWin && !outputWin.closed) {
+    outputWin.close();
+  }
+  outputWin = null;
+  outputCanvas = null;
+  outputCtx = null;
+  outputBtn.textContent = 'OPEN OUTPUT';
+  outputBtn.className = 'closed';
+}
+
+outputBtn.addEventListener('click', () => {
+  if (outputWin && !outputWin.closed) closeOutputWindow();
+  else openOutputWindow();
+});
+
+// --- Theme Toggle ---
+const themeBtn = document.getElementById('theme-btn');
+themeBtn.addEventListener('click', () => {
+  document.body.classList.toggle('light');
+  themeBtn.textContent = document.body.classList.contains('light') ? '☾' : '☀';
+});
+
+// --- Folder Auto-Load ---
+const folderBtn = document.getElementById('folder-btn');
+folderBtn.addEventListener('click', async () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.webkitdirectory = true;
+  input.multiple = true;
+  input.onchange = async () => {
+    const allFiles = Array.from(input.files);
+    // Filter HTML and MP4 files only
+    const mediaFiles = allFiles.filter(f =>
+      f.name.match(/\.(html?|mp4|webm|mov|avi)$/i)
+    );
+    if (mediaFiles.length === 0) { alert('フォルダ内にHTML/動画ファイルが見つかりませんでした'); return; }
+    // Shuffle
+    for (let i = mediaFiles.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [mediaFiles[i], mediaFiles[j]] = [mediaFiles[j], mediaFiles[i]];
+    }
+    // Load into dock 0 (DOCK 1), up to 8 slots
+    const count = Math.min(mediaFiles.length, SLOTS_PER_DOCK);
+    // Switch to dock 0 first
+    switchDock(0);
+    // Register all files, then capture thumbnails sequentially
+    // (skip per-file thumbnail in loadHTML — do batch after)
+    for (let i = 0; i < count; i++) {
+      const isHTML = mediaFiles[i].name.match(/\.html?$/i);
+      if (isHTML) {
+        // Set flag so loadHTML skips individual thumbnail capture
+        const slotData = state.docks[0][i];
+        slotData._skipThumbnail = true;
+        await loadHTML(0, i, mediaFiles[i]);
+        slotData._skipThumbnail = false;
+      } else {
+        loadMedia(0, i, mediaFiles[i]);
+      }
+    }
+    // Capture thumbnails — spawn each HTML iframe 1 at a time, grab 1 frame, destroy
+    const dock = state.docks[0];
+    for (let i = 0; i < count; i++) {
+      if (dock[i].type === 'html' && dock[i]._htmlReady) {
+        await captureHTMLThumbnail(dock[i]);
+        buildSlots(); // refresh UI with new thumbnail
+      }
+    }
+  };
+  input.click();
+});
+
+// --- Refresh Button ---
+const refreshBtn = document.getElementById('refresh-btn');
+refreshBtn.addEventListener('click', performRefresh);
+
+
+function performRefresh() {
+  // Flash button
+  refreshBtn.classList.remove('flashing');
+  void refreshBtn.offsetWidth;
+  refreshBtn.classList.add('flashing');
+
+  // 1. All effects OFF
+  Object.keys(state.effects).forEach(k => state.effects[k] = false);
+  feedbackReady = false;
+  state.hueAngle = 0;
+  state.strobeOn = true;
+  state.strobeCounter = 0;
+  updateFXButtons();
+
+  // 2. Reset sliders to default
+  state.speed = 1.0; state.opacity = 1.0; state.mix = 0.0;
+  ctrlSpeed.value = 1; valSpeed.textContent = '1.0x';
+  ctrlOpacity.value = 1; valOpacity.textContent = '100%';
+  ctrlMix.value = 0; valMix.textContent = '0%';
+  const a = getActiveMedia();
+  if (a && a.type === 'video') a.element.playbackRate = 1.0;
+
+  // 3. Auto mode OFF
+  state.auto.enabled = false;
+  autoBtn.textContent = 'AUTO OFF';
+  autoBtn.classList.remove('active');
+
+  // 4. Text overlay state reset
+  state.text.scrollX = 0;
+  state.text.typewriterLen = 0;
+  state.text.typewriterTimer = 0;
+  state.text.dvdX = -1; state.text.dvdY = -1;
+  state.text.zoomPhase = 0;
+  state.text.rotateAngle = 0;
+  state.text.rainDrops = [];
+  state.text.shakeTimer = 0;
+  state.text.wavePhase = 0;
+  state.text.glitchOffset = 0;
+
+  // 5. Clear internal render canvas
+  renderCtx.clearRect(0, 0, renderCanvas.width, renderCanvas.height);
+
+  // 6. Prompt GC
+  if (window.gc) window.gc();
+}
+
+// ============================================================
+// UI: Dock Tabs
+// ============================================================
+function buildDockTabs() {
+  dockTabsEl.innerHTML = '';
+  for (let i = 0; i < NUM_DOCKS; i++) {
+    const tab = document.createElement('button');
+    tab.className = 'dock-tab' + (i === state.currentDock ? ' active' : '');
+    tab.textContent = `DOCK ${i + 1}`;
+    tab.onclick = () => switchDock(i);
+    dockTabsEl.appendChild(tab);
+  }
+}
+
+function switchDock(index) {
+  state.currentDock = index;
+  buildDockTabs();
+  buildSlots();
+}
+
+// ============================================================
+// UI: Slots
+// ============================================================
+// Track active intervals/timers created by buildSlots so they can be cleaned up
+let _slotTimers = [];
+
+function buildSlots() {
+  // Clear previous intervals/timers to prevent leaks
+  for (const id of _slotTimers) clearInterval(id);
+  _slotTimers = [];
+
+  slotsGrid.innerHTML = '';
+  const dock = state.docks[state.currentDock];
+  for (let i = 0; i < SLOTS_PER_DOCK; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    if (dock[i].media) slot.classList.add('has-media');
+    if (i === state.activeSlot && state.currentDock === state.activeDock) {
+      slot.classList.add('active');
+    }
+
+    const label = document.createElement('div');
+    label.className = 'slot-label';
+    label.textContent = `${i + 1}`;
+    slot.appendChild(label);
+
+    if (dock[i].media) {
+      const nameEl = document.createElement('div');
+      nameEl.className = 'slot-name';
+      nameEl.textContent = dock[i].name;
+      slot.appendChild(nameEl);
+
+      if (dock[i].type === 'html') {
+        // HTML demo: show single snapshot as static thumbnail (no setInterval)
+        const prevCanvas = document.createElement('canvas');
+        prevCanvas.width = 160; prevCanvas.height = 90;
+        prevCanvas.style.cssText = 'width:100%;height:100%;object-fit:cover;pointer-events:none;';
+        slot.appendChild(prevCanvas);
+        // Capture one frame if available (iframe may not exist for inactive slots)
+        let captureRetries = 0;
+        const captureOnce = () => {
+          const capCanvas = dock[i].captureCanvas;
+          if (capCanvas && capCanvas.width > 0) {
+            try {
+              const tctx = prevCanvas.getContext('2d');
+              tctx.drawImage(capCanvas, 0, 0, prevCanvas.width, prevCanvas.height);
+            } catch(e) {}
+          } else if (captureRetries < 10) {
+            captureRetries++;
+            setTimeout(captureOnce, 500);
+          }
+          // After 10 retries (5s), give up — thumbnail stays blank (file name shown)
+        };
+        setTimeout(captureOnce, 800);
+        const htmlInd = document.createElement('div');
+        htmlInd.className = 'slot-html-indicator';
+        htmlInd.textContent = 'HTML';
+        slot.appendChild(htmlInd);
+        // FPS indicator
+        if (dock[i].fpsTracker) {
+          const fpsEl = document.createElement('div');
+          fpsEl.className = 'slot-fps';
+          fpsEl.textContent = '...';
+          slot.appendChild(fpsEl);
+          const tracker = dock[i].fpsTracker;
+          const slotRef = dock[i];
+          const fpsUpdate = setInterval(() => {
+            if (!slotRef.media || slotRef.type !== 'html') { clearInterval(fpsUpdate); return; }
+            if (!slotRef.iframe) {
+              fpsEl.className = 'slot-fps';
+              fpsEl.textContent = 'IDLE';
+              return;
+            }
+            const fps = tracker.fps;
+            let cls, lbl;
+            if (fps >= 15)      { cls = 'light'; lbl = 'LIGHT'; }
+            else if (fps >= 8)  { cls = 'mid';   lbl = 'MID'; }
+            else                { cls = 'heavy'; lbl = 'HEAVY'; }
+            fpsEl.className = 'slot-fps ' + cls;
+            fpsEl.textContent = `${fps}fps ${lbl}`;
+          }, 1000);
+          _slotTimers.push(fpsUpdate);
+        }
+      } else if (dock[i].type === 'camera') {
+        // Camera: show static snapshot instead of live video
+        const prevCanvas = document.createElement('canvas');
+        prevCanvas.width = 160; prevCanvas.height = 90;
+        prevCanvas.style.cssText = 'width:100%;height:100%;object-fit:cover;pointer-events:none;';
+        slot.appendChild(prevCanvas);
+        const captureOnce = () => {
+          const el = dock[i].element;
+          if (el && el.readyState >= 2) {
+            const tctx = prevCanvas.getContext('2d');
+            tctx.drawImage(el, 0, 0, prevCanvas.width, prevCanvas.height);
+          } else {
+            setTimeout(captureOnce, 300);
+          }
+        };
+        setTimeout(captureOnce, 500);
+        const camInd = document.createElement('div');
+        camInd.className = 'slot-cam-indicator';
+        camInd.textContent = 'CAM';
+        slot.appendChild(camInd);
+      } else if (dock[i].type === 'video') {
+        const vid = document.createElement('video');
+        vid.src = dock[i].url;
+        vid.muted = true; vid.loop = true; vid.playsInline = true; vid.preload = 'metadata';
+        slot.appendChild(vid);
+        slot.addEventListener('mouseenter', () => vid.play().catch(() => {}));
+        slot.addEventListener('mouseleave', () => { vid.pause(); vid.currentTime = 0; });
+      } else {
+        const img = document.createElement('img');
+        img.src = dock[i].url;
+        slot.appendChild(img);
+      }
+
+      const removeBtn = document.createElement('div');
+      removeBtn.className = 'slot-remove';
+      removeBtn.textContent = '\u2715';
+      removeBtn.onclick = (e) => { e.stopPropagation(); removeMedia(state.currentDock, i); };
+      slot.appendChild(removeBtn);
+    } else {
+      const empty = document.createElement('div');
+      empty.className = 'slot-empty';
+      const fileBtn = document.createElement('button');
+      fileBtn.className = 'slot-empty-btn';
+      fileBtn.textContent = '+';
+      fileBtn.title = 'Add file';
+      fileBtn.onclick = (e) => { e.stopPropagation(); openFilePicker(state.currentDock, i); };
+      const camBtn = document.createElement('button');
+      camBtn.className = 'slot-empty-btn cam-btn';
+      camBtn.textContent = 'CAM';
+      camBtn.title = 'Add camera/capture device';
+      camBtn.onclick = (e) => { e.stopPropagation(); openCameraPicker(state.currentDock, i); };
+      const htmlBtn = document.createElement('button');
+      htmlBtn.className = 'slot-empty-btn html-btn';
+      htmlBtn.textContent = 'HTML';
+      htmlBtn.title = 'Add HTML demo';
+      htmlBtn.onclick = (e) => { e.stopPropagation(); openHTMLPicker(state.currentDock, i); };
+      empty.appendChild(fileBtn);
+      empty.appendChild(camBtn);
+      empty.appendChild(htmlBtn);
+      slot.appendChild(empty);
+    }
+
+    slot.onclick = () => {
+      if (dock[i].media) activateSlot(state.currentDock, i);
+      else openFilePicker(state.currentDock, i);
+    };
+
+    // Double-click to replace media
+    slot.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      openFilePicker(state.currentDock, i);
+    });
+
+    slot.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); slot.style.borderColor = DOCK_COLORS[state.currentDock]; });
+    slot.addEventListener('dragleave', () => { slot.style.borderColor = ''; });
+    slot.addEventListener('drop', (e) => {
+      e.preventDefault(); e.stopPropagation(); slot.style.borderColor = '';
+      handleDrop(e.dataTransfer.files, state.currentDock, i);
+    });
+
+    slotsGrid.appendChild(slot);
+  }
+}
+
+// ============================================================
+// Media Management
+// ============================================================
+function loadMedia(dockIndex, slotIndex, file) {
+  const isVideo = file.type.startsWith('video/');
+  const isImage = file.type.startsWith('image/');
+  const isHTML = file.name.match(/\.html?$/i);
+  if (!isVideo && !isImage && !isHTML) return;
+
+  // HTML files go through the dedicated loader
+  if (isHTML) { loadHTML(dockIndex, slotIndex, file); return; }
+
+  const url = URL.createObjectURL(file);
+
+  const slotData = state.docks[dockIndex][slotIndex];
+  if (slotData.url) URL.revokeObjectURL(slotData.url);
+  if (slotData.stream) { slotData.stream.getTracks().forEach(t => t.stop()); slotData.stream = null; }
+  destroyHTMLIframe(slotData);
+  slotData.captureCanvas = null;
+  slotData._htmlReady = false;
+
+  slotData.url = url;
+  slotData.name = file.name;
+  slotData.type = isVideo ? 'video' : 'image';
+
+  if (isVideo) {
+    const vid = document.createElement('video');
+    vid.src = url; vid.muted = true; vid.loop = true; vid.playsInline = true; vid.preload = 'auto';
+    slotData.element = vid;
+    slotData.media = vid;
+  } else {
+    const img = new Image();
+    img.src = url;
+    slotData.element = img;
+    slotData.media = img;
+  }
+
+  if (dockIndex === state.currentDock) buildSlots();
+}
+
+function removeMedia(dockIndex, slotIndex) {
+  const slotData = state.docks[dockIndex][slotIndex];
+  if (slotData.url) URL.revokeObjectURL(slotData.url);
+  if (slotData.element && slotData.type === 'video') slotData.element.pause();
+  if (slotData.stream) {
+    slotData.stream.getTracks().forEach(t => t.stop());
+    slotData.stream = null;
+  }
+  destroyHTMLIframe(slotData);
+  slotData.captureCanvas = null;
+  slotData._htmlReady = false;
+  slotData.media = null; slotData.type = null; slotData.name = '';
+  slotData.url = null; slotData.element = null;
+  if (state.activeSlot === slotIndex && state.activeDock === dockIndex) {
+    state.activeSlot = -1; state.activeDock = -1;
+  }
+  buildSlots();
+}
+
+function activateSlot(dockIndex, slotIndex) {
+  const slotData = state.docks[dockIndex][slotIndex];
+  if (!slotData.media) return;
+
+  // Store previous for crossfade
+  if (state.activeSlot >= 0 && state.activeDock >= 0) {
+    state.previousSlot = state.activeSlot;
+    state.previousDock = state.activeDock;
+  }
+
+  state.activeSlot = slotIndex;
+  state.activeDock = dockIndex;
+
+  // Track when this slot was last active (for LRU iframe eviction)
+  slotData._lastActiveTime = performance.now();
+
+  if (slotData.type === 'video') {
+    slotData.element.playbackRate = state.speed;
+    slotData.element.play().catch(() => {});
+  } else if (slotData.type === 'camera') {
+    slotData.element.play().catch(() => {});
+  }
+
+  // Pause/resume HTML demo iframes — only active (+ previous for crossfade) should run
+  pauseInactiveIframes();
+
+  // Update active class without full DOM rebuild
+  updateSlotHighlight();
+  updateOutputInfo();
+}
+
+const MAX_LIVE_IFRAMES = 4; // max simultaneous iframes (WebGL context limit safety)
+
+function pauseInactiveIframes() {
+  // Pool-based iframe management:
+  // - Active + previous get iframe (spawned if missing) and resumed
+  // - Others with existing iframes get paused (kept warm for fast resume)
+  // - If pool exceeds MAX, oldest inactive iframes are destroyed
+  const needed = [];   // slots that need active iframe
+  const warm = [];     // slots with iframe but not currently needed
+  const cold = [];     // slots that need iframe but don't have one
+
+  state.docks.forEach((dock, di) => {
+    dock.forEach((slot, si) => {
+      if (slot.type !== 'html' || !slot._htmlReady) return;
+      const isActive = (di === state.activeDock && si === state.activeSlot);
+      const isPrevious = (di === state.previousDock && si === state.previousSlot && state.mix > 0);
+      if (isActive || isPrevious) {
+        needed.push(slot);
+        if (!slot.iframe) cold.push(slot);
+      } else if (slot.iframe) {
+        warm.push(slot);
+      }
+    });
+  });
+
+  // Resume needed iframes
+  for (const slot of needed) {
+    if (slot.iframe) {
+      try { slot.iframe.contentWindow.postMessage({ type: 'vj-control', cmd: 'resume' }, '*'); } catch(e) {}
+    }
+  }
+
+  // Pause warm (inactive but alive) iframes
+  for (const slot of warm) {
+    try { slot.iframe.contentWindow.postMessage({ type: 'vj-control', cmd: 'pause' }, '*'); } catch(e) {}
+  }
+
+  // Enforce pool limit BEFORE spawning: destroy LRU warm iframes to make room
+  const totalLive = needed.filter(s => s.iframe).length + warm.length + cold.length;
+  if (totalLive > MAX_LIVE_IFRAMES) {
+    const excess = totalLive - MAX_LIVE_IFRAMES;
+    warm.sort((a, b) => (a._lastActiveTime || 0) - (b._lastActiveTime || 0));
+    for (let i = 0; i < excess && i < warm.length; i++) {
+      destroyHTMLIframe(warm[i]);
+    }
+  }
+
+  // Spawn missing iframes for needed slots (after eviction frees WebGL contexts)
+  for (const slot of cold) {
+    spawnHTMLIframe(slot).catch(() => {});
+  }
+}
+
+function openFilePicker(dockIndex, slotIndex) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'video/*,image/*,.html,.htm'; input.multiple = true;
+  input.onchange = () => {
+    const files = Array.from(input.files);
+    for (let i = 0; i < files.length && (slotIndex + i) < SLOTS_PER_DOCK; i++) {
+      loadMedia(dockIndex, slotIndex + i, files[i]);
+    }
+  };
+  input.click();
+}
+
+function handleDrop(files, dockIndex, slotIndex) {
+  const fileList = Array.from(files);
+  for (let i = 0; i < fileList.length && (slotIndex + i) < SLOTS_PER_DOCK; i++) {
+    loadMedia(dockIndex, slotIndex + i, fileList[i]);
+  }
+}
+
+// ============================================================
+// Camera / Capture Device
+// ============================================================
+async function openCameraPicker(dockIndex, slotIndex) {
+  try {
+    // Request permission first (needed to get device labels)
+    // Keep the stream alive briefly so macOS doesn't block re-acquire
+    const permStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    permStream.getTracks().forEach(t => t.stop());
+    const videoDevices = devices.filter(d => d.kind === 'videoinput');
+
+    if (videoDevices.length === 0) {
+      alert('No camera/capture devices found.');
+      return;
+    }
+
+    // Build a simple selection dialog
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:200;display:flex;align-items:center;justify-content:center;';
+    const dialog = document.createElement('div');
+    dialog.style.cssText = 'background:#1a1a1a;border:1px solid #444;border-radius:6px;padding:20px;min-width:300px;max-width:500px;font-family:Courier New,monospace;color:#e0e0e0;';
+    dialog.innerHTML = `<div style="font-size:0.85rem;color:#0ff;letter-spacing:2px;margin-bottom:12px;">SELECT DEVICE</div>`;
+
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+
+    videoDevices.forEach((dev, idx) => {
+      const btn = document.createElement('button');
+      btn.style.cssText = 'background:#222;border:1px solid #444;color:#ccc;padding:10px 12px;font-family:Courier New,monospace;font-size:0.8rem;cursor:pointer;border-radius:3px;text-align:left;transition:all 0.15s;';
+      btn.textContent = dev.label || `Camera ${idx + 1}`;
+      btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#f0f'; btn.style.color = '#fff'; });
+      btn.addEventListener('mouseleave', () => { btn.style.borderColor = '#444'; btn.style.color = '#ccc'; });
+      btn.onclick = () => {
+        document.body.removeChild(overlay);
+        loadCamera(dockIndex, slotIndex, dev.deviceId, dev.label || `Camera ${idx + 1}`);
+      };
+      list.appendChild(btn);
+    });
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.style.cssText = 'background:#333;border:1px solid #555;color:#888;padding:8px 12px;font-family:Courier New,monospace;font-size:0.75rem;cursor:pointer;border-radius:3px;margin-top:8px;';
+    cancelBtn.textContent = 'CANCEL';
+    cancelBtn.onclick = () => document.body.removeChild(overlay);
+
+    dialog.appendChild(list);
+    dialog.appendChild(cancelBtn);
+    overlay.appendChild(dialog);
+    overlay.onclick = (e) => { if (e.target === overlay) document.body.removeChild(overlay); };
+    document.body.appendChild(overlay);
+  } catch (err) {
+    alert('Camera access denied or not available: ' + err.message);
+  }
+}
+
+async function loadCamera(dockIndex, slotIndex, deviceId, deviceLabel) {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { deviceId: deviceId, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+
+    const slotData = state.docks[dockIndex][slotIndex];
+    // Clean up previous media if any
+    if (slotData.url) URL.revokeObjectURL(slotData.url);
+    if (slotData.stream) slotData.stream.getTracks().forEach(t => t.stop());
+
+    const vid = document.createElement('video');
+    vid.srcObject = stream;
+    vid.muted = true; vid.playsInline = true; vid.autoplay = true;
+    await vid.play();
+
+    slotData.url = null;
+    slotData.name = deviceLabel;
+    slotData.type = 'camera';
+    slotData.element = vid;
+    slotData.media = vid;
+    slotData.stream = stream;
+
+    if (dockIndex === state.currentDock) buildSlots();
+  } catch (err) {
+    alert('Failed to open camera: ' + err.message);
+  }
+}
+
+// ============================================================
+// HTML Demo Loading
+// ============================================================
+function openHTMLPicker(dockIndex, slotIndex) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.html,.htm'; input.multiple = false;
+  input.onchange = () => {
+    if (input.files.length > 0) loadHTML(dockIndex, slotIndex, input.files[0]);
+  };
+  input.click();
+}
+
+async function loadHTML(dockIndex, slotIndex, file) {
+  const slotData = state.docks[dockIndex][slotIndex];
+
+  // Clean up previous
+  destroyHTMLIframe(slotData);
+  if (slotData.url) URL.revokeObjectURL(slotData.url);
+  if (slotData.stream) { slotData.stream.getTracks().forEach(t => t.stop()); slotData.stream = null; }
+
+  // Read HTML and build patched blob URL (but don't create iframe yet)
+  let htmlText = await file.text();
+  const patchedHtml = buildPatchedHTML(htmlText, dockIndex, slotIndex);
+  const blob = new Blob([patchedHtml], { type: 'text/html' });
+  const blobUrl = URL.createObjectURL(blob);
+
+  // Capture canvas receives frames via postMessage
+  const capCanvas = document.createElement('canvas');
+  capCanvas.width = 1280; capCanvas.height = 720;
+
+  // FPS tracking
+  const fpsTracker = { frameCount: 0, fps: 0, lastTime: performance.now() };
+
+  slotData.url = blobUrl;
+  slotData.name = file.name;
+  slotData.type = 'html';
+  slotData.iframe = null;       // iframe created on demand
+  slotData.captureCanvas = capCanvas;
+  slotData.media = capCanvas;
+  slotData.element = capCanvas;
+  slotData.captureInterval = null;
+  slotData._messageHandler = null;
+  slotData.fpsTracker = fpsTracker;
+  slotData._htmlReady = true;   // flag: HTML is registered, iframe can be spun up
+
+  // If active: keep iframe running. Otherwise: capture 1 thumbnail frame then destroy.
+  const isActive = (dockIndex === state.activeDock && slotIndex === state.activeSlot);
+  if (isActive) {
+    slotData._lastActiveTime = performance.now();
+    await spawnHTMLIframe(slotData);
+  } else if (!slotData._skipThumbnail) {
+    await captureHTMLThumbnail(slotData);
+  }
+
+  if (dockIndex === state.currentDock) buildSlots();
+}
+
+// Build patched HTML with capture + pause/resume injection
+function buildPatchedHTML(htmlText, dockIndex, slotIndex) {
+  // Frames are matched by iframe source window (e.source) instead of IDs
+  const patchScript = `<script>
+(function() {
+  var origGetContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function(type, attrs) {
+    if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') {
+      attrs = Object.assign({}, attrs, { preserveDrawingBuffer: true });
+    }
+    return origGetContext.call(this, type, attrs);
+  };
+
+  var vjPaused = false;
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'vj-control') {
+      vjPaused = (e.data.cmd === 'pause');
+    }
+  });
+
+  var origRAF = window.requestAnimationFrame;
+  window.requestAnimationFrame = function(cb) {
+    if (vjPaused) {
+      setTimeout(function checkPause() {
+        if (vjPaused) { setTimeout(checkPause, 200); }
+        else { origRAF.call(window, cb); }
+      }, 200);
+      return 0;
+    }
+    return origRAF.call(window, cb);
+  };
+
+  function startCapture() {
+    var canvas = document.querySelector('canvas');
+    if (!canvas) { setTimeout(startCapture, 200); return; }
+    var busy = false;
+    setInterval(function() {
+      if (busy || vjPaused) return;
+      busy = true;
+      try {
+        canvas.toBlob(function(blob) {
+          if (!blob) { busy = false; return; }
+          createImageBitmap(blob).then(function(bmp) {
+            window.parent.postMessage(
+              { type: 'vj-frame', bitmap: bmp, w: canvas.width, h: canvas.height },
+              '*', [bmp]
+            );
+            busy = false;
+          }).catch(function() { busy = false; });
+        }, 'image/jpeg', 0.6);
+      } catch(e) { busy = false; }
+    }, 1000 / 20);
+  }
+  setTimeout(startCapture, 100);
+})();
+<\/script>`;
+
+  if (htmlText.includes('<head>')) {
+    return htmlText.replace('<head>', '<head>' + patchScript);
+  } else if (htmlText.includes('<body>')) {
+    return htmlText.replace('<body>', '<body>' + patchScript);
+  }
+  return patchScript + htmlText;
+}
+
+// Create iframe for an HTML slot on demand
+// Returns a promise that resolves when the first frame is captured
+async function spawnHTMLIframe(slotData) {
+  if (slotData.iframe || !slotData._htmlReady || !slotData.url) return;
+
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;left:0;top:0;width:1280px;height:720px;border:none;opacity:0.001;pointer-events:none;z-index:-1;';
+  iframe.src = slotData.url;
+
+  const iframeReady = new Promise(resolve => {
+    iframe.onload = () => resolve();
+    setTimeout(resolve, 5000);
+  });
+  document.body.appendChild(iframe);
+  await iframeReady;
+
+  slotData.iframe = iframe;
+
+  // Promise that resolves on first frame (used for thumbnail capture)
+  let firstFrameResolve = null;
+  slotData._firstFrame = new Promise(r => { firstFrameResolve = r; });
+
+  // Listen for frames from this iframe (match by source window)
+  const capCtx = slotData.captureCanvas.getContext('2d');
+  const fpsTracker = slotData.fpsTracker;
+  fpsTracker.frameCount = 0;
+  fpsTracker.fps = 0;
+  fpsTracker.lastTime = performance.now();
+
+  const onMessage = (e) => {
+    if (e.source !== iframe.contentWindow) return;
+    if (e.data && e.data.type === 'vj-frame') {
+      const bmp = e.data.bitmap;
+      if (bmp) {
+        const cap = slotData.captureCanvas;
+        if (cap.width !== e.data.w || cap.height !== e.data.h) {
+          cap.width = e.data.w;
+          cap.height = e.data.h;
+        }
+        capCtx.drawImage(bmp, 0, 0);
+        bmp.close();
+      }
+      fpsTracker.frameCount++;
+      if (firstFrameResolve) { firstFrameResolve(); firstFrameResolve = null; }
+      const now = performance.now();
+      if (now - fpsTracker.lastTime >= 1000) {
+        fpsTracker.fps = fpsTracker.frameCount;
+        fpsTracker.frameCount = 0;
+        fpsTracker.lastTime = now;
+      }
+    }
+  };
+  window.addEventListener('message', onMessage);
+  slotData._messageHandler = onMessage;
+}
+
+// Briefly spawn iframe, capture one thumbnail frame, then destroy if not active
+async function captureHTMLThumbnail(slotData) {
+  if (!slotData._htmlReady || !slotData.url) return;
+  if (slotData.iframe) return; // already has iframe, skip
+
+  await spawnHTMLIframe(slotData);
+  if (!slotData.iframe) return;
+
+  // Wait for first frame (or timeout after 3s)
+  await Promise.race([
+    slotData._firstFrame,
+    new Promise(r => setTimeout(r, 3000))
+  ]);
+
+  // If this slot is not currently active, destroy the iframe
+  const isActive = state.docks.some((dock, di) =>
+    dock.some((slot, si) =>
+      slot === slotData && di === state.activeDock && si === state.activeSlot
+    )
+  );
+  if (!isActive) {
+    destroyHTMLIframe(slotData);
+  }
+}
+
+// Destroy iframe for an HTML slot (frees WebGL context)
+function destroyHTMLIframe(slotData) {
+  if (slotData._messageHandler) {
+    window.removeEventListener('message', slotData._messageHandler);
+    slotData._messageHandler = null;
+  }
+  if (slotData.iframe) {
+    slotData.iframe.remove();
+    slotData.iframe = null;
+  }
+  if (slotData.captureInterval) {
+    clearInterval(slotData.captureInterval);
+    slotData.captureInterval = null;
+  }
+}
+
+function updateSlotHighlight() {
+  const slots = slotsGrid.querySelectorAll('.slot');
+  slots.forEach((el, i) => {
+    el.classList.toggle('active', i === state.activeSlot && state.currentDock === state.activeDock);
+  });
+}
+
+function updateOutputInfo() {
+  if (state.activeSlot < 0 || state.activeDock < 0) {
+    outputInfo.textContent = 'NO SIGNAL';
+    return;
+  }
+  const slotData = state.docks[state.activeDock][state.activeSlot];
+  if (slotData && slotData.media) {
+    outputInfo.textContent = `DOCK${state.activeDock + 1} / SLOT${state.activeSlot + 1} / ${slotData.name}`;
+  }
+}
+
+// ============================================================
+// Render Engine
+// ============================================================
+function resizePreview() {
+  const wrap = document.getElementById('preview-wrap');
+  const ww = wrap.clientWidth, wh = wrap.clientHeight;
+  // Fixed low resolution for preview — CSS stretches it to fill wrap
+  // This avoids expensive drawImage to a large canvas every frame
+  const scale = Math.min(1, 320 / Math.max(ww, 1));
+  const pw = Math.round(ww * scale), ph = Math.round(wh * scale);
+  previewCanvas.width = pw;
+  previewCanvas.height = ph;
+  previewCanvas.style.width = ww + 'px';
+  previewCanvas.style.height = wh + 'px';
+}
+
+function getActiveMedia() {
+  if (state.activeSlot < 0 || state.activeDock < 0) return null;
+  const s = state.docks[state.activeDock][state.activeSlot];
+  return (s && s.media) ? s : null;
+}
+
+function getPreviousMedia() {
+  if (state.previousSlot < 0 || state.previousDock < 0) return null;
+  const s = state.docks[state.previousDock][state.previousSlot];
+  return (s && s.media) ? s : null;
+}
+
+// Ken Burns state per slot — each image gets a unique, slow pan+zoom animation
+function getKenBurns(slotData, t) {
+  if (!slotData._kb) {
+    // Generate random animation parameters per image
+    const dur = 12 + Math.random() * 8; // 12-20 sec per cycle
+    const zoomRange = 0.08 + Math.random() * 0.07; // 8-15% zoom range
+    const panX = (Math.random() - 0.5) * 0.15; // ±7.5% horizontal drift
+    const panY = (Math.random() - 0.5) * 0.10; // ±5% vertical drift
+    const phase = Math.random() * Math.PI * 2;  // random start phase
+    slotData._kb = { dur, zoomRange, panX, panY, phase };
+  }
+  const kb = slotData._kb;
+  const p = ((t / 1000) % kb.dur) / kb.dur; // 0-1 progress within cycle
+  const sin = Math.sin(p * Math.PI * 2 + kb.phase);
+  const cos = Math.cos(p * Math.PI * 2 * 0.7 + kb.phase); // slightly different freq for organic feel
+  const zoom = 1 + kb.zoomRange * (0.5 + 0.5 * sin); // always >= 1
+  const ox = kb.panX * cos;
+  const oy = kb.panY * sin;
+  return { zoom, ox, oy };
+}
+
+function drawMediaTo(ctx, cw, ch, slotData, alpha) {
+  const el = slotData.element;
+  if (!el) return;
+  const isVideo = slotData.type === 'video' || slotData.type === 'camera';
+  const isHTML = slotData.type === 'html';
+  const isImage = slotData.type === 'image';
+  if (isVideo && el.readyState < 2) return;
+
+  const mw = isHTML ? el.width : (isVideo ? el.videoWidth : el.naturalWidth);
+  const mh = isHTML ? el.height : (isVideo ? el.videoHeight : el.naturalHeight);
+  if (!mw || !mh) return;
+
+  const scale = Math.max(cw / mw, ch / mh);
+  let dw = mw * scale, dh = mh * scale;
+  let dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+
+  // Ken Burns: apply slow zoom + pan to still images (when enabled)
+  if (isImage && state.effects.kenburns) {
+    const kb = getKenBurns(slotData, performance.now());
+    dw *= kb.zoom;
+    dh *= kb.zoom;
+    dx = (cw - dw) / 2 + cw * kb.ox;
+    dy = (ch - dh) / 2 + ch * kb.oy;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  if (state.effects.mirror) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, cw / 2, ch); ctx.clip();
+    ctx.drawImage(el, dx, dy, dw, dh);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(cw, 0); ctx.scale(-1, 1);
+    ctx.beginPath(); ctx.rect(0, 0, cw / 2, ch); ctx.clip();
+    ctx.drawImage(el, dx, dy, dw, dh);
+    ctx.restore();
+  } else if (state.effects.kaleidoscope) {
+    const seg = 6;
+    for (let i = 0; i < seg; i++) {
+      ctx.save();
+      ctx.translate(cw / 2, ch / 2);
+      ctx.rotate((Math.PI * 2 / seg) * i);
+      if (i % 2) ctx.scale(-1, 1);
+      ctx.drawImage(el, dx - cw / 2, dy - ch / 2, dw, dh);
+      ctx.restore();
+    }
+  } else {
+    ctx.drawImage(el, dx, dy, dw, dh);
+  }
+
+  ctx.restore();
+}
+
+function applyPostEffects(ctx, canvas, cw, ch) {
+  if (state.effects.strobe) {
+    state.strobeCounter++;
+    if (state.strobeCounter % 4 === 0) state.strobeOn = !state.strobeOn;
+    if (!state.strobeOn) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cw, ch); return; }
+  }
+
+  if (state.effects.feedback && feedbackReady) {
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.translate(cw / 2, ch / 2); ctx.scale(1.02, 1.02); ctx.translate(-cw / 2, -ch / 2);
+    ctx.drawImage(feedbackCanvas, 0, 0, cw, ch);
+    ctx.restore();
+  }
+
+  if (state.effects.pixelate) {
+    const size = 8;
+    const pw = Math.ceil(cw / size), ph = Math.ceil(ch / size);
+    if (pixelateCanvas.width !== pw) pixelateCanvas.width = pw;
+    if (pixelateCanvas.height !== ph) pixelateCanvas.height = ph;
+    pixelateCtx.drawImage(canvas, 0, 0, pw, ph);
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(pixelateCanvas, 0, 0, cw, ch);
+    ctx.imageSmoothingEnabled = true;
+  }
+
+  if (state.effects.rgbShift) {
+    // Skip every other frame — getImageData/putImageData is very expensive at 1920x1080
+    rgbShiftFrame = (rgbShiftFrame || 0) + 1;
+    if (rgbShiftFrame % 2 === 0) {
+      const imageData = ctx.getImageData(0, 0, cw, ch);
+      const data = imageData.data;
+      const shift = 6;
+      const bufSize = data.length;
+      if (!rgbShiftBuffer || rgbShiftBufferSize !== bufSize) {
+        rgbShiftBuffer = new Uint8ClampedArray(bufSize);
+        rgbShiftBufferSize = bufSize;
+      }
+      rgbShiftBuffer.set(data);
+      for (let i = 0; i < bufSize; i += 4) {
+        const ri = i + shift * 4, bi = i - shift * 4;
+        if (ri < bufSize) data[i] = rgbShiftBuffer[ri];
+        if (bi >= 0) data[i + 2] = rgbShiftBuffer[bi + 2];
+      }
+      ctx.putImageData(imageData, 0, 0);
+      // Cache result for skipped frames
+      if (rgbShiftCache.width !== cw || rgbShiftCache.height !== ch) {
+        rgbShiftCache.width = cw; rgbShiftCache.height = ch;
+      }
+      rgbShiftCacheCtx.drawImage(canvas, 0, 0);
+    } else if (rgbShiftCache.width > 0) {
+      ctx.drawImage(rgbShiftCache, 0, 0);
+    }
+  }
+
+  if (state.effects.invert || state.effects.grayscale || state.effects.hueRotate) {
+    let filter = '';
+    if (state.effects.invert) filter += 'invert(1) ';
+    if (state.effects.grayscale) filter += 'grayscale(1) ';
+    if (state.effects.hueRotate) {
+      state.hueAngle = (state.hueAngle + 2) % 360;
+      filter += `hue-rotate(${state.hueAngle}deg) `;
+    }
+    ctx.filter = filter.trim();
+    ctx.drawImage(canvas, 0, 0);
+    ctx.filter = 'none';
+  }
+
+  if (state.effects.feedback) {
+    if (feedbackCanvas.width !== cw || feedbackCanvas.height !== ch) {
+      feedbackCanvas.width = cw;
+      feedbackCanvas.height = ch;
+    }
+    feedbackCtx.drawImage(canvas, 0, 0);
+    feedbackReady = true;
+  }
+}
+
+// ============================================================
+// Text Overlay Rendering
+// ============================================================
+function getTextFontSize(cw, ch) {
+  const base = Math.min(cw, ch);
+  switch (state.text.size) {
+    case 'small': return base * 0.05;
+    case 'medium': return base * 0.08;
+    case 'large': return base * 0.13;
+    case 'xlarge': return base * 0.2;
+    default: return base * 0.08;
+  }
+}
+
+function drawLogoOverlay(ctx, cw, ch) {
+  const logo = state.logo;
+  const img = logo.image;
+  if (!img || !img.naturalWidth) return;
+
+  const logoW = cw * (logo.size / 100);
+  const logoH = logoW * (img.naturalHeight / img.naturalWidth);
+  const margin = cw * (logo.margin / 100);
+
+  let x, y;
+  switch (logo.position) {
+    case 'tl': x = margin; y = margin; break;
+    case 'tc': x = (cw - logoW) / 2; y = margin; break;
+    case 'tr': x = cw - logoW - margin; y = margin; break;
+    case 'bl': x = margin; y = ch - logoH - margin; break;
+    case 'bc': x = (cw - logoW) / 2; y = ch - logoH - margin; break;
+    case 'br': x = cw - logoW - margin; y = ch - logoH - margin; break;
+    case 'c':  x = (cw - logoW) / 2; y = (ch - logoH) / 2; break;
+    default:   x = cw - logoW - margin; y = ch - logoH - margin;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = logo.alpha;
+  ctx.drawImage(img, x, y, logoW, logoH);
+  ctx.restore();
+}
+
+function drawTextOverlay(ctx, cw, ch) {
+  const t = state.text;
+  const fontSize = getTextFontSize(cw, ch);
+  const font = `bold ${fontSize}px 'Courier New', monospace`;
+  const L = t.looks;
+
+  // --- Typewriter: modify display text ---
+  let displayText = t.content;
+  if (L.typewriter) {
+    t.typewriterTimer++;
+    if (t.typewriterTimer % 3 === 0 && t.typewriterLen < t.content.length) t.typewriterLen++;
+    displayText = t.content.substring(0, t.typewriterLen);
+    if (t.typewriterLen < t.content.length) displayText += '_';
+  }
+
+  // === RAIN motion draws multiple copies with its own loop ===
+  if (t.motion === 'rain') {
+    if (t.rainDrops.length < 8) {
+      t.rainDrops.push({
+        x: Math.random() * cw, y: -fontSize,
+        speed: 2 + Math.random() * 4,
+        alpha: 0.3 + Math.random() * 0.7,
+        size: 0.5 + Math.random() * 0.8,
+      });
+    }
+    for (let i = t.rainDrops.length - 1; i >= 0; i--) {
+      const d = t.rainDrops[i];
+      d.y += d.speed;
+      if (d.y > ch + fontSize) { t.rainDrops.splice(i, 1); continue; }
+      ctx.save();
+      ctx.globalAlpha = d.alpha;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `bold ${fontSize * d.size}px 'Courier New', monospace`;
+      drawTextWithLooks(ctx, displayText, d.x, d.y, fontSize * d.size, t, cw, ch);
+      ctx.restore();
+    }
+    return;
+  }
+
+  // === Single-instance motions: compute x, y ===
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = font;
+
+  let x = cw / 2, y = ch / 2;
+
+  // -- Motion: DVD --
+  if (t.motion === 'dvd') {
+    const textW = ctx.measureText(displayText).width;
+    const textH = fontSize;
+    if (t.dvdX < 0 || t.dvdX > cw || t.dvdY < 0 || t.dvdY > ch) {
+      t.dvdX = cw * 0.3; t.dvdY = ch * 0.3;
+    }
+    const spd = Math.max(1.5, Math.min(cw, ch) * 0.004);
+    const vLen = Math.sqrt(t.dvdVx * t.dvdVx + t.dvdVy * t.dvdVy) || 1;
+    t.dvdVx = (t.dvdVx / vLen) * spd;
+    t.dvdVy = (t.dvdVy / vLen) * spd;
+    t.dvdX += t.dvdVx; t.dvdY += t.dvdVy;
+    let bounced = false;
+    const hw = textW / 2, hh = textH / 2;
+    if (t.dvdX - hw <= 0) { t.dvdVx = Math.abs(t.dvdVx); t.dvdX = hw; bounced = true; }
+    if (t.dvdX + hw >= cw) { t.dvdVx = -Math.abs(t.dvdVx); t.dvdX = cw - hw; bounced = true; }
+    if (t.dvdY - hh <= 0) { t.dvdVy = Math.abs(t.dvdVy); t.dvdY = hh; bounced = true; }
+    if (t.dvdY + hh >= ch) { t.dvdVy = -Math.abs(t.dvdVy); t.dvdY = ch - hh; bounced = true; }
+    if (bounced) t.dvdColor = `hsl(${Math.floor(Math.random() * 360)}, 100%, 60%)`;
+    x = t.dvdX; y = t.dvdY;
+
+  // -- Motion: Scroll --
+  } else if (t.motion === 'scroll') {
+    t.scrollX -= 3;
+    x = cw + t.scrollX;
+    const tw = ctx.measureText(displayText).width;
+    if (x < -tw) { t.scrollX = 0; x = cw; }
+    ctx.textAlign = 'left';
+    y = ch / 2;
+
+  // -- Motion: Static (use Pos setting) --
+  } else {
+    switch (t.position) {
+      case 'top': y = fontSize * 1.2; break;
+      case 'bottom': y = ch - fontSize * 1.2; break;
+      default: y = ch / 2;
+    }
+  }
+
+  // --- Apply transform looks (modify x, y, ctx state) ---
+
+  // Shake: add jitter to position
+  let shakeX = 0, shakeY = 0;
+  if (L.shake) {
+    t.shakeTimer++;
+    const intensity = fontSize * 0.08;
+    shakeX = (Math.random() - 0.5) * intensity * 2;
+    shakeY = (Math.random() - 0.5) * intensity * 2;
+    if (t.shakeTimer % 30 < 5) {
+      shakeX = (Math.random() - 0.5) * intensity * 6;
+      shakeY = (Math.random() - 0.5) * intensity * 6;
+    }
+  }
+
+  // Zoom: wrap in scale transform
+  let zoomScale = 1;
+  if (L.zoom) {
+    t.zoomPhase += 0.04;
+    zoomScale = 1 + Math.sin(t.zoomPhase) * 0.5;
+  }
+
+  // Rotate: wrap in rotation
+  let rotAngle = 0;
+  if (L.rotate) {
+    t.rotateAngle += 0.02;
+    rotAngle = t.rotateAngle;
+  }
+
+  // --- Apply transforms and draw ---
+  ctx.save();
+  ctx.translate(x + shakeX, y + shakeY);
+  if (L.rotate) ctx.rotate(rotAngle);
+  if (L.zoom) {
+    ctx.scale(zoomScale, zoomScale);
+    ctx.globalAlpha = 0.5 + Math.sin(t.zoomPhase) * 0.5;
+  }
+
+  // Draw at origin (0,0) since we translated
+  drawTextWithLooks(ctx, displayText, 0, 0, fontSize, t, cw, ch);
+
+  // Rotate ghost trail
+  if (L.rotate) {
+    ctx.globalAlpha = 0.2; ctx.rotate(-0.3);
+    drawTextWithLooks(ctx, displayText, 0, 0, fontSize, t, cw, ch);
+    ctx.globalAlpha = 0.08; ctx.rotate(-0.3);
+    drawTextWithLooks(ctx, displayText, 0, 0, fontSize, t, cw, ch);
+  }
+
+  // DVD trail
+  if (t.motion === 'dvd') {
+    ctx.globalAlpha = 0.15;
+    drawTextWithLooks(ctx, displayText, -t.dvdVx * 3, -t.dvdVy * 3, fontSize, t, cw, ch);
+  }
+
+  ctx.restore();
+  ctx.restore();
+}
+
+// ============================================================
+// Look rendering (called per text instance)
+// ============================================================
+function drawTextWithLooks(ctx, text, x, y, fontSize, t, cw, ch) {
+  const L = t.looks;
+  const useColor = t.motion === 'dvd' ? t.dvdColor : t.color;
+
+  ctx.save();
+
+  // --- Wave: per-character y offset ---
+  if (L.wave) {
+    t.wavePhase += 0.003; // smaller increment since called per frame
+    const totalW = ctx.measureText(text).width;
+    let cx = x - totalW / 2;
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const cw2 = ctx.measureText(char).width;
+      const cy = y + Math.sin(t.wavePhase * 20 + i * 0.4) * fontSize * 0.3;
+      drawSingleText(ctx, char, cx + cw2 / 2, cy, fontSize, useColor, L, t);
+      cx += cw2;
+    }
+    ctx.restore();
+    return;
+  }
+
+  // --- Glitch: multi-pass with offsets ---
+  if (L.glitch) {
+    t.glitchOffset = (Math.random() - 0.5) * fontSize * 0.15;
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    // Red
+    ctx.fillStyle = 'rgba(255,0,0,0.7)';
+    ctx.fillText(text, x + t.glitchOffset, y - t.glitchOffset * 0.5);
+    // Blue
+    ctx.fillStyle = 'rgba(0,100,255,0.7)';
+    ctx.fillText(text, x - t.glitchOffset, y + t.glitchOffset * 0.5);
+    ctx.restore();
+  }
+
+  // --- Base text draw ---
+  drawSingleText(ctx, text, x, y, fontSize, useColor, L, t);
+
+  // --- Glitch slice (lightweight: draw offset colored bars instead of getImageData) ---
+  if (L.glitch && Math.random() > 0.7) {
+    const sliceH = Math.max(2, fontSize * 0.12);
+    const sliceY = y - fontSize / 2 + Math.random() * fontSize;
+    const sliceShift = (Math.random() - 0.5) * fontSize * 0.4;
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,0,0,0.5)' : 'rgba(0,100,255,0.5)';
+    ctx.fillRect(x - fontSize + sliceShift, sliceY, fontSize * 2, sliceH);
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawSingleText(ctx, text, x, y, fontSize, color, L, t) {
+  // Neon glow layers (3-pass: strong outer + mid + core)
+  if (L.neon) {
+    ctx.shadowColor = color;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1, fontSize * 0.02);
+    ctx.shadowBlur = fontSize * 0.5;
+    ctx.strokeText(text, x, y);
+    ctx.shadowBlur = fontSize * 0.25;
+    ctx.strokeText(text, x, y);
+    ctx.shadowBlur = fontSize * 0.1;
+    ctx.strokeText(text, x, y);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, x, y);
+  }
+
+  // Outline
+  if (L.outline && !L.neon) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(2, fontSize * 0.04);
+    ctx.shadowColor = color;
+    ctx.shadowBlur = fontSize * 0.1;
+    ctx.strokeText(text, x, y);
+  }
+
+  // Solid fill (default base, also for typewriter)
+  if (L.solid || L.typewriter || (!L.neon && !L.outline)) {
+    ctx.fillStyle = color;
+    if (L.typewriter) {
+      ctx.shadowColor = 'rgba(0,255,0,0.5)'; ctx.shadowBlur = 10;
+    } else {
+      ctx.shadowColor = 'rgba(0,0,0,0.7)';
+      ctx.shadowBlur = fontSize * 0.15;
+      ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 2;
+    }
+    ctx.fillText(text, x, y);
+    ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+  }
+}
+
+function renderFrame(targetCtx, targetCanvas) {
+  const cw = targetCanvas.width;
+  const ch = targetCanvas.height;
+  if (cw === 0 || ch === 0) return;
+
+  targetCtx.fillStyle = '#000';
+  targetCtx.fillRect(0, 0, cw, ch);
+
+  if (state.blackout) return;
+
+  // Audio reactive level
+  const aLvl = audioReactiveEnabled ? audioLevel : 1;
+
+  const active = getActiveMedia();
+  const previous = getPreviousMedia();
+  const hasText = state.text.visible && state.text.content;
+  if (!active && !previous && !hasText) return;
+
+  if (previous && state.mix > 0) {
+    drawMediaTo(targetCtx, cw, ch, previous, state.mix * aLvl);
+  }
+  if (active) {
+    drawMediaTo(targetCtx, cw, ch, active, state.opacity * (1 - state.mix * 0.5) * aLvl);
+  }
+
+  applyPostEffects(targetCtx, targetCanvas, cw, ch);
+
+  // Audio reactive: fade to black overlay for low levels
+  if (audioReactiveEnabled && aLvl < 1) {
+    targetCtx.save();
+    targetCtx.globalAlpha = 1 - aLvl;
+    targetCtx.fillStyle = '#000';
+    targetCtx.fillRect(0, 0, cw, ch);
+    targetCtx.restore();
+  }
+
+  // Text overlay (drawn after effects so it's always on top)
+  if (state.text.visible && state.text.content) {
+    drawTextOverlay(targetCtx, cw, ch);
+  }
+
+  // Logo overlay (drawn last, always on top)
+  if (state.logo.visible && state.logo.image) {
+    drawLogoOverlay(targetCtx, cw, ch);
+  }
+}
+
+let prevBlackout = false;
+
+function render() {
+  requestAnimationFrame(render);
+
+  // Poll gamepad (merged into single rAF loop)
+  pollGamepad();
+
+  // Auto mode tick
+  autoModeTick();
+
+  // Audio reactive level update
+  updateAudioLevel();
+  updateAudioLevelUI();
+
+  // Blackout indicator (only update DOM when state changes)
+  if (state.blackout !== prevBlackout) {
+    blackoutIndicator.classList.toggle('visible', state.blackout);
+    prevBlackout = state.blackout;
+  }
+
+  // Render once to internal high-res canvas
+  renderFrame(renderCtx, renderCanvas);
+
+  // Copy to preview (scaled down)
+  previewCtx.drawImage(renderCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
+
+  // Copy to output window (only if visible — skip minimized/hidden tabs)
+  if (outputWin && !outputWin.closed && outputCanvas && outputCtx) {
+    try {
+      if (!outputWin.document.hidden) {
+        outputCtx.drawImage(renderCanvas, 0, 0, outputCanvas.width, outputCanvas.height);
+      }
+    } catch(e) {
+      // Window may have been closed
+    }
+  }
+}
+
+// ============================================================
+// Controls
+// ============================================================
+const ctrlSpeed = document.getElementById('ctrl-speed');
+const ctrlOpacity = document.getElementById('ctrl-opacity');
+const ctrlMix = document.getElementById('ctrl-mix');
+const valSpeed = document.getElementById('val-speed');
+const valOpacity = document.getElementById('val-opacity');
+const valMix = document.getElementById('val-mix');
+
+ctrlSpeed.oninput = () => {
+  state.speed = parseFloat(ctrlSpeed.value);
+  valSpeed.textContent = state.speed.toFixed(1) + 'x';
+  const a = getActiveMedia();
+  if (a && a.type === 'video') a.element.playbackRate = state.speed;
+};
+
+ctrlOpacity.oninput = () => {
+  state.opacity = parseFloat(ctrlOpacity.value);
+  valOpacity.textContent = Math.round(state.opacity * 100) + '%';
+};
+
+ctrlMix.oninput = () => {
+  state.mix = parseFloat(ctrlMix.value);
+  valMix.textContent = Math.round(state.mix * 100) + '%';
+};
+
+document.querySelectorAll('.fx-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const fx = btn.dataset.fx;
+    state.effects[fx] = !state.effects[fx];
+    btn.classList.toggle('active', state.effects[fx]);
+    if (!state.effects.feedback) feedbackReady = false;
+  });
+});
+
+function updateFXButtons() {
+  document.querySelectorAll('.fx-btn').forEach(btn => {
+    btn.classList.toggle('active', state.effects[btn.dataset.fx]);
+  });
+}
+
+// ============================================================
+// Text Overlay Controls
+// ============================================================
+const textInput = document.getElementById('text-input');
+const textSend = document.getElementById('text-send');
+const textToggle = document.getElementById('text-toggle');
+const textColor = document.getElementById('text-color');
+const textPos = document.getElementById('text-pos');
+const textSizeSelect = document.getElementById('text-size');
+
+function sendText() {
+  const val = textInput.value.trim();
+  if (!val) return;
+  state.text.content = val;
+  state.text.visible = true;
+  state.text.scrollX = 0;
+  state.text.typewriterLen = 0;
+  state.text.typewriterTimer = 0;
+  state.text.dvdX = -1; state.text.dvdY = -1;
+  state.text.dvdColor = state.text.color;
+  state.text.rainDrops = [];
+  state.text.zoomPhase = 0;
+  state.text.rotateAngle = 0;
+  textToggle.textContent = 'ON';
+  textToggle.classList.add('active');
+}
+
+textSend.addEventListener('click', sendText);
+textInput.addEventListener('keydown', (e) => {
+  e.stopPropagation(); // prevent VJ shortcuts while typing
+  if (e.key === 'Enter') sendText();
+});
+
+textToggle.addEventListener('click', () => {
+  state.text.visible = !state.text.visible;
+  textToggle.textContent = state.text.visible ? 'ON' : 'OFF';
+  textToggle.classList.toggle('active', state.text.visible);
+});
+
+textColor.addEventListener('input', () => { state.text.color = textColor.value; });
+textPos.addEventListener('change', () => {
+  state.text.position = textPos.value;
+  state.text.scrollX = 0;
+});
+textSizeSelect.addEventListener('change', () => { state.text.size = textSizeSelect.value; });
+
+// Motion buttons (radio - one at a time)
+document.querySelectorAll('.motion-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.motion-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.text.motion = btn.dataset.motion;
+    // Reset motion state
+    state.text.dvdX = -1; state.text.dvdY = -1;
+    state.text.dvdColor = state.text.color;
+    state.text.scrollX = 0;
+    state.text.rainDrops = [];
+  });
+});
+
+// Look buttons (toggle - multiple allowed)
+document.querySelectorAll('.look-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const look = btn.dataset.look;
+    state.text.looks[look] = !state.text.looks[look];
+    btn.classList.toggle('active', state.text.looks[look]);
+    // Reset relevant animation state
+    if (look === 'typewriter') { state.text.typewriterLen = 0; state.text.typewriterTimer = 0; }
+    if (look === 'zoom') state.text.zoomPhase = 0;
+    if (look === 'rotate') state.text.rotateAngle = 0;
+  });
+});
+
+// ============================================================
+// Logo Overlay Controls
+// ============================================================
+const logoToggle = document.getElementById('logo-toggle');
+const logoLoadBtn = document.getElementById('logo-load-btn');
+const logoRemoveBtn = document.getElementById('logo-remove-btn');
+const logoNameEl = document.getElementById('logo-name');
+const logoPreviewImg = document.getElementById('logo-preview-img');
+const logoSizeSlider = document.getElementById('logo-size');
+const logoSizeVal = document.getElementById('logo-size-val');
+const logoAlphaSlider = document.getElementById('logo-alpha');
+const logoAlphaVal = document.getElementById('logo-alpha-val');
+const logoMarginSlider = document.getElementById('logo-margin');
+const logoMarginVal = document.getElementById('logo-margin-val');
+
+logoToggle.addEventListener('click', () => {
+  state.logo.visible = !state.logo.visible;
+  logoToggle.textContent = state.logo.visible ? 'ON' : 'OFF';
+  logoToggle.classList.toggle('active', state.logo.visible);
+});
+
+logoLoadBtn.addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*,.png,.jpg,.jpeg,.gif,.svg,.webp';
+  input.onchange = () => {
+    if (!input.files.length) return;
+    const file = input.files[0];
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      state.logo.image = img;
+      state.logo.visible = true;
+      logoToggle.textContent = 'ON';
+      logoToggle.classList.add('active');
+      logoNameEl.textContent = file.name;
+      logoPreviewImg.src = url;
+      logoPreviewImg.style.display = 'block';
+      logoRemoveBtn.disabled = false;
+    };
+    img.src = url;
+  };
+  input.click();
+});
+
+logoRemoveBtn.addEventListener('click', () => {
+  state.logo.image = null;
+  state.logo.visible = false;
+  logoToggle.textContent = 'OFF';
+  logoToggle.classList.remove('active');
+  logoNameEl.textContent = 'No file';
+  logoPreviewImg.style.display = 'none';
+  logoPreviewImg.src = '';
+  logoRemoveBtn.disabled = true;
+});
+
+logoSizeSlider.addEventListener('input', () => {
+  state.logo.size = parseInt(logoSizeSlider.value);
+  logoSizeVal.textContent = state.logo.size + '%';
+});
+
+logoAlphaSlider.addEventListener('input', () => {
+  state.logo.alpha = parseFloat(logoAlphaSlider.value);
+  logoAlphaVal.textContent = Math.round(state.logo.alpha * 100) + '%';
+});
+
+logoMarginSlider.addEventListener('input', () => {
+  state.logo.margin = parseFloat(logoMarginSlider.value);
+  logoMarginVal.textContent = state.logo.margin + '%';
+});
+
+document.querySelectorAll('.logo-pos-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.logo-pos-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.logo.position = btn.dataset.pos;
+  });
+});
+
+// ============================================================
+// Drag & Drop
+// ============================================================
+document.addEventListener('dragover', (e) => { e.preventDefault(); dropOverlay.style.display = 'flex'; });
+document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) dropOverlay.style.display = 'none'; });
+document.addEventListener('drop', (e) => {
+  e.preventDefault(); dropOverlay.style.display = 'none';
+  const files = Array.from(e.dataTransfer.files);
+  if (!files.length) return;
+  const dock = state.docks[state.currentDock];
+  let start = dock.findIndex(s => !s.media);
+  if (start < 0) return;
+  for (let i = 0; i < files.length && (start + i) < SLOTS_PER_DOCK; i++) {
+    loadMedia(state.currentDock, start + i, files[i]);
+  }
+});
+
+// ============================================================
+// Keyboard
+// ============================================================
+document.addEventListener('keydown', (e) => {
+  // Don't trigger shortcuts when typing in text input
+  if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'text') return;
+
+  if (e.key >= '1' && e.key <= '8') {
+    activateSlot(state.currentDock, parseInt(e.key) - 1);
+    return;
+  }
+  const dk = { q: 0, w: 1, e: 2, r: 3 };
+  if (dk[e.key] !== undefined) { switchDock(dk[e.key]); return; }
+  if (e.key === ' ') { e.preventDefault(); state.blackout = !state.blackout; return; }
+  if (e.key === 't' || e.key === 'T') {
+    state.text.visible = !state.text.visible;
+    textToggle.textContent = state.text.visible ? 'ON' : 'OFF';
+    textToggle.classList.toggle('active', state.text.visible);
+    return;
+  }
+  if (e.key === 'f' || e.key === 'F') {
+    // Fullscreen output window
+    if (outputWin && !outputWin.closed) {
+      outputWin.document.documentElement.requestFullscreen().catch(() => {});
+    }
+    return;
+  }
+  if (e.key === 'a' || e.key === 'A') {
+    autoBtn.click();
+    return;
+  }
+  if (e.key === 'l' || e.key === 'L') {
+    themeBtn.click();
+    return;
+  }
+});
+
+// ============================================================
+// Gamepad
+// ============================================================
+window.addEventListener('gamepadconnected', (e) => {
+  state.gamepadIndex = e.gamepad.index;
+  gamepadStatusEl.textContent = `GAMEPAD: ${e.gamepad.id}`;
+  gamepadStatusEl.className = 'connected';
+});
+
+window.addEventListener('gamepaddisconnected', () => {
+  state.gamepadIndex = null;
+  gamepadStatusEl.textContent = 'GAMEPAD: NOT CONNECTED';
+  gamepadStatusEl.className = '';
+});
+
+// Pre-allocated gamepad button arrays (avoid per-frame allocation)
+const gpButtonsCurr = new Array(20).fill(false);
+const gpButtonsPrev = new Array(20).fill(false);
+
+function pollGamepad() {
+  if (state.gamepadIndex === null) return;
+  const gp = navigator.getGamepads()[state.gamepadIndex];
+  if (!gp) return;
+
+  // Reuse pre-allocated arrays
+  for (let i = 0; i < gp.buttons.length && i < gpButtonsCurr.length; i++) {
+    gpButtonsCurr[i] = gp.buttons[i].pressed;
+  }
+  const jp = (idx) => gpButtonsCurr[idx] && !gpButtonsPrev[idx];
+
+  // Face buttons -> slots 1-4
+  for (let i = 0; i < 4; i++) { if (jp(i)) activateSlot(state.currentDock, i); }
+  // LB/RB -> slots 5-6
+  if (jp(4)) activateSlot(state.currentDock, 4);
+  if (jp(5)) activateSlot(state.currentDock, 5);
+  if (jp(8)) activateSlot(state.currentDock, 6);
+  // LT/RT -> dock switch
+  if (jp(6)) switchDock((state.currentDock - 1 + NUM_DOCKS) % NUM_DOCKS);
+  if (jp(7)) switchDock((state.currentDock + 1) % NUM_DOCKS);
+  // Start -> blackout
+  if (jp(9)) state.blackout = !state.blackout;
+
+  // D-Pad -> FX
+  const fxKeys = Object.keys(state.effects);
+  if (jp(12)) { const i = fxKeys.findIndex(k => state.effects[k]); state.effects[fxKeys[(i+1) % fxKeys.length]] = !state.effects[fxKeys[(i+1) % fxKeys.length]]; updateFXButtons(); }
+  if (jp(13)) { fxKeys.forEach(k => state.effects[k] = false); feedbackReady = false; updateFXButtons(); }
+  if (jp(14)) { const i = fxKeys.findIndex(k => state.effects[k]); fxKeys.forEach(k => state.effects[k] = false); state.effects[fxKeys[i <= 0 ? fxKeys.length - 1 : i - 1]] = true; updateFXButtons(); }
+  if (jp(15)) { const i = fxKeys.findIndex(k => state.effects[k]); fxKeys.forEach(k => state.effects[k] = false); state.effects[fxKeys[(i + 1) % fxKeys.length]] = true; updateFXButtons(); }
+
+  // Sticks (update DOM only when value actually changes)
+  const lx = gp.axes[0] || 0, ly = gp.axes[1] || 0, rx = gp.axes[2] || 0, ry = gp.axes[3] || 0;
+  if (Math.abs(ly) > 0.1) {
+    const prev = state.opacity;
+    state.opacity = Math.max(0, Math.min(1, state.opacity - ly * 0.02));
+    if (Math.round(state.opacity*100) !== Math.round(prev*100)) {
+      ctrlOpacity.value = state.opacity; valOpacity.textContent = Math.round(state.opacity * 100) + '%';
+    }
+  }
+  if (Math.abs(lx) > 0.1) {
+    const prev = state.speed;
+    state.speed = Math.max(0.1, Math.min(3, state.speed + lx * 0.02));
+    if (state.speed.toFixed(1) !== prev.toFixed(1)) {
+      ctrlSpeed.value = state.speed; valSpeed.textContent = state.speed.toFixed(1) + 'x';
+      const a = getActiveMedia(); if (a && a.type === 'video') a.element.playbackRate = state.speed;
+    }
+  }
+  if (Math.abs(rx) > 0.1) {
+    const prev = state.mix;
+    state.mix = Math.max(0, Math.min(1, state.mix + rx * 0.02));
+    if (Math.round(state.mix*100) !== Math.round(prev*100)) {
+      ctrlMix.value = state.mix; valMix.textContent = Math.round(state.mix * 100) + '%';
+    }
+  }
+  if (Math.abs(ry) > 0.1 && state.effects.hueRotate) {
+    state.hueAngle = (state.hueAngle + ry * 5) % 360;
+  }
+
+  // Copy current to prev (reuse array)
+  for (let i = 0; i < gpButtonsCurr.length; i++) {
+    gpButtonsPrev[i] = gpButtonsCurr[i];
+  }
+}
+
+// ============================================================
+// Auto Mode
+// ============================================================
+const autoBtn = document.getElementById('auto-btn');
+const autoBpm = document.getElementById('auto-bpm');
+const autoBpmVal = document.getElementById('auto-bpm-val');
+const beatIndicator = document.getElementById('beat-indicator');
+
+autoBtn.addEventListener('click', () => {
+  state.auto.enabled = !state.auto.enabled;
+  autoBtn.textContent = state.auto.enabled ? 'AUTO ON' : 'AUTO OFF';
+  autoBtn.classList.toggle('active', state.auto.enabled);
+  if (state.auto.enabled) {
+    state.auto.lastBeatTime = performance.now();
+    state.auto.beatCount = 0;
+  }
+});
+
+autoBpm.addEventListener('input', () => {
+  state.auto.bpm = parseInt(autoBpm.value);
+  autoBpmVal.textContent = state.auto.bpm;
+});
+
+document.querySelectorAll('.beat-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.beat-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.auto.beatDiv = parseInt(btn.dataset.div);
+  });
+});
+
+document.querySelectorAll('.scope-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.scope-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.auto.scope = btn.dataset.scope;
+  });
+});
+
+// SRC buttons (BPM / MIC)
+const micRow = document.getElementById('mic-row');
+const micMeterRow = document.getElementById('mic-meter-row');
+const micSens = document.getElementById('mic-sens');
+const micSensVal = document.getElementById('mic-sens-val');
+const micMeterBar = document.getElementById('mic-meter-bar');
+const micMeterThresh = document.getElementById('mic-meter-thresh');
+
+document.querySelectorAll('.src-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.src-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.auto.source = btn.dataset.src;
+    const isMic = state.auto.source === 'mic';
+    micRow.style.display = isMic ? 'flex' : 'none';
+    micMeterRow.style.display = isMic ? 'flex' : 'none';
+    if (isMic) startMic();
+    else stopMic();
+  });
+});
+
+micSens.addEventListener('input', () => {
+  state.auto.mic.sensitivity = parseInt(micSens.value);
+  micSensVal.textContent = state.auto.mic.sensitivity;
+  // Update threshold indicator position (invert: higher sensitivity = lower threshold)
+  const threshPct = 100 - state.auto.mic.sensitivity;
+  micMeterThresh.style.left = threshPct + '%';
+});
+
+async function startMic() {
+  const mic = state.auto.mic;
+  if (mic.analyser) return; // already running
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.3;
+    source.connect(analyser);
+    mic.stream = stream;
+    mic.audioCtx = audioCtx;
+    mic.analyser = analyser;
+    mic.dataArray = new Uint8Array(analyser.frequencyBinCount);
+  } catch (err) {
+    alert('Mic access denied: ' + err.message);
+    // Revert to BPM
+    document.querySelectorAll('.src-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.src === 'bpm');
+    });
+    state.auto.source = 'bpm';
+    micRow.style.display = 'none';
+    micMeterRow.style.display = 'none';
+  }
+}
+
+function stopMic() {
+  const mic = state.auto.mic;
+  if (mic.stream) { mic.stream.getTracks().forEach(t => t.stop()); mic.stream = null; }
+  if (mic.audioCtx) { mic.audioCtx.close().catch(() => {}); mic.audioCtx = null; }
+  mic.analyser = null;
+  mic.dataArray = null;
+}
+
+// --- Auto FX controls ---
+const autoFxBtn = document.getElementById('auto-fx-btn');
+const autoFxMax = document.getElementById('auto-fx-max');
+const autoFxMaxVal = document.getElementById('auto-fx-max-val');
+const autoFxProb = document.getElementById('auto-fx-prob');
+const autoFxProbVal = document.getElementById('auto-fx-prob-val');
+
+autoFxBtn.addEventListener('click', () => {
+  state.auto.fxRandom = !state.auto.fxRandom;
+  autoFxBtn.textContent = state.auto.fxRandom ? 'ON' : 'OFF';
+  autoFxBtn.classList.toggle('active', state.auto.fxRandom);
+});
+
+autoFxMax.addEventListener('input', () => {
+  state.auto.fxMaxActive = parseInt(autoFxMax.value);
+  autoFxMaxVal.textContent = state.auto.fxMaxActive;
+});
+
+autoFxProb.addEventListener('input', () => {
+  state.auto.fxChangeProb = parseInt(autoFxProb.value) / 100;
+  autoFxProbVal.textContent = autoFxProb.value + '%';
+});
+
+function autoRandomizeFX() {
+  if (!state.auto.fxRandom) return;
+  if (Math.random() > state.auto.fxChangeProb) return;
+
+  const fxKeys = Object.keys(state.effects);
+
+  // Clear all first
+  fxKeys.forEach(k => state.effects[k] = false);
+  feedbackReady = false;
+
+  // Pick random number of effects (1 to fxMaxActive)
+  const count = 1 + Math.floor(Math.random() * state.auto.fxMaxActive);
+  // Shuffle and pick
+  const shuffled = fxKeys.slice().sort(() => Math.random() - 0.5);
+  for (let i = 0; i < count && i < shuffled.length; i++) {
+    state.effects[shuffled[i]] = true;
+  }
+
+  updateFXButtons();
+}
+
+// --- Shared: pick random slot and switch (no DOM rebuild) ---
+function autoSwitchSlot() {
+  let candidates = [];
+  if (state.auto.scope === 'dock') {
+    state.docks[state.currentDock].forEach((slot, i) => {
+      if (slot.media) candidates.push({ dock: state.currentDock, slot: i });
+    });
+  } else {
+    state.docks.forEach((dock, di) => {
+      dock.forEach((slot, si) => {
+        if (slot.media) candidates.push({ dock: di, slot: si });
+      });
+    });
+  }
+  candidates = candidates.filter(c => !(c.dock === state.activeDock && c.slot === state.activeSlot));
+  if (candidates.length > 0) {
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    // activateSlot handles playback without DOM rebuild
+    // Only update UI dock tabs if the picked dock happens to be the displayed one
+    activateSlot(pick.dock, pick.slot);
+    if (pick.dock === state.currentDock) updateSlotHighlight();
+  }
+
+  // Randomize FX on beat
+  autoRandomizeFX();
+
+  // Flash beat indicator
+  beatIndicator.classList.add('flash');
+  setTimeout(() => beatIndicator.classList.remove('flash'), 100);
+}
+
+function autoModeTick() {
+  if (!state.auto.enabled) return;
+  const now = performance.now();
+
+  if (state.auto.source === 'mic') {
+    // --- MIC mode: beat detection by volume threshold ---
+    const mic = state.auto.mic;
+    if (!mic.analyser) return;
+    mic.analyser.getByteFrequencyData(mic.dataArray);
+    // Calculate RMS volume (0-100)
+    let sum = 0;
+    for (let i = 0; i < mic.dataArray.length; i++) sum += mic.dataArray[i];
+    const avg = sum / mic.dataArray.length;
+    const vol = Math.min(100, (avg / 255) * 150); // scale up for visibility
+    mic.volume = vol;
+
+    // Update meter UI (only when changed by >=1%)
+    const volRounded = Math.round(vol);
+    if (volRounded !== mic._prevVol) {
+      mic._prevVol = volRounded;
+      micMeterBar.style.width = volRounded + '%';
+    }
+
+    // Threshold: higher sensitivity = lower threshold = easier to trigger
+    const threshold = 100 - mic.sensitivity;
+    if (vol > threshold && (now - mic.lastTriggerTime) > mic.cooldown) {
+      mic.lastTriggerTime = now;
+      autoSwitchSlot();
+    }
+  } else {
+    // --- BPM mode ---
+    const beatInterval = (60000 / state.auto.bpm) * state.auto.beatDiv;
+    if (now - state.auto.lastBeatTime >= beatInterval) {
+      state.auto.lastBeatTime = now;
+      state.auto.beatCount++;
+      autoSwitchSlot();
+    }
+  }
+}
+
+// ============================================================
+// Audio Player
+// ============================================================
+const audioLoadBtn = document.getElementById('audio-load-btn');
+const audioPlayBtn = document.getElementById('audio-play-btn');
+const audioNameEl = document.getElementById('audio-name');
+const audioSeek = document.getElementById('audio-seek');
+const audioTimeEl = document.getElementById('audio-time');
+const audioVol = document.getElementById('audio-vol');
+
+let audioCtx = null;
+let audioSource = null;
+let audioGain = null;
+let audioStreamDest = null; // for recording
+let audioElement = null;
+let audioUpdateInterval = null;
+
+let audioAnalyser = null;
+let audioAnalyserData = null;
+let audioReactiveEnabled = false;
+let audioLevel = 0; // 0-1 normalized
+
+function ensureAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioGain = audioCtx.createGain();
+    audioAnalyser = audioCtx.createAnalyser();
+    audioAnalyser.fftSize = 256;
+    audioAnalyser.smoothingTimeConstant = 0.4;
+    audioAnalyserData = new Uint8Array(audioAnalyser.frequencyBinCount);
+    audioStreamDest = audioCtx.createMediaStreamDestination();
+    audioGain.connect(audioAnalyser);
+    audioAnalyser.connect(audioCtx.destination);    // speaker output
+    audioAnalyser.connect(audioStreamDest);          // recording stream
+    audioGain.gain.value = parseFloat(audioVol.value);
+  }
+}
+
+function updateAudioLevel() {
+  if (!audioAnalyser || !audioReactiveEnabled) { audioLevel = 1; return; }
+  if (!audioElement || audioElement.paused) { audioLevel = 0; return; }
+  audioAnalyser.getByteFrequencyData(audioAnalyserData);
+  let sum = 0;
+  for (let i = 0; i < audioAnalyserData.length; i++) sum += audioAnalyserData[i];
+  const avg = sum / audioAnalyserData.length;
+  audioLevel = Math.min(1, avg / 180); // normalize, 180 is ~70% of 255 for headroom
+}
+
+audioLoadBtn.addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'audio/*,.mp3,.wav,.ogg,.m4a,.flac';
+  input.onchange = () => {
+    if (!input.files.length) return;
+    const file = input.files[0];
+    loadAudio(file);
+  };
+  input.click();
+});
+
+function loadAudio(file) {
+  ensureAudioCtx();
+
+  // Clean up previous
+  if (audioElement) {
+    audioElement.pause();
+    if (audioSource) { audioSource.disconnect(); audioSource = null; }
+  }
+
+  const url = URL.createObjectURL(file);
+  audioElement = new Audio();
+  audioElement.src = url;
+  audioElement.preload = 'auto';
+
+  audioElement.addEventListener('loadedmetadata', () => {
+    audioSeek.max = audioElement.duration;
+    audioSeek.disabled = false;
+    audioPlayBtn.disabled = false;
+    audioNameEl.textContent = file.name;
+    updateAudioTime();
+  });
+
+  audioElement.addEventListener('ended', () => {
+    audioPlayBtn.textContent = '▶';
+    audioPlayBtn.classList.remove('playing');
+  });
+
+  // Connect through Web Audio API for recording capture
+  audioSource = audioCtx.createMediaElementSource(audioElement);
+  audioSource.connect(audioGain);
+}
+
+audioPlayBtn.addEventListener('click', () => {
+  if (!audioElement) return;
+  ensureAudioCtx();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  if (audioElement.paused) {
+    audioElement.play();
+    audioPlayBtn.textContent = '⏸';
+    audioPlayBtn.classList.add('playing');
+    if (!audioUpdateInterval) {
+      audioUpdateInterval = setInterval(updateAudioTime, 250);
+    }
+  } else {
+    audioElement.pause();
+    audioPlayBtn.textContent = '▶';
+    audioPlayBtn.classList.remove('playing');
+  }
+});
+
+audioSeek.addEventListener('input', () => {
+  if (audioElement) audioElement.currentTime = parseFloat(audioSeek.value);
+});
+
+audioVol.addEventListener('input', () => {
+  if (audioGain) audioGain.gain.value = parseFloat(audioVol.value);
+});
+
+const audioReactiveBtn = document.getElementById('audio-reactive-btn');
+const audioLevelIndicator = document.getElementById('audio-level-indicator');
+
+audioReactiveBtn.addEventListener('click', () => {
+  audioReactiveEnabled = !audioReactiveEnabled;
+  audioReactiveBtn.textContent = audioReactiveEnabled ? 'REACTIVE ON' : 'REACTIVE OFF';
+  audioReactiveBtn.classList.toggle('active', audioReactiveEnabled);
+});
+
+// Update level indicator in render loop
+let prevAudioLevelPct = -1;
+function updateAudioLevelUI() {
+  const pct = audioReactiveEnabled ? Math.round(audioLevel * 100) : 0;
+  if (pct !== prevAudioLevelPct) {
+    prevAudioLevelPct = pct;
+    audioLevelIndicator.style.setProperty('--level', pct + '%');
+  }
+}
+
+function updateAudioTime() {
+  if (!audioElement) return;
+  const cur = audioElement.currentTime || 0;
+  const dur = audioElement.duration || 0;
+  audioSeek.value = cur;
+  const fmt = (t) => {
+    const m = String(Math.floor(t / 60)).padStart(2, '0');
+    const s = String(Math.floor(t % 60)).padStart(2, '0');
+    return `${m}:${s}`;
+  };
+  audioTimeEl.textContent = `${fmt(cur)} / ${fmt(dur)}`;
+}
+
+// ============================================================
+// Recording (Video + Audio)
+// ============================================================
+const recBtn = document.getElementById('rec-btn');
+const recTimeEl = document.getElementById('rec-time');
+let mediaRecorder = null;
+let recordedChunks = [];
+let recStartTime = 0;
+let recTimerInterval = null;
+
+recBtn.addEventListener('click', () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+});
+
+function startRecording() {
+  // Video stream from render canvas
+  const videoStream = renderCanvas.captureStream(30);
+
+  // Combine video + audio into one stream
+  const combinedStream = new MediaStream();
+  videoStream.getVideoTracks().forEach(t => combinedStream.addTrack(t));
+
+  // Add audio track if audio player is active
+  if (audioStreamDest) {
+    audioStreamDest.stream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
+  }
+
+  // Try H.264 MP4 first (QuickTime compatible), then fallback
+  const mimeTypes = [
+    'video/mp4;codecs=avc1',
+    'video/mp4;codecs=avc1.42E01E',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+  ];
+  let mimeType = '';
+  for (const mt of mimeTypes) {
+    if (MediaRecorder.isTypeSupported(mt)) { mimeType = mt; break; }
+  }
+  if (!mimeType) {
+    alert('Recording not supported in this browser.');
+    return;
+  }
+
+  recordedChunks = [];
+  mediaRecorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 8000000 });
+
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  mediaRecorder.onstop = () => {
+    const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
+    const blob = new Blob(recordedChunks, { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const now = new Date();
+    const ts = now.getFullYear() +
+      String(now.getMonth()+1).padStart(2,'0') +
+      String(now.getDate()).padStart(2,'0') + '_' +
+      String(now.getHours()).padStart(2,'0') +
+      String(now.getMinutes()).padStart(2,'0') +
+      String(now.getSeconds()).padStart(2,'0');
+    a.download = `vj_rec_${ts}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    recordedChunks = [];
+  };
+
+  mediaRecorder.start(1000);
+  recStartTime = performance.now();
+
+  // UI
+  recBtn.textContent = '⏹ STOP';
+  recBtn.classList.add('recording');
+  recTimeEl.classList.add('visible');
+  recTimerInterval = setInterval(updateRecTime, 500);
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+  }
+  recBtn.textContent = '⏺ REC';
+  recBtn.classList.remove('recording');
+  recTimeEl.classList.remove('visible');
+  clearInterval(recTimerInterval);
+}
+
+function updateRecTime() {
+  const elapsed = Math.floor((performance.now() - recStartTime) / 1000);
+  const min = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const sec = String(elapsed % 60).padStart(2, '0');
+  recTimeEl.textContent = `${min}:${sec}`;
+}
+
+// ============================================================
+// Init
+// ============================================================
+function init() {
+  resizePreview();
+  buildDockTabs();
+  buildSlots();
+  render(); // gamepad polling is now inside render()
+}
+
+window.addEventListener('resize', resizePreview);
+init();
+</script>
+</body>
+</html>
