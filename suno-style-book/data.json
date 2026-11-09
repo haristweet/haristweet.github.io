@@ -4375,7 +4375,7 @@
   "mix": "",
   "mixStatus": "",
   "style": "avant-garde prepared piano, 1999, 128bpm, prepared piano with bolts and rubber on the strings, metallic muted plucks, percussive clangs, marimba, timpani hits, bowed metal, mechanical and ominous groove, hypnotic repetition, raw acoustic recording, instrumental",
-  "exclude": "ragtime, piano rock, jazz, new age, healing music, lofi piano, gamelan pop, edm, metal, drum kit, synth, cinematic trailer, vocals, singing",
+  "exclude": "ragtime, piano rock, jazz, new age, healing music, lofi piano, gamelan pop, edm, heavy metal, drum kit, synth, cinematic trailer, vocals, singing",
   "notes": [
    "弦にボルトやゴムを挟んで、ピアノを金属的な打楽器のように鳴らす形。マリンバとティンパニで機械のようなリズムを刻みます。",
    "いちばん実験的で、Suno が外しやすい案です。何回か生成して選んでください。"
