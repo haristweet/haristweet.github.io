@@ -4332,5 +4332,73 @@
   "id": "s275",
   "title": "汎用テンプレート — ピアノとチェロの歌もの",
   "set": "ピアノと室内楽"
+ },
+ {
+  "group": "2. 攻撃的なピアノ",
+  "song": "汎用テンプレート",
+  "genre": "打鍵の嵐（ソロピアノ）",
+  "cat": "クラシカル／劇伴",
+  "mix": "",
+  "mixStatus": "",
+  "style": "aggressive contemporary classical piano, 2004, 152bpm, percussive hammered chords, driving left-hand ostinato, dissonant tone clusters, sudden fortissimo accents, violent dynamic contrasts, relentless and stormy, close-miked grand piano, raw attack and string buzz, instrumental",
+  "exclude": "ragtime, boogie woogie, stride piano, piano rock, jazz, new age, healing music, lofi piano, epic orchestral, cinematic trailer, metal, drums, synth, pop ballad, vocals, singing",
+  "notes": [
+   "ピアノ1台で、低音のくり返しの上に不協和の和音を叩きつける形。",
+   "`ragtime` `boogie woogie` `stride piano` が最重要の除外。速いピアノは放っておくと陽気な酒場の音になります。"
+  ],
+  "id": "s276",
+  "title": "汎用テンプレート — 打鍵の嵐（ソロピアノ）",
+  "set": "攻撃的なピアノ"
+ },
+ {
+  "group": "2. 攻撃的なピアノ",
+  "song": "汎用テンプレート",
+  "genre": "弦が切り裂くピアノ・トリオ",
+  "cat": "クラシカル／劇伴",
+  "mix": "",
+  "mixStatus": "",
+  "style": "furious piano trio, contemporary classical, 1996, 144bpm, pounding grand piano ostinato, aggressive violin stabs, sul ponticello scraping strings, cello col legno strikes, jagged rhythms, dissonant and tense, chase scene urgency, raw chamber recording, instrumental",
+  "exclude": "tango, ragtime, piano rock, jazz, new age, lofi piano, epic orchestral, cinematic trailer, hybrid orchestral, metal, drums, synth, vocals, singing",
+  "notes": [
+   "ヴァイオリンとチェロが、弓で弦をこすったり叩いたりして切り込んでくる、追跡劇のような室内楽。",
+   "`sul ponticello`（駒の近くを弾くキーキーした音）と `col legno`（弓の木の部分で叩く音）が、生楽器での攻撃性の決め手です。"
+  ],
+  "id": "s277",
+  "title": "汎用テンプレート — 弦が切り裂くピアノ・トリオ",
+  "set": "攻撃的なピアノ"
+ },
+ {
+  "group": "2. 攻撃的なピアノ",
+  "song": "汎用テンプレート",
+  "genre": "プリペアド・ピアノと打楽器",
+  "cat": "クラシカル／劇伴",
+  "mix": "",
+  "mixStatus": "",
+  "style": "avant-garde prepared piano, 1999, 128bpm, prepared piano with bolts and rubber on the strings, metallic muted plucks, percussive clangs, marimba, timpani hits, bowed metal, mechanical and ominous groove, hypnotic repetition, raw acoustic recording, instrumental",
+  "exclude": "ragtime, piano rock, jazz, new age, healing music, lofi piano, gamelan pop, edm, metal, drum kit, synth, cinematic trailer, vocals, singing",
+  "notes": [
+   "弦にボルトやゴムを挟んで、ピアノを金属的な打楽器のように鳴らす形。マリンバとティンパニで機械のようなリズムを刻みます。",
+   "いちばん実験的で、Suno が外しやすい案です。何回か生成して選んでください。"
+  ],
+  "id": "s278",
+  "title": "汎用テンプレート — プリペアド・ピアノと打楽器",
+  "set": "攻撃的なピアノ"
+ },
+ {
+  "group": "2. 攻撃的なピアノ",
+  "song": "汎用テンプレート",
+  "genre": "攻撃的なピアノの歌もの",
+  "cat": "クラシカル／劇伴",
+  "mix": "",
+  "mixStatus": "",
+  "style": "dark piano-driven art song, 2005, 140bpm, pounding grand piano chords, driving ostinato, dissonant clusters, aggressive cello stabs, sudden dynamic shifts, tense and dramatic, female vocal, japanese, intense restrained vocal, sharp and cold delivery",
+  "exclude": "ragtime, piano rock, j-pop, anime opening, pop ballad, jazz, new age, epic orchestral, cinematic trailer, metal, drums, synth, opera, belting",
+  "notes": [
+   "叩きつけるピアノとチェロの上で、冷たく張りつめた声が歌う形。",
+   "声まで激しくすると叫びの歌になるので、`intense restrained`（強いけれど抑えた）にしています。日本語の歌は J-POP やアニソンに寄りやすいので除外。"
+  ],
+  "id": "s279",
+  "title": "汎用テンプレート — 攻撃的なピアノの歌もの",
+  "set": "攻撃的なピアノ"
  }
 ]

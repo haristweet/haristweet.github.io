@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.09 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.3.0</b>（2026-11-09）「攻撃的なピアノ」のひな形4件を追加（打鍵の嵐のソロピアノ、弦が切り裂くピアノ・トリオ、プリペアド・ピアノと打楽器、歌もの。1枚のカード）。</li>
       <li><b>v3.2.0</b>（2026-11-09）「クラシカル／劇伴」の分類を新設し、ピアノ＋生楽器の室内楽のひな形4件を追加（ソロピアノ、ピアノ・トリオ、小さなアンサンブル、ピアノとチェロの歌もの。1枚のカードにまとめた）。</li>
       <li><b>v3.1.0</b>（2026-11-09）イギリスの70〜90年代のひな形30件を追加（グラムロック、UKパンク、ポストパンク、ノーザンソウル、ニューロマンティック、マッドチェスター、UKアシッドハウス、ブリットポップ、トリップホップ、ジャングル、ブレイクビーツ・ハードコアなど）。UKガラージとアシッドジャズは、前からあったインスト版と同じカードにまとめた。</li>
       <li><b>v3.0.0</b>（2026-11-09）日本・韓国・台湾の歌謡曲からいまのJ-POP・K-POPまで、ひな形99件を追加（全242件）。分類を見直して「歌謡曲」「ポップス」「フォーク」「R&amp;B／ソウル」「ジャズ／フュージョン」を新設。「歌の言葉」と「年代」で絞り込めるように（Style から自動で読む）。日本語ロックやバトゥカーダのような近い版は1枚にまとめた。「絞り込みを戻す」を追加。中身を data.json に分けた。</li>
@@ -232,7 +233,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.2.0';
+const VERSION = 'v3.3.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
