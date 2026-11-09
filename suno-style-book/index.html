@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.09 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.4.0</b>（2026-11-09）ジャンル一覧（Genre Index）と突き合わせて、まだ無かった48ジャンルのひな形を追加（ハウス12、ジャズ7、ラウンジ7、チル・アンビエント5、EDM・ベース3、エレクトロニック5、ヒップホップ3、R&amp;B・ソウル2、ロック4）。「ラウンジ」「EDM／ベース」の分類を新設。</li>
       <li><b>v3.3.0</b>（2026-11-09）「攻撃的なピアノ」のひな形4件を追加（打鍵の嵐のソロピアノ、弦が切り裂くピアノ・トリオ、プリペアド・ピアノと打楽器、歌もの。1枚のカード）。</li>
       <li><b>v3.2.0</b>（2026-11-09）「クラシカル／劇伴」の分類を新設し、ピアノ＋生楽器の室内楽のひな形4件を追加（ソロピアノ、ピアノ・トリオ、小さなアンサンブル、ピアノとチェロの歌もの。1枚のカードにまとめた）。</li>
       <li><b>v3.1.0</b>（2026-11-09）イギリスの70〜90年代のひな形30件を追加（グラムロック、UKパンク、ポストパンク、ノーザンソウル、ニューロマンティック、マッドチェスター、UKアシッドハウス、ブリットポップ、トリップホップ、ジャングル、ブレイクビーツ・ハードコアなど）。UKガラージとアシッドジャズは、前からあったインスト版と同じカードにまとめた。</li>
@@ -229,11 +230,11 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
 let DATA;
 try{ const r = await fetch('data.json',{cache:'no-cache'}); if(!r.ok) throw new Error(r.status); DATA = await r.json(); }
 catch(err){ document.getElementById('list').innerHTML='<div class="empty"><p>データを読み込めませんでした。ページを開き直してください。</p></div>'; return; }
-const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','フォーク','R&B／ソウル','ジャズ／フュージョン','ヒップホップ','ビッグビート','ブレイクコア／DnB','ハウス／ディスコ','テクノ','80s／シンセ','アンビエント／エレクトロニカ','クラシカル／劇伴','ワールド','いまの流行','その他'];
+const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','フォーク','R&B／ソウル','ジャズ／フュージョン','ヒップホップ','ビッグビート','ブレイクコア／DnB','ハウス／ディスコ','テクノ','80s／シンセ','アンビエント／エレクトロニカ','クラシカル／劇伴','ラウンジ','EDM／ベース','ワールド','いまの流行','その他'];
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.3.0';
+const VERSION = 'v3.4.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';

@@ -4400,5 +4400,773 @@
   "id": "s279",
   "title": "汎用テンプレート — 攻撃的なピアノの歌もの",
   "set": "攻撃的なピアノ"
+ },
+ {
+  "group": "1. チル・アンビエント",
+  "song": "汎用テンプレート",
+  "genre": "エクスペリメンタル・アンビエント",
+  "cat": "アンビエント／エレクトロニカ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "experimental ambient, 2015, 60bpm, slowly evolving drones, granular textures, tape loops, field recordings, abstract and unsettling, no beat, deep spatial reverb, instrumental",
+  "exclude": "new age, healing music, meditation, lofi hiphop, edm, drums, cinematic trailer, pop, vocals, singing",
+  "notes": [
+   "ビートなしで、ドローンと細かく砕いた音の粒がゆっくり姿を変えていく、実験的なアンビエント。",
+   "インストのひな形。このジャンルはインストが本体。癒やし系のニューエイジに寄りやすいので new age / healing music を除外。"
+  ],
+  "id": "s280",
+  "title": "汎用テンプレート — エクスペリメンタル・アンビエント"
+ },
+ {
+  "group": "1. チル・アンビエント",
+  "song": "汎用テンプレート",
+  "genre": "シネマティック・アンビエント",
+  "cat": "アンビエント／エレクトロニカ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "cinematic ambient, 2018, 70bpm, swelling string pads, distant felt piano, deep sub drones, slow build, vast and emotional, film score atmosphere, instrumental",
+  "exclude": "epic trailer music, hybrid orchestral, new age, healing music, lofi hiphop, edm, drums, pop ballad, vocals, singing",
+  "notes": [
+   "映画の一場面のように、弦の響きと遠いピアノが大きく広がるアンビエント。",
+   "インストのひな形。このジャンルはインストが本体。予告編のような大げさなオーケストラに寄らないよう epic trailer music を除外。"
+  ],
+  "id": "s281",
+  "title": "汎用テンプレート — シネマティック・アンビエント"
+ },
+ {
+  "group": "1. チル・アンビエント",
+  "song": "汎用テンプレート",
+  "genre": "チルウェイヴ",
+  "cat": "アンビエント／エレクトロニカ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "chillwave, 2010, 100bpm, hazy lo-fi synths, washed-out reverb, warm tape saturation, mellow drum machine, nostalgic summer haze, dreamy and blurry, male vocal, japanese, soft hazy vocal drenched in reverb",
+  "exclude": "synthwave, outrun, vaporwave, lofi hiphop, edm, city pop, j-pop, anime opening",
+  "notes": [
+   "テープのにじみとリバーブで、夏の記憶がぼやけていくような2010年頃のチルウェイヴ。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。近いシンセウェーブやヴェイパーウェイヴに寄らないよう除外。"
+  ],
+  "id": "s282",
+  "title": "汎用テンプレート — チルウェイヴ"
+ },
+ {
+  "group": "1. チル・アンビエント",
+  "song": "汎用テンプレート",
+  "genre": "ダウンテンポ",
+  "cat": "アンビエント／エレクトロニカ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "downtempo, 2000, 92bpm, laid-back breakbeat, warm round bass, rhodes, dubby delays, organic percussion, late night lounge, smooth and hypnotic, female vocal, japanese, soft sultry vocal",
+  "exclude": "lofi hiphop, chillhop, edm, house, trap, city pop, j-pop, anime opening",
+  "notes": [
+   "ゆるいブレイクビーツとエレピとダブの残響で、夜更けにゆったり揺れるダウンテンポ。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。勉強用のローファイ・ヒップホップに寄らないよう除外。"
+  ],
+  "id": "s283",
+  "title": "汎用テンプレート — ダウンテンポ"
+ },
+ {
+  "group": "1. チル・アンビエント",
+  "song": "汎用テンプレート",
+  "genre": "ローファイ・チル",
+  "cat": "アンビエント／エレクトロニカ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "lofi chill beats, 2020, 80bpm, dusty swung drums, warm jazzy rhodes chords, vinyl crackle, tape wobble, soft bass, mellow and cozy, rainy window at night, instrumental",
+  "exclude": "trap, edm, boom bap rap, live jazz band, rock, vocals, singing, rap",
+  "notes": [
+   "くもったドラムとジャジーなエレピ、レコードのノイズで、雨の夜にくつろぐローファイ。",
+   "インストのひな形。このジャンルはインストが本体。ほかのひな形では「化けやすい先」として除外してきたジャンルを、ここでは主役にしている。"
+  ],
+  "id": "s284",
+  "title": "汎用テンプレート — ローファイ・チル"
+ },
+ {
+  "group": "2. ハウス",
+  "song": "汎用テンプレート",
+  "genre": "ニューディスコ・ハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "nu disco, disco house, 2012, 120bpm, analog synth bassline, funky guitar licks, lush disco strings, four on the floor, filtered disco chords, glossy and groovy, female vocal, japanese, smooth disco vocal",
+  "exclude": "70s disco live band, eurodance, big room, edm, tech house, city pop, j-pop, anime opening",
+  "notes": [
+   "アナログシンセのベースとファンキーなギターで、ディスコを今の音で洗い直したハウス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。本物の70年代ディスコや、日本語＋ディスコで寄りやすいシティポップを除外。"
+  ],
+  "id": "s285",
+  "title": "汎用テンプレート — ニューディスコ・ハウス"
+ },
+ {
+  "group": "2. ハウス",
+  "song": "汎用テンプレート",
+  "genre": "ベースハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "bass house, 2017, 126bpm, gritty distorted bass stabs, rolling growling bassline, punchy kick, chopped vocal shouts, dark warehouse club, male vocal, japanese, short chanted hooks",
+  "exclude": "dubstep, big room, future house, deep house, trap, edm festival, j-pop, anime opening",
+  "notes": [
+   "歪んでうなるベースで押す、暗いクラブ向けのベースハウス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。ほかのひな形では除外してきたジャンル。ダブステップに寄らないよう除外。"
+  ],
+  "id": "s286",
+  "title": "汎用テンプレート — ベースハウス"
+ },
+ {
+  "group": "2. ハウス",
+  "song": "汎用テンプレート",
+  "genre": "ビッグルーム・ハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "big room house, 2014, 128bpm, huge festival kick, simple stabbing lead riff, long snare roll build-up, massive drop, crowd hype, male vocal, japanese, hype mc shouts",
+  "exclude": "dubstep, trance, future bass, trap, deep house, j-pop, anime opening, ballad",
+  "notes": [
+   "スネアの連打でためて、巨大なキックで落とす、フェスの大舞台のハウス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。ほかのひな形では除外してきたジャンル。歌より掛け声中心にしている。"
+  ],
+  "id": "s287",
+  "title": "汎用テンプレート — ビッグルーム・ハウス"
+ },
+ {
+  "group": "2. ハウス",
+  "song": "汎用テンプレート",
+  "genre": "エレクトロ・ハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "electro house, 2009, 128bpm, distorted saw bass, filthy synth riffs, heavy sidechain pumping, punchy claps, aggressive and fun, female vocal, japanese, cool vocal hook",
+  "exclude": "big room, dubstep, trance, eurodance, electro funk, j-pop, anime opening",
+  "notes": [
+   "歪んだシンセのリフとポンプするサイドチェインで暴れる、2000年代後半のエレクトロ・ハウス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。80年代のエレクトロ・ファンクと取り違えないよう electro funk を除外。"
+  ],
+  "id": "s288",
+  "title": "汎用テンプレート — エレクトロ・ハウス"
+ },
+ {
+  "group": "2. ハウス",
+  "song": "汎用テンプレート",
+  "genre": "ガラージ・ハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "garage house, new jersey garage, 1990, 122bpm, gospel-tinged soulful groove, organ stabs, piano chords, shuffled drums, deep bass, uplifting, female vocal, japanese, powerful gospel diva vocal",
+  "exclude": "uk garage, 2-step, tech house, edm, eurodance, j-pop, anime opening",
+  "notes": [
+   "ゴスペル育ちの歌とオルガンで盛り上げる、アメリカ東海岸のガラージ・ハウス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。名前の似たイギリスの UK ガラージ（2ステップ）は別物なので除外。"
+  ],
+  "id": "s289",
+  "title": "汎用テンプレート — ガラージ・ハウス"
+ },
+ {
+  "group": "2. ハウス",
+  "song": "汎用テンプレート",
+  "genre": "ジャッキン・ハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "jackin house, chicago influenced, 2008, 126bpm, swung jacking drums, chopped vocal samples, funky bassline, disco stabs, raw and bouncy, male vocal, japanese, short chanted hook",
+  "exclude": "tech house, big room, edm, deep house, eurodance, j-pop, anime opening",
+  "notes": [
+   "シカゴ譲りの跳ねるドラムと、刻んだ声ネタで体を揺らすジャッキン・ハウス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。今のテックハウスに寄らないよう除外。"
+  ],
+  "id": "s290",
+  "title": "汎用テンプレート — ジャッキン・ハウス"
+ },
+ {
+  "group": "2. ハウス",
+  "song": "汎用テンプレート",
+  "genre": "ジャジー・ハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "jazzy house, 2002, 122bpm, deep jazzy chords, rhodes, upright bass licks, swung hi-hats, saxophone phrases, smooth and warm, female vocal, japanese, soft jazzy vocal",
+  "exclude": "smooth jazz, lounge, tech house, edm, city pop, j-pop, anime opening",
+  "notes": [
+   "エレピとウッドベースとサックスで、ジャズの和音を四つ打ちに乗せたハウス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。BGM っぽいスムースジャズに寄らないよう除外。"
+  ],
+  "id": "s291",
+  "title": "汎用テンプレート — ジャジー・ハウス"
+ },
+ {
+  "group": "2. ハウス",
+  "song": "汎用テンプレート",
+  "genre": "マイクロハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "microhouse, clicks and cuts, 2003, 124bpm, tiny glitchy percussion, minimal warm bassline, chopped vocal fragments, subtle and playful, hypnotic, instrumental",
+  "exclude": "tech house, big room, edm, trance, deep house, lead vocal, singing",
+  "notes": [
+   "クリック音や細かく刻んだ声の切れ端で組み立てる、小さく遊び心のあるミニマルなハウス。",
+   "インストのひな形。このジャンルはインストが本体。声の切れ端は残したいので、Exclude は vocals ではなく lead vocal にしている。"
+  ],
+  "id": "s292",
+  "title": "汎用テンプレート — マイクロハウス"
+ },
+ {
+  "group": "2. ハウス",
+  "song": "汎用テンプレート",
+  "genre": "オーガニック・ハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "organic house, downtempo house, 2020, 118bpm, hand percussion, kalimba and oud melodies, warm deep bass, natural textures, sunset in the desert, meditative groove, female vocal, japanese, airy ethereal vocal",
+  "exclude": "afro house, tech house, edm, big room, new age, j-pop, anime opening",
+  "notes": [
+   "手で叩く打楽器とカリンバやウードの音で、夕暮れの砂漠のように揺れるハウス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。近いアフロハウスや、癒やし系のニューエイジに寄らないよう除外。"
+  ],
+  "id": "s293",
+  "title": "汎用テンプレート — オーガニック・ハウス"
+ },
+ {
+  "group": "2. ハウス",
+  "song": "汎用テンプレート",
+  "genre": "ソウルフル・ハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "soulful house, 2004, 123bpm, warm piano chords, gospel choir, live bass, shuffled drums, strings, uplifting and joyful, female vocal, japanese, rich soulful vocal",
+  "exclude": "tech house, edm, big room, eurodance, city pop, j-pop, anime opening",
+  "notes": [
+   "ピアノとゴスペルのコーラスで、胸を張って歌い上げるソウルフル・ハウス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。"
+  ],
+  "id": "s294",
+  "title": "汎用テンプレート — ソウルフル・ハウス"
+ },
+ {
+  "group": "2. ハウス",
+  "song": "汎用テンプレート",
+  "genre": "テックハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "tech house, 2012, 125bpm, rolling groovy bassline, crisp percussion, minimal synth stabs, tight punchy kick, hypnotic club groove, male vocal, japanese, deadpan spoken vocal hook",
+  "exclude": "big room, edm, deep house, trance, eurodance, j-pop, anime opening",
+  "notes": [
+   "転がるベースと乾いた打楽器で、淡々と踊らせるテックハウス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。ほかのひな形では除外してきたジャンル。歌はつぶやくような短いフックにしている。"
+  ],
+  "id": "s295",
+  "title": "汎用テンプレート — テックハウス"
+ },
+ {
+  "group": "2. ハウス",
+  "song": "汎用テンプレート",
+  "genre": "USハウス（90年代ニューヨーク）",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "90s us house, new york house, classic piano house, 1993, 124bpm, piano stabs, deep bassline, swung drums, organ, uplifting club classic, female vocal, japanese, powerful diva vocal",
+  "exclude": "uk garage, eurodance, edm, tech house, big room, j-pop, anime opening",
+  "notes": [
+   "ピアノのスタブとディーヴァの歌で、90年代のニューヨークのクラブを鳴らすハウス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。ヨーロッパのユーロダンスに寄らないよう除外。"
+  ],
+  "id": "s296",
+  "title": "汎用テンプレート — USハウス（90年代ニューヨーク）"
+ },
+ {
+  "group": "3. EDM・ベース",
+  "song": "汎用テンプレート",
+  "genre": "ブロステップ",
+  "cat": "EDM／ベース",
+  "mix": "",
+  "mixStatus": "",
+  "style": "brostep, aggressive dubstep, 2011, 140bpm, heavy growling bass, metallic wobble bass, huge drops, robotic mid bass, half-time drums, chaotic and loud, male vocal, japanese, hype shouted hook",
+  "exclude": "uk dubstep, deep dubstep, trap, drum and bass, future bass, j-pop, anime opening, ballad",
+  "notes": [
+   "金属的にうなるベースで暴れる、2010年頃のアメリカ寄りの激しいダブステップ。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。静かで深い UK ダブステップとは別物なので除外。"
+  ],
+  "id": "s297",
+  "title": "汎用テンプレート — ブロステップ"
+ },
+ {
+  "group": "3. EDM・ベース",
+  "song": "汎用テンプレート",
+  "genre": "ダブステップ（UK・初期）",
+  "cat": "EDM／ベース",
+  "mix": "",
+  "mixStatus": "",
+  "style": "uk dubstep, deep dubstep, 2007, 140bpm, half-step drums, deep sub bass wobble, sparse and dark, dub sirens, cavernous reverb, minimal and heavy, female vocal, japanese, haunting sparse vocal phrases",
+  "exclude": "brostep, riddim, edm, trap, drum and bass, future bass, j-pop, anime opening",
+  "notes": [
+   "ロンドンの地下で生まれた、深い低音と隙間で聴かせる初期のダブステップ。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。派手なブロステップに寄らないよう除外。"
+  ],
+  "id": "s298",
+  "title": "汎用テンプレート — ダブステップ（UK・初期）"
+ },
+ {
+  "group": "3. EDM・ベース",
+  "song": "汎用テンプレート",
+  "genre": "フューチャー・バウンス",
+  "cat": "EDM／ベース",
+  "mix": "",
+  "mixStatus": "",
+  "style": "future bounce, 2016, 128bpm, bouncy plucky bass, pitched vocal chops, punchy kick, energetic festival groove, female vocal, japanese, bright catchy hook",
+  "exclude": "big room, future bass, dubstep, trap, eurodance, j-pop, anime opening",
+  "notes": [
+   "ぴょんぴょん跳ねるベースと声のチョップで踊らせる、フェス向けのバウンス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。"
+  ],
+  "id": "s299",
+  "title": "汎用テンプレート — フューチャー・バウンス"
+ },
+ {
+  "group": "4. エレクトロニック",
+  "song": "汎用テンプレート",
+  "genre": "ダブテクノ",
+  "cat": "テクノ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "dub techno, 1996, 120bpm, deep chord stabs drenched in delay and reverb, muffled kick, hiss and crackle, hypnotic and foggy, minimal and deep, instrumental",
+  "exclude": "dub reggae, dubstep, tech house, trance, edm, vocals, singing",
+  "notes": [
+   "残響の中で和音がこだまし続ける、霧のように深いダブテクノ。",
+   "インストのひな形。このジャンルはインストが本体。名前の似たダブ（レゲエ）やダブステップに寄らないよう除外。"
+  ],
+  "id": "s300",
+  "title": "汎用テンプレート — ダブテクノ"
+ },
+ {
+  "group": "4. エレクトロニック",
+  "song": "汎用テンプレート",
+  "genre": "エピック・トランス",
+  "cat": "テクノ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "epic trance, orchestral trance, 2007, 138bpm, soaring supersaw lead, sweeping strings, choir pads, heroic anthem melody, long breakdown, euphoric build-up, instrumental",
+  "exclude": "eurobeat, big room, dubstep, hardstyle, psytrance, vocals, singing",
+  "notes": [
+   "弦と合唱のパッドで英雄的に盛り上がる、壮大なトランス。",
+   "インストのひな形。このジャンルはインストが本体。歌入りは「和製トランス」のカードにある。"
+  ],
+  "id": "s301",
+  "title": "汎用テンプレート — エピック・トランス"
+ },
+ {
+  "group": "4. エレクトロニック",
+  "song": "汎用テンプレート",
+  "genre": "サイケデリック・トランス",
+  "cat": "テクノ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "psytrance, psychedelic trance, goa influenced, 2001, 145bpm, rolling offbeat bassline, squelchy acid lines, trippy swirling fx, hypnotic layers, outdoor forest party, instrumental",
+  "exclude": "uplifting trance, big room, edm, techno, dubstep, vocals, singing",
+  "notes": [
+   "裏打ちで転がるベースと、うねるアシッドの音で、森の野外パーティーを揺らすサイケ・トランス。",
+   "インストのひな形。このジャンルはインストが本体。ほかのひな形では除外してきたジャンル。"
+  ],
+  "id": "s302",
+  "title": "汎用テンプレート — サイケデリック・トランス"
+ },
+ {
+  "group": "4. エレクトロニック",
+  "song": "汎用テンプレート",
+  "genre": "インディー・ダンス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "indie dance, electro indie, 2009, 122bpm, live bass guitar, disco drums, angular guitar, analog synth arpeggios, cool and danceable, male vocal, japanese, cool detached vocal",
+  "exclude": "edm, big room, tech house, punk, city pop, j-pop, anime opening",
+  "notes": [
+   "ロックバンドの楽器でディスコを鳴らす、クールなインディー・ダンス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。"
+  ],
+  "id": "s303",
+  "title": "汎用テンプレート — インディー・ダンス"
+ },
+ {
+  "group": "4. エレクトロニック",
+  "song": "汎用テンプレート",
+  "genre": "ヴェイパーウェイヴ",
+  "cat": "80s／シンセ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "vaporwave, 2012, 90bpm, slowed down 80s smooth jazz and muzak samples, chopped and screwed, heavy reverb, shopping mall ambience, nostalgic and surreal, pitched-down japanese vocal samples",
+  "exclude": "future funk, synthwave, lofi hiphop, edm, lead vocal, singing",
+  "notes": [
+   "80年代の BGM を遅く引き伸ばして、誰もいないショッピングモールのように響かせるヴェイパーウェイヴ。",
+   "声ネタを使うひな形。ほかのひな形では除外してきたジャンル。にぎやかなフューチャーファンクに寄らないよう除外。"
+  ],
+  "id": "s304",
+  "title": "汎用テンプレート — ヴェイパーウェイヴ"
+ },
+ {
+  "group": "5. ヒップホップ",
+  "song": "汎用テンプレート",
+  "genre": "ローファイ・ヒップホップ",
+  "cat": "ヒップホップ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "lofi hip hop, 2018, 82bpm, dusty boom bap drums, jazzy piano sample, vinyl crackle, warm bass, mellow and cozy, study beats, instrumental",
+  "exclude": "trap, edm, rap, live jazz band, rock, vocals, singing",
+  "notes": [
+   "勉強や作業のときに流す、くもったドラムとジャジーなピアノのビート。",
+   "インストのひな形。このジャンルはインストが本体。ほかのひな形では「化けやすい先」として除外してきたジャンルを、ここでは主役にしている。"
+  ],
+  "id": "s305",
+  "title": "汎用テンプレート — ローファイ・ヒップホップ"
+ },
+ {
+  "group": "5. ヒップホップ",
+  "song": "汎用テンプレート",
+  "genre": "メロディック・ヒップホップ",
+  "cat": "ヒップホップ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "melodic hip hop, melodic rap, 2019, 140bpm half time feel, emotional guitar loop, 808 bass, trap hi-hats, sung-rap hooks, heartfelt and moody, male vocal, japanese, melodic autotuned rap",
+  "exclude": "boom bap, drill, phonk, edm, rock band, j-pop, anime opening",
+  "notes": [
+   "切ないギターのループに、歌うようなラップを乗せるメロディック・ヒップホップ。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。"
+  ],
+  "id": "s306",
+  "title": "汎用テンプレート — メロディック・ヒップホップ"
+ },
+ {
+  "group": "5. ヒップホップ",
+  "song": "汎用テンプレート",
+  "genre": "グリッチ・ホップ",
+  "cat": "ヒップホップ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "glitch hop, 2011, 105bpm, chopped glitchy beats, funky wobble bass, stuttered edits, bit-crushed fx, swing groove, playful and quirky, instrumental",
+  "exclude": "dubstep, drum and bass, edm, trap, lofi hiphop, vocals, singing, rap",
+  "notes": [
+   "音を細かく切って震わせる、ファンキーで遊び心のあるグリッチ・ホップ。",
+   "インストのひな形。このジャンルはインストが本体。"
+  ],
+  "id": "s307",
+  "title": "汎用テンプレート — グリッチ・ホップ"
+ },
+ {
+  "group": "6. ジャズ",
+  "song": "汎用テンプレート",
+  "genre": "ビバップ",
+  "cat": "ジャズ／フュージョン",
+  "mix": "",
+  "mixStatus": "",
+  "style": "bebop jazz, 1947, 220bpm, fast virtuosic saxophone and trumpet unison head, rapid improvisation, walking upright bass, swinging ride cymbal, comping piano, small combo, live room recording, instrumental",
+  "exclude": "smooth jazz, lounge, big band, electro swing, lofi hiphop, edm, vocals, singing",
+  "notes": [
+   "サックスとトランペットが猛スピードで駆け抜ける、40年代のビバップ。",
+   "インストのひな形。このジャンルはインストが本体。BGM っぽいスムースジャズやラウンジに寄らないよう除外。"
+  ],
+  "id": "s308",
+  "title": "汎用テンプレート — ビバップ"
+ },
+ {
+  "group": "6. ジャズ",
+  "song": "汎用テンプレート",
+  "genre": "ハードバップ",
+  "cat": "ジャズ／フュージョン",
+  "mix": "",
+  "mixStatus": "",
+  "style": "hard bop, 1958, 160bpm, bluesy soulful horns, tenor saxophone and trumpet, funky piano, driving drums, walking bass, gritty and swinging, small combo, vintage analog recording, instrumental",
+  "exclude": "smooth jazz, lounge, big band, bebop, lofi hiphop, edm, vocals, singing",
+  "notes": [
+   "ブルースとゴスペルの熱をジャズに戻した、50年代後半のハードバップ。",
+   "インストのひな形。このジャンルはインストが本体。"
+  ],
+  "id": "s309",
+  "title": "汎用テンプレート — ハードバップ"
+ },
+ {
+  "group": "6. ジャズ",
+  "song": "汎用テンプレート",
+  "genre": "フリージャズ",
+  "cat": "ジャズ／フュージョン",
+  "mix": "",
+  "mixStatus": "",
+  "style": "free jazz, avant-garde jazz, 1966, free tempo, collective improvisation, overblown screaming saxophone, chaotic drums, bowed upright bass, intense and wild, live room recording, instrumental",
+  "exclude": "smooth jazz, lounge, swing, bossa nova, lofi hiphop, edm, vocals, singing",
+  "notes": [
+   "決まったテンポも和音も捨てて、全員で同時に叫ぶように即興する60年代のフリージャズ。",
+   "インストのひな形。このジャンルはインストが本体。テンポが決まらない音楽なので BPM の代わりに free tempo と書いている。"
+  ],
+  "id": "s310",
+  "title": "汎用テンプレート — フリージャズ"
+ },
+ {
+  "group": "6. ジャズ",
+  "song": "汎用テンプレート",
+  "genre": "チェンバー・ジャズ",
+  "cat": "ジャズ／フュージョン",
+  "mix": "",
+  "mixStatus": "",
+  "style": "chamber jazz, 2005, 90bpm, piano with cello and clarinet, delicate interplay, quiet dynamics, european jazz, introspective and elegant, natural acoustic recording, instrumental",
+  "exclude": "smooth jazz, lounge, big band, swing, new age, edm, vocals, singing",
+  "notes": [
+   "ピアノとチェロとクラリネットで静かに語り合う、室内楽のようなジャズ。",
+   "インストのひな形。このジャンルはインストが本体。"
+  ],
+  "id": "s311",
+  "title": "汎用テンプレート — チェンバー・ジャズ"
+ },
+ {
+  "group": "6. ジャズ",
+  "song": "汎用テンプレート",
+  "genre": "ラテン・ジャズ",
+  "cat": "ジャズ／フュージョン",
+  "mix": "",
+  "mixStatus": "",
+  "style": "latin jazz, afro-cuban jazz, 1975, 120bpm, congas and timbales, montuno piano, brass section, upright bass tumbao, hot and fiery, live band recording, instrumental",
+  "exclude": "salsa pop, reggaeton, bossa nova, smooth jazz, lounge, edm, vocals, singing",
+  "notes": [
+   "コンガとティンバレスとピアノのモントゥーノで燃え上がる、キューバ系のラテン・ジャズ。",
+   "インストのひな形。このジャンルはインストが本体。歌もののサルサやボサノヴァに寄らないよう除外。"
+  ],
+  "id": "s312",
+  "title": "汎用テンプレート — ラテン・ジャズ"
+ },
+ {
+  "group": "6. ジャズ",
+  "song": "汎用テンプレート",
+  "genre": "ニュージャズ",
+  "cat": "ジャズ／フュージョン",
+  "mix": "",
+  "mixStatus": "",
+  "style": "nu jazz, electronic jazz, 2003, 118bpm, broken beat drums, live trumpet, rhodes, upright bass with electronic textures, futuristic and stylish, female vocal, japanese, cool breathy vocal",
+  "exclude": "smooth jazz, lounge, lofi hiphop, edm, city pop, j-pop, anime opening",
+  "notes": [
+   "崩したビートと電子音に、生のトランペットとウッドベースを重ねたニュージャズ。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。"
+  ],
+  "id": "s313",
+  "title": "汎用テンプレート — ニュージャズ"
+ },
+ {
+  "group": "6. ジャズ",
+  "song": "汎用テンプレート",
+  "genre": "スウィング・ジャズ",
+  "cat": "ジャズ／フュージョン",
+  "mix": "",
+  "mixStatus": "",
+  "style": "swing jazz, big band swing, 1938, 180bpm, brass and saxophone sections, clarinet lead, walking bass, swinging drums, joyful dance hall, female vocal, japanese, sweet crooning vocal",
+  "exclude": "electro swing, bebop, modern jazz, edm, lofi hiphop, j-pop, anime opening",
+  "notes": [
+   "ビッグバンドで踊らせる、30年代のダンスホールのスウィング。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。今の電子音と混ぜたエレクトロ・スウィングに寄らないよう除外。"
+  ],
+  "id": "s314",
+  "title": "汎用テンプレート — スウィング・ジャズ"
+ },
+ {
+  "group": "7. ラウンジ",
+  "song": "汎用テンプレート",
+  "genre": "チルド・ラウンジ・ハウス",
+  "cat": "ラウンジ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "lounge house, chill house, 2005, 116bpm, smooth deep groove, bossa nova guitar, rhodes, soft muted brass, cocktail bar, relaxed and elegant, female vocal, japanese, soft breathy vocal",
+  "exclude": "tech house, edm, big room, smooth jazz, city pop, j-pop, anime opening",
+  "notes": [
+   "ボサノヴァのギターとエレピを柔らかい四つ打ちに乗せた、カクテルバーのハウス。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。"
+  ],
+  "id": "s315",
+  "title": "汎用テンプレート — チルド・ラウンジ・ハウス"
+ },
+ {
+  "group": "7. ラウンジ",
+  "song": "汎用テンプレート",
+  "genre": "イージーリスニング",
+  "cat": "ラウンジ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "easy listening, mood music, 1968, 100bpm, lush string orchestra, soft brass, harp, light rhythm section, gentle and sophisticated, vintage analog recording, instrumental",
+  "exclude": "new age, lofi hiphop, edm, rock band, jazz combo, cinematic trailer, vocals, singing",
+  "notes": [
+   "ストリングスとハープで、部屋の空気をやわらかく満たす60年代のムード音楽。",
+   "インストのひな形。このジャンルはインストが本体。"
+  ],
+  "id": "s316",
+  "title": "汎用テンプレート — イージーリスニング"
+ },
+ {
+  "group": "7. ラウンジ",
+  "song": "汎用テンプレート",
+  "genre": "フューチャー・ラウンジ",
+  "cat": "ラウンジ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "future lounge, modern electronic lounge, 2015, 105bpm, glossy synth pads, soft deep house groove, jazzy chords, chopped vocal textures, luxurious and sleek, female vocal, japanese, smooth airy vocal",
+  "exclude": "edm, big room, tech house, lofi hiphop, city pop, j-pop, anime opening",
+  "notes": [
+   "つややかなシンセとジャジーな和音で、高級ホテルのロビーのように流れる今のラウンジ。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。"
+  ],
+  "id": "s317",
+  "title": "汎用テンプレート — フューチャー・ラウンジ"
+ },
+ {
+  "group": "7. ラウンジ",
+  "song": "汎用テンプレート",
+  "genre": "モンド・ラウンジ（エキゾチカ）",
+  "cat": "ラウンジ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "exotica, mondo lounge, 1959, 112bpm, vibraphone, bongos, jungle bird calls, tiki percussion, lush strings, exotic and kitschy, tropical island fantasy, vintage analog recording, instrumental",
+  "exclude": "hawaiian, reggae, edm, lofi hiphop, rock band, vocals, singing",
+  "notes": [
+   "鳥の鳴き声とヴィブラフォンで、作りものの南の島を描く、50年代のエキゾチカ。",
+   "インストのひな形。このジャンルはインストが本体。本物のハワイアンに寄らないよう除外。"
+  ],
+  "id": "s318",
+  "title": "汎用テンプレート — モンド・ラウンジ（エキゾチカ）"
+ },
+ {
+  "group": "7. ラウンジ",
+  "song": "汎用テンプレート",
+  "genre": "モダン・ボサノヴァ",
+  "cat": "ラウンジ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "modern bossa nova, 2010, 120bpm, nylon guitar, soft brushed drums, upright bass, light electronic textures, breezy and intimate, female vocal, japanese, soft whispery vocal",
+  "exclude": "samba carnival, smooth jazz, edm, city pop, j-pop, anime opening",
+  "notes": [
+   "ナイロン弦のギターに、ささやくような歌を乗せた、今の空気のボサノヴァ。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。"
+  ],
+  "id": "s319",
+  "title": "汎用テンプレート — モダン・ボサノヴァ"
+ },
+ {
+  "group": "7. ラウンジ",
+  "song": "汎用テンプレート",
+  "genre": "オーケストラ・ラウンジ",
+  "cat": "ラウンジ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "orchestra lounge, cocktail orchestra, 1962, 96bpm, lush strings, muted trumpet, vibraphone, harp glissandos, light swinging rhythm, elegant and nostalgic, vintage analog recording, instrumental",
+  "exclude": "epic orchestral, cinematic trailer, new age, edm, rock band, vocals, singing",
+  "notes": [
+   "ミュートしたトランペットとハープで、昔のホテルのラウンジを再現するオーケストラ。",
+   "インストのひな形。このジャンルはインストが本体。"
+  ],
+  "id": "s320",
+  "title": "汎用テンプレート — オーケストラ・ラウンジ"
+ },
+ {
+  "group": "7. ラウンジ",
+  "song": "汎用テンプレート",
+  "genre": "スペースエイジ・ポップ",
+  "cat": "ラウンジ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "space age pop, 1960, 110bpm, futuristic bachelor pad music, theremin, ondioline, wordless choir, stereo ping-pong effects, quirky brass, playful and cosmic, vintage analog recording, instrumental",
+  "exclude": "synthwave, edm, rock band, lofi hiphop, lead vocal, singing",
+  "notes": [
+   "テルミンと「バ・バ・バ」と歌う合唱で宇宙旅行を夢見た、60年代のスペースエイジ・ポップ。",
+   "インストのひな形。このジャンルはインストが本体。言葉のない合唱は残したいので、Exclude は vocals ではなく lead vocal にしている。"
+  ],
+  "id": "s321",
+  "title": "汎用テンプレート — スペースエイジ・ポップ"
+ },
+ {
+  "group": "8. R&B・ソウル",
+  "song": "汎用テンプレート",
+  "genre": "フィリー・ソウル",
+  "cat": "R&B／ソウル",
+  "mix": "",
+  "mixStatus": "",
+  "style": "philly soul, 1974, 108bpm, lush strings, sweet horns, smooth groove, vibraphone, romantic and elegant, male vocal group, japanese, sweet falsetto harmonies",
+  "exclude": "disco, funk, modern r&b, motown, edm, city pop, j-pop, anime opening",
+  "notes": [
+   "甘いストリングスとファルセットのハーモニーで包む、70年代フィラデルフィアのソウル。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。もっと速いディスコや、60年代のモータウンに寄らないよう除外。"
+  ],
+  "id": "s322",
+  "title": "汎用テンプレート — フィリー・ソウル"
+ },
+ {
+  "group": "8. R&B・ソウル",
+  "song": "汎用テンプレート",
+  "genre": "モータウン・ポップ",
+  "cat": "R&B／ソウル",
+  "mix": "",
+  "mixStatus": "",
+  "style": "motown pop, 60s soul pop, 1965, 124bpm, tambourine backbeat, melodic bass, handclaps, bright horns, catchy chorus, joyful and bouncy, female group vocals, japanese, sweet call and response harmonies",
+  "exclude": "modern r&b, disco, edm, k-pop, j-pop, anime opening",
+  "notes": [
+   "タンバリンと歌うベースで弾む、60年代のソウル・ポップ。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。"
+  ],
+  "id": "s323",
+  "title": "汎用テンプレート — モータウン・ポップ"
+ },
+ {
+  "group": "9. ロック",
+  "song": "汎用テンプレート",
+  "genre": "オルタナティヴ・ロック",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "90s alternative rock, 1994, 120bpm, crunchy distorted guitars, quiet-loud dynamics, melodic bass, emotional and raw, male vocal, japanese, earnest raw vocal",
+  "exclude": "pop punk, metal, visual kei, j-pop, anime opening, edm",
+  "notes": [
+   "静かな所と轟音の所を行き来する、90年代のオルタナティヴ・ロック。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。"
+  ],
+  "id": "s324",
+  "title": "汎用テンプレート — オルタナティヴ・ロック"
+ },
+ {
+  "group": "9. ロック",
+  "song": "汎用テンプレート",
+  "genre": "グランジ",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "grunge, 1991, 110bpm, sludgy distorted guitars, heavy drums, loud quiet loud, angsty and raw, male vocal, japanese, gritty strained vocal",
+  "exclude": "britpop, pop punk, metal, visual kei, j-pop, anime opening, edm",
+  "notes": [
+   "泥のように重く歪んだギターで鬱屈を叫ぶ、90年代初めのグランジ。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。ほかのひな形（ブリットポップ）では除外してきたジャンル。"
+  ],
+  "id": "s325",
+  "title": "汎用テンプレート — グランジ"
+ },
+ {
+  "group": "9. ロック",
+  "song": "汎用テンプレート",
+  "genre": "ラウドロック",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "japanese loud rock, 2012, 150bpm, heavy downtuned riffs, breakdowns, electronic touches, aggressive and intense, male vocal, japanese, alternating screams and clean vocals",
+  "exclude": "pop punk, visual kei, j-pop, anime opening, edm, ballad",
+  "notes": [
+   "重いリフと叫びときれいな歌を行き来する、日本のライブハウス育ちのラウドロック。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。"
+  ],
+  "id": "s326",
+  "title": "汎用テンプレート — ラウドロック"
+ },
+ {
+  "group": "9. ロック",
+  "song": "汎用テンプレート",
+  "genre": "ポップパンク",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "pop punk, 2003, 175bpm, fast power chords, palm-muted verses, catchy snotty chorus, energetic drums, youthful and fun, male vocal, japanese, bright nasal vocal",
+  "exclude": "hardcore punk, metal, screamo, j-pop, anime opening, edm",
+  "notes": [
+   "速いパワーコードと、ひとなつっこいサビで駆け抜けるポップパンク。",
+   "日本語の歌入りのひな形。日本語の歌は J-POP・アニソンに寄りやすいので除外。ほかのひな形（UKパンクなど）では除外してきたジャンル。"
+  ],
+  "id": "s327",
+  "title": "汎用テンプレート — ポップパンク"
  }
 ]
