@@ -4264,5 +4264,73 @@
   ],
   "id": "s271",
   "title": "汎用テンプレート — プログレッシブハウス"
+ },
+ {
+  "group": "1. ピアノと室内楽",
+  "song": "汎用テンプレート",
+  "genre": "ソロピアノ（静かな部屋で）",
+  "cat": "クラシカル／劇伴",
+  "mix": "",
+  "mixStatus": "",
+  "style": "contemporary classical solo piano, 2004, 72bpm, intimate close-miked grand piano, soft felt touch, gentle sustain pedal, melancholic and tender melody, impressionist harmony, sparse minimalist phrases, generous silence between notes, quiet room ambience, instrumental",
+  "exclude": "new age, healing music, spa, meditation, lofi piano, study music, ambient pad, orchestral, epic, cinematic trailer, drums, synth, jazz, pop ballad, vocals, singing",
+  "notes": [
+   "ピアノ1台だけで、音と音のあいだの静けさを聴かせる形。いちばん素朴です。",
+   "`generous silence between notes` が要。音を詰めこまず、余白を残させます。"
+  ],
+  "id": "s272",
+  "title": "汎用テンプレート — ソロピアノ（静かな部屋で）",
+  "set": "ピアノと室内楽"
+ },
+ {
+  "group": "1. ピアノと室内楽",
+  "song": "汎用テンプレート",
+  "genre": "ピアノ・トリオ（ヴァイオリンとチェロ）",
+  "cat": "クラシカル／劇伴",
+  "mix": "",
+  "mixStatus": "",
+  "style": "piano trio, contemporary classical, 1996, 76bpm, grand piano, expressive solo violin, warm cello, intimate chamber arrangement, film score elegance, bittersweet and nostalgic, rubato phrasing, warm small hall acoustics, instrumental",
+  "exclude": "new age, healing music, lofi piano, epic orchestral, cinematic trailer, full orchestra, drums, synth, jazz, tango, pop ballad, vocals, singing",
+  "notes": [
+   "ピアノ・ヴァイオリン・チェロの3人だけ。映画音楽のような旋律を、室内楽の近さで聴かせます。",
+   "情熱的になりすぎるとタンゴに寄ることがあるので、`tango` を除外しています。"
+  ],
+  "id": "s273",
+  "title": "汎用テンプレート — ピアノ・トリオ（ヴァイオリンとチェロ）",
+  "set": "ピアノと室内楽"
+ },
+ {
+  "group": "1. ピアノと室内楽",
+  "song": "汎用テンプレート",
+  "genre": "ピアノと小さなアンサンブル",
+  "cat": "クラシカル／劇伴",
+  "mix": "",
+  "mixStatus": "",
+  "style": "neo-classical chamber music, 2005, 80bpm, grand piano lead, string quartet, soft clarinet, subtle celesta, slowly building arrangement, film score feel, melancholic and hopeful, delicate and restrained, natural acoustic recording, instrumental",
+  "exclude": "new age, healing music, lofi piano, epic orchestral, cinematic trailer, hybrid orchestral, drums, synth, jazz, pop ballad, vocals, singing",
+  "notes": [
+   "ピアノを主役に、弦楽四重奏とクラリネットを少し重ねる形。いちばん映画音楽寄りです。",
+   "`delicate and restrained` で、盛り上げすぎないようにしています。"
+  ],
+  "id": "s274",
+  "title": "汎用テンプレート — ピアノと小さなアンサンブル",
+  "set": "ピアノと室内楽"
+ },
+ {
+  "group": "1. ピアノと室内楽",
+  "song": "汎用テンプレート",
+  "genre": "ピアノとチェロの歌もの",
+  "cat": "クラシカル／劇伴",
+  "mix": "",
+  "mixStatus": "",
+  "style": "contemporary classical art song, 2005, 70bpm, intimate grand piano, warm cello, sparse arrangement, impressionist harmony, quiet and melancholic, close-miked natural recording, female vocal, japanese, soft clear vocal, gentle and restrained",
+  "exclude": "new age, healing music, lofi piano, epic orchestral, cinematic trailer, drums, synth, j-pop, anime opening, pop ballad, opera, belting",
+  "notes": [
+   "ピアノとチェロの上で、静かに歌う形。",
+   "日本語の歌はバラードの J-POP に寄りやすいので `j-pop` `pop ballad` を、声を張り上げないよう `opera` `belting` を除外しています。"
+  ],
+  "id": "s275",
+  "title": "汎用テンプレート — ピアノとチェロの歌もの",
+  "set": "ピアノと室内楽"
  }
 ]
