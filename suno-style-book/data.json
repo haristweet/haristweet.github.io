@@ -1550,7 +1550,8 @@
    "`chopped vocal snippets` は楽器として刻まれた声なので、歌とは別に入ります。",
    "インストのひな形。歌を乗せるなら Style の末尾に声の指定を足し、Exclude から vocals, singing を消す。"
   ],
-  "id": "s88"
+  "id": "s88",
+  "set": "UKガラージ"
  },
  {
   "group": "汎用テンプレート（曲未定）",
@@ -1758,7 +1759,8 @@
   "notes": [
    "インストのひな形。歌を乗せるなら Style の末尾に声の指定を足し、Exclude から vocals, singing を消す。"
   ],
-  "id": "s93"
+  "id": "s93",
+  "set": "アシッドジャズ"
  },
  {
   "group": "汎用テンプレート（曲未定）",
@@ -3779,5 +3781,488 @@
   ],
   "id": "s241",
   "title": "苦悩の人 — 語りのブーンバップ"
+ },
+ {
+  "group": "11. UK・1970年代",
+  "song": "汎用テンプレート",
+  "genre": "グラムロック",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "70s british glam rock, 1972, 128bpm, stomping glitter beat, crunchy distorted guitar riffs, handclaps, saxophone, piano, layered backing vocals, flamboyant and theatrical, androgynous swagger, male vocal, english, british accent, dramatic sneering vocal, vintage analog recording",
+  "exclude": "heavy metal, punk, american rock, modern indie, edm, country",
+  "notes": [
+   "ドンドンと足踏みするビートに、きらびやかなギターが乗る、派手で艶っぽい70年代前半のグラムロック。",
+   "男性ボーカルのひな形。glitter beat は手拍子と足踏みのような重いリズムのこと。"
+  ],
+  "id": "s242",
+  "title": "汎用テンプレート — グラムロック"
+ },
+ {
+  "group": "11. UK・1970年代",
+  "song": "汎用テンプレート",
+  "genre": "プログレ（シンフォニック）",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "70s british progressive rock, symphonic prog, 1973, 100bpm, mellotron strings, hammond organ, moog synthesizer solos, complex time signatures, long multi-part suite, intricate bass, classical influences, epic and mystical, male vocal, english, british accent, clear high vocal, vintage analog recording",
+  "exclude": "metal, punk, pop rock, american rock, edm, modern production",
+  "notes": [
+   "メロトロンとシンセで、クラシックのような長い組曲を描くイギリスのプログレ。",
+   "男性ボーカルのひな形。構成タグに [Part I] [Part II] のように章を書くと、組曲らしい展開が出やすい。"
+  ],
+  "id": "s243",
+  "title": "汎用テンプレート — プログレ（シンフォニック）"
+ },
+ {
+  "group": "11. UK・1970年代",
+  "song": "汎用テンプレート",
+  "genre": "ブリティッシュ・フォークロック",
+  "cat": "フォーク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "70s british folk rock, 1970, 104bpm, acoustic and electric guitars, fiddle, mandolin, folk drums, traditional english ballad melody, pastoral and mysterious, old legends and countryside, female vocal, english, british accent, pure clear folk vocal, vintage analog recording",
+  "exclude": "american folk, country, bluegrass, celtic pop, modern indie folk, edm",
+  "notes": [
+   "イギリスの古い伝承歌を、エレキとフィドルで鳴らす、霧の中の田園のようなフォークロック。",
+   "女性ボーカルのひな形。アメリカのフォークやケルト系ポップに寄りやすいので除外。"
+  ],
+  "id": "s244",
+  "title": "汎用テンプレート — ブリティッシュ・フォークロック"
+ },
+ {
+  "group": "11. UK・1970年代",
+  "song": "汎用テンプレート",
+  "genre": "ブリティッシュ・ハードロック",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "70s british hard rock, early heavy metal, 1971, 120bpm, heavy blues-based riffs, loud distorted guitar, hammond organ, thunderous drums, long guitar solo, dark and powerful, male vocal, english, british accent, high-pitched wailing vocal, vintage analog recording",
+  "exclude": "modern metal, metalcore, glam metal, punk, american southern rock, edm",
+  "notes": [
+   "ブルースを重く歪ませた、ヘヴィメタルが生まれる直前のイギリスのハードロック。",
+   "男性ボーカルのひな形。もっと暗く重くしたいなら dark and powerful を doomy and ominous に替える。"
+  ],
+  "id": "s245",
+  "title": "汎用テンプレート — ブリティッシュ・ハードロック"
+ },
+ {
+  "group": "11. UK・1970年代",
+  "song": "汎用テンプレート",
+  "genre": "パブロック",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "70s british pub rock, 1975, 140bpm, stripped-down rhythm and blues, choppy guitar, honky-tonk piano, harmonica, tight simple drums, sweaty and no-frills, smoky pub gig, male vocal, english, british accent, rough energetic vocal, live room recording",
+  "exclude": "progressive rock, glam rock, heavy metal, american rock, modern indie, edm",
+  "notes": [
+   "派手なロックに背を向けて、パブで汗だくで鳴らした飾り気のないR&B。",
+   "男性ボーカルのひな形。パンクの一歩手前の音で、live room recording で酒場の生っぽさを出している。"
+  ],
+  "id": "s246",
+  "title": "汎用テンプレート — パブロック"
+ },
+ {
+  "group": "11. UK・1970年代",
+  "song": "汎用テンプレート",
+  "genre": "UKパンク",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "70s british punk, 1977, 170bpm, buzzsaw distorted guitars, three chords, fast simple drums, loud bass, raw and snotty, angry and rebellious, gang shouts, male vocal, english, british accent, sneering shouted vocal, lo-fi raw recording",
+  "exclude": "pop punk, hardcore, metal, american punk, emo, edm",
+  "notes": [
+   "3つのコードで、全部を壊すように叫んだ1977年のロンドンのパンク。",
+   "男性ボーカルのひな形。今のポップパンクやアメリカのパンクに寄りやすいので除外。"
+  ],
+  "id": "s247",
+  "title": "汎用テンプレート — UKパンク"
+ },
+ {
+  "group": "11. UK・1970年代",
+  "song": "汎用テンプレート",
+  "genre": "ポストパンク",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "british post-punk, 1979, 132bpm, driving melodic bass, angular scratchy guitar, mechanical tight drums, cold synth textures, spacious reverb, bleak and tense, urban alienation, male vocal, english, british accent, deep detached vocal, vintage analog recording",
+  "exclude": "pop punk, 77 punk, synthwave, modern indie, metal, edm",
+  "notes": [
+   "パンクの勢いを、冷たいベースと鋭いギターで内側へ向けた、70年代末の暗いロック。",
+   "男性ボーカルのひな形。ベースがメロディを弾くのがポストパンクらしさなので、driving melodic bass を先に置いている。"
+  ],
+  "id": "s248",
+  "title": "汎用テンプレート — ポストパンク"
+ },
+ {
+  "group": "11. UK・1970年代",
+  "song": "汎用テンプレート",
+  "genre": "ラヴァーズロック（UKレゲエ）",
+  "cat": "ワールド",
+  "mix": "",
+  "mixStatus": "",
+  "style": "british lovers rock, uk reggae, 1979, 76bpm, one drop drums, deep round bass, skanking guitar, soft keyboard, light strings, sweet and romantic, slow dance, female vocal, english, british accent, sweet soulful vocal, vintage analog recording",
+  "exclude": "dancehall, reggaeton, ska, dub techno, edm, modern pop",
+  "notes": [
+   "ロンドンのカリブ系の若者たちが生んだ、甘くロマンチックなイギリスのレゲエ。",
+   "女性ボーカルのひな形。今のダンスホールやレゲトンに寄らないよう除外。"
+  ],
+  "id": "s249",
+  "title": "汎用テンプレート — ラヴァーズロック（UKレゲエ）"
+ },
+ {
+  "group": "11. UK・1970年代",
+  "song": "汎用テンプレート",
+  "genre": "2トーン・スカ",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "2 tone ska, british ska revival, 1979, 160bpm, upbeat offbeat guitar skank, punchy horns, cheap combo organ, fast bouncy bass, punk energy, multiracial working class anthem, male vocal, english, british accent, shouty energetic vocal, vintage analog recording",
+  "exclude": "ska punk, third wave ska, reggae, pop punk, edm, modern indie",
+  "notes": [
+   "ジャマイカのスカをパンクの勢いで速くした、白と黒が一緒に踊った70年代末のスカ。",
+   "男性ボーカルのひな形。90年代アメリカのスカパンクに寄りやすいので ska punk / third wave ska を除外。"
+  ],
+  "id": "s250",
+  "title": "汎用テンプレート — 2トーン・スカ"
+ },
+ {
+  "group": "11. UK・1970年代",
+  "song": "汎用テンプレート",
+  "genre": "ノーザンソウル",
+  "cat": "R&B／ソウル",
+  "mix": "",
+  "mixStatus": "",
+  "style": "northern soul, british all-nighter soul, 1974, 112bpm, stomping four-on-the-floor tambourine beat, driving bass, punchy horns, sweeping strings, handclaps, euphoric dancefloor energy, male vocal, english, passionate soul vocal, vintage analog recording",
+  "exclude": "disco, funk, modern r&b, motown pop, edm, house",
+  "notes": [
+   "イングランド北部の徹夜のダンスホールで、汗だくで踊られたアップテンポのソウル。",
+   "男性ボーカルのひな形。本来はアメリカのレコードをイギリスで踊ったシーンなので、声だけ british accent を外している。disco に寄ると四つ打ちが軽くなるので除外。"
+  ],
+  "id": "s251",
+  "title": "汎用テンプレート — ノーザンソウル"
+ },
+ {
+  "group": "12. UK・1980年代",
+  "song": "汎用テンプレート",
+  "genre": "ニューロマンティック",
+  "cat": "80s／シンセ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "british new romantic, 1981, 118bpm, lush analog synths, funky fretless bass, electronic drums, sweeping synth strings, saxophone accents, glamorous and dramatic, nightclub fashion, male vocal, english, british accent, deep crooning vocal, early 80s production",
+  "exclude": "synthwave, modern synthpop, punk, american rock, edm, metal",
+  "notes": [
+   "化粧とフリルの衣装で、シンセとファンクのベースを鳴らした80年代前半の華やかなニューロマンティック。",
+   "男性ボーカルのひな形。今風のレトロなシンセウェーブに寄りやすいので synthwave を除外。"
+  ],
+  "id": "s252",
+  "title": "汎用テンプレート — ニューロマンティック"
+ },
+ {
+  "group": "12. UK・1980年代",
+  "song": "汎用テンプレート",
+  "genre": "シンセポップ",
+  "cat": "80s／シンセ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "80s british synthpop, 1983, 124bpm, catchy analog synth riffs, sequenced synth bass, drum machine, cold and melancholic, catchy pop chorus, male vocal, english, british accent, cool detached vocal, early 80s production",
+  "exclude": "synthwave, chiptune, edm, modern synthpop, rock band, italo disco",
+  "notes": [
+   "打ち込みとシンセだけで作った、少し冷たくて切ないイギリスのシンセポップ。",
+   "男性ボーカルのひな形。女性ボーカルにするなら female vocal, cool airy vocal に替える。陽気なイタロディスコに寄らないよう除外。"
+  ],
+  "id": "s253",
+  "title": "汎用テンプレート — シンセポップ"
+ },
+ {
+  "group": "12. UK・1980年代",
+  "song": "汎用テンプレート",
+  "genre": "NWOBHM",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "nwobhm, new wave of british heavy metal, 1981, 160bpm, galloping bass, twin guitar harmonies, fast riffs, punk-influenced energy, raw and heroic, male vocal, english, british accent, operatic high vocal, raw early 80s recording",
+  "exclude": "glam metal, thrash metal, metalcore, modern metal, hardcore punk, edm",
+  "notes": [
+   "パンクの勢いを取り込んで、速く荒々しくなった80年代初頭のイギリスのヘヴィメタル。",
+   "男性ボーカルのひな形。アメリカの派手なグラムメタルや、さらに速いスラッシュメタルに寄らないよう除外。"
+  ],
+  "id": "s254",
+  "title": "汎用テンプレート — NWOBHM"
+ },
+ {
+  "group": "12. UK・1980年代",
+  "song": "汎用テンプレート",
+  "genre": "ゴシックロック",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "british gothic rock, 1982, 128bpm, tribal tom drums, drum machine, chorus-drenched guitar, deep throbbing bass, cavernous reverb, dark and romantic, candlelit gloom, male vocal, english, british accent, deep baritone vocal, early 80s production",
+  "exclude": "gothic metal, industrial, synthwave, modern indie, pop punk, edm",
+  "notes": [
+   "低い声とうねるベースが、暗い大聖堂に響くようなゴシックロック。",
+   "男性ボーカルのひな形。重いメタルに寄らないよう gothic metal を除外。"
+  ],
+  "id": "s255",
+  "title": "汎用テンプレート — ゴシックロック"
+ },
+ {
+  "group": "12. UK・1980年代",
+  "song": "汎用テンプレート",
+  "genre": "ネオアコ・ジャングルポップ",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "british indie pop, neo acoustic, jangle pop, 1985, 132bpm, jangly chiming guitars, acoustic guitar, simple drums, melodic bass, bittersweet and literate, rainy afternoon, male vocal, english, british accent, soft boyish vocal, lo-fi indie recording",
+  "exclude": "modern indie, britpop, americana, folk, edm, synthwave",
+  "notes": [
+   "きらきら鳴るギターで、少し気取った青春を歌うイギリスのインディーポップ。",
+   "男性ボーカルのひな形。「ネオアコ」は日本で作られた呼び名で、海外では jangle pop や indie pop と呼ばれるので、両方を入れている。"
+  ],
+  "id": "s256",
+  "title": "汎用テンプレート — ネオアコ・ジャングルポップ"
+ },
+ {
+  "group": "12. UK・1980年代",
+  "song": "汎用テンプレート",
+  "genre": "ソフィスティ・ポップ",
+  "cat": "ポップス",
+  "mix": "",
+  "mixStatus": "",
+  "style": "sophisti-pop, 1985, 100bpm, jazzy chords, smooth saxophone, fretless bass, rhodes, light drum machine, soft synth pads, elegant and melancholic, urban cocktail bar, female vocal, english, british accent, smooth smoky vocal, polished 80s production",
+  "exclude": "smooth jazz, city pop, edm, rock band, modern r&b, lounge",
+  "notes": [
+   "ジャズとソウルの洗練をポップスに持ちこんだ、大人っぽい80年代のイギリスの都会派ポップ。",
+   "女性ボーカルのひな形。日本のシティポップと近い雰囲気だが、日本寄りにならないよう city pop を除外。"
+  ],
+  "id": "s257",
+  "title": "汎用テンプレート — ソフィスティ・ポップ"
+ },
+ {
+  "group": "12. UK・1980年代",
+  "song": "汎用テンプレート",
+  "genre": "ハイエナジー・ダンスポップ",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "80s british hi-nrg dance pop, 1987, 130bpm, pounding drum machine, octave synth bass, bright synth stabs, catchy repetitive chorus, cheesy and euphoric, chart pop factory, female vocal, english, british accent, bright cheerful vocal, late 80s production",
+  "exclude": "eurobeat, synthwave, house, modern edm, rock band, ballad",
+  "notes": [
+   "同じような曲を量産してヒットチャートを埋め尽くした、明るく安っぽくて楽しい80年代後半のダンスポップ。",
+   "女性ボーカルのひな形。日本のパラパラ系のユーロビートと近い音なので、寄りすぎないよう eurobeat を除外。"
+  ],
+  "id": "s258",
+  "title": "汎用テンプレート — ハイエナジー・ダンスポップ"
+ },
+ {
+  "group": "12. UK・1980年代",
+  "song": "汎用テンプレート",
+  "genre": "マッドチェスター",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "madchester, baggy, 1989, 106bpm, shuffling funky breakbeat drums, wah-wah guitar, groovy bassline, hammond organ, tambourine, psychedelic and loose, rave meets indie, male vocal, english, british accent, lazy nasal vocal, late 80s production",
+  "exclude": "britpop, modern indie, edm, metal, pop punk, synthwave",
+  "notes": [
+   "インディーロックがレイヴと出会い、だらっと踊れるようになった80年代末のマンチェスターの音。",
+   "男性ボーカルのひな形。90年代のブリットポップに寄りやすいので除外。"
+  ],
+  "id": "s259",
+  "title": "汎用テンプレート — マッドチェスター"
+ },
+ {
+  "group": "12. UK・1980年代",
+  "song": "汎用テンプレート",
+  "genre": "UKアシッドハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "uk acid house, 1988, 124bpm, instrumental, squelching acid 303 bassline, roland drum machine, simple piano stabs, sampled vocal shouts, hypnotic and euphoric, warehouse rave, smiley face summer of love, late 80s production",
+  "exclude": "lead vocal, singing, modern edm, tech house, deep house, trance",
+  "notes": [
+   "ビヨビヨ鳴るアシッドベースで若者を倉庫に集めた、1988年のイギリスのレイヴの夏。",
+   "インストのひな形。今のテックハウスやディープハウスに寄らないよう除外。当時らしい「ACIEEED!」の叫びを入れたいときは、Instrumental をオフにして歌詞欄をタグと「ACIEEED!」の1行だけにする（叫びを止めないよう、Exclude は vocals ではなく lead vocal にしてある）。"
+  ],
+  "id": "s260",
+  "title": "汎用テンプレート — UKアシッドハウス"
+ },
+ {
+  "group": "12. UK・1980年代",
+  "song": "汎用テンプレート",
+  "genre": "シューゲイザー（80年代末の源流）",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "british shoegaze, 1989, 116bpm, wall of distorted guitars, tremolo bending, feedback swirls, buried drums, hazy and overwhelming, blissful noise, male and female vocals, english, british accent, breathy whispered vocals buried in the mix, late 80s recording",
+  "exclude": "post-rock, metal, modern indie, j-pop, edm, synthwave",
+  "notes": [
+   "足元のエフェクターを見つめたまま、轟音のギターに声を溶かした80年代末の源流のシューゲイザー。",
+   "男女ボーカルのひな形。日本のドリームポップより、ギターの轟音と歪みが強め。"
+  ],
+  "id": "s261",
+  "title": "汎用テンプレート — シューゲイザー（80年代末の源流）"
+ },
+ {
+  "group": "13. UK・1990年代",
+  "song": "汎用テンプレート",
+  "genre": "ブリットポップ",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "britpop, 1995, 120bpm, jangly and crunchy guitars, catchy sing-along chorus, piano, tambourine, 60s british pop influence, cheeky and confident, working class swagger, male vocal, english, british accent, nasal mancunian-style vocal, mid 90s production",
+  "exclude": "grunge, american alternative, pop punk, modern indie, edm, metal",
+  "notes": [
+   "60年代のイギリスのポップを胸を張って鳴らし直した、自信満々の90年代半ばのブリットポップ。",
+   "男性ボーカルのひな形。同じ時代のアメリカのグランジに寄りやすいので grunge / american alternative を除外。"
+  ],
+  "id": "s262",
+  "title": "汎用テンプレート — ブリットポップ"
+ },
+ {
+  "group": "13. UK・1990年代",
+  "song": "汎用テンプレート",
+  "genre": "ポスト・ブリットポップ（アンセム系）",
+  "cat": "ロック／パンク",
+  "mix": "",
+  "mixStatus": "",
+  "style": "post-britpop, anthemic british rock, 1998, 80bpm, slow building ballad, strummed acoustic guitar, swelling strings, soaring electric guitar, big emotional chorus, melancholic and hopeful, stadium lighters, male vocal, english, british accent, falsetto-tinged emotional vocal, late 90s production",
+  "exclude": "grunge, pop punk, emo, metal, edm, country",
+  "notes": [
+   "ゆっくり盛り上がって、スタジアムの全員が合唱する、90年代末の切ないイギリスのロックバラード。",
+   "男性ボーカルのひな形。ブリットポップの陽気さより、内省的で壮大な方向。"
+  ],
+  "id": "s263",
+  "title": "汎用テンプレート — ポスト・ブリットポップ（アンセム系）"
+ },
+ {
+  "group": "13. UK・1990年代",
+  "song": "汎用テンプレート",
+  "genre": "トリップホップ",
+  "cat": "アンビエント／エレクトロニカ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "trip hop, bristol sound, 1994, 84bpm, slow heavy breakbeat, deep dub bass, vinyl crackle, cinematic strings, eerie samples, scratching, dark and smoky, rainy noir, female vocal, english, british accent, hushed sultry vocal",
+  "exclude": "lofi hip hop, boom bap, edm, pop, rock band, chillhop",
+  "notes": [
+   "遅く重いビートと低いベースに、ささやく声が漂う、雨のブリストルのような暗いトリップホップ。",
+   "女性ボーカルのひな形。今のチルなローファイに寄りやすいので lofi hip hop / chillhop を除外。インストにしたいときは声の指定を消して instrumental を足す。"
+  ],
+  "id": "s264",
+  "title": "汎用テンプレート — トリップホップ"
+ },
+ {
+  "group": "13. UK・1990年代",
+  "song": "汎用テンプレート",
+  "genre": "ジャングル",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "jungle, 1994, 165bpm, instrumental, rapid chopped amen breaks, deep rolling reggae sub bass, ragga vocal samples, dub sirens, rewind effects, chaotic and raw, pirate radio rave, early 90s production",
+  "exclude": "lead vocal, singing, modern drum and bass, breakcore, dubstep, edm, trap",
+  "notes": [
+   "細かく切り刻んだドラムと、レゲエ由来の低音が暴れる、海賊ラジオ育ちのジャングル。",
+   "インストのひな形。ジャングルの代名詞である amen breaks を入れている。整いすぎた今のドラムンベースや、アーメンを壊しすぎるブレイクコアに寄らないよう除外。ラガの声ネタを止めないよう、Exclude は vocals ではなく lead vocal にしてある。"
+  ],
+  "id": "s265",
+  "title": "汎用テンプレート — ジャングル"
+ },
+ {
+  "group": "13. UK・1990年代",
+  "song": "汎用テンプレート",
+  "genre": "ドラムンベース（90年代後半）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "90s drum and bass, techstep, 1997, 172bpm, instrumental, tight rolling breakbeats, dark reese bass, cold metallic synths, sci-fi atmosphere, tense and futuristic, late 90s production",
+  "exclude": "vocals, jungle, liquid drum and bass, dubstep, edm, trap",
+  "notes": [
+   "ジャングルから荒さを削って、冷たく機械的に研ぎ澄ませた90年代後半のドラムンベース。",
+   "インストのひな形。メロウな方向にしたいなら techstep を liquid に替え、Exclude からも liquid drum and bass を外す。"
+  ],
+  "id": "s266",
+  "title": "汎用テンプレート — ドラムンベース（90年代後半）"
+ },
+ {
+  "group": "13. UK・1990年代",
+  "song": "汎用テンプレート",
+  "genre": "UKガラージ",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "uk garage, 2-step, 1999, 132bpm, shuffled 2-step drums, bouncy sub bass, chopped and pitched vocal samples, organ stabs, smooth and bouncy, champagne club night, male vocal, english, british accent, smooth r&b vocal, mc toasting",
+  "exclude": "house, dubstep, grime, modern edm, trap, rock band",
+  "notes": [
+   "つんのめった2ステップのリズムに、R&Bの歌とMCが乗る、90年代末のロンドンのクラブの音。",
+   "R&Bの男性ボーカルとMCのひな形。ここから2000年代のグライムやダブステップが生まれた。"
+  ],
+  "id": "s267",
+  "title": "汎用テンプレート — UKガラージ",
+  "set": "UKガラージ"
+ },
+ {
+  "group": "13. UK・1990年代",
+  "song": "汎用テンプレート",
+  "genre": "ブレイクビーツ・ハードコア（レイヴ）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "breakbeat hardcore, uk rave, 1992, 145bpm, instrumental, sped-up breakbeats, hoover synths, piano rave stabs, pitched-up diva vocal samples, euphoric and frantic, warehouse rave, early 90s production",
+  "exclude": "lead vocal, singing, happy hardcore, jungle, drum and bass, breakcore, big beat, modern edm, hardstyle, trance, dubstep, trap",
+  "notes": [
+   "速いブレイクビーツとピアノ、早回しの声で、倉庫のレイヴを狂乱させた90年代初頭のハードコア。",
+   "インストのひな形。hoover synths は「ブォーン」と鳴る掃除機のようなシンセのこと。",
+   "速さが近い happy hardcore（もっと明るく速い）、jungle / drum and bass（ベースが主役になる）、big beat（遅くなる）に化けやすいので除外。早回しの女声ネタを止めないよう、Exclude は vocals ではなく lead vocal にしてある。"
+  ],
+  "id": "s268",
+  "title": "汎用テンプレート — ブレイクビーツ・ハードコア（レイヴ）"
+ },
+ {
+  "group": "13. UK・1990年代",
+  "song": "汎用テンプレート",
+  "genre": "アシッドジャズ",
+  "cat": "ジャズ／フュージョン",
+  "mix": "",
+  "mixStatus": "",
+  "style": "acid jazz, 1993, 108bpm, funky drums, slap bass, hammond organ, wah guitar, horns, rhodes, jazzy and groovy, stylish london club, male vocal, english, british accent, smooth soulful vocal",
+  "exclude": "smooth jazz, city pop, edm, rock band, lounge, modern r&b",
+  "notes": [
+   "ジャズとファンクとソウルを混ぜて、ロンドンのクラブで踊らせた90年代のアシッドジャズ。",
+   "男性ボーカルのひな形。インストにすると、刑事ドラマ・ファンクとも違う、おしゃれなクラブの音になる。"
+  ],
+  "id": "s269",
+  "title": "汎用テンプレート — アシッドジャズ",
+  "set": "アシッドジャズ"
+ },
+ {
+  "group": "13. UK・1990年代",
+  "song": "汎用テンプレート",
+  "genre": "90年代UKポップ（ガールズグループ）",
+  "cat": "ポップス",
+  "mix": "",
+  "mixStatus": "",
+  "style": "90s british pop, girl group, 1996, 110bpm, bouncy pop beat, funky bass, synth stabs, catchy chant chorus, rap section, cheeky and empowering, girl power, female group vocals, english, british accent, bold harmonized vocals",
+  "exclude": "k-pop, j-pop, modern pop, edm, rock band, ballad",
+  "notes": [
+   "個性バラバラの女の子たちが、強気に歌って煽る90年代のイギリスのガールズグループ。",
+   "女性グループのひな形。ボーイズグループにするなら male group vocals, smooth harmonies に替え、雰囲気を romantic にする。"
+  ],
+  "id": "s270",
+  "title": "汎用テンプレート — 90年代UKポップ（ガールズグループ）"
+ },
+ {
+  "group": "13. UK・1990年代",
+  "song": "汎用テンプレート",
+  "genre": "プログレッシブハウス",
+  "cat": "ハウス／ディスコ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "90s progressive house, 1997, 128bpm, instrumental, hypnotic rolling bassline, slowly evolving synth layers, deep pads, long build-ups, euphoric breakdown, superclub night, late 90s production",
+  "exclude": "vocals, big room, modern edm, trance, techno, dubstep",
+  "notes": [
+   "少しずつ音が重なって、気づけば高揚している、90年代のスーパークラブのプログレッシブハウス。",
+   "インストのひな形。曲が長くなるので、構成タグを [Build] [Breakdown] [Drop] と少なめにするとまとまりやすい。"
+  ],
+  "id": "s271",
+  "title": "汎用テンプレート — プログレッシブハウス"
  }
 ]
