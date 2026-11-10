@@ -5302,7 +5302,8 @@
   "notes": [
    "声を最初から最後まで全部ボコーダーにした版。歌詞はふつうの版と同じ。",
    "ボコーダーの指定を Style の真ん中に置くと、ふつうの声が主役でボコーダーは飾りになった。**Style のいちばん頭**に `robotic vocoder lead vocal throughout, every vocal line vocoded` を置き、女性も `female vocoder vocal` にし、Exclude に `natural vocals` `clean vocals` を入れたら、2 曲ともボコーダー約 100% になった。",
-   "男女の声の高さの違いも残り、韓国語も聞き取れる（8/10）。"
+   "男女の声の高さの違いも残り、韓国語も聞き取れる（8/10）。",
+   "歌い出しから全開にしたいときは、歌詞の見出しを全部 `[Verse 1: Male Vocoder]` `[Chorus: Vocoder Duet]` のようにし、頭を楽器だけにせず `[Intro: Vocoder]` でボコーダーの決めの言葉から始める。2 曲とも 1〜3 秒目から強いボコーダーになり、見出しは歌われなかった。"
   ],
   "id": "s335",
   "title": "또 한 번 — フレンチ・ハウスのトロット（全編ボコーダー）"
