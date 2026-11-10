@@ -5272,5 +5272,22 @@
   ],
   "id": "s333",
   "title": "끈적끈적 — K-POP っぽいトロット・デュエット"
+ },
+ {
+  "group": "또 한 번（もう一回の歌）",
+  "song": "또 한 번",
+  "genre": "フレンチ・ハウスのトロット",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "french touch trot, filter house disco, 2001, 123bpm, filtered disco sample loop, heavy sidechain pumping, four on the floor, funky guitar chops, talk box and vocoder vocals, trot melodic phrasing with kkeokgi vibrato bends, accordion through phaser, male vocoder vocal, female vocal, duet, call-and-response, korean, euphoric and pleading, earnest delivery",
+  "exclude": "eurodance, k-pop idol, ppongjjak, big room, trap, rap, enka, j-pop, ballad, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。「もう一回」「アンコール」と懇願し続ける男女。何をもう一回なのかは最後までわからない。歌詞と読みは tto_hanbeon_french_trot.md。",
+   "フレンチ・ハウスは人名を使わず、`filtered disco sample loop` `heavy sidechain pumping` `funky guitar chops` `talk box and vocoder vocals` で書く。2 曲ともフィルター・ハウス 8〜9/10 で、ユーロダンスには寄らなかった（3/10）。",
+   "最初は決めの言葉を「한 번만 더（もう一回だけ）」にしたが、韓国のよく知られた曲の題名・サビと同じ言葉をくり返したため、Suno に「著作権のある歌詞」と判定されて作れなかった。よく知られた曲名と同じ言葉をサビで何度もくり返すのは避ける。"
+  ],
+  "id": "s334",
+  "title": "또 한 번 — フレンチ・ハウスのトロット"
  }
 ]
