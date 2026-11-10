@@ -5236,5 +5236,22 @@
   ],
   "id": "s331",
   "title": "깜빡깜빡 — ラップ・トロット＋女性ラップ"
+ },
+ {
+  "group": "깜빡깜빡（つり革とコンタクトの歌）",
+  "song": "깜빡깜빡",
+  "genre": "ポンチャック（安いキーボード 1 台）",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "ppongjjak, korean trot, 1995, 150bpm, cheap home keyboard one-man band, preset rhythm box, fast oom-pah two-beat, cheesy keyboard brass and accordion, chirpy synth lead, nonstop medley feel, cassette tape lo-fi, highway rest stop, male vocal, korean, energetic shouted trot vocal with kkeokgi bends, rapid-fire ad-lib chants, playful female voice answering",
+  "exclude": "k-pop, eurodance, modern edm, trap, hip hop, enka, j-pop, ballad, orchestral, polished production",
+  "notes": [
+   "高速道路のカセット売り場で流れていたような、安いキーボード 1 台で作る速いトロット。歌詞はラップ・トロット版と同じものを流しこんだ（女性の合いの手つき）。",
+   "Suno で作った 2 曲のうち、①A は安いキーボードの音 10/10・カセットのこもった音 9/10 で狙いどおり。①B は音がきれいすぎて、今風のトロットとユーロダンスの間になった。当たりはずれがあるので 2 曲を聞き比べる。",
+   "`cheap home keyboard one-man band` `preset rhythm box` `cassette tape lo-fi` が決め手。Exclude の `polished production` で、今風の磨いた音に寄るのを止めている。"
+  ],
+  "id": "s332",
+  "title": "깜빡깜빡 — ポンチャック（安いキーボード 1 台）"
  }
 ]
