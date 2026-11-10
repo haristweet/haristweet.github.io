@@ -5219,5 +5219,22 @@
   ],
   "id": "s330",
   "title": "끼었네 — ユーロダンス・トロット＋女性ラップ"
+ },
+ {
+  "group": "깜빡깜빡（つり革とコンタクトの歌）",
+  "song": "깜빡깜빡",
+  "genre": "ラップ・トロット＋女性ラップ",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "korean semi-trot, rap trot fusion, 2008, 128bpm, bouncy ppongjjak two-beat rhythm, punchy hip hop drum machine, synth brass stabs, accordion, twangy electric guitar licks, male trot lead vocal with kkeokgi vibrato bends, rhythmic half-rapped trot phrasing, female rapper, sassy confident rap verses, call-and-response duet, korean, melancholic yet bouncy, earnest delivery",
+  "exclude": "k-pop idol, eurodance, modern edm, big room, trap, boom bap, enka, j-pop, ballad, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。満員の地下鉄 2 号線で、隣の人が離したつり革が顔に当たってコンタクトがずれた男（トロットの節で半分ラップ）に、つり革を離した本人の女性ラッパーが「3 回まばたきして」と言い返す。歌詞と読みは kkamppak_rap_trot.md。",
+   "「끼었네」と違う味にするため `eurodance` を外し、ポンチャックの 2 拍子にヒップホップ寄りのドラムを合わせた。Suno で作った 2 曲ともトロット感 9/10 で、ユーロダンスには寄らなかった。",
+   "女性のラップは軽いおしゃべり寄りになりやすい（ラップ感 4〜6/10）。もっとラップらしくしたいときは `fast rhythmic female rap flow` などを足す。"
+  ],
+  "id": "s331",
+  "title": "깜빡깜빡 — ラップ・トロット＋女性ラップ"
  }
 ]
