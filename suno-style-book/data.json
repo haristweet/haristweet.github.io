@@ -5168,5 +5168,56 @@
   ],
   "id": "s327",
   "title": "汎用テンプレート — ポップパンク"
+ },
+ {
+  "group": "찌릿찌릿（銀紙を噛んだ歌）",
+  "song": "찌릿찌릿",
+  "genre": "ダンス・トロット",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "korean dance trot, semi-trot, 2005, 140bpm, bouncy ppongjjak two-beat rhythm, punchy drum machine, synth brass stabs, accordion, twangy electric guitar licks, saxophone, cheerful and festive, highway rest stop party energy, male vocal, korean, powerful trot vocal with kkeokgi vibrato bends, playful backing chorus shouts",
+  "exclude": "k-pop, idol pop, enka, j-pop, ballad, edm, big room, hip hop, rap, rock band, kids song, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。銀紙を噛んだ瞬間の「ビリッ」を、恋の歌の言い回しで大まじめに歌う。歌詞と読みは jjirit_jjirit_dance_trot.md。",
+   "Suno で作った 2 曲：①A は長調でアコーディオン多め、①B は短調で EDM 寄り。"
+  ],
+  "id": "s328",
+  "title": "찌릿찌릿 — ダンス・トロット"
+ },
+ {
+  "group": "찌릿찌릿（銀紙を噛んだ歌）",
+  "song": "찌릿찌릿",
+  "genre": "ブレイクビーツ・ハードコア（130 BPM・ロービット）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "Breakbeat Hardcore, Uk Rave, 1991, Early-1990S Production; Chopped Breakbeats Drive The Rhythm, No Four-On-The-Floor Kick, Crunchy Low-Bitrate 12-Bit Sampler Breaks, Dusty Lo-Fi Sampled Drums. Extended Dj-Friendly 12-Inch Mix With A Long Beat-Only Intro And Outro, Steady 130 Bpm, Elements Added One By One, And A Firm Ending. Hoover Synths, Piano Rave Stabs, Pitched-Up Diva Vocal Samples; Dark Minor-Key Warehouse-Rave Mood. Low, Dark Male Lower-Register Voice With A Powerful Full-Voice Belt, Serious, Intense Delivery, Supported By Soft Harmony Pads Under The Chorus.",
+  "exclude": "trot, k-pop, eurodance, dance-pop, four on the floor, clean drums, polished production, happy hardcore, jungle, drum and bass, big beat, modern edm, trap, theatrical, comedy song, novelty song",
+  "notes": [
+   "145 BPM のブレイクビーツ・ハードコアのプロンプトを、BPM を下げてロービットのブレイクビーツにしたもの。同じ歌詞を流しこんだ。",
+   "いちばん近かったのは「レイヴ③A」（ブレイクビーツ 9/10、ざらつき 8/10）。ただし 130 BPM で作った 8 曲のうち当たりは 1 曲だけで、ほかは 4 つ打ちのユーロダンスに寄った。",
+   "130 BPM だと頭がフィルターで入ってきやすい（145 BPM の 2 曲は頭から全開だった）。Style の Cold Open、Exclude の fade in、歌詞の Breakbeat Intro のタグはどれも効かなかった。",
+   "`No Four-On-The-Floor Kick` と、Exclude の `four on the floor` `clean drums` `eurodance` が、ブレイクビーツを出すのに効いた。"
+  ],
+  "id": "s329",
+  "title": "찌릿찌릿 — ブレイクビーツ・ハードコア（130 BPM・ロービット）"
+ },
+ {
+  "group": "끼었네（歯に挟まった肉の歌）",
+  "song": "끼었네",
+  "genre": "ユーロダンス・トロット＋女性ラップ",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "eurodance, korean dance trot fusion, 1996, 132bpm, four-on-the-floor kick, bouncy offbeat bass, bright synth stabs, euro piano chords, synth accordion lead, trot melodic phrasing, male trot lead vocal with kkeokgi vibrato bends, female rapper, sassy confident rap verses, call-and-response duet, korean, melancholic yet danceable, earnest delivery",
+  "exclude": "k-pop idol, modern edm, big room, trap, boom bap, enka, j-pop, ballad, breakbeat, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。昼食のあと奥歯に挟まった肉と格闘するキム代理（男性・トロットの節）に、女性ラッパーが「挟まったままでいいじゃない」と言い返す。歌詞と読みは kkieonne_eurodance_trot.md。",
+   "歌詞のタグは `[Verse 1: Male]` `[Rap: Female]` のように、誰が歌うかを短く書く。Suno で作った 2 曲とも、男性の歌と女性のラップが分かれて出た（全体 9/10）。",
+   "130 BPM 前後はユーロダンスに寄りやすい、という Suno の癖を逆に生かしている。"
+  ],
+  "id": "s330",
+  "title": "끼었네 — ユーロダンス・トロット＋女性ラップ"
  }
 ]
