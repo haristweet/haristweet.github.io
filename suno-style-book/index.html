@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.10 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.9.1</b>（2026-11-10）「또 한 번」に、声を全部ボコーダーにした版を追加。</li>
       <li><b>v3.9.0</b>（2026-11-10）韓国語の作った曲「또 한 번」（フレンチ・ハウスのトロット）を追加。</li>
       <li><b>v3.8.0</b>（2026-11-10）韓国語の作った曲「끈적끈적」（K-POP っぽいトロット・デュエット）を追加。</li>
       <li><b>v3.7.1</b>（2026-11-10）「깜빡깜빡」のポンチャック版を、男 1 人で歌いっぱなしの型に直した（女性の掛け合いをやめ、Style と Exclude とメモを更新）。</li>
@@ -240,7 +241,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.9.0';
+const VERSION = 'v3.9.1';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
