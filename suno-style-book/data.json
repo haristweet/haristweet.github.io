@@ -5244,12 +5244,13 @@
   "cat": "歌謡曲",
   "mix": "",
   "mixStatus": "",
-  "style": "ppongjjak, korean trot, 1995, 150bpm, cheap home keyboard one-man band, preset rhythm box, fast oom-pah two-beat, cheesy keyboard brass and accordion, chirpy synth lead, nonstop medley feel, cassette tape lo-fi, highway rest stop, male vocal, korean, energetic shouted trot vocal with kkeokgi bends, rapid-fire ad-lib chants, playful female voice answering",
-  "exclude": "k-pop, eurodance, modern edm, trap, hip hop, enka, j-pop, ballad, orchestral, polished production",
+  "style": "ppongjjak, korean trot, 1995, 150bpm, cheap home keyboard one-man band, preset rhythm box, fast oom-pah two-beat, cheesy keyboard brass and accordion, chirpy synth lead, nonstop medley feel, cassette tape lo-fi, highway rest stop, solo male vocal, korean, energetic shouted trot vocal with kkeokgi bends, rapid-fire ad-lib chants",
+  "exclude": "k-pop, eurodance, modern edm, trap, hip hop, rap, female vocal, duet, enka, j-pop, ballad, orchestral, polished production",
   "notes": [
-   "高速道路のカセット売り場で流れていたような、安いキーボード 1 台で作る速いトロット。歌詞はラップ・トロット版と同じものを流しこんだ（女性の合いの手つき）。",
-   "Suno で作った 2 曲のうち、①A は安いキーボードの音 10/10・カセットのこもった音 9/10 で狙いどおり。①B は音がきれいすぎて、今風のトロットとユーロダンスの間になった。当たりはずれがあるので 2 曲を聞き比べる。",
-   "`cheap home keyboard one-man band` `preset rhythm box` `cassette tape lo-fi` が決め手。Exclude の `polished production` で、今風の磨いた音に寄るのを止めている。"
+   "高速道路のカセット売り場で流れていたような、安いキーボード 1 台で作る速いトロット。",
+   "ポンチャックは男 1 人が歌いっぱなし。女性の掛け合いは入れない。歌詞も型に合わせる：Pre-Chorus やブリッジをやめ、短い歌→サビ→キーボードの間奏を休まず回し、最後はサビを 2 回。合いの手 `(자 갑니다!)` `(얼씨구!)` `(좋다!)` `(감사합니다!)` を入れる。歌詞は kkamppak_ppongjjak.md。",
+   "`vocal_gender` を男性にし、Exclude に `female vocal` `duet` `rap` を入れる。男 1 人の版（②A）は安いキーボード感 9/10・全体 9/10。",
+   "`cheap home keyboard one-man band` `preset rhythm box` `cassette tape lo-fi` が決め手。それでも 2 曲に 1 曲は音がきれいすぎて今風のトロットに寄るので、2 曲を聞き比べて選ぶ。"
   ],
   "id": "s332",
   "title": "깜빡깜빡 — ポンチャック（安いキーボード 1 台）"
