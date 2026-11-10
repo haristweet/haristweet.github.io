@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.10 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.6.0</b>（2026-11-10）韓国語の作った曲「깜빡깜빡」（ラップ・トロット＋女性ラップ）を追加。</li>
       <li><b>v3.5.0</b>（2026-11-10）韓国語の作った曲を3件追加。「찌릿찌릿」（ダンス・トロットと、130 BPM のロービットなブレイクビーツ・ハードコア版）と「끼었네」（ユーロダンス・トロット＋女性ラップ）。</li>
       <li><b>v3.4.0</b>（2026-11-09）ジャンル一覧（Genre Index）と突き合わせて、まだ無かった48ジャンルのひな形を追加（ハウス12、ジャズ7、ラウンジ7、チル・アンビエント5、EDM・ベース3、エレクトロニック5、ヒップホップ3、R&amp;B・ソウル2、ロック4）。「ラウンジ」「EDM／ベース」の分類を新設。</li>
       <li><b>v3.3.0</b>（2026-11-09）「攻撃的なピアノ」のひな形4件を追加（打鍵の嵐のソロピアノ、弦が切り裂くピアノ・トリオ、プリペアド・ピアノと打楽器、歌もの。1枚のカード）。</li>
@@ -235,7 +236,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.5.0';
+const VERSION = 'v3.6.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
