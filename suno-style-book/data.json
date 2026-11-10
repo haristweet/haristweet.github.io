@@ -5289,5 +5289,22 @@
   ],
   "id": "s334",
   "title": "또 한 번 — フレンチ・ハウスのトロット"
+ },
+ {
+  "group": "또 한 번（もう一回の歌）",
+  "song": "또 한 번",
+  "genre": "フレンチ・ハウスのトロット（全編ボコーダー）",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "robotic vocoder lead vocal throughout, every vocal line vocoded, talk box hooks, french touch trot, filter house disco, 2001, 123bpm, filtered disco sample loop, heavy sidechain pumping, four on the floor, funky guitar chops, trot melodic phrasing with kkeokgi vibrato bends, accordion through phaser, male vocoder vocal, female vocoder vocal, duet, call-and-response, korean, euphoric and pleading",
+  "exclude": "natural vocals, clean vocals, eurodance, k-pop idol, ppongjjak, big room, trap, rap, enka, j-pop, ballad, comedy song, novelty song",
+  "notes": [
+   "声を最初から最後まで全部ボコーダーにした版。歌詞はふつうの版と同じ。",
+   "ボコーダーの指定を Style の真ん中に置くと、ふつうの声が主役でボコーダーは飾りになった。**Style のいちばん頭**に `robotic vocoder lead vocal throughout, every vocal line vocoded` を置き、女性も `female vocoder vocal` にし、Exclude に `natural vocals` `clean vocals` を入れたら、2 曲ともボコーダー約 100% になった。",
+   "男女の声の高さの違いも残り、韓国語も聞き取れる（8/10）。"
+  ],
+  "id": "s335",
+  "title": "또 한 번 — フレンチ・ハウスのトロット（全編ボコーダー）"
  }
 ]
