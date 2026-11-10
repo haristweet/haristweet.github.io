@@ -5254,5 +5254,23 @@
   ],
   "id": "s332",
   "title": "깜빡깜빡 — ポンチャック（安いキーボード 1 台）"
+ },
+ {
+  "group": "끈적끈적（冷蔵庫ベタベタの歌）",
+  "song": "끈적끈적",
+  "genre": "K-POP っぽいトロット・デュエット",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "k-pop trot, modern idol trot, 2021, 124bpm, glossy k-pop production, punchy electronic drums, bright synth plucks, trot melodic phrasing with kkeokgi vibrato bends, accordion accents, female lead vocal, warm male vocal, duet, call-and-response, korean, sweet and dramatic, earnest delivery",
+  "exclude": "ppongjjak, lo-fi, eurodance, hip hop, rap, enka, j-pop, ballad, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。冷蔵庫の中が漏れてベタベタになり嘆く妻（女性）を、夫（男性）がなだめるデュエット。2 番で夫が「ふたを閉め忘れたのはぼく」と白状し、最後は「ぼくらの愛もベタベタ」で締める。歌詞と読みは kkeunjeok_kpop_trot.md。",
+   "歌詞のタグで `[Verse 1: Female]` `[Verse 2: Male]` `[Chorus: Duet]` と分けると、2 人の受け渡しとサビの重なりがちゃんと出た。",
+   "Suno で作った 2 曲のうち、①B は K-POP のつや 8/10・トロット感 8/10 で狙いどおり。①A は安いユーロ・トロット寄り（つや 3/10）になった。`glossy k-pop production` だけでは足りないことがあるので、2 曲を聞き比べる。",
+   "曲が 2 分半ほどと短めになりやすい。長くしたいときは Duration を指定する。"
+  ],
+  "id": "s333",
+  "title": "끈적끈적 — K-POP っぽいトロット・デュエット"
  }
 ]
