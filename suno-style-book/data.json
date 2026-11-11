@@ -5342,5 +5342,23 @@
   ],
   "id": "s337",
   "title": "주기율표 사랑 — トロット＋全編トークボックス"
+ },
+ {
+  "group": "여섯 칸 여덟 칸（6両か8両かの歌）",
+  "song": "여섯 칸 여덟 칸",
+  "genre": "テクノ・トロット＋全編トークボックス",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "talk box lead vocal throughout, every vocal line sung through a talk box, techno trot, 1998, 138bpm, pounding four-on-the-floor 909 kick, rolling synth bassline, hypnotic synth arpeggios, metallic hi-hats, synth accordion, trot melodic phrasing with kkeokgi vibrato bends, male talk box vocal, female talk box vocal, duet, call-and-response, korean, melancholic yet driving",
+  "exclude": "natural vocals, clean vocals, unprocessed vocals, eurodance, filter house, french house, k-pop idol, ppongjjak, trap, rap, enka, j-pop, ballad, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。目の悪い男女が、地下鉄のホームの電光掲示板を読めず、次の電車が 6 両か 8 両かわからない悲哀。ブリッジで車両を数えて「8 両だね」で落とす。歌詞と読みは yeoseotkan_techno_trot.md。",
+   "見出しは `[Verse 1: Male Talkbox]` `[Chorus: Talkbox Duet]` のように全部トークボックスにする。",
+   "最初はボコーダーで作ったが、テクノでもトロットの節で歌う A メロはふつうの声に戻った（ボコーダー 6〜8 割）。トークボックスに替えたら、2 曲とも 1 番から最後まで 100% 加工した声になった。",
+   "Exclude に `eurodance` を入れても、伴奏はユーロダンスのつやが残る（8/10）。もっとテクノに寄せたいときは、`minimal`、`warehouse` などを足して試す。"
+  ],
+  "id": "s338",
+  "title": "여섯 칸 여덟 칸 — テクノ・トロット＋全編トークボックス"
  }
 ]
