@@ -5377,5 +5377,22 @@
   ],
   "id": "s339",
   "title": "밑창 — レトロ・サンプリング風トロット・デュエット"
+ },
+ {
+  "group": "장갑 한 짝（片方の手袋の歌）",
+  "song": "장갑 한 짝",
+  "genre": "ビッグビート・トロット＋トークボックス",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "talk box lead vocal throughout, every vocal line sung through a talk box, big beat trot, 1998, 128bpm, heavy compressed breakbeat, distorted bass, turntable scratching, sirens and fx, sampled brass stabs, synth accordion, trot melodic phrasing with kkeokgi vibrato bends, male talk box vocal, female talk box vocal, duet, call-and-response, korean, philosophical and dramatic",
+  "exclude": "natural vocals, clean vocals, unprocessed vocals, four on the floor, k-pop idol, ppongjjak, trap, rap, enka, j-pop, ballad, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。道に落ちている手袋はなぜいつも片方なのかを、男女が哲学的に歌い上げる。サビは「手袋 2 引く 1 は恋しさ、左手足す右手はわたしたち」のこじつけの数式。歌詞と読みは janggap_hanjjak_bigbeat_trot.md。",
+   "ビッグビートの重いブレイクビーツ・スクラッチ・サイレンは 2 曲ともよく出た（9/10）。Exclude はジャンル名でなく `four on the floor` と音そのもので外し、4 つ打ちにならなかった。",
+   "ただしトークボックスは 2〜3 割しか残らず、切り刻んだ声のかけらとして使われ、主旋律はふつうの声になった。ビッグビートでは、加工した声が「声のサンプル」扱いになるらしい。全編トークボックスにしたいときは、Exclude に `chopped vocal samples, vocal chops` を入れ、`turntable scratching` を外して試す。"
+  ],
+  "id": "s340",
+  "title": "장갑 한 짝 — ビッグビート・トロット＋トークボックス"
  }
 ]
