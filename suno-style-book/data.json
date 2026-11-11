@@ -5448,5 +5448,22 @@
   ],
   "id": "s343",
   "title": "자동문 — ヒップホップ・トロット（2MC）"
+ },
+ {
+  "group": "자동문（自動ドアの歌）",
+  "song": "자동문",
+  "genre": "ヒップホップ・トロット（2MC・こぶし控えめ）",
+  "cat": "ヒップホップ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "hip hop trot, boom bap, 1996, 92bpm, dusty sampled drum break, hard snare, mpc swing, sampled trot accordion and brass loop, upright bass, turntable scratching, vinyl crackle, two MCs only, one male MC who both raps and sings, one female MC who both raps and sings, same consistent female voice throughout, rapped verses, sung trot-style duet chorus with light trot vibrato, call-and-response, korean, playful yet frustrated",
+  "exclude": "pansori, gugak, multiple female vocalists, girl group, choir, trap, four on the floor, eurodance, edm, k-pop idol, ppongjjak, autotune, vocoder, enka, j-pop, ballad, comedy song, novelty song",
+  "notes": [
+   "こぶし強めの版と甲乙つけがたい、サビを軽くした版。歌詞は同じ。",
+   "`kkeokgi vibrato bends` を入れると、サビがパンソリのような、喉を使った深いこぶしの歌い方になった。`light trot vibrato` に弱め、Exclude に `pansori, gugak` を入れたら、明るい声の軽いトロットになった（伝統的な歌い方 2/10、軽いビブラート 8/10）。",
+   "こぶしを抑えると、トロット感は少し下がる（8〜9 → 7/10）。どちらが合うかは曲しだい。"
+  ],
+  "id": "s344",
+  "title": "자동문 — ヒップホップ・トロット（2MC・こぶし控えめ）"
  }
 ]
