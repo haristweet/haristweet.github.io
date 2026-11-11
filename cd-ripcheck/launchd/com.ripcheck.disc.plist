@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  1枚リップするたびに自動で検査する。既存ライブラリの一括走査ではなく、
+  「リップして、チェックしてもらう」を繰り返す運用のほうの plist。
+
+  ~/Library/LaunchAgents/com.ripcheck.disc.plist に置いて
+
+      launchctl load ~/Library/LaunchAgents/com.ripcheck.disc.plist
+
+  【 /PATH/TO と /Users/YOU は自分のものに書き換えること 】
+
+  リップ先にフォルダが増えると発火し、watch-rip.sh が「音源が1分間
+  更新されなくなる」まで待ってから checkdisc.py を走らせる。
+  結果は macOS の通知センターに出る（合格=Glass音 / 要再リップ=Basso音）。
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.ripcheck.disc</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/PATH/TO/cd-ripcheck/watch-rip.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>MUSIC_ROOT</key>
+    <string>/Users/YOU/Music/rips</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>WatchPaths</key>
+  <array>
+    <string>/Users/YOU/Music/rips</string>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>/PATH/TO/cd-ripcheck/work/disc.log</string>
+  <key>StandardErrorPath</key>
+  <string>/PATH/TO/cd-ripcheck/work/disc.err.log</string>
+
+  <key>Nice</key>
+  <integer>5</integer>
+</dict>
+</plist>
