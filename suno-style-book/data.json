@@ -5430,5 +5430,23 @@
   ],
   "id": "s342",
   "title": "과자 안주 — バトゥカーダ・ビッグビート・トロット"
+ },
+ {
+  "group": "자동문（自動ドアの歌）",
+  "song": "자동문",
+  "genre": "ヒップホップ・トロット（2MC）",
+  "cat": "ヒップホップ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "hip hop trot, boom bap, 1996, 92bpm, dusty sampled drum break, hard snare, mpc swing, sampled trot accordion and brass loop, upright bass, turntable scratching, vinyl crackle, male rapper, female rapper, rapped verses, sung trot-style duet chorus with kkeokgi vibrato bends, call-and-response, korean, playful yet frustrated",
+  "exclude": "trap, four on the floor, eurodance, edm, k-pop idol, ppongjjak, autotune, vocoder, enka, j-pop, ballad, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。自分のときだけ開かない自動ドアの前で手を振り続ける男女。バースは男女の MC が全部ラップ、サビだけ 2 人がトロットの節で歌う。歌詞と読みは jadongmun_hiphop_trot.md。",
+   "歌詞の見出しで `[Verse 1: Male Rap]` `[Verse 2: Female Rap]` `[Chorus: Duet]` `[Bridge: Rap Duet]` と分けると、ラップと歌の受け渡しがそのとおりに出た。",
+   "2 曲ともブームバップのブレイク 9/10、トラップや 4 つ打ちには寄らなかった。トロットのアコーディオンとブラスは、ループのように乗った（8/10）。",
+   "速さは指定 92 に対して 96〜97 と、少し速め。サビは「女が主で男が合いの手」になる版もあるので、2 人で並んで歌わせたいときは 2 曲を聞き比べる。"
+  ],
+  "id": "s343",
+  "title": "자동문 — ヒップホップ・トロット（2MC）"
  }
 ]
