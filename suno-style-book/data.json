@@ -5395,5 +5395,22 @@
   ],
   "id": "s340",
   "title": "장갑 한 짝 — ビッグビート・トロット＋トークボックス"
+ },
+ {
+  "group": "영수증（レシートの歌）",
+  "song": "영수증",
+  "genre": "ダブ・ハードコア・ブレイクビーツ・テクノ風トロット",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "dub hardcore trot, early-1990s uk breakbeat hardcore, 1992, 140bpm, chopped breakbeats, deep dub sub bass, dub delay and spring reverb throws on the vocals, hoover stabs, piano rave stabs, techno synth stabs, trot melodic phrasing with kkeokgi vibrato bends, male vocal, female vocal, duet, call-and-response, korean, indignant and dramatic",
+  "exclude": "four on the floor, happy hardcore, jungle, drum and bass, trap, rap, k-pop idol, ppongjjak, enka, j-pop, ballad, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。家電を買ったのに「レシート要りますか？」と聞く店員に、保証や初期不良を理由に男女で憤る。サビは「その紙 1 枚が命綱」。歌詞と読みは yeongsujeung_dub_hardcore_trot.md。",
+   "2 曲のうち①A は、刻んだブレイクビーツ・ダブの低音・フーバー・ピアノのスタブが出て、トロットの節も強い（9/10）。ただし 4 つ打ちのキックが混ざり、声へのダブのディレイは控えめ。①B はずっと 4 つ打ちで、ハードコアの音がほぼ出なかった。当たりはずれが大きいので、2 曲を聞き比べる。",
+   "Exclude に `four on the floor` を入れても、4 つ打ちは完全には消えない。ダブのディレイをもっと出したいときは、`heavy dub echo on every vocal phrase` のように強く書く。"
+  ],
+  "id": "s341",
+  "title": "영수증 — ダブ・ハードコア・ブレイクビーツ・テクノ風トロット"
  }
 ]

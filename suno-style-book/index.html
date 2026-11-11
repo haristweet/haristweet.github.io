@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.11 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.14.0</b>（2026-11-11）韓国語の作った曲「영수증」（ダブ・ハードコア・ブレイクビーツ・テクノ風トロット）を追加。</li>
       <li><b>v3.13.1</b>（2026-11-11）「장갑 한 짝」のメモに、128 BPM の指定で約 190 BPM に走ったこと（それが面白かったこと）を追記。</li>
       <li><b>v3.13.0</b>（2026-11-11）韓国語の作った曲「장갑 한 짝」（ビッグビート・トロット＋トークボックス）を追加。</li>
       <li><b>v3.12.1</b>（2026-11-11）「밑창」のメモに、レトロ感はなめらかな編曲としんみりした空気から出る、という気づきを追記。</li>
@@ -249,7 +250,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.13.1';
+const VERSION = 'v3.14.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
