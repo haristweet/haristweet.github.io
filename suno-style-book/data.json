@@ -5307,5 +5307,23 @@
   ],
   "id": "s335",
   "title": "또 한 번 — フレンチ・ハウスのトロット（全編ボコーダー）"
+ },
+ {
+  "group": "주기율표 사랑（周期表の恋の歌）",
+  "song": "주기율표 사랑",
+  "genre": "全編ボコーダーのデュエット・トロット",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "robotic vocoder lead vocal throughout, every vocal line vocoded, talk box hooks, french touch trot, filter house disco, 2001, 123bpm, filtered disco sample loop, heavy sidechain pumping, four on the floor, funky guitar chops, trot melodic phrasing with kkeokgi vibrato bends, accordion through phaser, male vocoder vocal, female vocoder vocal, duet, call-and-response, korean, euphoric and romantic",
+  "exclude": "natural vocals, clean vocals, heavy metal, eurodance, k-pop idol, ppongjjak, big room, trap, rap, enka, j-pop, ballad, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。金属（Fe・Cu・Au・Ag・Al・Ti・Hg・W）の元素記号・原子番号・特徴を歌いながら、男女がボコーダーで愛を誓う。歌詞と読み、歌っている事実の表は jugiyulpyo_vocoder_trot.md。",
+   "元素記号は韓国の読み方どおり、アルファベットの読みをハングルで書く（Fe＝에프 이、Au＝에이 유、Hg＝에이치 지、W＝더블유）。ボコーダー越しでも 7〜8/10 で聞き取れた。",
+   "「또 한 번」で確かめた、歌い出しからボコーダー全開にする書き方（Style の頭にボコーダー、見出しを全部 `… Vocoder`）をそのまま使い、2 曲とも約 1 秒目からボコーダーになった。",
+   "サビの「메탈（メタル）」でヘビーメタルに寄らないよう `heavy metal` を除外。寄りは 0〜1/10 だった。"
+  ],
+  "id": "s336",
+  "title": "주기율표 사랑 — 全編ボコーダーのデュエット・トロット"
  }
 ]
