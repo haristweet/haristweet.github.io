@@ -5412,5 +5412,23 @@
   ],
   "id": "s341",
   "title": "영수증 — ダブ・ハードコア・ブレイクビーツ・テクノ風トロット"
+ },
+ {
+  "group": "과자 안주（お菓子のつまみの歌）",
+  "song": "과자 안주",
+  "genre": "バトゥカーダ・ビッグビート・トロット",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "batucada big beat trot, 1999, 130bpm, heavy compressed breakbeat, samba batucada percussion, surdo drums, repinique, caixa snare rolls, samba whistle, distorted bass, brass stabs, turntable scratching, trot melodic phrasing with kkeokgi vibrato bends, male vocal, female vocal, duet, call-and-response, korean, festive and rowdy",
+  "exclude": "four on the floor, bossa nova, k-pop idol, ppongjjak, trap, rap, enka, j-pop, ballad, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。安いお菓子をつまみにすれば、浮いたお金を酒代に回せる、という酒好きの男女の理屈。サビは「つまみを減らせば酒が増える、これぞ経済学（乾杯！）」。歌詞と読みは gwaja_anju_batucada_trot.md。",
+   "サンバの打楽器（スルド・スネアのロール・ホイッスル）は 2 曲ともよく出た（8/10）。`bossa nova` を外したので、柔らかい方には流れなかった。",
+   "①A は A メロがブレイクビーツ、サビが 4 つ打ちで、トロットの節も強い（8/10）。①B はずっと 4 つ打ち。`four on the floor` を Exclude に入れても、サビは 4 つ打ちになりやすい。",
+   "BPM は 2 曲とも指定どおり（約 131）。"
+  ],
+  "id": "s342",
+  "title": "과자 안주 — バトゥカーダ・ビッグビート・トロット"
  }
 ]
