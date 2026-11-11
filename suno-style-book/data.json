@@ -5325,5 +5325,22 @@
   ],
   "id": "s336",
   "title": "주기율표 사랑 — 全編ボコーダーのデュエット・トロット"
+ },
+ {
+  "group": "주기율표 사랑（周期表の恋の歌）",
+  "song": "주기율표 사랑",
+  "genre": "トロット＋全編トークボックス",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "talk box lead vocal throughout, every vocal line sung through a talk box, korean trot, semi-trot, 2005, 132bpm, bouncy ppongjjak two-beat on a drum machine, synth accordion, brass stabs, twangy electric guitar licks, analog synth bass, trot melodic phrasing with kkeokgi vibrato bends, male talk box vocal, female talk box vocal, duet, call-and-response, korean, cheerful and romantic",
+  "exclude": "natural vocals, clean vocals, unprocessed vocals, filter house, french house, eurodance, heavy metal, k-pop idol, lo-fi, trap, rap, enka, j-pop, ballad, comedy song, novelty song",
+  "notes": [
+   "フレンチ・ハウスではなく、トロットの伴奏で声を全部機械の声にしたい版。歌詞はボコーダー版と同じで、見出しを `[Verse 1: Male Talkbox]` `[Chorus: Talkbox Duet]` のように全部トークボックスにする。",
+   "**ボコーダーだと、トロットに寄せるほど声がふつうに戻った**（生バンドのトロットで 0%、シンセ寄りのトロットでも 2 割前後）。Suno の中で、ボコーダーは電子音のダンス曲と結びついているらしい。",
+   "**トークボックスにしたら、2 曲とも加工した声が 9〜10 割**になった。トロット感は 7/10 で、ユーロダンスのつやも少し混ざる。トロットとロボット声を両立させたいときは、ボコーダーよりトークボックス。"
+  ],
+  "id": "s337",
+  "title": "주기율표 사랑 — トロット＋全編トークボックス"
  }
 ]
