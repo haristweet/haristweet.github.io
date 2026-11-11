@@ -192,8 +192,9 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   </section>
   <!-- 版はここ1か所（VERSION）。上げたら更新履歴の先頭に1行足す -->
   <footer class="foot">
-    <div><span id="verFoot"></span> ・ 更新 2026.11.10 ・ <span id="total"></span></div>
+    <div><span id="verFoot"></span> ・ 更新 2026.11.11 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.10.0</b>（2026-11-11）韓国語の作った曲「주기율표 사랑」（金属の元素記号を歌う、全編ボコーダーのデュエット・トロット）を追加。</li>
       <li><b>v3.9.2</b>（2026-11-10）「또 한 번」全編ボコーダー版のメモに、歌い出しからボコーダー全開にする歌詞の見出しの書き方を追記。</li>
       <li><b>v3.9.1</b>（2026-11-10）「또 한 번」に、声を全部ボコーダーにした版を追加。</li>
       <li><b>v3.9.0</b>（2026-11-10）韓国語の作った曲「또 한 번」（フレンチ・ハウスのトロット）を追加。</li>
@@ -242,7 +243,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.9.2';
+const VERSION = 'v3.10.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
