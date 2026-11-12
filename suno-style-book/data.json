@@ -5547,5 +5547,85 @@
   ],
   "id": "s349",
   "title": "라면 물 — ラガ・ジャングル・トロット"
+ },
+ {
+  "group": "静電気音頭",
+  "song": "静電気音頭",
+  "genre": "ラガ・ジャングル音頭",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "ragga jungle ondo, japanese bon odori festival meets jungle, 1994, 170bpm, chopped amen break, deep rolling sub bass, dub siren, taiko drums, shamisen riffs, shinobue flute, festival kakegoe chants, male ragga toasting vocal, female min'yo singing with light kobushi, duet, call-and-response, japanese, bouncy and festive",
+  "exclude": "four on the floor, enka, j-pop, anime opening, idol pop, liquid drum and bass, trap, pansori, comedy song, novelty song",
+  "notes": [
+   "日本語。冬のドアノブでバチッとくる静電気。歌詞は ondo_5patterns.md。",
+   "①A はブレイク 9/10・男のトースティング 8・女の民謡節 8 で狙いどおり。①B は同じ指定で 4 つ打ちの祭りダンスに化けたが、三味線・篠笛・掛け声はいちばん濃い。"
+  ],
+  "id": "s350",
+  "title": "静電気音頭 — ラガ・ジャングル音頭"
+ },
+ {
+  "group": "ふたが開かない音頭",
+  "song": "ふたが開かない音頭",
+  "genre": "UK アシッドハウス音頭",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "acid house ondo, uk acid house meets bon odori, 1988, 124bpm, squelching tb-303 acid bassline, roland 909 drum machine, four-on-the-floor kick, house piano stabs, taiko drums, shamisen riffs, festival kakegoe chants, min'yo melodic phrasing with light kobushi, male vocal, female vocal, duet, call-and-response, japanese, wry and festive",
+  "exclude": "enka, j-pop, anime opening, idol pop, eurodance, big room, trap, rap, pansori, comedy song, novelty song",
+  "notes": [
+   "日本語。瓶のふたが開かない男女。歌詞は ondo_5patterns.md。",
+   "A・B とも合致 9/10。303 と太鼓・掛け声がよく混ざり、演歌っぽさは 1〜3 と低い。5 型でいちばん安定。"
+  ],
+  "id": "s351",
+  "title": "ふたが開かない音頭 — UK アシッドハウス音頭"
+ },
+ {
+  "group": "二度寝音頭",
+  "song": "二度寝音頭",
+  "genre": "ブレイクビーツ・ハードコア音頭",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "breakbeat hardcore ondo, uk rave meets bon odori, 1992, 145bpm, chopped breakbeats drive the rhythm, no four-on-the-floor kick, hoover synths, piano rave stabs, pitched-up vocal samples, taiko drums, shamisen riffs, festival kakegoe chants, min'yo phrasing with light kobushi, male vocal, female vocal, duet, call-and-response, japanese, frantic and festive",
+  "exclude": "four on the floor, eurodance, happy hardcore, jungle, drum and bass, enka, j-pop, anime opening, idol pop, trap, rap, pansori, comedy song, novelty song",
+  "notes": [
+   "日本語。目覚ましを止めてもう 5 分。歌詞は ondo_5patterns.md。",
+   "Style に「no four-on-the-floor kick」と書いても、A・B とも 4 つ打ちになった（トロット版と同じ失敗）。145 前後のハードコアは、Suno では 4 つ打ちに引っぱられやすい。③B はレイヴピアノと祭りの混ざりは濃い。"
+  ],
+  "id": "s352",
+  "title": "二度寝音頭 — ブレイクビーツ・ハードコア音頭"
+ },
+ {
+  "group": "おつり音頭",
+  "song": "おつり音頭",
+  "genre": "フィルターハウス音頭（全編ボコーダー）",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "robotic vocoder lead vocal throughout, every vocal line vocoded, french touch ondo, filter house disco meets bon odori, 2001, 123bpm, filtered disco sample loop, heavy sidechain pumping, four on the floor, funky guitar chops, taiko drums, shamisen through phaser, festival kakegoe chants, min'yo phrasing, male vocoder vocal, female vocoder vocal, duet, call-and-response, japanese, euphoric and festive",
+  "exclude": "natural vocals, clean vocals, unprocessed vocals, eurodance, enka, j-pop, anime opening, idol pop, big room, trap, rap, pansori, comedy song, novelty song",
+  "notes": [
+   "日本語。歌詞の各見出しに「Vocoder」を付ける。Style の影響 0.9。歌詞は ondo_5patterns.md。",
+   "ボコーダーは歌い出しから 88〜93% 残った。その代わり三味線は 0〜2 と薄く、④A は太鼓もほぼ消えた。④B は掛け声 9・太鼓 5。"
+  ],
+  "id": "s353",
+  "title": "おつり音頭 — フィルターハウス音頭（全編ボコーダー）"
+ },
+ {
+  "group": "回転寿司音頭",
+  "song": "回転寿司音頭",
+  "genre": "ブームバップ音頭（2MC）",
+  "cat": "ヒップホップ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "hip hop ondo, boom bap meets bon odori, 1996, 92bpm, dusty sampled drum break, hard snare, mpc swing, sampled taiko and shamisen loop, upright bass, turntable scratching, vinyl crackle, two MCs only, one male MC who both raps and sings, one female MC who both raps and sings, same consistent female voice throughout, rapped verses, sung min'yo-style ondo duet chorus with light kobushi, festival kakegoe chants, call-and-response, japanese, playful",
+  "exclude": "multiple female vocalists, girl group, choir, trap, four on the floor, enka, j-pop, anime opening, idol pop, autotune, vocoder, pansori, comedy song, novelty song",
+  "notes": [
+   "日本語。バースはラップ、サビだけ音頭節のデュエット。歌詞は ondo_5patterns.md。",
+   "A・B とも合致 8〜9、女声は一貫。テンポは指定どおり 91〜92。2 分強と短めだが、終わりは自然。⑤B は節回しが濃い（演歌っぽさ 8）。"
+  ],
+  "id": "s354",
+  "title": "回転寿司音頭 — ブームバップ音頭（2MC）"
  }
 ]
