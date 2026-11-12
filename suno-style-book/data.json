@@ -5643,5 +5643,21 @@
   ],
   "id": "s355",
   "title": "春夏秋冬フルコース — 2000 年代 J ラップ・パーティー（4MC リレー）"
+ },
+ {
+  "group": "春夏秋冬フルコース",
+  "song": "春夏秋冬フルコース",
+  "genre": "2000 年代 J ラップ・パーティー 疾走版（4MC リレー・120bpm）",
+  "cat": "ヒップホップ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "japanese hip hop, early 2000s j-rap party anthem, 120bpm, uptempo and driving, energetic breakbeat with busy hi-hats, no four-on-the-floor kick, funky live band groove, slap bass, rapid strummed latin acoustic guitar, brass section stabs, turntable scratching, handclaps, four male MCs passing the mic in quick relay, each MC with a distinct voice and fast flow, playful wordplay, call-and-response, catchy sung chorus by the whole crew, japanese, exhilarating and summery",
+  "exclude": "four on the floor, trap, 808, autotune, female vocals, r&b ballad, idol pop, anime opening, eurodance, comedy song, novelty song",
+  "notes": [
+   "98bpm 版を 120 に上げて疾走感を足したもの。歌詞は 98 版と同じ（shunka_shuto_fullcourse.md）。",
+   "120 は 4 つ打ちに流れやすい速さなので、Style に「energetic breakbeat, no four-on-the-floor kick」と書き、Exclude にも four on the floor と eurodance を入れた。②B はブレイクビーツのまま男性 4 人。②A は 4 つ打ちが混ざってユーロ寄りになり、サビに女声も入った（2 本に 1 本は外れる）。"
+  ],
+  "id": "s356",
+  "title": "春夏秋冬フルコース — 2000 年代 J ラップ・パーティー 疾走版（4MC リレー・120bpm）"
  }
 ]
