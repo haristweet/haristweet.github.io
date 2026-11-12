@@ -5659,5 +5659,21 @@
   ],
   "id": "s356",
   "title": "春夏秋冬フルコース — 2000 年代 J ラップ・パーティー 疾走版（4MC リレー・120bpm）"
+ },
+ {
+  "group": "春夏秋冬フルコース",
+  "song": "春夏秋冬フルコース",
+  "genre": "J ラップ・パーティー 4 か国語版（4MC リレー・120bpm）",
+  "cat": "ヒップホップ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "japanese hip hop, early 2000s j-rap party anthem, 120bpm, uptempo and driving, energetic breakbeat with busy hi-hats, no four-on-the-floor kick, funky live band groove, slap bass, rapid strummed latin acoustic guitar, brass section stabs, turntable scratching, handclaps, multilingual crew, four male MCs each rapping in a different language, japanese, english, korean and german verses, each MC with a clearly different voice and flow, call-and-response, catchy japanese chorus sung by the whole crew, exhilarating and summery",
+  "exclude": "four on the floor, trap, 808, autotune, female vocals, r&b ballad, idol pop, k-pop idol, anime opening, eurodance, schlager, comedy song, novelty song",
+  "notes": [
+   "4MC の声色が同じに聞こえるのを分けるため、季節ごとに言葉を変えた（春＝日本語、夏＝英語、秋＝韓国語、冬＝ドイツ語、サビは全員で日本語）。見出しにも `[Verse 2: MC 2, English, high-pitched hyper energetic voice, fast flow]` のように言葉と声の特徴を書く。歌詞は shunka_shuto_multilingual.md。",
+   "4 つの言葉はどちらにも出た。ただ、多言語の指定を足したら A・B とも 4 つ打ちに寄った（疾走版より 4 つ打ち除けの効きが弱まる）。"
+  ],
+  "id": "s357",
+  "title": "春夏秋冬フルコース — J ラップ・パーティー 4 か国語版（4MC リレー・120bpm）"
  }
 ]
