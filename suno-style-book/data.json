@@ -5691,5 +5691,21 @@
   ],
   "id": "s358",
   "title": "春夏秋冬フルコース — 4 か国語ビッグビート・ヒップホップ（4MC リレー）"
+ },
+ {
+  "group": "春夏秋冬フルコース",
+  "song": "春夏秋冬フルコース",
+  "genre": "4 か国語ポップ・ビッグビート（4MC リレー・130bpm）",
+  "cat": "ビッグビート",
+  "mix": "",
+  "mixStatus": "",
+  "style": "pop big beat hip hop, late 1990s, 130bpm, fast and driving, never half-time, rapid fat compressed breakbeat, no four-on-the-floor kick, punchy fuzz bass, bright catchy brass hook, funky wah guitar, handclaps, turntable scratching, party whistles and crowd shouts, multilingual crew, four male MCs each rapping in a different language, japanese, english, korean and german verses, each MC with a clearly different voice and flow, call-and-response, big sing-along japanese chorus by the whole crew, bright, poppy and exhilarating",
+  "exclude": "four on the floor, half-time, slow tempo, eurodance, trap, 808, autotune, female vocals, r&b ballad, idol pop, k-pop idol, anime opening, schlager, dark, comedy song, novelty song",
+  "notes": [
+   "4 か国語ビッグビート版が 96 に落ちて重くなったので、速さを「130bpm, fast and driving, never half-time」で押さえ、Exclude に half-time・slow tempo・dark を足した。アシッドやサイレンをやめ、明るいブラスのフレーズ・ワウギター・ハンドクラップでポップに寄せた。歌詞は shunka_shuto_multilingual.md。",
+   "⑤B は 129bpm でブレイクビーツのまま、ブラス・ワウギターも出て狙いどおり。⑤A は速さと明るさは出たが 4 つ打ちになった。"
+  ],
+  "id": "s359",
+  "title": "春夏秋冬フルコース — 4 か国語ポップ・ビッグビート（4MC リレー・130bpm）"
  }
 ]
