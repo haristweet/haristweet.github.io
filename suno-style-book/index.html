@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.12 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.25.1</b>（2026-11-12）汚し版に、サビの符割の直し方（1 行の音の数をそろえ、掛け声を別の行に分け、ひらがなで書く）を書き足した。</li>
       <li><b>v3.25.0</b>（2026-11-12）「季節って最高」の汚し版（明るさの言葉を外して汚れた音の言葉を足したら、4 つ打ちが消えた）を追加。</li>
       <li><b>v3.24.5</b>（2026-11-12）「季節って最高」に、頭の pop を外した試しの結果を書き足した。</li>
       <li><b>v3.24.4</b>（2026-11-12）「季節って最高」に、悪ガキ版の歌詞の書き方（子供っぽさとワルぶりを避ける決まりごと）を書き足した。</li>
@@ -268,7 +269,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.25.0';
+const VERSION = 'v3.25.1';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
