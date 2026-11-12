@@ -5707,5 +5707,21 @@
   ],
   "id": "s359",
   "title": "春夏秋冬フルコース — 4 か国語ポップ・ビッグビート（4MC リレー・130bpm）"
+ },
+ {
+  "group": "季節って最高",
+  "song": "季節って最高",
+  "genre": "アジア 4 か国語ポップ・ビッグビート（4MC リレー・130bpm）",
+  "cat": "ビッグビート",
+  "mix": "",
+  "mixStatus": "",
+  "style": "pop big beat hip hop, late 1990s, 130bpm, fast and driving, never half-time, rapid fat compressed breakbeat, no four-on-the-floor kick, punchy fuzz bass, bright catchy brass hook, funky wah guitar, handclaps, turntable scratching, party whistles and crowd shouts, pan-asian multilingual crew, four male MCs each rapping in a different language, japanese, hong kong accented english, korean and mandarin chinese verses, each MC with a clearly different voice and flow, call-and-response, big sing-along japanese chorus by the whole crew, bright, poppy and exhilarating",
+  "exclude": "four on the floor, half-time, slow tempo, eurodance, trap, 808, autotune, female vocals, r&b ballad, idol pop, k-pop idol, mandopop ballad, anime opening, dark, comedy song, novelty song",
+  "notes": [
+   "春＝日本語、夏＝香港訛りの英語、秋＝韓国語、冬＝中国語（普通話）。見出しを `[Verse 2: MC 2, English with a Hong Kong Cantonese accent, ...]` のように書く。香港の区間には lah・Wah を混ぜる。サビは日本語に各国の掛け声（Seasons! 계절! 季节!）。歌詞は kisetsu_tte_saikou.md。",
+   "4 つの言葉と香港訛り（7/10）は出た。ただ、オケの書き方を「春夏秋冬フルコース」⑤B とそろえたのに、A・B とも 4 つ打ちに寄った。言葉を替えると、同じ Style でもリズムが変わる。"
+  ],
+  "id": "s360",
+  "title": "季節って最高 — アジア 4 か国語ポップ・ビッグビート（4MC リレー・130bpm）"
  }
 ]
