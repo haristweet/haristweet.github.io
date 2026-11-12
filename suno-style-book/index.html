@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.12 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.24.0</b>（2026-11-12）「季節って最高」（日本語・香港訛りの英語・韓国語・中国語の 4MC、ポップ・ビッグビート）を追加。</li>
       <li><b>v3.23.0</b>（2026-11-12）「春夏秋冬フルコース」の 4 か国語ポップ・ビッグビート版（130bpm、半分の速さに落とさない書き方）を追加。</li>
       <li><b>v3.22.0</b>（2026-11-12）「春夏秋冬フルコース」の 4 か国語ビッグビート版を追加。</li>
       <li><b>v3.21.0</b>（2026-11-12）「春夏秋冬フルコース」の 4 か国語版（日本語・英語・韓国語・ドイツ語の 4MC リレー）を追加。</li>
@@ -261,7 +262,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.23.0';
+const VERSION = 'v3.24.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
