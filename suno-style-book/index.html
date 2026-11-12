@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.12 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.24.4</b>（2026-11-12）「季節って最高」に、悪ガキ版の歌詞の書き方（子供っぽさとワルぶりを避ける決まりごと）を書き足した。</li>
       <li><b>v3.24.3</b>（2026-11-12）「季節って最高」に、行を短くして速さが戻った「高速鉄道は最高」作り直しの結果を書き足した。</li>
       <li><b>v3.24.2</b>（2026-11-12）「季節って最高」に、同じ Style で作った「高速鉄道は最高」の結果を書き足した。</li>
       <li><b>v3.24.1</b>（2026-11-12）「季節って最高」に比喩版（歌詞だけ差し替え）の結果を書き足した。</li>
@@ -265,7 +266,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.24.3';
+const VERSION = 'v3.24.4';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
