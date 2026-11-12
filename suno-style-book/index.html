@@ -192,8 +192,9 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   </section>
   <!-- 版はここ1か所（VERSION）。上げたら更新履歴の先頭に1行足す -->
   <footer class="foot">
-    <div><span id="verFoot"></span> ・ 更新 2026.11.11 ・ <span id="total"></span></div>
+    <div><span id="verFoot"></span> ・ 更新 2026.11.12 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.17.0</b>（2026-11-12）Claude が選んだトロット 5 パターンを追加（アシッドハウス「내 우산 아니야」、ハードコア「일 퍼센트」、80 年代歌謡「엘리베이터」、ファンク＋トークボックス「내가 선 줄」、ラガ・ジャングル「라면 물」）。</li>
       <li><b>v3.16.2</b>（2026-11-11）「자동문」に、サビのこぶしを控えめにした版を追加（kkeokgi を入れるとパンソリ風になる、というメモつき）。</li>
       <li><b>v3.16.1</b>（2026-11-11）「자동문」の Style と Exclude を、女性の声が 1 人に聞こえる形に直した。</li>
       <li><b>v3.16.0</b>（2026-11-11）韓国語の作った曲「자동문」（ヒップホップ・トロット、2MC）を追加。</li>
@@ -254,7 +255,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.16.2';
+const VERSION = 'v3.17.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
