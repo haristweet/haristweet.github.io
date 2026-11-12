@@ -5465,5 +5465,87 @@
   ],
   "id": "s344",
   "title": "자동문 — ヒップホップ・トロット（2MC・こぶし控えめ）"
+ },
+ {
+  "group": "내 우산 아니야（僕の傘じゃないの歌）",
+  "song": "내 우산 아니야",
+  "genre": "UK アシッドハウス・トロット",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "acid house trot, uk acid house, 1988, 124bpm, squelching tb-303 acid bassline, roland 909 drum machine, four-on-the-floor kick, simple house piano stabs, synth accordion, trot melodic phrasing with light trot vibrato, male vocal, female vocal, duet, call-and-response, korean, wry and bittersweet",
+  "exclude": "eurodance, k-pop idol, ppongjjak, big room, trap, rap, enka, j-pop, ballad, pansori, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。コンビニの傘立てで、そっくりの黒い傘を取り違えた男女。歌詞と読みは trot_5patterns.md。",
+   "303 のアシッドベース 8〜9/10、ハウスのピアノも出た。①A は男女の受け渡しとトロットの節（7/10）が出たが、①B はトロットが弱め。"
+  ],
+  "id": "s345",
+  "title": "내 우산 아니야 — UK アシッドハウス・トロット"
+ },
+ {
+  "group": "일 퍼센트（充電1%の歌）",
+  "song": "일 퍼센트",
+  "genre": "ブレイクビーツ・ハードコア・トロット",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "breakbeat hardcore trot, uk rave, 1992, 145bpm, sped-up chopped breakbeats, hoover synths, piano rave stabs, pitched-up diva vocal samples, deep sub bass, trot melodic phrasing with light trot vibrato, male vocal, female vocal, duet, call-and-response, korean, frantic and desperate",
+  "exclude": "four on the floor, eurodance, happy hardcore, jungle, drum and bass, k-pop idol, ppongjjak, trap, rap, enka, j-pop, ballad, pansori, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。大事な電話を待つのにスマホの電池が 1%。歌詞と読みは trot_5patterns.md。",
+   "フーバーと高い声のかけらは出たが、2 曲とも 4 つ打ちになり、ブレイクビーツにならなかった。Exclude の `four on the floor` だけでは足りない。「찌릿찌릿」で効いた `Chopped Breakbeats Drive The Rhythm, No Four-On-The-Floor Kick` を Style に書くこと。"
+  ],
+  "id": "s346",
+  "title": "일 퍼센트 — ブレイクビーツ・ハードコア・トロット"
+ },
+ {
+  "group": "엘리베이터（エレベーターの歌）",
+  "song": "엘리베이터",
+  "genre": "80 年代のなめらかな歌謡トロット",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "1980s korean pop trot, retro city pop arrangement, 1987, 102bpm, smooth lush strings, warm electric piano, fretless bass, gentle drum machine, soft brass section, trot melodic phrasing with light trot vibrato, male vocal, female vocal, duet, call-and-response, korean, nostalgic and wistful",
+  "exclude": "vinyl crackle, lo-fi, eurodance, edm, k-pop idol, ppongjjak, trap, rap, enka, j-pop, power ballad, pansori, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。「閉」を押した瞬間に走ってくる人。「開」がとっさに分からず目の前で閉まる。歌詞と読みは trot_5patterns.md。",
+   "「밑창」で分かった「レトロ感はノイズでなく、なめらかな編曲としんみりした空気」を使った。2 曲とも 80 年代の韓国歌謡の空気 9/10、ストリングスとエレピ 8〜9/10、おふざけ感 1/10。",
+   "ただしトロットのこぶしはほとんど出ない（2〜3/10）。歌謡曲寄りになる。もう少しトロットにしたいときは `light trot vibrato` を少し強める。"
+  ],
+  "id": "s347",
+  "title": "엘리베이터 — 80 年代のなめらかな歌謡トロット"
+ },
+ {
+  "group": "내가 선 줄（僕が並んだ列の歌）",
+  "song": "내가 선 줄",
+  "genre": "エレクトロ・ファンク・トロット＋トークボックス",
+  "cat": "歌謡曲",
+  "mix": "",
+  "mixStatus": "",
+  "style": "talk box lead vocal throughout, every vocal line sung through a talk box, electro funk trot, 1984, 112bpm, linn drum machine, slap bass, funky clavinet, synth brass stabs, synth accordion, trot melodic phrasing with light trot vibrato, male talk box vocal, female talk box vocal, duet, call-and-response, korean, groovy and exasperated",
+  "exclude": "natural vocals, clean vocals, unprocessed vocals, chopped vocal samples, eurodance, k-pop idol, ppongjjak, trap, rap, enka, j-pop, ballad, pansori, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。スーパーのレジで、自分が並んだ列だけ必ず遅い。歌詞と読みは trot_5patterns.md。",
+   "ファンクの音（ドラムマシン・スラップベース・クラビネット）は 2 曲とも 8〜9/10。トークボックスは①B で約 85%、①A は約 45%。トークボックスでも、ファンク寄りの曲では全編にならないことがある。"
+  ],
+  "id": "s348",
+  "title": "내가 선 줄 — エレクトロ・ファンク・トロット＋トークボックス"
+ },
+ {
+  "group": "라면 물（ラーメンの水の歌）",
+  "song": "라면 물",
+  "genre": "ラガ・ジャングル・トロット",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "ragga jungle trot, 1994, 170bpm, chopped amen break, deep rolling sub bass, dub siren, offbeat reggae guitar chops, synth accordion, male ragga toasting vocal, female trot singing with light trot vibrato, duet, call-and-response, korean, bouncy and lamenting",
+  "exclude": "four on the floor, eurodance, liquid drum and bass, k-pop idol, ppongjjak, trap, enka, j-pop, ballad, pansori, comedy song, novelty song",
+  "notes": [
+   "全編韓国語。真夜中のラーメンで、水の量を目分量にして毎回失敗する。男はラガのトースティング、女はトロットで歌う。歌詞と読みは trot_5patterns.md。",
+   "5 パターンでいちばん狙いどおり。2 曲ともアーメン・ブレイク 9/10、サブベース 9/10、男のトースティング 9/10、女のトロット 8/10、4 つ打ちなし。",
+   "レゲエの裏拍のギターを `skank` と書くと、同じ名前のバンド名と判定されて作れない。`offbeat reggae guitar chops` と書く。"
+  ],
+  "id": "s349",
+  "title": "라면 물 — ラガ・ジャングル・トロット"
  }
 ]
