@@ -5745,5 +5745,23 @@
   ],
   "id": "s361",
   "title": "季節って最高 — アジア 4 か国語ビッグビート 汚し版（4MC リレー・悪ガキ歌詞）"
+ },
+ {
+  "group": "ハードコア MIDI 試し",
+  "song": "ハードコア MIDI 試し",
+  "genre": "初期 90 年代 UK ブレイクビーツ・ハードコア（自作 MIDI ＋簡単モード）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "A gritty early-1990s UK breakbeat hardcore track that plays my MIDI score: dirty sampled breakbeat drums chopped and heavily compressed following the MIDI drum part, no four-on-the-floor kick, 145 bpm. The bass part is the backbone: a massive, distorted, growling sub bassline riff, loud and upfront in the mix. Piano part as raw sampled rave piano stabs, the long lead as a dark detuned hoover with pitch dives, chopped pitched-up vocal sample shouts. Lo-fi sampler crunch, warehouse rave, raw and relentless.",
+  "exclude": "（MIDI を使う簡単モードでは Exclude 欄は使えない）",
+  "notes": [
+   "MIDI を渡す生成は簡単モード（v6-wild）だけ。上の文は Style 欄ではなく、説明文（description）として渡す。歌詞は付けられない（インスト）。MIDI は hardcore_145_bass.mid（145bpm、イ短調、32 小節。刻んだブレイクのドラム、裏に食ったレイヴピアノ、16 分で動くベースのリフ、しゃくり上げるフーバー）。",
+   "1 回目は bright・euphoric など明るい言葉の説明文で出したら、2 曲とも 4 つ打ちのユーロダンス／ピアノハウスになった。構成（ドラムが抜ける所の位置）とテンポは MIDI どおりだったが、ドラムの譜面は無視された。",
+   "2 回目は汚れた音の言葉に替え、ベースをリフに書き直したら、②A はブレイクビーツ 8・サンプリングしたブレイク感 9・初期 90s ハードコア 7 まで来た。②B は 4 つ打ちが混ざった。ベースはまだ丸く、歪み 1〜3。フーバーはほぼ出ない。",
+   "わかったこと：MIDI は旋律・和音・構成の設計図として効く。リズムの質感（4 つ打ちかブレイクか）は説明文の言葉で決まる。明るい言葉は 4 つ打ちを呼ぶ。"
+  ],
+  "id": "s362",
+  "title": "ハードコア MIDI 試し — 初期 90 年代 UK ブレイクビーツ・ハードコア（自作 MIDI ＋簡単モード）"
  }
 ]
