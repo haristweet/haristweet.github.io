@@ -5627,5 +5627,21 @@
   ],
   "id": "s354",
   "title": "回転寿司音頭 — ブームバップ音頭（2MC）"
+ },
+ {
+  "group": "春夏秋冬フルコース",
+  "song": "春夏秋冬フルコース",
+  "genre": "2000 年代 J ラップ・パーティー（4MC リレー）",
+  "cat": "ヒップホップ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "japanese hip hop, early 2000s j-rap party anthem, 98bpm, funky live band groove, slap bass, latin acoustic guitar riff, brass section stabs, turntable scratching, handclaps, four male MCs passing the mic in quick relay, each MC with a distinct voice and flow, playful wordplay, call-and-response, catchy sung chorus by the whole crew, japanese, upbeat and summery",
+  "exclude": "trap, 808, autotune, female vocals, r&b ballad, idol pop, anime opening, four on the floor, comedy song, novelty song",
+  "notes": [
+   "日本語。四季ぜんぶ最高。歌詞の見出しを `[Verse 1: MC 1]`〜`[Verse 4: MC 4]`、サビを `[Chorus: All MCs]`、ブリッジを `[Bridge: Mic Relay]` に分ける。歌詞は shunka_shuto_fullcourse.md。",
+   "何人もの MC がマイクを回す 2000 年代前半の J ラップの味。B は声が 4 人に分かれ、ラテン系アコギも出た。A は声 2 人、アコギなし。どちらも 4 つ打ちにならず、テンポは指定どおり。"
+  ],
+  "id": "s355",
+  "title": "春夏秋冬フルコース — 2000 年代 J ラップ・パーティー（4MC リレー）"
  }
 ]
