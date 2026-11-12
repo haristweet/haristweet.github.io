@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.12 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.20.0</b>（2026-11-12）「春夏秋冬フルコース」の疾走版（120bpm、ブレイクビーツのまま 4 つ打ちを外す書き方）を追加。</li>
       <li><b>v3.19.0</b>（2026-11-12）2000 年代 J ラップのパーティー曲（4MC リレー）「春夏秋冬フルコース」を追加。</li>
       <li><b>v3.18.0</b>（2026-11-12）トロットで試した味を音頭に移した 5 パターンを追加（ラガ・ジャングル「静電気音頭」、アシッドハウス「ふたが開かない音頭」、ハードコア「二度寝音頭」、フィルターハウス＋ボコーダー「おつり音頭」、ブームバップ 2MC「回転寿司音頭」）。</li>
       <li><b>v3.17.0</b>（2026-11-12）Claude が選んだトロット 5 パターンを追加（アシッドハウス「내 우산 아니야」、ハードコア「일 퍼센트」、80 年代歌謡「엘리베이터」、ファンク＋トークボックス「내가 선 줄」、ラガ・ジャングル「라면 물」）。</li>
@@ -257,7 +258,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.19.0';
+const VERSION = 'v3.20.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
