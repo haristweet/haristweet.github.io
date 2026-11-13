@@ -5801,5 +5801,24 @@
   ],
   "id": "s364",
   "title": "ラガテクノ ベース増し — 初期 90 年代 UK ラガテクノ（ブレイク＋途中でレゲエ、ラガ MC）"
+ },
+ {
+  "group": "1. 初期 90 年代 UK レイヴ",
+  "song": "Slow Fire",
+  "genre": "ラガテクノ 歌もの（レゲエの歌が主役、スネアロールでどかーん）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "1992 UK ragga techno in the breakbeat hardcore style, 140 bpm, bass-heavy mix: a massive, loud, upfront sub bass that dominates the track, rumbling deep dub bass in the reggae part, rolling distorted bassline in the breakbeat parts, made in a bedroom studio with one sampler and one synth, few tracks, one plain undecorated breakbeat loop chopped from an old funk record, no four-on-the-floor kick, gritty analog synth stab riff, after a snare roll the breakbeats stop completely for a long half-time one-drop reggae section with offbeat guitar chops, spring reverb and dub delay, male Jamaican ragga singer carrying the reggae section with a melodic vocal that builds from soft and low to full voice to shouting, a snare roll creeps in under the reggae and speeds up, then the breakbeats, synth riff and bass explode back in, short ragga toasting in patois at the start and after the drop, 12-bit sampler grit, sparse and urgent",
+  "exclude": "thin bass, weak low end, four on the floor, drum fills, tom fills, percussion layers, lush, cinematic, layered, wide stereo, polished, epic, chiptune, 8-bit, toy keyboard, general midi, cheap synth, dancehall pop, reggaeton, autotune, trap, eurodance, happy hardcore, trance, edm, pop",
+  "notes": [
+   "Hari が選んだ Slow Fire ②B（◎）の作り方。ラガテクノの 3 曲目で、レゲエの歌の比重を上げた版。手順は同じ：自作 MIDI → MIDI モードで生成 → いい方（①B）を通常モデルでカバー（元の曲に寄せる強さ 0.7、Style の強さ 0.9、165 秒）。",
+   "MIDI（ragga3_140.mid、140bpm・ト短調・40 小節、楽器番号なし）：1〜4 小節はハイハットとシンセ、5〜12 小節でブレイクとベース（12 小節目後半にスネアロール）、13〜24 小節はブレイクなしのレゲエ（ワンドロップ、裏拍の和音を G を保つ 8 通りの積み方で回す、ダブのベース）、25〜28 小節はレゲエのままスネアが 4 分→8 分→16 分→32 分と細かくなる、29〜36 小節でシンバルを合図にブレイク・シンセ・ベースが戻る、37〜40 小節はブレイクとベースで弱くして終わる。シンセとベースは毎小節形を変えて 4 小節でひと回り。著作権チェックは 1 回で通った。",
+   "歌詞は英語のパトワ風（オリジナル、slow fire＝じわじわ燃える火）。トースティングは頭とどかーんのあとに 4 行ずつだけにし、真ん中は `[Reggae Section: Ragga Singer, soft and low]` → `[Reggae Section: Ragga Singer, louder, full voice]` → `[Build: Ragga Singer shouting, snare roll rising underneath]` の 3 段。叫びの所は 1 語の行と掛け声の行を交互に置き、最後に「Selector!」で落とす（ragga3_slow_fire.md）。",
+   "⑦A の Exclude から snare rolls を外した（スネアロールで盛り上げるのが要なので）。代わりに tom fills を入れて、ほかの飾りは止めたまま。",
+   "失敗：同じ ①B に日本語の歌詞（てんぷら）を載せたら、符割（ふわり）がめちゃくちゃになった。①B の歌は MIDI モードで英語の歌詞に合わせて作られており、寄せる強さ 0.7 でその節が残ったためと思われる（推測）。日本語で歌わせるなら、日本語の音の数に合わせた歌の旋律を MIDI に書いてからにする。"
+  ],
+  "id": "s365",
+  "title": "Slow Fire — ラガテクノ 歌もの（レゲエの歌が主役、スネアロールでどかーん）"
  }
 ]
