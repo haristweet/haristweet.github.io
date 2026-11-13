@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.12 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.30.1</b>（2026-11-13）MIDI → カバーの当たり 4 曲に曲名を付けた（Night Shift／Two O'Clock Rewind／Last Train Gone／Slow Fire）。</li>
       <li><b>v3.30.0</b>（2026-11-13）ラガテクノ 2（低いうねるシンセ、ブレイクの上にレゲエを重ねて戻す）を追加。自作 MIDI → カバーの手順の 4 曲目。</li>
       <li><b>v3.29.0</b>（2026-11-13）ラガテクノ 歌もの（Slow Fire：レゲエの歌が主役、スネアロールでどかーん）を追加。自作 MIDI → カバーの手順の 3 曲目。日本語の歌詞を載せて符割が崩れた失敗もメモに。</li>
       <li><b>v3.28.0</b>（2026-11-13）ラガテクノ（ブレイク＋途中でレゲエ、ラガ MC、ベース増し）を追加。自作 MIDI → カバーの手順の 2 曲目。</li>
@@ -276,7 +277,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.30.0';
+const VERSION = 'v3.30.1';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
