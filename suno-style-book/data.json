@@ -5765,5 +5765,23 @@
   ],
   "id": "s362",
   "title": "ハードコア MIDI 試し — 初期 90 年代 UK ブレイクビーツ・ハードコア（自作 MIDI ＋簡単モード）"
+ },
+ {
+  "group": "ハードコア v4 素のブレイク",
+  "song": "ハードコア v4 素のブレイク",
+  "genre": "初期 90 年代 UK ブレイクビーツ・ハードコア（ベッドルーム・素のブレイク）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "1992 UK breakbeat hardcore made in a bedroom studio, 148 bpm, one plain undecorated breakbeat loop chopped straight from an old funk record and repeated as it is, no four-on-the-floor kick, one sampler and one synth, few tracks, short mono samples, sparse arrangement with gaps, one gritty hoover synth line of detuned sawtooth waves sliding down in pitch, one distorted reese bass riff, a few raw piano stabs, a couple of short pitched-up vocal sample shouts, 12-bit sampler grit, rough and urgent, homemade warehouse rave",
+  "exclude": "four on the floor, drum fills, snare rolls, tom fills, percussion layers, extra hi-hats, drum effects, risers, reverse cymbals, sweeps, lush, cinematic, layered, wide stereo, big room, polished, epic, chiptune, 8-bit, toy keyboard, general midi, cheap synth, eurodance, happy hardcore, trance, edm, pop",
+  "notes": [
+   "Hari が「断然 B、これまでで 1 番かも」と言った⑥B の作り方。声ネタは歌詞欄に `[Vocal Sample: \"Hardcore!\"]` `(Lift off!)` `(Night shift!)` を少しだけ。",
+   "手順：①自作 MIDI（hardcore_145_v4.mid：ト短調 Gm→E♭→Cm→D、裏に食うフーバーのリフ、16 分のベースリフ、ピアノ少なめ）を MIDI モードで生成 → ②疾走感の出た 1 曲（③B）を通常モデルでカバー、元の曲に寄せる強さ 0.7、Style の強さ 0.9、長さ 150 秒。",
+   "わかったこと：MIDI モードだけだと音色が「おもちゃのキーボード」になる（MIDI の楽器番号どおりに鳴る）。カバーで音色を作り直すと豪華になりすぎて「何でも入れちゃう」感じになるので、Style に機材の制約（サンプラー 1 台・シンセ 1 台・少ないトラック・すき間の多い編曲）を書き、除外に豪華さの言葉を入れると、限られた機材でもがく 1992 年の感じが戻る。ブレイクは「飾りのない 1 本のループ」と書き、フィルやスネアロールを除外する。",
+   "聞き取り道具は、フーバーや声ネタなど音色の判定がまったく当てにならなかった。判定は Hari の耳で。"
+  ],
+  "id": "s363",
+  "title": "ハードコア v4 素のブレイク — 初期 90 年代 UK ブレイクビーツ・ハードコア（ベッドルーム・素のブレイク）"
  }
 ]
