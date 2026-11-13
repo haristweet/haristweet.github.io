@@ -5820,5 +5820,23 @@
   ],
   "id": "s365",
   "title": "Slow Fire — ラガテクノ 歌もの（レゲエの歌が主役、スネアロールでどかーん）"
+ },
+ {
+  "group": "1. 初期 90 年代 UK レイヴ",
+  "song": "ラガテクノ2",
+  "genre": "ラガテクノ 2（低いうねるシンセ、ブレイクの上にレゲエを重ねて戻す）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "1992 UK ragga techno in the breakbeat hardcore style, 142 bpm, bass-heavy mix: a massive, loud, upfront sub bass that dominates the track, rumbling deep dub bass in the reggae part, rolling distorted bassline in the breakbeat parts, made in a bedroom studio with one sampler and one synth, few tracks, one plain undecorated breakbeat loop chopped from an old funk record, no four-on-the-floor kick, low snaky analog synth riff, middle section drops to half-time one-drop reggae with offbeat guitar chops, spring reverb and dub delay, then the breakbeats return under the reggae, male Jamaican ragga MC toasting in patois with a fast chatty flow, melodic singing in the reggae part, 12-bit sampler grit, sparse and urgent",
+  "exclude": "thin bass, weak low end, four on the floor, drum fills, snare rolls, percussion layers, lush, cinematic, layered, wide stereo, polished, epic, chiptune, 8-bit, toy keyboard, general midi, cheap synth, dancehall pop, reggaeton, autotune, trap, eurodance, happy hardcore, trance, edm, pop",
+  "notes": [
+   "Hari が選んだ ②B（◎）の作り方。ラガテクノ ⑦A と同じ手順・同じ設定（自作 MIDI → MIDI モード → いい方をカバー、元の曲に寄せる強さ 0.7、Style の強さ 0.9、weirdness 0.4）。⑦A から変えたのは 142bpm と「低いうねるシンセのリフ」（gritty analog synth stab riff の代わりに low snaky analog synth riff）。",
+   "MIDI（ragga2_142_v2.mid、142bpm・ホ短調寄り・36 小節、楽器番号なし）：1〜8 小節はブレイクとシンセのスタブ（最初の 4 小節はハイハットだけ）、9〜16 小節で全開、17〜28 小節はレゲエ、29〜36 小節でブレイクとスタブが戻り、29〜32 小節はその下でレゲエのベースを続けてつなぐ。スタブのリフは 4 通りを小節ごとに回し、4 小節おきに一部の音を上げる。",
+   "歌詞は英語のパトワ風（オリジナル）。見出しは `[Verse 1: Ragga MC Toasting]` `[Hook: Ragga MC]` `[Reggae Section: Ragga MC Singing]` `[Build]` `[Drop: Ragga MC Toasting]` `[Outro: Dub Fade]`。フックは「(Lock it!) Hold di groove inna place」の掛け声つき。",
+   "1 回目の MIDI（ragga2_142.mid）は MIDI の著作権チェックで止められ、くり返しを崩した v2 で通った。"
+  ],
+  "id": "s366",
+  "title": "ラガテクノ2 — ラガテクノ 2（低いうねるシンセ、ブレイクの上にレゲエを重ねて戻す）"
  }
 ]
