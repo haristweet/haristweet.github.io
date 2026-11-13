@@ -5783,5 +5783,23 @@
   ],
   "id": "s363",
   "title": "ハードコア v4 素のブレイク — 初期 90 年代 UK ブレイクビーツ・ハードコア（ベッドルーム・素のブレイク）"
+ },
+ {
+  "group": "ラガテクノ ベース増し",
+  "song": "ラガテクノ ベース増し",
+  "genre": "初期 90 年代 UK ラガテクノ（ブレイク＋途中でレゲエ、ラガ MC）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "1992 UK ragga techno in the breakbeat hardcore style, 140 bpm, bass-heavy mix: a massive, loud, upfront sub bass that dominates the track, rumbling deep dub bass in the reggae part, rolling distorted bassline in the breakbeat parts, made in a bedroom studio with one sampler and one synth, few tracks, one plain undecorated breakbeat loop chopped from an old funk record, no four-on-the-floor kick, gritty analog synth stab riff, middle section drops to half-time one-drop reggae with offbeat guitar chops, spring reverb and dub delay, then the breakbeats return under the reggae, male Jamaican ragga MC toasting in patois with a fast chatty flow, melodic singing in the reggae part, 12-bit sampler grit, sparse and urgent",
+  "exclude": "thin bass, weak low end, four on the floor, drum fills, snare rolls, percussion layers, lush, cinematic, layered, wide stereo, polished, epic, chiptune, 8-bit, toy keyboard, general midi, cheap synth, dancehall pop, reggaeton, autotune, trap, eurodance, happy hardcore, trance, edm, pop",
+  "notes": [
+   "Hari が選んだ⑦A（◎）の作り方。ハードコアの当たりと同じ手順：自作 MIDI → MIDI モードで生成 → いい方を通常モデルでカバー（元の曲に寄せる強さ 0.7、Style の強さ 0.9、165 秒）。",
+   "MIDI（ragga_breaks_140_v5.mid、140bpm・ニ短調・36 小節、楽器番号なし）：1〜16 小節はシンセのフレーズ＋ブレイク、17〜24 小節はブレイクなしのレゲエ（3 拍目だけのワンドロップ、裏拍の和音、ダブのベース）、24 小節後半にスネアの盛り上げ、25〜28 小節でレゲエの上にブレイクが入る、29〜32 小節でシンセが戻ってもレゲエを重ね、33〜36 小節でレゲエの和音を伸ばして弱くする（Hari の「レゲエが唐突に終わるのをやめたい」）。",
+   "歌詞は英語のパトワ風ラガ MC（オリジナル）。見出しを `[Verse 1: Ragga MC Toasting]` `[Reggae Section: Ragga MC Singing]` `[Drop: Ragga MC Toasting]` `[Outro: Dub Fade]` に分ける。skank は使わない（アーティスト名扱いで止められる）。",
+   "途中でわかったこと：「ラガテクノ」を 4 つ打ちで書いたら違った（Hari の言うラガテクノはブレイクビーツ）。レゲエの和音 Dm→B♭→C→A とダブのベースを長くくり返したら MIDI の著作権チェックで止められ、D を保つ独自の進行と新しいベースの動きに替えたら通った。ベースは Style の頭に「曲を支配する大きく前に出たサブベース」と書き、除外に thin bass・weak low end で前に出た。"
+  ],
+  "id": "s364",
+  "title": "ラガテクノ ベース増し — 初期 90 年代 UK ラガテクノ（ブレイク＋途中でレゲエ、ラガ MC）"
  }
 ]
