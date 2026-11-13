@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.12 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.26.1</b>（2026-11-13）自作 MIDI のハードコアに、当たった v4 の作りと、著作権チェックで止められた v3 の注意を書き足した。</li>
       <li><b>v3.26.0</b>（2026-11-12）自作 MIDI を渡して作るブレイクビーツ・ハードコア（簡単モードの説明文と、わかったこと）を追加。</li>
       <li><b>v3.25.1</b>（2026-11-12）汚し版に、サビの符割の直し方（1 行の音の数をそろえ、掛け声を別の行に分け、ひらがなで書く）を書き足した。</li>
       <li><b>v3.25.0</b>（2026-11-12）「季節って最高」の汚し版（明るさの言葉を外して汚れた音の言葉を足したら、4 つ打ちが消えた）を追加。</li>
@@ -270,7 +271,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.26.0';
+const VERSION = 'v3.26.1';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
