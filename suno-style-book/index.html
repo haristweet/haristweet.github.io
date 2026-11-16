@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.12 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.32.1</b>（2026-11-17）初期ガバ ミニマルの曲名を Gatchan-Dokkan に。</li>
       <li><b>v3.32.0</b>（2026-11-17）初期ガバ ミニマル（がっちゃんどっかん）を追加：歪み最大の 909 キック＋シンセ 1 音＋声ネタ 1 つ。4 つ打ちのドラムは MIDI の著作権チェックで止められるのでキックを低い音程で入れる、打ち込みらしさを出す書き方、のメモも。全372件に。</li>
       <li><b>v3.31.0</b>（2026-11-16）自作 MIDI → カバーのレイヴを 4 つ追加：ブリープ・ハードコア（Lights Out）、ブリープの嵐（Storm Warning、DJ 向け 5 分）、アンセム（Up A Gear、盛り上げの定番全部入り）、Prodigy 風 展開の多いレイヴ（Sawtooth Sunrise）。声ネタは歌詞欄に置く・よくある掛け声は止められやすい、などのメモも。</li>
       <li><b>v3.30.1</b>（2026-11-13）MIDI → カバーの当たり 4 曲に曲名を付けた（Night Shift／Two O'Clock Rewind／Last Train Gone／Slow Fire）。</li>
@@ -279,7 +280,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.32.0';
+const VERSION = 'v3.32.1';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
