@@ -5912,5 +5912,24 @@
   ],
   "id": "s370",
   "title": "Sawtooth Sunrise — Prodigy 風 展開の多いレイヴ（場面を次々変える＋短いラガ）"
+ },
+ {
+  "group": "2. 90 年代初めのロッテルダム",
+  "song": "がっちゃんどっかん",
+  "genre": "初期ガバ ミニマル（歪み最大の 909 キック＋シンセ 1 音＋声ネタ 1 つ）",
+  "cat": "テクノ",
+  "mix": "",
+  "mixStatus": "",
+  "style": "minimal early 1992 Rotterdam gabber, 168 bpm, programmed on hardware: a Roland TR-909 and one monophonic analog synth driven by a step sequencer, perfectly quantized, no swing, every hit identical. The 909 kick is overdriven to the maximum: pushed through a fully cranked mixer channel and distortion pedal until it clips into a square-wave buzz, a hard tonal gabber kick with a long distorted tail, crushed, saturated, the loudest thing in the mix. Only four sounds: that maximally distorted kick on every beat, the same plain open hi-hat on every offbeat, one fixed rubbery resonant synth blip with the same patch on every staccato note, and a pitched-down male Japanese voice sample chanting the same four words in a rapid-fire tongue-twister loop, nonstop through the whole track, flat, shouted, not sung, like a looped sampler phrase. One-bar patterns looped unchanged, sections change only by muting and unmuting parts. Dry, mono, cold, mechanical, rigid, 12-bit sampler grit",
+  "exclude": "clean kick, soft kick, punchy kick, thin kick, risers, sweeps, white noise, build-ups, drum fills, snare rolls, humanized, swing, emotional, epic, cinematic, melodic variation, chord changes, pads, strings, piano, choir, bassline, claps, breakbeat, reverb, delay, wide stereo, lush, polished, singing, melodic vocals, j-pop, anime, female vocals, rap verse, trance, happy hardcore, eurodance, edm, pop, chiptune, 8-bit",
+  "notes": [
+   "Hari が選んだ がっちゃんどっかん ⑦A（◎）。Rotterdam Termination Source「Poing」のような、音数を絞ったソリッドな初期ガバを、名前を出さずに鳴り方の言葉で寄せた。リフは自作。",
+   "自作 MIDI（poing_style_168.mid、イ短調・208 小節・約 5 分）→ MIDI モード（v6-wild）①A → カバー（v6、寄せる強さ 0.62、Style 0.95、Variety 0、Weirdness 0.1、300 秒）。音色を大きく変えるので寄せる強さは 0.7 より下げた。",
+   "MIDI の著作権チェック：4 つ打ちのドラム（キック・裏拍ハイハット・クラップ）を GM ドラムで入れると、上モノを全部変えても止められた。キックだけにしても止められた。ドラムを抜くと通るが、テンポが 176 に流れ小節もずれた。キックを低い A の音程（ch7 の「キックベース」、拍ごと＋キックロール）として入れると通り、説明文に「この低い A をキックとして鳴らす」と書けば 909 キックとして鳴った。小節も MIDI の区切りにほぼそろった。",
+   "打ち込みらしさ：「変に色気付く」（フィル・効果音・揺れ）のを止めるため、Style に機材（909＋単音シンセ＋ステップシーケンサー）、完全クオンタイズ、1 小節パターンの繰り返し、パートの抜き差しだけで展開、と書き、Variety を 0 にした。盛り上げの効果音・フィル・スイング・リバーブは Exclude に入れた。",
+   "声ネタ：`(がっちゃんどっかんじっちゃんばっちゃん!)` を 1 行にして、頭と終わりの 16 小節以外のすべての区間に 4〜16 行並べた（区間名に `rapid chant` を付ける）。Style に「歌わず、平らに、ループしたサンプラーのフレーズのように」と書き、Exclude に j-pop と anime を入れた。"
+  ],
+  "id": "s371",
+  "title": "がっちゃんどっかん — 初期ガバ ミニマル（歪み最大の 909 キック＋シンセ 1 音＋声ネタ 1 つ）"
  }
 ]
