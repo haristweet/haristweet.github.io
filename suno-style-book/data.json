@@ -5838,5 +5838,79 @@
   ],
   "id": "s366",
   "title": "Last Train Gone（終電は行っちまった） — ラガテクノ 2（低いうねるシンセ、ブレイクの上にレゲエを重ねて戻す）"
+ },
+ {
+  "group": "1. 初期 90 年代 UK レイヴ",
+  "song": "Lights Out",
+  "genre": "ブリープ・ハードコア（正弦波ブリープとサブベース、すき間多め）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "1990 UK bleep and bass crossed with early breakbeat hardcore, 125 bpm, steady 4/4, pure clean sine-wave bleeps, cold and minimal, a massive deep sine sub bass that shakes the floor, one plain undecorated breakbeat loop chopped from an old funk record with busy hi-hats, no four-on-the-floor kick, a few short chopped vocal sample shouts cut from old records, never singing, made in a bedroom studio with one sampler and one synth, lots of empty space, mono, 12-bit sampler grit, dark warehouse",
+  "exclude": "singing, sung vocals, melodic vocals, rap, ragga, toasting, patois, reggae, distorted bass, reese bass, hoover, piano, strings, pads, lush, layered, cinematic, wide stereo, polished, epic, fusion, jazz, guitar, drum fills, snare rolls, four on the floor, chiptune, 8-bit, toy keyboard, general midi, cheap synth, eurodance, happy hardcore, trance, edm, pop",
+  "notes": [
+   "Hari が選んだ Lights Out ②A（◎）。自作 MIDI（bleephc1_125.mid、ホ短調・96 小節）→ MIDI モード → カバー（寄せる強さ 0.7、Style 0.9）。",
+   "MIDI は DJ 向けの組み立て：頭と終わりの 16 小節はドラムとベースだけ、区間はすべて 8 小節の倍数、16 小節のブレイクダウンの最後 4 小節でスネアが細かくなる。ブリープとベースは 4 小節でひと回りに形を変える（著作権チェック対策）。",
+   "声ネタは歌詞欄で区間ごとに 1 つ：`(Lights out!)` `(Bass!)` `(Can you hear me?)`。頭と終わりの 16 小節は声なし。",
+   "MIDI モードで BPM がずれた 1 曲は、Suno が書き直した Style の文から「125 bpm」が抜けていた。カバーの Style の頭に bpm を必ず書く。"
+  ],
+  "id": "s367",
+  "title": "Lights Out — ブリープ・ハードコア（正弦波ブリープとサブベース、すき間多め）"
+ },
+ {
+  "group": "1. 初期 90 年代 UK レイヴ",
+  "song": "Storm Warning",
+  "genre": "ブリープの嵐（周期の違うアルペジオ 3 本、DJ 向け 5 分）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "early 1990s UK breakbeat hardcore with a storm of bleeps, 138 bpm, steady 4/4, long DJ-friendly arrangement with a drums-and-bass intro and outro, three interlocking rolling 16th-note sine and square-wave bleep arpeggios in different cycle lengths, layering into a hypnotic swirling storm, a resonant filter slowly opening through the builds, breakdowns with chords changing faster and faster over a pulsing bass pedal, heavy sine sub bass with a little drive, one plain undecorated breakbeat loop chopped from an old funk record, no four-on-the-floor kick, a few short chopped vocal sample shouts cut from old records, never singing, made in a bedroom studio with one sampler and one synth, 12-bit sampler grit, warehouse rave",
+  "exclude": "singing, sung vocals, melodic vocals, rap, ragga, toasting, patois, reggae, reese bass, hoover, piano, strings, pads, lush, cinematic, wide stereo, polished, epic, fusion, jazz, guitar, drum fills, snare rolls, four on the floor, chiptune, 8-bit, toy keyboard, general midi, cheap synth, eurodance, happy hardcore, trance, edm, pop",
+  "notes": [
+   "Hari が選んだ Storm Warning ⑤B（◎）。Underworld「Rez」のようなブリープの嵐、を名前を書かずに鳴り方の言葉で寄せた。",
+   "MIDI（bleephc2_storm_long_v2_138.mid、ヘ短調・176 小節・約 5 分）：16 分のアルペジオ 3 本（8 音・3 音・5 音でひと回り）を 8〜16 小節ごとに重ねる。周期がずれて模様が変わり続ける。音の長さを伸ばしてフィルターが開く感じを出す。頭 32 小節・終わり 16 小節はドラムとベースだけ。",
+   "盛り上げの進行：ブレイクダウンでは主和音（Fm）を鳴らさず、和音が変わる速さを 2 小節→1 小節→2 拍と詰め、最後の 4 小節はベースが属音 C を刻む（属音ペダル）。全開の頭で Fm に着地。",
+   "長さ：MIDI モード・カバーとも duration を 305〜310 秒で指定すると 5 分の曲が最後まで入った。",
+   "声ネタ：`(Storm warning!)` `(Louder!)` `(Steady...)` `(Storm!)`。最初の `(Here we go!)` `(Turn it up!)` `(Hold on...)` `(Again!)` の組み合わせは歌詞の著作権チェックで止められた。よくある掛け声ほど止められやすい。"
+  ],
+  "id": "s368",
+  "title": "Storm Warning — ブリープの嵐（周期の違うアルペジオ 3 本、DJ 向け 5 分）"
+ },
+ {
+  "group": "1. 初期 90 年代 UK レイヴ",
+  "song": "Up A Gear",
+  "genre": "アンセム（ハウスの短調ループ＋盛り上げの定番全部入り）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "euphoric early 1990s UK breakbeat hardcore anthem, 140 bpm, no four-on-the-floor kick, long DJ-friendly arrangement with a drums-and-bass intro and outro, punchy early-90s house organ chord stabs playing a minor-key loop, rolling 16th-note sine bleeps, heavy sub bass, one rolling chopped breakbeat loop from an old funk record, snare roll builds before each drop, breakdowns with chords changing faster over a pulsing bass pedal, the last drop lifts up a whole step, a few short chopped vocal sample shouts cut from old records, never singing, made in a bedroom studio with one sampler and one synth, 12-bit sampler grit, hands-in-the-air warehouse rave",
+  "exclude": "four on the floor, singing, sung vocals, melodic vocals, diva vocals, rap, ragga, toasting, patois, reggae, reese bass, hoover, strings, lush, cinematic, wide stereo, polished, epic orchestral, fusion, jazz, guitar, tom fills, chiptune, 8-bit, toy keyboard, general midi, cheap synth, eurodance, happy hardcore, trance, edm, pop",
+  "notes": [
+   "Hari が選んだ Up A Gear ②B（◎）。Gypsy Woman と同じ型の進行（v7 → VI7 → iv7 → VII9 → i9、Hooktheory による）をト短調で 4 小節ループ。借りたのは進行だけで、オルガンの刻みと積み方はオリジナル（刻み 4 通り・積み方 4 小節ごとに変える）。",
+   "盛り上げの定番：主和音を隠す／和音が変わる速さを上げる／属音ペダル／スネアロール（4 小節と 8 小節）／最後の全開で全音転調。スネアロールが要なので Exclude から snare rolls と drum fills を外した。",
+   "4 つ打ち注意：説明文に「steady 4/4」とだけ書くと、Suno が「four-on-the-floor grid」と言い換えることがあった。「no four-on-the-floor kick」と並べて書く。",
+   "声ネタ：`(Everybody!)` `(Up a gear!)` `(Rise...)` `(Up again!)`。"
+  ],
+  "id": "s369",
+  "title": "Up A Gear — アンセム（ハウスの短調ループ＋盛り上げの定番全部入り）"
+ },
+ {
+  "group": "1. 初期 90 年代 UK レイヴ",
+  "song": "Sawtooth Sunrise",
+  "genre": "Prodigy 風 展開の多いレイヴ（場面を次々変える＋短いラガ）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "early 1990s UK breakbeat rave collage full of sudden changes, 140 bpm, no four-on-the-floor kick, a dark menacing riff on a fat analog synthesizer, Minimoog-style thick detuned saw lead, Juno-style chorused rave piano, SH-101-style driven analog bass, growling hoover with pitch dives, hard chopped funk breakbeats with stutter edits, one-beat stops, stuttered pitched-up female vocal sample chops, a short half-time one-drop ragga section with offbeat chords, dub bass and a male ragga MC toasting, snare roll back to full speed, a tearful bright piano breakdown, a maximal finale, warm saturated analog filter, analog tape saturation, made in a bedroom studio with one sampler and vintage analog synths, 12-bit sampler grit, raw and loud, warehouse rave",
+  "exclude": "thin, digital, FM synth, preset, plucky, toy keyboard, cheap synth, chiptune, 8-bit, general midi, four on the floor, diva ballad, pop vocals, autotune, rap, dancehall pop, reggaeton, strings, lush, cinematic, wide stereo, polished, epic orchestral, fusion, jazz, guitar, eurodance, happy hardcore, trance, edm, pop",
+  "notes": [
+   "Hari が選んだ Sawtooth Sunrise ⑤B（◎）。特定のリフは写さず、Prodigy のリフの「アガる仕組み」だけを使ったオリジナル：短く刻んで休む／♭2 の半音／最後のオクターブ跳び／4 小節目ごとに 4 度上げ。",
+   "Hari の気づき：レイヴ時代の Prodigy は 1 曲の中に複数のアイデアが混ざり展開が多い。1 本のリフで押すと物足りない。MIDI（prodigy_multi_140.mid、160 小節）を場面ごとに組んだ：暗いリフ→明るいレイヴピアノ→声ネタの切り刻み→リフ（太く）→ブレイクのソロ→半分の速さのラガ→ピッチが落ちるフーバー→泣きのブレイクダウン（C-D-Bm-Em のレイヴピアノ）→全部のせ。区切りは 8 小節の倍数、ところどころ 1 拍だけ全部止める。",
+   "音色はカバーで作る：Minimoog 風・Juno 風・SH-101 風と楽器名を書き、Exclude に thin・digital・FM synth・preset。寄せる強さ 0.65。",
+   "声は歌詞欄で場面ごとに指定：`[Vocal Chops]` に `(Saw-saw-sawtooth)`、`[Ragga: Male MC Toasting]` にオリジナル 4 行、`[Breakdown]` に Sawtooth sunrise。声のフックは、かぶりにくい言葉にしたら歌詞の著作権チェックを通った。",
+   "失敗：既存曲の MIDI（ONGAKU・マッドピエロ・Computer Love）は、小節の区切りが 8 の倍数でなく DJ で使いにくかった。Computer Love は旋律が入ると MIDI の著作権チェックで必ず止められた。"
+  ],
+  "id": "s370",
+  "title": "Sawtooth Sunrise — Prodigy 風 展開の多いレイヴ（場面を次々変える＋短いラガ）"
  }
 ]
