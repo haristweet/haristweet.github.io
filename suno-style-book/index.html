@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.12 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.36.0</b>（2026-11-18）明るいレイヴ・ハードコア（Open Sky）を追加：雰囲気の言葉から調と進行を決める（マイナーで暗くなった失敗も）、音色を機材名で指定、歌とサンプルを混ぜるとサンプルまで歌になるので声はサンプルだけに。全376件に。</li>
       <li><b>v3.35.1</b>（2026-11-17）「TB-303 の出し方」に 2 台の 303 の例（No Contest）を追記：参照曲 2 本で鳴らし分けはできるが、交代の掛け合い（アシッドバトル）は 1 本にまとまって成立しなかった。</li>
       <li><b>v3.35.0</b>（2026-11-17）「TB-303 の出し方」を追加：Sounds でドライの 303 を作り（Sounds は黙るとリバーブを足すので dry を明記）、当たった音を曲でサンプリングさせる手順。303 は機材名だけでも出る。全375件に。</li>
       <li><b>v3.34.0</b>（2026-11-17）フーバー＋ブリープのブレイクビーツ（Cold Sine）を追加：音色 4 つ、当たりのフーバーを参照曲にして自作 MIDI と一緒に MIDI モードへ渡す作り方。「90 年代のフーバー」にも曲の例を足した。全374件に。</li>
@@ -284,7 +285,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.35.1';
+const VERSION = 'v3.36.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';

@@ -5993,5 +5993,25 @@
   ],
   "id": "s374",
   "title": "303試し — TB-303 の出し方（ドライの 303 を作って、それをサンプリングさせる）"
+ },
+ {
+  "group": "1. 初期 90 年代 UK レイヴ",
+  "song": "Open Sky",
+  "genre": "明るいレイヴ・ハードコア（音色を機材名で指定、声はサンプルだけ）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "bright, joyful, euphoric early-1990s UK breakbeat hardcore rave, 145 bpm, A major, uplifting, no four-on-the-floor kick, instrumental with vocal samples only. Sounds: an amen break sampled off an old record and chopped fast and busy in an Akai sampler, gritty 12-bit; a rolling reese bass of two slightly detuned sawtooth waves over a clean sine sub, locked to the kicks; hard bright Korg M1 house piano stabs; short rough sampled orchestra-hit and brass stabs; a warm Roland Juno string pad. Voices are only short samples triggered from a sampler, spoken or shouted, never sung: a male MC hype shout, a sped-up pitched-up female word chopped off an old soul record and stuttered, and a very high chipmunk voice saying two words. Drums-and-bass intro and outro for DJs, tearful breakdown, key change up near the end, bedroom studio, raw and loud",
+  "exclude": "singing, sung vocals, melodic vocals, diva, choir, backing vocals, harmonies, rap verse, autotune, thin, digital, preset, FM synth, minor key, dark, sad, gloomy, hoover, four on the floor, trance, supersaw, eurodance, happy hardcore, edm, ragga, polished, wide stereo, cinematic, pop",
+  "notes": [
+   "Hari が選んだ Open Sky（開けた空）⑥B（◎）。Hari が持ってきた 90 年代前半 UK レイヴの曲の分析メモ（約 145 BPM、声 4 種の掛け合い、後半がコピペ、終わりが唐突）を元に、自作 MIDI（rave145_major.mid、A メジャー・184 小節・約 5 分）→ MIDI モード（v6-wild、歌詞なし）②A → カバー（v6、寄せる強さ 0.7、Style 0.9、305 秒）。",
+   "調と進行は雰囲気の言葉から決める：メモに「キーは F# マイナー（または A メジャー系）」「ユーフォリア・祝祭的」とあった。最初に F#m–D–E–C#m で作ったら暗く沈んだ（Hari の指摘）。A メジャーで、フック・リフ・ドロップ A–D–E–D（I–IV–V–IV）、歌の区間 A–E–F#m–D（I–V–vi–IV）、ブレイクダウン D–E–C#m–F#m（王道進行で泣き）、終盤は全音上へ転調。MIDI モードの説明文にも「A major, bright, joyful, euphoric」と書き、Exclude に minor key / dark / sad を入れた。",
+   "元の曲の弱点を直した：後半はフックの形を変え、リフに別のリズムを混ぜ、最後の 2 区間で転調。頭と終わりはドラムとベースの 16 小節、終わりはフックを 4 小節で消してシンバル 1 発。",
+   "音色を機材名で指定（④から）：Akai で刻んだ 12 ビットのアーメン、ずらしたノコギリ 2 本のリース＋正弦波サブ、Korg M1 のハウスピアノ、サンプラーのオケヒットとブラス、Roland Juno のストリングスパッド。Exclude に thin / digital / preset / FM synth。役割だけ（rave piano, pad など）の版③より、Hari の注文に合った。",
+   "歌とサンプルは同じ曲に混ぜない：女性の歌（伸ばす歌）とサンプル（MC の煽り・早回し声ネタ・チップマンク）を一緒に入れると、サンプルの言葉まで歌になった（③④）。サンプルの区間名を `[Sample: male MC shout, spoken, not sung]` にし、Style に「歌うのは女性だけ、ほかは歌わない」、Exclude に sung shouts / choir / backing vocals を入れても止まらなかった（⑤）。歌をなくし、Exclude に singing / sung vocals / melodic vocals / diva を入れたら、サンプルのまま鳴った（⑥）。",
+   "声ネタは区間ごとに 1 回だけ。言葉は自作（元の曲の声ネタは使わない）。"
+  ],
+  "id": "s375",
+  "title": "Open Sky — 明るいレイヴ・ハードコア（音色を機材名で指定、声はサンプルだけ）"
  }
 ]
