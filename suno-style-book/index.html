@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.12 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.35.0</b>（2026-11-17）「TB-303 の出し方」を追加：Sounds でドライの 303 を作り（Sounds は黙るとリバーブを足すので dry を明記）、当たった音を曲でサンプリングさせる手順。303 は機材名だけでも出る。全375件に。</li>
       <li><b>v3.34.0</b>（2026-11-17）フーバー＋ブリープのブレイクビーツ（Cold Sine）を追加：音色 4 つ、当たりのフーバーを参照曲にして自作 MIDI と一緒に MIDI モードへ渡す作り方。「90 年代のフーバー」にも曲の例を足した。全374件に。</li>
       <li><b>v3.33.0</b>（2026-11-17）「90 年代のフーバー」を追加：Style に hoover と書くだけでは 90 年代の音にならないので、Sounds で Dominator 風の音を作り、当たった音を曲でサンプリングさせる 2 段の手順。外れた書き方と、フーバーに音階を付けない（安いトランスになる）決まりも残した。全373件に。</li>
       <li><b>v3.32.1</b>（2026-11-17）初期ガバ ミニマルの曲名を Gatchan-Dokkan に。</li>
@@ -282,7 +283,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.34.0';
+const VERSION = 'v3.35.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
