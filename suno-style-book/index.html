@@ -194,6 +194,7 @@ textarea:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   <footer class="foot">
     <div><span id="verFoot"></span> ・ 更新 2026.11.12 ・ <span id="total"></span></div>
     <details><summary>更新履歴</summary><ul>
+      <li><b>v3.33.0</b>（2026-11-17）「90 年代のフーバー」を追加：Style に hoover と書くだけでは 90 年代の音にならないので、Sounds で Dominator 風の音を作り、当たった音を曲でサンプリングさせる 2 段の手順。外れた書き方と、フーバーに音階を付けない（安いトランスになる）決まりも残した。全373件に。</li>
       <li><b>v3.32.1</b>（2026-11-17）初期ガバ ミニマルの曲名を Gatchan-Dokkan に。</li>
       <li><b>v3.32.0</b>（2026-11-17）初期ガバ ミニマル（がっちゃんどっかん）を追加：歪み最大の 909 キック＋シンセ 1 音＋声ネタ 1 つ。4 つ打ちのドラムは MIDI の著作権チェックで止められるのでキックを低い音程で入れる、打ち込みらしさを出す書き方、のメモも。全372件に。</li>
       <li><b>v3.31.0</b>（2026-11-16）自作 MIDI → カバーのレイヴを 4 つ追加：ブリープ・ハードコア（Lights Out）、ブリープの嵐（Storm Warning、DJ 向け 5 分）、アンセム（Up A Gear、盛り上げの定番全部入り）、Prodigy 風 展開の多いレイヴ（Sawtooth Sunrise）。声ネタは歌詞欄に置く・よくある掛け声は止められやすい、などのメモも。</li>
@@ -280,7 +281,7 @@ const CATS = ['すべて','歌謡曲','ポップス','ロック／パンク','�
 const $ = s => document.querySelector(s);
 const store = {get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 let cat = store.get('cat','すべて'); if(!CATS.includes(cat)) cat='すべて';
-const VERSION = 'v3.32.1';
+const VERSION = 'v3.33.0';
 const generated = [];
 /* ---------- live version ---------- */
 const LIVE_GROUP = 'ライブ版にする追加';
