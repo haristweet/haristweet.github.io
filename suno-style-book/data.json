@@ -5948,9 +5948,29 @@
    "外れた書き方：Roland Alpha Juno の \"What The\" プリセット名だけ／鳴り方の言葉だけ（PWM のノコギリ波を重ねる・下から上がる・下に落ちる）／その両方／「1991 年のベルギー・オランダ盤のフーバーそのもの」。曲を作る機能で「1991 Belgian hardcore techno の hoover lead」と書いたものも、当たりには入らなかった。",
    "効いたのは、フーバーを有名にした曲の名前（Dominator）を「〜風」として出したこと。アーティスト名は書いていない。",
    "使い方の決まり：フーバーに音階（メロディ・アルペジオ）を付けると安いトランスのようになる（Hari の耳で確認）。根音 1 つ（多くても 5 度を足した 2 音）を伸ばして音程を落とすか、短く刻むだけにする。曲を作る説明文にも「1 音で伸ばして落とす使い方だけ、メロディにしない」と書く。",
-   "フーバーが要らない曲では、Exclude に hoover を入れておく（Suno が勝手に足すのを止める）。"
+   "フーバーが要らない曲では、Exclude に hoover を入れておく（Suno が勝手に足すのを止める）。",
+   "曲で使った例：Cold Sine（フーバー＋ブリープのブレイクビーツ）。自作 MIDI と一緒に、当たりの音を参照曲として MIDI モードに渡すと、MIDI のフーバーの段がその音で鳴った。"
   ],
   "id": "s372",
   "title": "汎用テンプレート — 90 年代のフーバー（Dominator 風の音を先に作り、曲でサンプリングさせる）"
+ },
+ {
+  "group": "1. 初期 90 年代 UK レイヴ",
+  "song": "Cold Sine",
+  "genre": "フーバー＋ブリープのブレイクビーツ（音色 4 つ、フーバーは参照曲から）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "early 1990s UK breakbeat hardcore, 140 bpm, steady 4/4 but no four-on-the-floor kick, very few sounds: one plain chopped funk breakbeat, a deep clean sine sub bass locked to the kicks, cold pure sine-wave bleeps, and the sampled dirty early-90s hoover kept exactly as it sounds, only one or two held notes with pitch dives and short stabs, never a melody. A few short pitched-down male voice sample shouts cut from old records, never singing. Drums-and-bass intro and outro for DJs. Made in a bedroom studio with one sampler, mono, 12-bit sampler grit, lots of empty space, dark warehouse rave",
+  "exclude": "four on the floor, singing, sung vocals, melodic vocals, rap, ragga, toasting, piano, strings, pads, reese bass, supersaw, hardstyle, trance, lush, layered, cinematic, wide stereo, polished, drum fills, chiptune, 8-bit, toy keyboard, general midi, cheap synth, eurodance, happy hardcore, edm, pop",
+  "notes": [
+   "Hari が選んだ Cold Sine（冷たい正弦波）②A（◎）。「90 年代のフーバー」の手順を曲で使った例。",
+   "自作 MIDI（hoover_bleep_140.mid、イ短調・176 小節・約 5 分）：音はブレイク・キックに合わせたサブベース・ブリープ（決まった高さのフック ×3＋答え）・フーバー（根音 A か A＋E だけ、伸ばすか 3 発刻む）の 4 つ。頭と終わりの 16 小節はドラムとベース、ブレイクダウン 2 回はスネアロール→1 拍止め、2 回目の終わり 4 小節はベースを属音 E に。",
+   "MIDI モード（v6-wild）で、midi_upload_id と一緒に当たりのフーバー（フーバー試し 4B）を reference_audio_ids に入れた。説明文で「hoover の段は（4B の題名）のフーバーをサンプリングし、音を変えずに、1〜2 音を伸ばして落とすか刻むだけ、メロディにしない」と書いた。MIDI と参照曲は一緒に使える（MIDI も参照曲 10 本の枠の 1 つに数えられる）。",
+   "カバー（v6、寄せる強さ 0.75、Style 0.9、305 秒）：フーバーの鳴りを崩さないよう、寄せる強さをいつもの 0.7 より上げた。",
+   "声ネタは歌詞欄で区間ごとに：`(Cold sine!)` `(Dive!)` `(Low and slow...)` `(Warehouse!)` `(Bleep and bass!)`。MIDI モードの説明文で声ネタを頼んでも出るかは分からないので、カバーで入れる。"
+  ],
+  "id": "s373",
+  "title": "Cold Sine — フーバー＋ブリープのブレイクビーツ（音色 4 つ、フーバーは参照曲から）"
  }
 ]
