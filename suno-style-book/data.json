@@ -5931,5 +5931,26 @@
   ],
   "id": "s371",
   "title": "Gatchan-Dokkan — 初期ガバ ミニマル（歪み最大の 909 キック＋シンセ 1 音＋声ネタ 1 つ）"
+ },
+ {
+  "group": "1. 初期 90 年代 UK レイヴ",
+  "song": "汎用テンプレート",
+  "genre": "90 年代のフーバー（Dominator 風の音を先に作り、曲でサンプリングさせる）",
+  "cat": "ブレイクコア／DnB",
+  "mix": "",
+  "mixStatus": "",
+  "style": "solo 1991 \"Dominator\"-style hoover synth riff, the original early-90s rave hoover, no drums, thick detuned buzzing pulse-width sawtooth stack with deep pitch bend dives",
+  "exclude": "hardstyle, modern edm, supersaw, trance, polished, wide stereo, vocals, singing",
+  "notes": [
+   "Suno で曲の Style に hoover と書くと、後の時代のきれいなフーバーになり、90 年代のフーバーにならない（Hari の耳で確認）。そこで 2 段に分ける。",
+   "1 段目：上の文を Sounds（短い音を作る機能、ループ・140 bpm・Am）に入れて、フーバーの音だけを作る。4B が当たり、同じ文の 4A は外れた。2 本に 1 本くらいなので、当たるまで聴いて選ぶ。",
+   "2 段目：当たった音を参照曲にして、説明文で「（参照曲の題名）の hoover synth をサンプリングして、音を変えずにリードのリフにする」と書き、曲を作る（v6、ボーカルなし）。7A/7B（60 秒の試し）は 2 本とも使えた（◎）。説明文に参照曲の id やリンクは書かず、題名で呼ぶ。",
+   "外れた書き方：Roland Alpha Juno の \"What The\" プリセット名だけ／鳴り方の言葉だけ（PWM のノコギリ波を重ねる・下から上がる・下に落ちる）／その両方／「1991 年のベルギー・オランダ盤のフーバーそのもの」。曲を作る機能で「1991 Belgian hardcore techno の hoover lead」と書いたものも、当たりには入らなかった。",
+   "効いたのは、フーバーを有名にした曲の名前（Dominator）を「〜風」として出したこと。アーティスト名は書いていない。",
+   "使い方の決まり：フーバーに音階（メロディ・アルペジオ）を付けると安いトランスのようになる（Hari の耳で確認）。根音 1 つ（多くても 5 度を足した 2 音）を伸ばして音程を落とすか、短く刻むだけにする。曲を作る説明文にも「1 音で伸ばして落とす使い方だけ、メロディにしない」と書く。",
+   "フーバーが要らない曲では、Exclude に hoover を入れておく（Suno が勝手に足すのを止める）。"
+  ],
+  "id": "s372",
+  "title": "汎用テンプレート — 90 年代のフーバー（Dominator 風の音を先に作り、曲でサンプリングさせる）"
  }
 ]
