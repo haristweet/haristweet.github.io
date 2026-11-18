@@ -6024,7 +6024,7 @@
   "style": "A bright, fast early-1990s European rave instrumental in C major at 150 bpm that plays my MIDI score, built on the uploaded synth sequence loop sampled unchanged: a low, dry, resonant sawtooth 16th-note sequence pumping C2 and C3 on every 16th, never stopping, always running from start to end, no melody added to it. The low E note in the score is the Roland TR-909 kick, four on the floor. Add offbeat 909 open hi-hats and tight 16th closed hats. Offbeat bass from the score. In the breaks the sequence runs alone with a rising filter; at the drops bright C major rave chord stabs and an organ stab as in the score. No high arpeggio, no trance, no hoover, no vocals.",
   "exclude": "（なし。MIDI モードの説明文には Exclude を付けられない）",
   "notes": [
-   "Hari が選んだ Vollgas（全開）②A（◎）。Gemini に解析させた曲の「疾走感の極み」（止まらない、強弱のない、低い 16 分のシーケンス）を、明るい C メジャー 150 BPM で作った。結果はミュンヘンディスコ寄りのジャーマンレイヴになり、Hari は「これはこれで良さげ」と判断した。",
+   "Vollgas（全開）②A（MIDI モードの版。v6 のカバーで仕上がらず、ここで中断。◎ なし）。Gemini に解析させた曲の「疾走感の極み」（止まらない、強弱のない、低い 16 分のシーケンス）を、明るい C メジャー 150 BPM で作った。結果はミュンヘンディスコ寄りのジャーマンレイヴになり、Hari は「これはこれで良さげ」と判断した。",
    "上の文は MIDI モード（v6-wild、歌なし）の説明文。Style 欄ではなく説明文として使う。MIDI は arp150_v11_v4noarp.mid（C メジャー、192 小節、約 5 分。C–G–Am–F と F–G–C–C）。中身はキック（低い E）、裏拍のベース、スタブ、オルガン、パッドで、シーケンスは入れていない。手本の音源は自作シーケンス（低い16分シーケンス 150 C）。",
    "自作シーケンスの作り方：Python で合成した 16 小節、25.6 秒。偶数の 16 分で C2、奇数の 16 分で C3 にアクセント。ノコギリ波を短く切り、共振の強いローパスフィルターを 8 小節かけて開け、tanh で歪ませた。リバーブは入れていない。",
    "MIDI の著作権チェック：低い 16 分のシーケンス（C2〜C3）は、形を変えても、サブベースの有無にかかわらず、全部止められた（v5〜v9）。拍の頭で伸ばすサブベースを入れた版（v10）も、シーケンスなしで止められた。高い音域のアルペジオなら通ったが、それは「安いトランス」になった。",
